@@ -1,0 +1,604 @@
+{*******************************************************************************
+        Module  : COMPILE
+        Desc    : Compile reports, calculations, syntaxes etc.
+                  To run in batch mode, pass the name of the table to compile.
+                  e.g.  report
+                        calculation
+                        syntax
+                        limit_calculation
+                        list_result_format
+
+
+                Group security may prevent all records being accessed and compiled
+                so best to use account with system authority.
+                smp/mode=batch/username=system/password=manager/report=compile report
+                If run interactively on GUI there is no way to stop the compilation
+                message coming up for calculations, syntax;s limit calculations and
+                list result. If there are a lot of these you either press <RETURN> a
+                lot or run in batch mode.
+*******************************************************************************}
+
+
+{
+
+MODIFICATION HISTORY
+====================
+
+SM      Ref.    Change  Date        Name                Description
+------- ------- ------- ----------- ------------------- -------------------------------------------------------
+        1.1             24-FEB-1999 Ken Jacobs          Compile reports, calculations, syntax's, limit calculations
+                                                        and list_result
+        1.2             23-AUG-1999 Ken Jacobs          Add options to read compile list from file
+        1.3             17-MAR-2000 Ken Jacobs          Increase size of identity field in log file to 20
+2001-R1 2002-1          29-APR-2002 Ken Jacobs          Release
+2002-R1 2003-1          19-SEP-2003 Ken Jacobs          Set read time to 0 to stop messages when compiling calculations etc.
+                                                        Correct error in lsit result constants
+                                                        Add support for sig figs
+                                                        All use of ! character to indicate comment lines
+                                                        If compiling all reports give option to delete all smp$code files
+                                                        to ensure all are compiled in the correct order
+2002-R1 2003-3          24-OCT-2003 Ken Jacobs          Release
+2004-R1 2004-1          29-APR-2004 Ken Jacobs          Correct handling of calculations using formula
+2002-R1         SM95    12-NOV-2004 Ken Jacobs          Abbott implementation
+                                                        Always write log file
+                                                        Do not compile calculations that use formulae
+10.2                    04-MAR-2013 Vincent Molloy      Modification to avoid problems with CVS hidden
+                                                        folders that are read-only and cause a file
+                                                        could not be accessed error message
+
+}
+
+{ ----------------------------------------------------------------------------------------------- }
+
+JOIN STANDARD_LIBRARY std_utils
+JOIN STANDARD_LIBRARY std_vgl
+JOIN LIBRARY $install_window
+JOIN LIBRARY $lib_utils
+
+SET COMPILE_OPTION DECLARE
+
+ENABLE WINDOWS
+
+CONSTANT COMMENT_CHARACTER      = "!"
+CONSTANT COMPILE_DIRECTORY      = "smp$userfiles"
+CONSTANT COMPILE_EXTENSION      = "compile"
+
+
+CONSTANT DIR_report             = "smp$reports:"
+CONSTANT DIR_calculation        = "smp$calculations:"
+CONSTANT DIR_syntax             = "smp$syntaxes:"
+CONSTANT DIR_limit_calculation  = "smp$limit_calculations:"
+CONSTANT DIR_list_result_format = "smp$list_results:"
+CONSTANT DIR_sig_figs           = "smp$sig_figs:"
+
+CONSTANT EXT_report             = ".rpf"
+CONSTANT EXT_calculation        = ".caf"
+CONSTANT EXT_syntax             = ".sxf"
+CONSTANT EXT_limit_calculation  = ".laf"
+CONSTANT EXT_list_result_format = ".lrf"
+CONSTANT EXT_sig_figs           = ".sff"
+
+
+{ ---------------------------------------------------------------------------- }
+
+DECLARE menu    ARRAY menu
+DECLARE form
+DECLARE table_id
+DECLARE filename
+DECLARE i
+DECLARE finished
+
+initialise_menu( menu )
+initialise_form( form )
+
+IF ( GLOBAL( "mode" ) = "INTERACTIVE" )
+
+    setup_install_window_class()
+    finished = FALSE
+
+    REPEAT
+
+        CHOOSE table_id OUT_OF menu AT 10,10
+
+        IF ( LASTKEY <> "EXIT" )
+
+            form . header = "Compile " : TOUPPER( table_id )
+            form . start_prompt()
+            form . prompt_objects[1] . set_text( "" )
+            form . wait_prompt()
+            form . end_prompt()
+
+            IF ( form . get_lastkey() = "DO" )
+
+                filename = form . prompt_objects[1] . value
+                compile( table_id, filename )
+
+            ENDIF
+
+        ELSE
+
+            finished = TRUE
+
+        ENDIF
+
+    UNTIL ( finished )
+
+ELSE
+
+    IF ( GLOBAL( "param_active" ) )
+
+        PROMPT FOR table_id
+        table_id = TOLOWER( table_id )
+
+        i = 1
+        REPEAT
+
+            i = i + 1
+
+        UNTIL ( ( menu[i,3] = EMPTY ) OR ( menu[i,3] = table_id ) )
+
+        IF ( menu[i,3] = table_id )
+
+            compile( table_id, "" )
+
+        ELSE
+
+            flash_message( "Specified table not recognised", FALSE )
+
+        ENDIF
+
+    ELSE
+
+        flash_message( "No value for table to compile", FALSE )
+
+    ENDIF
+
+ENDIF
+
+EXIT
+
+{ ---------------------------------------------------------------------------- }
+
+ROUTINE initialise_menu
+    (
+            menu
+    )
+
+    DECLARE i
+
+    i = 1
+    menu[i,1] = "*"
+    menu[i,2] = "Compile Options"
+
+    i = i + 1
+    menu[i,1] = "R"
+    menu[i,2] = "Reports"
+    menu[i,3] = "report"
+
+    i = i + 1
+    menu[i,1] = "C"
+    menu[i,2] = "Calculations"
+    menu[i,3] = "calculation"
+
+    i = i + 1
+    menu[i,1] = "S"
+    menu[i,2] = "Syntax's"
+    menu[i,3] = "syntax"
+
+    i = i + 1
+    menu[i,1] = "L"
+    menu[i,2] = "Limit Calculations"
+    menu[i,3] = "limit_calculation"
+
+    i = i + 1
+    menu[i,1] = "R"
+    menu[i,2] = "List Results"
+    menu[i,3] = "list_result_format"
+
+    i = i + 1
+    menu[i,1] = "F"
+    menu[i,2] = "Sig Figs"
+    menu[i,3] = "sig_figs"
+
+ENDROUTINE
+
+{ ---------------------------------------------------------------------------- }
+
+ROUTINE initialise_form
+    (
+        form
+    )
+
+    DECLARE prompt_file
+
+    PROMPT OBJECT form
+        CLASS "std_form"
+        WITH    (
+            height  = 1,
+            width       = 60,
+            row     = 8,
+            column  = 2,
+            border  = TRUE
+            )
+
+    form . status_text = form . footer
+
+    form . add_display( "Compile File (Blank for all) ", 2, 1 , PROMPT_RENDITION_RAISED )
+
+    PROMPT OBJECT prompt_file
+        ON LINE 1
+        FROM        30
+        BROWSE ON   file
+        WITH    (
+            vgl_library     = GLOBAL( "current_library" ),
+            validation_routine = "validate_file",
+            file_directory  = COMPILE_DIRECTORY,
+            file_extension  = COMPILE_EXTENSION
+            )
+
+    form . add_prompt( prompt_file )
+
+    RETURN
+
+ENDROUTINE
+
+{ ---------------------------------------------------------------------------- }
+
+ROUTINE validate_file
+    (
+        prompt_file
+    )
+
+    DECLARE filename
+    DECLARE valid
+
+    filename = prompt_file . text
+
+    IF ( blank( filename ) )
+
+        valid = TRUE
+
+    ELSE
+
+        valid =  FILE EXISTS( prompt_file  . value )
+
+    ENDIF
+
+    RETURN( valid )
+
+ENDROUTINE
+
+{ ---------------------------------------------------------------------------- }
+
+ROUTINE compile
+    (
+    VALUE   table_id,
+    VALUE   filename
+    )
+
+    DECLARE identity
+    DECLARE status
+    DECLARE counter
+    DECLARE count_pass
+    DECLARE count_fail
+    DECLARE logfile
+    DECLARE directory
+    DECLARE extension
+    DECLARE source_file
+    DECLARE use_file
+    DECLARE lines     ARRAY lines ARRAY_SIZE(0)
+    DECLARE i
+    DECLARE saved_read_time
+    DECLARE message
+
+    use_file = NOT blank( filename )
+
+    IF ( use_file )
+
+        IF read_file( filename, lines )
+
+            { Continue }
+
+        ELSE
+
+            RETURN
+
+        ENDIF
+
+    ELSE
+
+        IF ( table_id = "report" )
+
+            IF ( GLOBAL( "mode" ) <> "INTERACTIVE" )
+            OR ( confirm_with_text( "Delete contents of smp$code to ensure correct order of compilation" ) )
+
+                FILE DELETE "smp$code:*.rpc"     {VM}
+                FILE DELETE "smp$code:*.inc"     {VM}
+
+            ENDIF
+
+        ENDIF
+
+    ENDIF
+
+    directory = GET CONSTANT ( "Dir_" : table_id )
+    extension = GET CONSTANT ( "Ext_" : table_id )
+
+
+    count_pass = 0
+    count_fail = 0
+
+    IF ( GLOBAL( "mode" ) = "INTERACTIVE" )
+
+        CREATE OBJECT install_window_class, counter
+
+        counter . header = TOUPPER( table_id ) : " Compilation"
+        counter . footer = ""
+        counter . row = 15
+        counter . start_value = 0
+
+        IF ( use_file )
+
+            counter . end_value = size_of_array( lines )
+
+        ELSE
+
+            IF ( table_id = "calculation" )
+
+                counter . end_value = SELECT COUNT 'table_id'
+                                      WHERE  ( removeflag = FALSE )
+                                      AND    ( formula = NULL )
+
+            ELSE
+
+                counter . end_value = SELECT COUNT 'table_id'
+                                      WHERE  ( removeflag = FALSE )
+
+            ENDIF
+
+        ENDIF
+
+        counter . start_install()
+
+    ENDIF
+
+    logfile = "SMP$LOGFILES:COMPILE_" : TOUPPER( table_id ) : ".LOG"
+    SET NAME logfile
+
+
+    SET PAUSE FALSE
+    saved_read_time = GLOBAL( "read_time" )
+    SET GLOBAL "read_time" TO 0
+    SET LENGTH 0
+
+    message = PAD( TOUPPER( table_id ) : " Compilation", " ", 40 )
+            : LEFTSTRING( NOW, 17 )
+
+LITERAL
+$message___________________________________________________
+
+$ENDLITERAL
+
+    IF ( use_file )
+
+        i = 1
+        identity = lines[i]
+
+    ELSE
+
+        IF ( table_id = "calculation" )
+
+            identity = SELECT 'table_id'.identity
+                       WHERE  ( removeflag = FALSE )
+                       AND    ( formula = NULL )
+                       ORDER ON identity
+
+        ELSE
+
+            identity = SELECT 'table_id'.identity
+                       WHERE  ( removeflag = FALSE )
+                       ORDER ON identity
+
+        ENDIF
+
+    ENDIF
+
+    WHILE ( identity <> EMPTY )
+
+        IF ( GLOBAL( "mode" ) = "INTERACTIVE" )
+
+            counter . increase_one()
+
+        ENDIF
+
+        source_file = directory : STRIP( identity ) : extension
+
+        IF ( FILE EXISTS ( source_file ) )
+
+            IF ( table_id = "report" )
+
+                IF ( GLOBAL( "termtype" ) = "GUI" )
+
+                    status = vgl_compile_report_silent( identity )
+
+                ELSE
+
+                    status = vgl_compile_report( identity )
+
+                ENDIF
+
+            ELSEIF ( table_id = "calculation" )
+
+                status = vgl_compile_calculation( identity )
+
+            ELSEIF ( table_id = "syntax" )
+
+                SET PAUSE FALSE
+                status = vgl_compile_syntax( identity )
+                SET PAUSE TRUE
+
+            ELSEIF ( table_id = "limit_calculation" )
+
+                status = vgl_compile_limit_calculation( identity )
+
+            ELSEIF ( table_id = "list_result_format" )
+
+                status = vgl_compile_list_result( identity )
+
+            ELSEIF ( table_id = "sig_figs" )
+
+                status = vgl_compile_sig_figs( identity )
+
+            ENDIF
+
+        ELSE
+
+            IF ( table_id = "calculation" )
+            AND ( NOT blank( SELECT 'table_id'.formula ) )
+
+                status = "Formula"
+
+            ELSE
+
+                status = ERROR
+
+            ENDIF
+
+        ENDIF
+
+        IF ( status = ERROR )
+
+            status = "Source File Missing"
+                    count_fail = count_fail + 1
+
+        ELSEIF ( status = "Formula" )
+
+            count_pass = count_pass + 1
+
+        ELSEIF ( status = TRUE )
+
+            status = "Compiled"
+            count_pass = count_pass + 1
+
+        ELSEIF ( status = FALSE )
+
+            status = "Failed Compilation"
+            count_fail = count_fail + 1
+
+        ENDIF
+
+        IF ( GLOBAL( "mode" ) <> "INTERACTIVE" )
+
+            flash_message( identity : " " : status, FALSE )
+
+        ENDIF
+
+LITERAL
+$identity___________ $status________________________
+$ENDLITERAL
+
+        IF ( use_file )
+
+            i = i + 1
+            identity = lines[i]
+
+        ELSE
+
+            NEXT 'table_id'
+            identity = SELECT 'table_id'.identity
+
+        ENDIF
+
+    ENDWHILE
+
+    SET PAUSE TRUE
+    SET GLOBAL "read_time" TO saved_read_time
+
+    IF ( GLOBAL( "mode" ) = "INTERACTIVE" )
+
+        counter . end_install()
+
+    ENDIF
+
+    message = "Compiled "
+            : STRIP( count_pass )
+            : ",    Failed "
+            : STRIP( count_fail )
+
+    flash_message( message, TRUE )
+
+LITERAL
+
+$message___________________________________________________
+$ENDLITERAL
+
+    FLUSH_LITERAL
+
+    IF ( GLOBAL( "mode" ) = "INTERACTIVE" )
+
+        FILE SEND logfile, "defer/"
+
+    ELSE
+
+        flash_message( "Logfile written to " : logfile, FALSE )
+
+    ENDIF
+
+ENDROUTINE
+
+{ ---------------------------------------------------------------------------- }
+
+ROUTINE read_file
+    (
+    VALUE   filename,
+        lines
+    )
+
+    DECLARE status
+    DECLARE line
+    DECLARE i
+    DECLARE comment
+
+    i = 0
+
+    FILE OPEN filename, status
+
+    IF ( status = EMPTY )
+
+        FILE READ filename, line, status
+
+        WHILE ( status = EMPTY )
+
+            comment = INDEX( line, COMMENT_CHARACTER )
+
+            IF ( comment > 0 )
+
+                line = LEFTSTRING( line, ( comment - 1 ) )
+
+            ENDIF
+
+            IF ( NOT blank( line ) )
+
+                i = i + 1
+                lines[i] = line
+
+            ENDIF
+
+            FILE READ filename, line, status
+
+        ENDWHILE
+
+        FILE CLOSE filename, status
+
+    ENDIF
+
+    IF ( status <> EMPTY )
+
+        flash_message( status, TRUE )
+
+    ENDIF
+
+    RETURN( status = EMPTY )
+
+ENDROUTINE
+

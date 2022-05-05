@@ -1,0 +1,230 @@
+{*******************************************************************************
+*
+* Module Name   : $GEN_APPR_USER.RPF
+*
+* Purpose       : Generic Approval Library
+*		  ------------------------
+*		  User callback library for generic approval.
+*
+* Portability   : Not Checked
+*
+* Re-entrant    :
+*
+*******************************************************************************}
+
+JOIN LIBRARY $LIB_UTILS
+JOIN STANDARD_LIBRARY STD_WORKFLOW
+
+SET COMPILE_OPTION DECLARE
+SET NAME "DEFER/"
+SET NOT_PROTECTED
+ENABLE WINDOWS
+
+{* Global Constants ***********************************************************}
+
+{* Local Constants ************************************************************}
+
+{* Global Variables ***********************************************************}
+
+{* Main Code ******************************************************************}
+
+{* Start Of Routines **********************************************************}
+
+{******************************************************************************}
+
+	GLOBAL
+
+	ROUTINE gen_appr_user_submit_callback ( VALUE analysis_id        ,
+	                                        VALUE inspection_plan_id ,
+	                                              object_database    )
+
+{
+* Called from $GEN_APPR before a submit takes place.
+*
+* Parameters   : analysis_id        - padded analysis identity
+*                analysis_version   - packed decimal analysis version number
+*                inspection_plan_id - padded inspection plan id
+*                object_database    - containing proposed inspector records
+* Return Value : Boolean            - TRUE will set the analysis record to I ,
+*                                     ( Inspection ), FALSE will leave it in
+*                                     it's current state.
+*
+*******************************************************************************}
+
+	DECLARE return_value
+
+	return_value = TRUE
+
+	{ Place User callback functionality here }
+
+	RETURN ( return_value )
+
+ENDROUTINE { gen_appr_user_submit_callback }
+
+{******************************************************************************}
+
+	GLOBAL
+
+	ROUTINE gen_appr_user_approve_callback ( VALUE name_of_table      ,
+	                                         VALUE record_key0        ,
+	                                         VALUE approval_user_name ,
+	                                         VALUE approval_status    ,
+	                                         VALUE approval_comment   ,
+	                                               approval_complete  ,
+	                                               error_message      )
+
+{
+*
+*	Generic approval callback to allow the user to insert code before
+	the approval is saved.
+*
+*	Parameters : name_of_table:      the name of the table contining the
+*	                                 record that needs inspection
+*	             record_key0:        the identity of the record that
+*	                                 requires inspection
+*	             approval_user_name: the identity of the user performing
+*	                                 the inspection
+*	             approval_status:    the status to set the inspector to
+*	             approval_comment:   comment to be stored in the inspector
+*	                                 record
+*	             approval_complete:  whether the inspection is now complete
+*	             error_message:      error message on failure
+*
+*	Return value: TRUE if inspection performed successfully
+*
+*******************************************************************************}
+
+	DECLARE return_value,study_status, status, study_id, study_version, 
+			has_been_started_before, has_been_completed_before
+
+	return_value = TRUE
+	status = EMPTY
+
+	IF ( name_of_table = "STB_STUDY" ) THEN
+	
+		study_status = SELECT stb_study . study_status 
+	
+		IF ( study_status <> EMPTY ) THEN
+	
+			has_been_started_before = NOT ( BLANK ( SELECT stb_study . started_by ) )	
+	
+			IF ( study_status = "I" ) THEN
+
+				status = workflow_trigger_event ( "STB_STUDY", "INSPECTED" )	 
+
+			ELSEIF ( study_status = "A" ) THEN
+
+				IF ( has_been_started_before ) THEN
+
+					status = workflow_trigger_event_noupdate ( "STB_STUDY", "RESTARTED" )
+
+					has_been_completed_before = NOT ( BLANK ( SELECT stb_study . completed_by ) )
+
+					IF (has_been_completed_before) THEN
+
+						study_id = SELECT stb_study . identity
+						study_version = SELECT stb_study . study_version
+
+						IF ( NOT has_study_new_items ( study_id, study_version )) THEN
+
+							ASSIGN stb_study . old_status = SELECT stb_study . study_status
+							ASSIGN stb_study . study_status = "C"
+
+						ENDIF    
+
+					ENDIF
+
+				ELSE
+
+					status = workflow_trigger_event_noupdate ( "STB_STUDY", "AUTHORIZED" )
+					ASSIGN stb_study . first_approved_by = OPERATOR
+					ASSIGN stb_study . first_approved_on = NOW
+
+				ENDIF
+
+			ENDIF
+	
+			IF ( status <> EMPTY ) THEN
+
+				error_message = status
+				return_value = FALSE
+			
+			ENDIF
+
+			workflow_update ( )
+		
+		ENDIF
+	
+	ENDIF
+
+
+	RETURN ( return_value )
+
+ENDROUTINE { gen_appr_user_approve_callback }
+
+{******************************************************************************}
+
+
+ROUTINE has_study_new_items ( VALUE study, VALUE study_version )
+
+{ 
+* Check study for new items
+*
+* Parameters   : study         - study Id
+*                study_version - study version
+* Return Value : TRUE, if items exist, else FALSE
+*
+*******************************************************************************}
+
+	DECLARE return_value, pull_item, event_item, link_item
+  
+	return_value = FALSE
+  
+	pull_item = SELECT stb_study_cell_pull . pull_status
+					WHERE ( ( study_id = study ) AND 
+						    ( study_version = study_version ) AND
+						    ( pull_status = "P") )
+   
+   IF ( pull_item <> EMPTY ) THEN
+   
+		return_value = TRUE
+		
+   ENDIF
+
+   IF ( return_value = FALSE ) THEN
+   
+       event_item =  SELECT stb_study_cell_event . event_status
+                     WHERE (( study_id = study ) AND 
+                            ( study_version = study_version ) AND
+                            ( event_status = "P"))
+
+       IF ( event_item <> EMPTY ) THEN
+	   
+           return_value = TRUE
+		   
+       ENDIF      
+	   
+   ENDIF 
+
+   IF ( return_value = FALSE ) THEN
+   
+        link_item =  SELECT stb_study_cell_link . link_status
+                     WHERE ( ( study_id = study ) AND 
+                             ( study_version = study_version ) AND
+                             ( link_status = "P") )
+
+       IF ( link_item <> EMPTY ) THEN
+	   
+           return_value = TRUE
+		   
+       ENDIF   
+	   
+   ENDIF
+
+   RETURN ( return_value )
+
+ENDROUTINE { has_study_new_items }
+
+{******************************************************************************}
+{******************************************************************************}
+{******************************************************************************}

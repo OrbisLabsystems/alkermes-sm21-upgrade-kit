@@ -1,0 +1,14 @@
+EXPLORER_COLUMN               
+CABINET,FOLDER_NUMBER,COLUMN_NUMBER,NAME,DESCRIPTION,TABLE_NAME,FIELD_NAME,ROUTINE,LIBRARY,WIDTH,GROUP_ID,ORDER_NUMBER
+30,10,10,30,234,30,100,30,20,10,10,10
+                      10
+"WEB","1","1","ID Numeric",,,"ID_NUMERIC",,,"-2",,"0"
+"WEB","1","2","ID Text",,,"ID_TEXT",,,"-2",,"0"
+"WEB","1","3","Status",,,"STATUS",,,"-2",,"0"
+"WEB","1","4","Login date",,,"LOGIN_DATE",,,"-2",,"0"
+"WEB","1","5","Inspection Header",,,"INSPECTION_HEADER",,,"-2",,"0"
+"WEB","2","1","ID Numeric",,,"ID_NUMERIC",,,"-2",,"0"
+"WEB","2","2","ID Text",,,"ID_TEXT",,,"-2",,"0"
+"WEB","2","3","Status",,,"STATUS",,,"-2",,"0"
+"WEB","2","4","Login date",,,"LOGIN_DATE",,,"-2",,"0"
+"WEB","2","5","Inspection Header",,,"INSPECTION_HEADER",,,"-2",,"0"

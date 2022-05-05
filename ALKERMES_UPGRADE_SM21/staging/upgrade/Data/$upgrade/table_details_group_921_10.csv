@@ -1,0 +1,11 @@
+EXPLORER_GROUP                
+CABINET,FOLDER_NUMBER,GROUP_NUMBER,FIELD_NAME,NAME,DESCRIPTION,ICON_1,ICON_2,PARENT_NUMBER,ORDER_NUMBER,SHOW_PHRASE_DESC,ICON_ROUTINE,GROUP_FORM,GROUP_FORM_TASK,CHILD_FORM,CHILD_FORM_TASK
+30,10,10,30,30,234,30,30,10,10,1,30,30,100,30,100
+                      7
+"LABORATORY","18","1","STOCK","Stock","Stock","INT_CLOSED_FOLDER","INT_OPEN_FOLDER","0","1","FALSE","","","","",
+"LABORATORY","18","2","STOCK_BATCH_ID","Stock Batch","Stock Batch","INT_CLOSED_FOLDER","INT_OPEN_FOLDER","1","2","FALSE","","StockDash","StockDashTask","StockBatchDash","StockBatchDashTask"
+"LABORATORY","18","3","LOCATION","Location","Location","INT_CLOSED_FOLDER","INT_OPEN_FOLDER","0","3","FALSE","","","","",
+"LABORATORY","18","4","STOCK","Stock","Stock","INT_CLOSED_FOLDER","INT_OPEN_FOLDER","3","4","FALSE","","StockBatchOverviewDash","StockBatchOverviewDashTask","StockBatchOverviewDash","StockBatchOverviewDashTask"
+"LABORATORY","18","5","STOCK_BATCH_ID","Stock Batch","Stock Batch","INT_CLOSED_FOLDER","INT_OPEN_FOLDER","4","5","FALSE","","StockBatchOverviewDash","StockBatchOverviewDashTask","StockBatchDash","StockBatchDashTask"
+"SYSTEM","31","1","IMPLEMENTATION_TYPE","Implementation type","Current Implementation type","INT_CLOSED_FOLDER","INT_OPEN_FOLDER","0","1","FALSE","","","","",
+"SYSTEM","31","2","TABLE_NAME","Entity Name","Entity/Table name","INT_CLOSED_FOLDER","INT_OPEN_FOLDER","0","2","FALSE","","","","",

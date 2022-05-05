@@ -1,0 +1,26 @@
+EXPLORER_RMB                  
+CABINET,FOLDER_NUMBER,RMB_NUMBER,TYPE,NAME,DESCRIPTION,GROUP_ID,ORDER_NUMBER,PARENT_NUMBER,CONTEXT_ROUTINE,CONTEXT_LIBRARY,CONTEXT_FIELD,CONTEXT_OPERATOR,CONTEXT_VALUE,ALLOW_MULTIPLE,ON_TREE,REFRESH,MENUPROC,USING,LOCK_REQUIRED,ON_NAVBAR,ON_GRID,BEGIN_GROUP
+30,10,10,10,100,234,10,10,10,30,20,30,10,234,1,1,1,10,234,1,1,1,1
+                    22
+"TABLE_DETAILS","12","11","ITEM","New Version...","Create a new version of this analysis",,"11","8",,,,,,"FALSE","FALSE","TRUE","15035","IDENTITY,ANALYSIS_VERSION","FALSE","TRUE","TRUE","FALSE"
+"TABLE_DETAILS","17","1","ITEM","MLP to Test Schedule...","Create test schedule from product spec.",,"1","0",,,,,,"TRUE","FALSE","FALSE","552","IDENTITY","FALSE","TRUE","TRUE","FALSE"
+"TABLE_DETAILS","17","2","ITEM","Sample Tree by Product...","Sample overview for this product spec.",,"2","0",,,,,,"TRUE","FALSE","FALSE","79","IDENTITY","FALSE","TRUE","TRUE","FALSE"
+"TABLE_DETAILS","17","3","SEPARATOR","<Separator>",,,"3","0",,,,,,"FALSE","FALSE","FALSE","0",,"FALSE","TRUE","TRUE","FALSE"
+"TABLE_DETAILS","17","4","GROUP","Product Spec.","Product Spec. Tasks",,"4","0",,,,,,"FALSE","FALSE","FALSE","0",,"FALSE","TRUE","TRUE","FALSE"
+"TABLE_DETAILS","17","5","ITEM","Add...","Create a new product spec.",,"5","4",,,,,,"FALSE","TRUE","TRUE","551",,"FALSE","TRUE","TRUE","FALSE"
+"TABLE_DETAILS","17","6","ITEM","Copy...","Copy this product spec.",,"6","4",,,,,,"FALSE","FALSE","TRUE","553","IDENTITY,PRODUCT_VERSION","FALSE","TRUE","TRUE","FALSE"
+"TABLE_DETAILS","17","7","ITEM","New Version...","Create a new version of this product spec.",,"7","4",,,,,,"FALSE","FALSE","TRUE","555","IDENTITY","FALSE","TRUE","TRUE","FALSE"
+"TABLE_DETAILS","17","8","ITEM","Modify...","Modify this product spec.",,"8","4",,,,,,"TRUE","FALSE","TRUE","554","IDENTITY,PRODUCT_VERSION","FALSE","TRUE","TRUE","FALSE"
+"TABLE_DETAILS","17","9","ITEM","Display...","Display this product spec.",,"9","4",,,,,,"TRUE","FALSE","FALSE","557","IDENTITY,PRODUCT_VERSION","FALSE","TRUE","TRUE","FALSE"
+"TABLE_DETAILS","17","10","SEPARATOR","<Separator>",,,"10","4",,,,,,"FALSE","FALSE","FALSE","0",,"FALSE","TRUE","TRUE","FALSE"
+"TABLE_DETAILS","17","11","ITEM","Submit...","Submit product spec. for approval",,"11","4",,,"APPROVAL_STATUS","10","V","FALSE","FALSE","TRUE","15422","IDENTITY,PRODUCT_VERSION","FALSE","TRUE","TRUE","FALSE"
+"TABLE_DETAILS","17","12","ITEM","Approve...","Approve or reject this product spec.",,"12","4",,,"APPROVAL_STATUS","10","I","FALSE","FALSE","TRUE","15421","IDENTITY,PRODUCT_VERSION","FALSE","TRUE","TRUE","FALSE"
+"TABLE_DETAILS","17","13","ITEM","Inspection History...","View inspection history of product spec.",,"13","4",,,,,,"FALSE","FALSE","FALSE","15423","IDENTITY,PRODUCT_VERSION","FALSE","FALSE","TRUE","FALSE"
+"TABLE_DETAILS","17","14","SEPARATOR","<Separator>",,,"14","4",,,,,,"FALSE","FALSE","FALSE","0",,"FALSE","TRUE","TRUE","FALSE"
+"TABLE_DETAILS","17","15","ITEM","Print...","Print this product spec.",,"15","4",,,,,,"TRUE","FALSE","FALSE","558","IDENTITY,PRODUCT_VERSION","FALSE","FALSE","TRUE","FALSE"
+"TABLE_DETAILS","17","16","ITEM","List...","List all product specs",,"16","4",,,,,,"FALSE","TRUE","FALSE","559",,"FALSE","FALSE","TRUE","FALSE"
+"TABLE_DETAILS","17","17","SEPARATOR","<Separator>",,,"17","4",,,,,,"FALSE","FALSE","FALSE","0",,"FALSE","TRUE","TRUE","FALSE"
+"TABLE_DETAILS","17","18","ITEM","Remove","Remove this product spec.",,"18","4",,,"REMOVEFLAG","1","No","TRUE","FALSE","TRUE","17","IDENTITY,PRODUCT_VERSION","FALSE","TRUE","TRUE","FALSE"
+"TABLE_DETAILS","17","19","ITEM","Restore","Restore this product spec.",,"19","4",,,"REMOVEFLAG","1","Yes","TRUE","FALSE","TRUE","18","IDENTITY,PRODUCT_VERSION","FALSE","TRUE","TRUE","FALSE"
+"TABLE_DETAILS","63","11","ITEM","New Version...","Create a new version of this analysis",,"11","8",,,"APPROVAL_STATUS","10","A","FALSE","FALSE","TRUE","15035","IDENTITY,ANALYSIS_VERSION","FALSE","TRUE","TRUE","FALSE"
+"TABLE_DETAILS","110","6","ITEM","New Version","New Version of Report Template",,"6","1",,,,,,"FALSE","FALSE","FALSE","35277","IDENTITY,VERSION","FALSE","TRUE","TRUE","FALSE"

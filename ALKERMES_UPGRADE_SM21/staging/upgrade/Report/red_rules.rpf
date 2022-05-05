@@ -1,0 +1,211 @@
+JOIN STANDARD_LIBRARY 	STD_ARRAY 
+JOIN STANDARD_LIBRARY 	STD_ARRAY_SELECT
+JOIN LIBRARY 			$LIB_UTILS
+
+SET COMPILE_OPTION DECLARE
+SET NOTPROTECTED
+
+{*****************************************************************************}
+
+{ getProperty("SAMPLE" , "         2" , "LOGIN_DATE")                    }
+{ getProperty("RED_TEST_HEADER" , "KNORKATOR         1" , "DESCRIPTION") }
+
+{*****************************************************************************}
+
+ROUTINE alwaystrue( VALUE entity_type , VALUE record_key_0 )
+{
+*
+******************************************************************************}
+
+	RETURN ( TRUE )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE alwaysfalse( VALUE entity_type , VALUE record_key_0 )
+{
+*
+******************************************************************************}
+
+      RETURN ( FALSE )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE mondays( VALUE entity_type , VALUE record_key_0 )
+{
+*
+******************************************************************************}
+
+      RETURN ( DAYNUMBER ( getProperty( entity_type , record_key_0 , "LOGIN_DATE") ) = 1 )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE tuesdays( VALUE entity_type , VALUE record_key_0 )
+{
+*
+******************************************************************************}
+
+      RETURN ( DAYNUMBER ( getProperty( entity_type , record_key_0 , "LOGIN_DATE") ) = 2 )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE wednesdays( VALUE entity_type , VALUE record_key_0 )
+{
+*
+******************************************************************************}
+
+      RETURN ( DAYNUMBER ( getProperty( entity_type , record_key_0 , "LOGIN_DATE") ) = 3 )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE thursdays( VALUE entity_type , VALUE record_key_0 )
+{
+*
+******************************************************************************}
+
+      RETURN ( DAYNUMBER ( getProperty( entity_type , record_key_0 , "LOGIN_DATE") ) = 4 )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE fridays( VALUE entity_type , VALUE record_key_0 )
+{
+*
+******************************************************************************}
+
+      RETURN ( DAYNUMBER ( getProperty( entity_type , record_key_0 , "LOGIN_DATE") ) = 5 )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE weekdays( VALUE entity_type , VALUE record_key_0 )
+{
+*
+******************************************************************************}
+
+      DECLARE success
+
+      success = ( DAYNUMBER ( getProperty( entity_type , record_key_0 , "LOGIN_DATE") ) >= 1 ) AND
+                ( DAYNUMBER ( getProperty( entity_type , record_key_0 , "LOGIN_DATE") ) <= 5 )
+
+      RETURN ( success )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE afternoons( VALUE entity_type , VALUE record_key_0 )
+{
+*
+******************************************************************************}
+
+      DECLARE meridian
+
+      SET DATE FORMAT "AM"
+      meridian = STRING( getProperty( entity_type , record_key_0 , "LOGIN_DATE") )
+      RESTORE DATE FORMAT
+
+      RETURN ( meridian = "PM" )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE mornings( VALUE entity_type , VALUE record_key_0 )
+{
+*
+******************************************************************************}
+
+      DECLARE meridian
+
+      SET DATE FORMAT "AM"
+      meridian = STRING( getProperty( entity_type , record_key_0 , "LOGIN_DATE") )
+      RESTORE DATE FORMAT
+
+      RETURN ( meridian = "AM" )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE firstmoninmonth( VALUE entity_type , VALUE record_key_0 )
+{
+*
+******************************************************************************}
+
+      DECLARE is_first_monday, day_of_month
+
+      is_first_monday = FALSE
+
+      IF DAYNUMBER ( getProperty( entity_type , record_key_0 , "LOGIN_DATE") ) = 1 THEN
+
+            SET DATE FORMAT "DD"
+            day_of_month = getProperty( entity_type , record_key_0 , "LOGIN_DATE")
+            RESTORE DATE FORMAT
+
+            IF day_of_month <= 7 THEN
+                  is_first_monday = TRUE
+            ENDIF
+      ENDIF
+
+      RETURN ( is_first_monday )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE getProperty( VALUE entity_type , VALUE record_key_0 , VALUE property_name)
+{
+*
+******************************************************************************}
+
+	DECLARE odb , entity , property , criteria , out_value , out_field , flag
+	
+	ARRAY criteria
+	ARRAY out_value 
+	ARRAY out_field
+	
+	CREATE OBJECT "STD_OBJECT_DATABASE" , odb 
+	
+	odb . INITIALISE( entity_type )
+	
+	CALL_ROUTINE "SplitReserveEntryString" USING record_key_0 , entity_type , out_value , out_field IN LIBRARY "lsd_tools"
+
+	flag = 1
+	
+	WHILE ( flag <= SIZE_OF_ARRAY( out_field ) ) DO
+
+		ARRAY_SELECT_ADD( criteria , ARRAY_SELECT_EQ , out_field[ flag ] , out_value[ flag ] ) 
+
+		IF ( flag < SIZE_OF_ARRAY( out_field ) ) THEN
+		
+			ARRAY_SELECT_ADD( criteria , ARRAY_SELECT_AND , EMPTY , EMPTY )
+			
+        ENDIF
+		
+		flag = flag + 1
+		
+	ENDWHILE
+
+	odb . select( criteria ) 
+	
+	entity = odb. GET_BY_NUMBER( 1 )
+	
+	property = SELECT 'entity_type' . 'property_name' in object entity
+
+    RETURN ( property )
+
+ENDROUTINE
+
+{*****************************************************************************}

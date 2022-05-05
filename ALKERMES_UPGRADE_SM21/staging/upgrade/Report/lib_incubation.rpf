@@ -1,0 +1,793 @@
+﻿{******************************************************************************
+*
+* Module Name          : LIB_INCUBATION
+*
+* Purpose              : Routines for Incubations
+*
+* Portability          : Not Checked
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By                Description
+* -------   -----------  ----------        ---------------------------------------
+* 1.0      31-Oct-2019   E.O'Sullivan      Initial Version 
+*
+*******************************************************************************}
+SET NOTPROTECTED
+SET NAME "DEFER/"
+SET COMPILEOPTION DECLARE
+ENABLE WINDOWS
+
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_MESSAGE
+
+JOIN LIBRARY $LIB_LIST_VIEWER
+JOIN LIBRARY $PROMPT_LIST
+JOIN LIBRARY $LIB_UTILS
+    
+{*****************************************************************************}
+{**           C O N S T A N T S                                             **}
+{*****************************************************************************}
+
+GLOBAL CONSTANT INCUBATION = "INCUBATION"
+
+CONSTANT LINEFEED   = ASCII(10) 
+CONSTANT INC_TABLE  = "a_incubation"  
+
+{******************************************************************************}
+{**           C L A S S E S                                                  **}
+{******************************************************************************}
+GLOBAL
+ROUTINE define_incubation_class
+{
+*    Defines the Incubation Class           
+*
+*******************************************************************************}
+
+    IF NOT class_defined ( INCUBATION ) THEN
+
+        DEFINE CLASS INCUBATION
+
+                INITIALISATION
+
+                PROPERTIES
+                "table_name"  ,
+                "key0_field"  ,
+                "incubator"   ,
+                "start_time"   ,
+                "min_end_time" ,
+                "max_end_time" ,
+                "comment"      ,
+                "created_records",
+                "invalid_records"
+
+                ACTIONS
+                "add_incubation_form" ,
+                "add_incubation",
+                "get_end_times_for_test"
+                    
+        END CLASS
+
+    ENDIF
+
+ENDROUTINE { define_incubation_class }
+
+
+{******************************************************************************}
+{**           C L A S S   A C T I O N S                                      **}
+{******************************************************************************}
+
+
+ROUTINE incubation_class_initialisation ( self ) 
+{
+*    Incubation initialisation routine.                     
+*
+*******************************************************************************}
+
+    self . table_name   = ""
+    self . key0_field   = ""
+    self . incubator    = ""    
+    self . start_time   = NOW
+    self . min_end_time = 0
+    self . max_end_time = 0
+    self . comment      = ""   
+    ARRAY self . created_records ARRAYSIZE (0)
+    ARRAY self . invalid_records ARRAYSIZE (0)
+
+ENDROUTINE {incubation_class_initialisation }
+
+
+{******************************************************************************}
+
+ROUTINE incubation_action_add_incubation_form( self ) 
+{
+*   Create incubation form                  
+*
+*******************************************************************************}
+
+    DECLARE inc_form, inc_prompt, start_prompt, min_end_prompt, max_end_prompt,
+            comment_prompt, i
+    
+    CREATE OBJECT PROMPT_CLASS_FORM, inc_form
+      
+    inc_form . width = 40
+    inc_form . row = 2
+    inc_form . column = 2
+    inc_form . border = TRUE
+    inc_form . header = GET_USER_MESSAGE( "INCUB_FORM_ADD_HEADER", 1)
+    inc_form . active_prompt = 1
+    inc_form . validation_routine = "form_validation_routine"
+
+    i = 1
+    PROMPT OBJECT inc_prompt
+    ON LINE i FROM 20 TO 35 
+    FORMAT 'INC_TABLE' . incubator
+    WITH ( ALWAYS_VALIDATE = TRUE )
+    inc_form . add_prompt(inc_prompt)  
+    inc_form . add_display( GET_USER_MESSAGE( "INCUB_FORM_INCUBATOR", 1) , 1 , i, PROMPT_RENDITION_BOLD)
+
+    i = i + 1
+    PROMPT OBJECT comment_prompt
+    ON LINE i FROM 20 TO 35
+    FORMAT 'INC_TABLE' . comment
+    inc_form . add_prompt(comment_prompt)  
+    inc_form . add_display( GET_USER_MESSAGE( "INCUB_FORM_COMMENT", 1) , 1 , i, PROMPT_RENDITION_BOLD)
+
+    i = i + 1
+    PROMPT OBJECT start_prompt
+    ON LINE i FROM 20 TO 35
+    FORMAT 'INC_TABLE' . start_time
+    WITH ( value = NOW )
+    inc_form . add_prompt(start_prompt)  
+    inc_form . add_display( GET_USER_MESSAGE( "INCUB_FORM_START_TIME", 1) , 1 , i, PROMPT_RENDITION_BOLD)
+
+    IF ( self . table_name <> "TEST" ) THEN
+
+        i = i + 1
+        PROMPT OBJECT min_end_prompt
+        ON LINE i FROM 20 TO 35
+        FORMAT 'INC_TABLE' . min_end_time
+        inc_form . add_prompt(min_end_prompt)  
+        inc_form . add_display( GET_USER_MESSAGE( "INCUB_FORM_MIN_END_TIME", 1) , 1 , i, PROMPT_RENDITION_BOLD)
+
+        i = i + 1
+        PROMPT OBJECT max_end_prompt
+        ON LINE i FROM 20 TO 35
+        FORMAT 'INC_TABLE' . max_end_time
+        inc_form . add_prompt(max_end_prompt)  
+        inc_form . add_display( GET_USER_MESSAGE( "INCUB_FORM_MAX_END_TIME", 1) , 1 , i, PROMPT_RENDITION_BOLD)
+  
+    ENDIF
+
+    inc_form . height = i
+    inc_form . start_prompt()
+    inc_form . wait_prompt()
+    inc_form . end_prompt()
+      
+    IF inc_form . get_lastkey () = "DO" THEN
+            
+        self . incubator    = inc_form . prompt_objects[1] . value   
+        self . comment      = inc_form . prompt_objects[2] . value 
+        self . start_time   = inc_form . prompt_objects[3] . value   
+
+        IF ( self . table_name <> "TEST" ) THEN
+		
+            self . min_end_time = inc_form . prompt_objects[4] . value
+            self . max_end_time = inc_form . prompt_objects[5] . value
+			
+        ENDIF
+
+    ENDIF
+
+    RETURN ( inc_form . get_lastkey ())
+
+ENDROUTINE {incubation_action_add_incubation_form}
+
+
+{******************************************************************************}
+
+ROUTINE incubation_action_add_incubation( self, VALUE record_id ) 
+{
+*   Add incubation record                  
+*
+*******************************************************************************}
+
+    DECLARE is_write, record_key0_size, inc_increment, inc_key, check_ok, success,
+            table_name_size, msg_line
+
+    is_write = FALSE
+    success  = TRUE
+
+    IF ( self . table_name = "TEST" ) THEN
+     
+        self. get_end_times_for_test(record_id)
+
+    ENDIF
+
+    IF ((self . min_end_time = self . start_time) OR 
+        (self . max_end_time = self . start_time)) THEN
+
+        msg_line = self . table_name : " " : STRING(record_id)
+        self . invalid_records[size_of_array(self . invalid_records) + 1] = msg_line
+
+    ELSE
+
+        IF NOT transaction_is_write() THEN
+		
+            START WRITE TRANSACTION "CREATE INCUBATION RECORD"
+            is_write = TRUE
+			
+        ENDIF
+
+        inc_increment = INCREMENT( self . table_name, record_id)
+
+        GET_FIELD_DETAILS 'INC_TABLE' . table_name , "FIELD_SIZE", table_name_size
+        GET_FIELD_DETAILS 'INC_TABLE' . record_key0, "FIELD_SIZE", record_key0_size
+
+        inc_key = PAD(self . table_name, " ", table_name_size) : PAD(record_id, " ", record_key0_size) 
+                  : PACKED_DECIMAL(inc_increment)
+
+        RESERVE ENTRY 'INC_TABLE', inc_key, check_ok
+
+        IF (check_ok <> EMPTY) THEN
+
+            success = FALSE
+            flash_message(check_ok, true)
+
+        ELSE
+ 
+            ASSIGN 'INC_TABLE' . name             = self . table_name : "_" : STRIP(STRING(record_id)) 
+                                               : "_" : STRING(STRIP(inc_increment))
+            ASSIGN 'INC_TABLE' . incubator        = STRIP( self . incubator )
+            ASSIGN 'INC_TABLE' . start_time       = STRIP( self . start_time )
+            ASSIGN 'INC_TABLE' . min_end_time     = STRIP( self . min_end_time )
+            ASSIGN 'INC_TABLE' . max_end_time     = STRIP( self . max_end_time )
+            ASSIGN 'INC_TABLE' . comment          = STRIP( self . comment )
+            ASSIGN 'INC_TABLE' . incubated_by     = OPERATOR
+
+            UPDATE 'INC_TABLE'
+
+        ENDIF 
+
+        IF is_write THEN
+
+            IF success THEN
+
+                COMMIT
+                self . created_records[size_of_array(self . created_records) + 1] = SELECT 'INC_TABLE' . name
+
+            ELSE
+
+                ROLLBACK
+ 
+            ENDIF
+
+        ENDIF
+
+    ENDIF
+
+ENDROUTINE {incubation_action_add_incubation}
+
+
+{*****************************************************************************}
+ROUTINE incubation_action_get_end_times_for_test ( self, VALUE test_number )
+{
+* For Test Incubation
+* Calculates Min End Time for incubation from interval set on analysis
+*
+******************************************************************************}
+
+    DECLARE analysis, analysis_ver, min_int, max_int
+
+    analysis     = SELECT test . analysis WHERE test_number = test_number
+	
+    analysis_ver = SELECT analysis_view.analysis_version WHERE identity = analysis
+
+    min_int      = SELECT versioned_analysis . a_incubation_min_interval 
+                   WHERE identity = analysis
+                   AND analysis_version = analysis_ver
+			  
+    max_int      = SELECT versioned_analysis . a_incubation_max_interval 
+
+    self . min_end_time = self . start_time + min_int
+	
+    self . max_end_time = self . start_time + max_int
+
+ENDROUTINE {incubation_action_get_end_times_for_test}
+
+
+{******************************************************************************}
+ROUTINE form_validation_routine (self)
+
+{
+*  Validates form entries
+*
+******************************************************************************}
+    DECLARE valid
+    
+    valid = TRUE
+
+    IF ((self . prompt_objects[1] . value = "" )
+         OR (self . prompt_objects[3] . value = "" )
+         OR (self . prompt_objects[4] . value = "" )
+         OR (self . prompt_objects[5] . value = "" )) THEN
+        
+        flash_message( GET_USER_MESSAGE("INCUB_MESS_MANDATORY", 1), true )
+        valid = FALSE
+
+    ENDIF
+
+    RETURN (valid)
+    
+
+ENDROUTINE {form_validation_routine}
+
+
+{******************************************************************************}
+{**          M E N U   R O U T I N E S                                       **}
+{******************************************************************************}
+
+
+ROUTINE add_incubation_rmb (rmb_object, 
+                            object, 
+                            data)
+
+{
+*  RMB option for adding incubation records
+*
+******************************************************************************}
+
+    DECLARE the_record, no_records, record_id, inc, action, msg, i, key_array
+
+    ARRAY key_array ARRAYSIZE (0)
+
+    define_incubation_class()
+    CREATE OBJECT INCUBATION, inc
+    inc. table_name = data . table
+    action = inc . add_incubation_form()
+
+    IF ( action = "DO" ) THEN
+
+        no_records = data . size()
+        data . set_first ()
+
+        WHILE ((data . current_position <= no_records) AND ( data . current_position > 0 )) DO
+
+            the_record = data . get_by_number (data . current_position)
+			
+            GET_TABLE_DETAILS 'data . table', "KEY0_FIELD", key_array
+			
+            inc . key0_field = key_array[1]
+			
+            record_id = SELECT 'data . table'. 'key_array[1]' IN OBJECT the_record
+
+            inc . add_incubation( record_id ) 
+
+            data . set_next()
+    
+        ENDWHILE
+
+        { Display message with list of invalid records}
+        IF ( size_of_array( inc . invalid_records ) > 0 ) THEN
+          
+            msg = GET_USER_MESSAGE("INCUB_MESS_NOT_CREATED", 1) : LINEFEED
+            i = 0
+
+            WHILE (i < size_of_array( inc . invalid_records ) )  DO
+              
+                i = i + 1
+                msg = msg : STRIP(STRING(inc . invalid_records [i])) : LINEFEED
+
+            ENDWHILE
+
+            msg = msg : LINEFEED : GET_USER_MESSAGE("INCUB_MESS_NOT_CREATED", 2)
+            flash_message(msg, true)
+        
+        ENDIF
+
+        { Display created records}
+        IF ( size_of_array(inc . created_records) > 0 ) THEN
+
+            display_incubation_form ( inc . created_records )
+
+        ENDIF
+
+    ENDIF
+
+ENDROUTINE { add_incubation_rmb }
+
+{******************************************************************************}
+
+ROUTINE display_incubation_rmb (rmb_object, 
+                                object, 
+                                data)
+
+{
+*  RMB option for displaying incubation records
+*
+******************************************************************************}
+
+    DECLARE the_record, no_records, record_id, key_array, form_array,
+            incubation_record, i
+
+    i = 1
+    ARRAY key_array ARRAYSIZE (0)
+    ARRAY form_array ARRAYSIZE (0)
+    no_records = data . size()
+    data . set_first ()
+
+    WHILE ((data . current_position <= no_records) AND ( data . current_position > 0 )) DO
+
+        the_record = data . get_by_number (data . current_position)
+		
+        GET_TABLE_DETAILS 'data . table', "KEY0_FIELD", key_array
+		
+        record_id = SELECT 'data . table'. 'key_array[1]' IN OBJECT the_record
+
+        incubation_record = SELECT 'INC_TABLE' . name
+                            WHERE record_key0 = record_id
+                            AND table_name = data . table
+                            ORDER ON incubation_number
+
+        WHILE (incubation_record <> EMPTY) DO
+
+            form_array[i] = STRIP(STRING(incubation_record))
+
+            NEXT 'INC_TABLE'
+            incubation_record = SELECT 'INC_TABLE' . name
+            i = i + 1
+
+        ENDWHILE
+
+        data . set_next()
+    
+    ENDWHILE
+
+    IF ( size_of_array( form_array ) > 0 ) THEN
+
+        display_incubation_form(form_array)
+
+    ELSE
+
+        flash_message( GET_USER_MESSAGE("INCUB_MESS_NO_RECORDS",1), true)
+      
+    ENDIF
+
+ENDROUTINE { display_incubation_rmb }
+
+{******************************************************************************}
+
+ROUTINE display_incubation_form (list_array)
+
+{
+* Diplays incubation records in a list
+*
+******************************************************************************}
+
+    DECLARE i, inc_form, inc_list, criteria_array
+
+    i = 0
+    ARRAY criteria_array
+    set_up_std_prompt_list_class ( )
+    
+    CREATE OBJECT PROMPT_CLASS_FORM, inc_form
+
+    inc_form . height = 5
+    inc_form . width  = 100
+    inc_form . row    = 5
+    inc_form . column = inc_form . width DIV 2
+    inc_form . header = GET_USER_MESSAGE( "INCUB_FORM_DISPLAY_HEADER", 1)
+    inc_form . button_style = FORM_BUTTON_OK
+
+    CREATE OBJECT LIST_VIEWER_CLASS, inc_list
+
+    inc_list . height = inc_form . height - 1
+    inc_list . width  = inc_form . width - 2
+    inc_list . row    = 1
+    inc_list . column = 1
+    
+    inc_list . table = INC_TABLE
+    inc_list . auto_define_cols( INC_TABLE )
+
+    WHILE ( i < size_of_array(list_array)) DO
+        
+        i = i + 1
+        IF ( i = 1 ) THEN
+
+            ARRAY_SELECT_ADD( criteria_array ,
+                              ARRAY_SELECT_EQ , 
+                              "NAME" ,
+                              list_array[i] )
+
+        ELSE
+
+            ARRAY_SELECT_ADD( criteria_array ,
+                              ARRAY_SELECT_OR , 
+                              EMPTY ,
+                              EMPTY )
+
+            ARRAY_SELECT_ADD( criteria_array ,
+                              ARRAY_SELECT_EQ , 
+                              "NAME" ,
+                              list_array[i] )
+
+        ENDIF
+
+    ENDWHILE
+
+    inc_list . criteria      = criteria_array
+    inc_list . display_limit = 100
+    inc_list . autosize      = TRUE
+    inc_list . create_list( )
+    inc_list . load_data( )
+
+    inc_form . add_prompt ( inc_list )
+    inc_form . start_prompt ( )
+    inc_form . wait_prompt ( )
+    inc_form . end_prompt ( )
+
+ENDROUTINE { display_incubation_rmb }
+
+{******************************************************************************}
+ROUTINE remove_from_incubator_rmb (rmb_object, 
+                                   object, 
+                                   data)
+
+{
+*  RMB option for recording the time removed from incubator
+*
+******************************************************************************}
+
+    DECLARE the_record, no_records, record_id, inc, msg, i, key_array,
+            invalid_count, invalid_records, time_removed, name
+
+    ARRAY key_array ARRAYSIZE (0)
+    ARRAY invalid_records ARRAYSIZE (0)
+    invalid_count = 0
+    time_removed = remove_from_incubator_form()
+
+    IF ( time_removed <> EMPTY ) THEN
+
+        no_records = data . size()
+        data . set_first ()
+
+        WHILE ((data . current_position <= no_records) AND ( data . current_position > 0 )) DO
+
+            the_record = data . get_by_number (data . current_position)
+			
+            GET_TABLE_DETAILS 'data . table', "KEY0_FIELD", key_array
+			
+            record_id = SELECT 'data . table'. 'key_array[1]' IN OBJECT the_record
+
+            name = SELECT 'INC_TABLE' . name
+                  WHERE table_name = data . table
+                  AND record_key0 = record_id
+                  ORDER ON incubation_number DESCENDING
+
+            IF ( name = EMPTY ) THEN
+
+                invalid_count = invalid_count + 1
+                invalid_records[invalid_count] = data . table : ": " : record_id
+
+            ELSE
+
+                inc = SELECT 'INC_TABLE' . time_removed
+                IF (STRIP(inc) <> "") THEN
+
+                    invalid_count = invalid_count + 1
+                    invalid_records[invalid_count] = data . table : ": " : record_id
+
+                ELSE
+
+                    save_time_removed( name, time_removed) 
+
+                ENDIF
+
+            ENDIF
+
+            data . set_next()
+    
+        ENDWHILE
+
+        { Display message with list of invalid records}
+		
+        IF ( size_of_array( invalid_records ) > 0 ) THEN
+          
+            msg = GET_USER_MESSAGE( "INCUB_MESS_REMOVAL_NOT_SET", 1) : LINEFEED
+            i = 0
+
+            WHILE (i < size_of_array( invalid_records ) )  DO
+              
+                i = i + 1
+                msg = msg : STRIP(STRING(invalid_records[i])) : LINEFEED
+
+            ENDWHILE
+
+            msg = msg : LINEFEED : GET_USER_MESSAGE( "INCUB_MESS_REMOVAL_NOT_SET", 2)
+            flash_message( msg, true )
+        
+        ENDIF
+
+    ENDIF
+
+ENDROUTINE { remove_from_incubator_rmb }
+
+{******************************************************************************}
+ROUTINE remove_from_incubator_form
+{
+*   Create remove from incubator form                  
+*
+*******************************************************************************}
+
+    DECLARE inc_form, time_prompt, i, time_removed
+    
+    time_removed = EMPTY
+
+    CREATE OBJECT PROMPT_CLASS_FORM, inc_form      
+    inc_form . width = 40
+    inc_form . row = 2
+    inc_form . column = 2
+    inc_form . border = TRUE
+    inc_form . header = GET_USER_MESSAGE( "INCUB_FORM_REMOVE_HEADER", 1)
+    inc_form . active_prompt = 1
+
+    i = 1
+    PROMPT OBJECT time_prompt
+    ON LINE i FROM 20 TO 35
+    FORMAT 'INC_TABLE' . time_removed
+    WITH ( value = NOW )
+    inc_form . add_prompt(time_prompt)  
+    inc_form . add_display( GET_USER_MESSAGE( "INCUB_FORM_TIME_REMOVED", 1), 1 , i, PROMPT_RENDITION_BOLD)
+
+    inc_form . height = i
+    inc_form . start_prompt()
+    inc_form . wait_prompt()
+    inc_form . end_prompt()
+      
+    IF inc_form . get_lastkey () = "DO" THEN
+            
+        time_removed    = inc_form . prompt_objects[1] . value   
+  
+    ENDIF
+
+    RETURN ( time_removed )
+
+ENDROUTINE {remove_from_incubator_form}
+
+
+{******************************************************************************}
+ROUTINE save_time_removed( VALUE inc_name,
+                           VALUE time_removed )
+{
+*   Update most recent incubation for record with time removed from incubator                 
+*
+*******************************************************************************}
+
+    DECLARE inc, check_ok, msg
+
+    inc = SELECT 'INC_TABLE' . name FOR UPDATE
+          WHERE name = inc_name
+
+    IF ( inc = LOCKED ) THEN
+        
+        message_fetch ( "INCUB_MESS_LOCKED", msg )
+        message_add_parameter ( msg, STRIP(inc_name) )
+        flash_message( message_get_text( msg, 1 ) , true)
+
+    ELSE
+
+        ASSIGN 'INC_TABLE' . time_removed = time_removed
+        ASSIGN 'INC_TABLE' . removed_by   = OPERATOR
+
+        IF NOT transaction_is_write() THEN
+
+            IF ( lock_state(INC_TABLE) = "SELECTED" ) THEN
+                lock_upgrade(INC_TABLE, check_ok)
+            ENDIF
+
+            START WRITE TRANSACTION "UPDATE INCUBATION RECORD"
+            UPDATE 'INC_TABLE'
+            COMMIT
+
+        ELSE
+
+            UPDATE 'INC_TABLE'
+
+        ENDIF
+
+    ENDIF
+    
+ENDROUTINE {save_time_removed}
+
+
+{******************************************************************************}
+ROUTINE remove_from_incubator_view_rmb (rmb_object, 
+                                   object, 
+                                   data)
+
+{
+*  RMB option for recording the time removed from incubator
+*  For a_test_incubation_view
+******************************************************************************}
+
+    DECLARE the_record, no_records, record_id, inc, msg, i, key_array,
+            invalid_count, invalid_records, time_removed, name
+
+    ARRAY key_array ARRAYSIZE (0)
+    ARRAY invalid_records ARRAYSIZE (0)
+    invalid_count = 0
+	
+    time_removed = remove_from_incubator_form()
+
+    IF ( time_removed <> EMPTY ) THEN
+
+        no_records = data . size()
+        data . set_first ()
+
+        WHILE ((data . current_position <= no_records) AND ( data . current_position > 0 )) DO
+
+            the_record = data . get_by_number (data . current_position)
+			
+            record_id = SELECT 'data . table'. name IN OBJECT the_record
+
+            name = SELECT 'INC_TABLE' . name
+                  WHERE table_name = "TEST"
+                  AND name = record_id
+                  ORDER ON incubation_number DESCENDING
+
+            IF ( name = EMPTY ) THEN
+
+                invalid_count = invalid_count + 1
+                invalid_records[invalid_count] = data . table : ": " : record_id
+
+            ELSE
+
+                inc = SELECT 'INC_TABLE' . time_removed
+                IF (STRIP(inc) <> "") THEN
+
+                    invalid_count = invalid_count + 1
+                    invalid_records[invalid_count] = data . table : ": " : record_id
+
+                ELSE
+
+                    save_time_removed( name, time_removed) 
+
+                ENDIF
+
+            ENDIF
+
+            data . set_next()
+    
+        ENDWHILE
+
+        { Display message with list of invalid records}
+		
+        IF ( size_of_array( invalid_records ) > 0 ) THEN
+          
+            msg = GET_USER_MESSAGE( "INCUB_MESS_REMOVAL_NOT_SET", 1) : LINEFEED
+            i = 0
+
+            WHILE (i < size_of_array( invalid_records ) )  DO
+              
+                i = i + 1
+                msg = msg : STRIP(STRING(invalid_records[i])) : LINEFEED
+
+            ENDWHILE
+
+            msg = msg : LINEFEED : GET_USER_MESSAGE( "INCUB_MESS_REMOVAL_NOT_SET", 2)
+            flash_message( msg, true )
+        
+        ENDIF
+
+    ENDIF
+
+ENDROUTINE { remove_from_incubator_rmb }
+{******************************************************************************}
+{******************************************************************************}
+
+

@@ -1,0 +1,9 @@
+REPORT                        
+IDENTITY,GROUP_ID,TITLE,MODIFIABLE,REMOVEFLAG,NAME
+20,10,234,1,1,100
+                    11
+"COMPILE",,"VGL Report Compilation Library","TRUE","FALSE","Compile"
+"$UPGRADE",,"Upgrade report","TRUE","FALSE","$upgrade"
+"$LOAD_WORKFLOW_OLD",,,"TRUE","FALSE","$LOAD_WORKFLOW_OLD"
+"ORL_DB_UPDATES_SM12",,,"TRUE","FALSE","ORL_DB_UPDATES_SM12"
+"UPDATE_DATE",,,"TRUE","FALSE","UPDATE_DATE"

@@ -1,0 +1,16 @@
+EXPLORER_RMB                  
+CABINET,FOLDER_NUMBER,RMB_NUMBER,TYPE,NAME,DESCRIPTION,GROUP_ID,ORDER_NUMBER,PARENT_NUMBER,CONTEXT_ROUTINE,CONTEXT_LIBRARY,CONTEXT_FIELD,CONTEXT_OPERATOR,CONTEXT_VALUE,ALLOW_MULTIPLE,ON_TREE,REFRESH,MENUPROC,USING,LOCK_REQUIRED,ON_NAVBAR,ON_GRID,BEGIN_GROUP
+30,10,10,10,100,234,10,10,10,30,20,30,10,234,1,1,1,10,234,1,1,1,1
+                      12
+"TABLE_DETAILS","80","15","ITEM","Reactivate","Lot Reactivate",,"15","9",,,"STATUS","10","X","FALSE","FALSE","FALSE","35305","LOT_ID","FALSE","TRUE","TRUE","FALSE"
+"TABLE_DETAILS","125","1","GROUP","Instrument Category","Instrument Category Tasks",,"1","0",,,,,,"FALSE","FALSE","FALSE","0",,"FALSE","TRUE","TRUE","FALSE"
+"TABLE_DETAILS","125","2","ITEM","Add...","Create a new Instrument Category",,"2","1",,,,,,"FALSE","TRUE","TRUE","10148",,"FALSE","TRUE","TRUE","FALSE"
+"TABLE_DETAILS","125","3","ITEM","Copy...","Copy Instrument Category",,"3","1",,,,,,"FALSE","FALSE","TRUE","10149","IDENTITY","FALSE","TRUE","TRUE","FALSE"
+"TABLE_DETAILS","125","4","ITEM","Modify...","Modify Instrument Category",,"4","1",,,,,,"TRUE","FALSE","TRUE","10150","IDENTITY","FALSE","TRUE","TRUE","FALSE"
+"TABLE_DETAILS","125","5","ITEM","Display...","Display Instrument Category",,"5","1",,,,,,"TRUE","FALSE","FALSE","10151","IDENTITY","FALSE","TRUE","TRUE","FALSE"
+"TABLE_DETAILS","125","6","SEPARATOR","<Separator>",,,"6","1",,,,,,"FALSE","FALSE","FALSE","0",,"FALSE","TRUE","TRUE","FALSE"
+"TABLE_DETAILS","125","7","ITEM","Print...","Print Instrument Category",,"7","1",,,,,,"TRUE","FALSE","FALSE","10152","IDENTITY","FALSE","FALSE","TRUE","FALSE"
+"TABLE_DETAILS","125","8","ITEM","List...","List all Instrument Categories",,"8","1",,,,,,"FALSE","TRUE","FALSE","10153",,"FALSE","FALSE","TRUE","FALSE"
+"TABLE_DETAILS","125","9","SEPARATOR","<Separator>",,,"9","1",,,,,,"FALSE","FALSE","FALSE","0",,"FALSE","TRUE","TRUE","FALSE"
+"TABLE_DETAILS","125","10","ITEM","Remove","Remove this Instrument Category",,"10","1",,,"REMOVEFLAG","1","No","TRUE","FALSE","TRUE","10154","IDENTITY","FALSE","TRUE","TRUE","FALSE"
+"TABLE_DETAILS","125","11","ITEM","Restore","Restore this Instrument Category",,"11","1",,,"REMOVEFLAG","1","Yes","TRUE","FALSE","TRUE","10155","IDENTITY","FALSE","TRUE","TRUE","FALSE"

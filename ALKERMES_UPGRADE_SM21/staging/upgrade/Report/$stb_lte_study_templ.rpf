@@ -1,0 +1,71 @@
+{*******************************************************************************
+*
+* Module Name : $STB_LTE_STUDY_TEMPL
+*
+* Purpose : LTE Support for Stability Study Templates
+*           Implements the APPROVE and HISTORY Functionality for
+*           Stability Study Templates 
+*
+* Document Ref. : N/a
+*
+*******************************************************************************}
+
+ENABLE WINDOWS
+SET NAME "DEFER/"
+SET COMPILE_OPTION DECLARE
+SET NOTPROTECTED
+
+JOIN LIBRARY $LIB_LTE_APPROVE
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $GEN_APPR
+
+{*******************************************************************************
+*                            M A I N C O D E
+*******************************************************************************}
+
+DECLARE Option
+option = 1234
+history_study_template (Option)
+EXIT
+
+{*******************************************************************************
+*                        M E N U     R O U T I N E S
+*******************************************************************************}
+
+ROUTINE approve_Study_template ( VALUE option )
+
+{ 
+* Approve Study Template
+*
+* Parameters   : option - Menu Procedure Number
+* Return Value : N/a
+*
+*******************************************************************************}
+
+    approve ( "STB_STUDY_TEMPLATE" )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE history_Study_template ( VALUE option )
+
+{ 
+* Study Template Approval History
+*
+* Parameters   : option - Menu Procedure Number
+* Return Value : N/a
+*
+*******************************************************************************}
+
+    inspection_labtable_history ( "STB_STUDY_TEMPLATE", "" )
+
+ENDROUTINE
+
+{******************************************************************************}
+{******************************************************************************}
+{******************************************************************************}
+
+
+
+

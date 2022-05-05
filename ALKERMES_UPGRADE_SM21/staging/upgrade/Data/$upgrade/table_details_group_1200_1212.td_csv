@@ -1,0 +1,10 @@
+EXPLORER_GROUP
+CABINET,FOLDER_NUMBER,GROUP_NUMBER,FIELD_NAME,NAME,DESCRIPTION,ICON_1,ICON_2,PARENT_NUMBER,ORDER_NUMBER,SHOW_PHRASE_DESC,ICON_ROUTINE,GROUP_FORM,GROUP_FORM_TASK,CHILD_FORM,CHILD_FORM_TASK
+30,10,10,30,100,234,30,30,10,10,1,30,30,100,30,100
+                      6
+"LAB_EXECUTION","5","1","ASSIGNED_TO","Assignment","List of Lab Execution Tasks by Assignment","INT_PEOPLE","INT_PEOPLE","0","1","TRUE",,,,,
+"LAB_EXECUTION","5","2","STATUS","Status","List of Lab Execution Tasks by Status","INT_HELP","INT_HELP","0","2","TRUE",,,,,
+"LAB_EXECUTION","5","3","LAB_METHOD_TYPE","Type","List of Lab Execution Tasks by Type","PREFERENCES","PREFERENCES","0","3","TRUE",,,,,
+"LAB_EXECUTION","5","4","STATUS","Status by Started Date","List of Lab Execution Tasks by Status/Date Started","INT_HELP","INT_HELP","0","4","TRUE",,,,,
+"LAB_EXECUTION","5","5","DATE_STARTED","Date Started","List of Lab Execution Tasks by Date Started","INT_CALENDAR","INT_CALENDAR","4","5","FALSE",,,,,
+"LAB_EXECUTION","5","6","LAB_METHOD_NAME","Lab Method","List of Lab Execution Tasks by Method","BOOKS","BOOKS","0","6","FALSE",,,,,

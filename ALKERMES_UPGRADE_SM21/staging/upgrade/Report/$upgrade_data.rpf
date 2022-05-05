@@ -1,0 +1,619 @@
+{******************************************************************************
+*
+* Module Name   : $UPGRADE_DATA
+*
+* Purpose       : Replaces date fields that contain 1900-01-01 with NULL.
+*                 Only applicable to SqlServer.
+*                 Uses dynamic SQL to allow the database to do the work.
+*
+*                 Replaces blank packed decimal fields with a
+*                 right justified zero i.e. '         0'.
+*                 Uses dynamic SQL to allow the database to do the work.
+*
+*                 Remove trailing spaces from text fields.
+*                 Uses dynamic SQL to allow the database to do the work.
+*
+* Document Ref. :
+*
+* Specification :
+*
+* Portability   : Not Applicable
+*
+* Re-entrant    : Not Applicable
+*
+*******************************************************************************
+*
+* Modification History :
+*
+* 
+* Version   Date         By                Description
+* -------   -----------  ----------        ------------------------------------
+* 1.1       02-NOV-2021  Jonathan O'Neill  Added logging so progress can be
+*                                          seen in the log file.
+*
+* 1.2       05-NOV-2021  Raphael Castro    Constant WINDOW_SIZE = 10000 to WINDOW_SIZE = 100000
+*
+********************************************************************************}
+
+SET COMPILE_OPTION DECLARE
+SET NOTPROTECTED
+SET NAME "DEFER/"
+ENABLE WINDOWS
+
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN STANDARD_LIBRARY STD_STRUCTURE
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_WINDOW
+
+JOIN LIBRARY $lib_utils
+
+{******************************************************************************}
+
+{1.2}
+
+CONSTANT WINDOW_SIZE  = 100000
+
+{/1.2}
+
+{******************************************************************************}
+
+upgrade_table_process ( )
+
+{******************************************************************************}
+
+ROUTINE upgrade_table_process
+
+{
+*	Prompt for Table to Update.
+*	Process selected Table\Tables.
+*
+*******************************************************************************}
+
+	DECLARE table_nam   ,
+	        fix_date    ,
+	        fix_decimal ,
+	        fix_text
+
+	fix_date    = FALSE
+	fix_decimal = FALSE
+	fix_text    = FALSE
+
+	table_nam = get_table ( fix_date, fix_decimal, fix_text )
+
+	IF table_nam = "*" THEN
+
+		upgrade_data_process_specific ( fix_date    ,
+		                                fix_decimal ,
+		                                fix_text    )
+
+	ELSEIF NOT ( table_nam = EMPTY ) THEN
+
+		correct_table ( table_nam   ,
+		                fix_date    ,
+		                fix_decimal ,
+		                fix_text    )
+
+	ENDIF
+
+	FLASH_MESSAGE ( "Done.", TRUE )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE get_table ( fix_date    ,
+                    fix_decimal ,
+                    fix_text    )
+
+{
+* Prompts for a table and returns its name. Empty is returned if cancelled
+*
+*******************************************************************************}
+
+	DECLARE form,
+	        convert_tables,
+	        table_prompt,
+	        table,
+	        counter,
+	        date_prompt,
+		text_prompt,
+		packed_prompt
+
+	table   = EMPTY
+	counter = 1
+
+	CREATE OBJECT "STD_FORM", form
+	form . height = 4
+	form . width  = 45
+	form . header = "Select Table"
+
+	form . column = 1 + ( GLOBAL ( "GUI_WIDTH"  ) - form . width  ) / 2
+	form . row    = 1 + ( GLOBAL ( "GUI_HEIGHT" ) - form . height ) / 2
+
+	get_table_names ( convert_tables )
+
+	WHILE counter <= size_of_array ( convert_tables ) DO
+
+		convert_tables [ counter, 2 ] = convert_tables [ counter, 1 ]
+		counter = counter + 1
+
+	ENDWHILE
+
+	array_insert_slice ( convert_tables, 1, 1 )
+
+	convert_tables [ 1, 1 ] = "*"
+	convert_tables [ 1, 2 ] = GET_USER_MESSAGE ( "SERVER_MANAGER_ALL_TABLES", 1 )
+
+	PROMPT OBJECT table_prompt
+	    AT 22, 1
+	    CHOOSE OUTOF convert_tables
+	    WITH ( width   = 25   ,
+	           lowered = TRUE )
+
+	form . add_display ( "Table Name" , 2, 1, PROMPT_RENDITION_RAISED )
+	form . add_prompt  ( table_prompt )
+
+	PROMPT OBJECT date_prompt
+	    AT 22, 2
+	    BROWSE ON BOOLEAN
+	    WITH ( is_check = TRUE ,
+	    	   value    = TRUE )
+
+	form . add_prompt ( date_prompt )
+	form . add_display ( "Fix Dates" , 2, 2, PROMPT_RENDITION_RAISED )
+
+	PROMPT OBJECT packed_prompt
+	    AT 22, 3
+	    BROWSE ON BOOLEAN
+	    WITH ( is_check = TRUE ,
+	    	   value    = TRUE )
+
+	form . add_prompt ( packed_prompt )
+	form . add_display ( "Fix Packed Decimals" , 2, 3, PROMPT_RENDITION_RAISED )
+
+	PROMPT OBJECT text_prompt
+	    AT 22, 4
+	    BROWSE ON BOOLEAN
+	    WITH ( is_check = TRUE ,
+	    	   value    = TRUE )
+
+	form . add_prompt ( text_prompt )
+	form . add_display ( "Fix Text" , 2, 4, PROMPT_RENDITION_RAISED )
+
+	form . start_prompt ( )
+	form . wait_prompt  ( )
+	form . end_prompt   ( )
+
+	IF form . get_lastkey ( ) <> "EXIT" THEN
+
+		table       = table_prompt . text
+		fix_date    = date_prompt . value
+		fix_decimal = packed_prompt . value
+		fix_text    = text_prompt . value
+
+	ENDIF
+
+	RETURN ( table )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+GLOBAL
+
+ROUTINE upgrade_data_process
+
+{
+*	Update database data.
+*	Processes dates, text fields and packed decimals.
+*
+*******************************************************************************}
+
+	upgrade_data_process_specific ( TRUE, TRUE, TRUE )
+
+	FLASH_MESSAGE ( "Done.", TRUE )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_data_process_specific ( VALUE fix_date    ,
+                                        VALUE fix_decimal ,
+                                        VALUE fix_text    )
+
+{
+*	Update database data.
+*	Processes dates, text fields and packed decimals.
+*
+*******************************************************************************}
+
+	scan_tables ( fix_date, fix_decimal, fix_text )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE scan_tables ( VALUE fix_date    ,
+                      VALUE fix_decimal ,
+                      VALUE fix_text    )
+
+{
+*     Loop over the tables looking for date fields
+*
+*******************************************************************************}
+
+	DECLARE tables ,
+	        max_table ,
+	        table_no ,
+	        table_nam
+
+	get_table_names ( tables )
+
+	max_table = size_of_array ( tables )
+
+	table_no = 1
+
+	WHILE table_no <= max_table DO
+
+		table_nam = STRIP ( tables [ table_no, 1 ])
+
+		correct_table ( table_nam, fix_date, fix_decimal, fix_text )
+
+		table_no = table_no + 1
+
+	ENDWHILE
+
+	window_set_status ( "Scan tables complete" )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE correct_table (       table_nam   ,
+                        VALUE fix_date    ,
+                        VALUE fix_decimal ,
+                        VALUE fix_text    )
+
+{
+*     Correct Fields for passed Table
+*
+*******************************************************************************}
+
+	DECLARE is_view ,
+		fields ,
+		field_no ,
+		max_field ,
+		field_nam ,
+		field_type ,
+		default_value ,
+		field_size ,
+		is_read_only
+
+	get_table_details 'table_nam' ,
+			  "IS_VIEW"   ,
+			  is_view
+
+	get_table_details 'table_nam' ,
+			  "READ_ONLY" ,
+			   is_read_only
+
+	IF ( NOT is_view ) AND ( NOT is_read_only ) THEN
+
+		get_field_names ( table_nam , fields )
+
+		field_no = 1
+		max_field = size_of_array ( fields )
+
+		WHILE field_no <= max_field DO
+
+			IF NOT fields [ field_no , 2 ] THEN
+
+				field_nam = STRIP ( fields [ field_no , 1 ])
+
+                {1.1}
+                output_message ( "$UPGRADE_DATA - " : NOW : " - " : table_nam : " " : field_nam )
+                {/1.1}
+
+				GET_FIELD_DETAILS 'table_nam' . 'field_nam' ,
+						  "DATA_TYPE"               ,
+						  field_type
+
+				IF ( field_type = "Date" ) AND
+				   ( fix_date ) THEN
+
+					correct_date_field ( table_nam ,
+							     field_nam )
+
+				ELSEIF ( field_type = "Packed decimal" ) AND
+				       ( fix_decimal ) THEN
+
+					correct_pd_field ( table_nam ,
+							   field_nam )
+
+				ELSEIF ( field_type = "Text" ) AND
+				       ( fix_text ) THEN
+
+					trim_text_field ( table_nam ,
+							  field_nam )
+
+					IF ( database_system ( ) = DATABASE_ORACLE ) THEN
+
+						GET_FIELD_DETAILS 'table_nam' . 'field_nam' ,
+								  "DEFAULT_VALUE"           ,
+								  default_value
+
+						GET_FIELD_DETAILS 'table_nam' . 'field_nam' ,
+								  "FIELD_SIZE"              ,
+								  field_size
+
+						IF default_value = NULL THEN
+							correct_nulls ( table_nam ,
+									field_nam )
+						ELSE
+							correct_spaces ( table_nam  ,
+									 field_nam  ,
+									 field_size )
+						ENDIF
+
+					ENDIF
+
+				ENDIF
+
+			ENDIF
+
+			field_no = field_no + 1
+
+		ENDWHILE
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE correct_date_field ( table_nam ,
+                             field_nam )
+
+{
+*     Call dynamic SQL to update the fields
+*
+*******************************************************************************}
+
+	DECLARE select_statement ,
+	        update_statement
+
+	window_set_status ( "Processing " : STRIP ( table_nam ) : "." : STRIP ( field_nam ))
+
+	IF ( database_system ( ) = DATABASE_SQLSERVER ) THEN
+
+		select_statement = "SELECT CASE WHEN EXISTS ( SELECT top 1 1 from [" : table_nam :
+		                   "] WHERE [" : field_nam : "] = CAST('' as datetime))" :
+		                   " THEN 1 ELSE 0 END"
+
+		update_statement = "UPDATE TOP (" : STRIP ( WINDOW_SIZE ) : ") [" : table_nam :
+		                   "] SET [" : field_nam : "] = NULL" :
+		                   " WHERE [" : field_nam : "] = CAST('' as datetime)"
+
+		process_update_statement ( table_nam, select_statement, update_statement )
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE correct_pd_field ( table_nam ,
+                           field_nam )
+
+{
+*     Call dynamic SQL to update the fields
+*
+*******************************************************************************}
+
+	DECLARE select_statement ,
+	        update_statement
+
+	window_set_status ( "Processing " : STRIP ( table_nam ) : "." : STRIP ( field_nam ))
+
+	IF ( database_system ( ) = DATABASE_ORACLE ) THEN
+
+		select_statement = "SELECT CASE WHEN EXISTS ( SELECT 1 from " : table_nam :
+		                   " WHERE " : field_nam : " = '          ')" :
+		                   " THEN 1 ELSE 0 END FROM dual"
+
+		update_statement = "UPDATE " : table_nam :
+		                   " SET " : field_nam : " = '         0'" :
+		                   " WHERE " : field_nam : " = '          ' " :
+		                   " AND ROWNUM <= " : STRIP ( WINDOW_SIZE )
+
+		process_update_statement ( table_nam, select_statement, update_statement )
+
+	ELSE
+
+		select_statement = "SELECT CASE WHEN EXISTS ( SELECT top 1 1 from [" : table_nam :
+		                   "] WHERE [" : field_nam : "] = '          ')" :
+		                   " THEN 1 ELSE 0 END"
+
+		update_statement = "UPDATE TOP (" : STRIP ( WINDOW_SIZE ) : ") [" : table_nam :
+		                   "] SET [" : field_nam : "] = '         0'" :
+		                   " WHERE [" : field_nam : "] = '          '"
+
+		process_update_statement ( table_nam, select_statement, update_statement )
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE trim_text_field ( VALUE table_nam ,
+                          VALUE field_nam )
+
+{
+*     Call dynamic SQL to update the fields
+*
+*******************************************************************************}
+
+	DECLARE select_statement ,
+	        update_statement
+
+	table_nam = STRIP ( table_nam )
+	field_nam = STRIP ( field_nam )
+
+	window_set_status ( "Processing " : table_nam : "." : field_nam )
+
+	IF ( database_system ( ) = DATABASE_ORACLE ) THEN
+
+		select_statement = "SELECT CASE WHEN EXISTS ( SELECT 1 from " : table_nam :
+		                   " WHERE " : field_nam : " like '% ' and trim(" : field_nam : ") is not null) " :
+		                   " THEN 1 ELSE 0 END FROM dual"
+
+		update_statement = "UPDATE " : table_nam :
+		                   " SET " : field_nam : " = trim (" : field_nam : ")" :
+		                   " WHERE " : field_nam : " like '% ' and trim(" : field_nam : ") is not null" :
+		                   " AND ROWNUM <= " : STRIP ( WINDOW_SIZE )
+
+		process_update_statement ( table_nam, select_statement, update_statement )
+
+	ELSE
+
+		select_statement = "SELECT CASE WHEN EXISTS ( SELECT top 1 1 from [" : table_nam :
+		                   "] WHERE ASCII(RIGHT([" : field_nam : "], 1)) = 32 )" :
+		                   " THEN 1 ELSE 0 END"
+
+		update_statement = "UPDATE TOP (" : STRIP ( WINDOW_SIZE ) : ") [" : table_nam :
+		                   "] SET [" : field_nam : "] = rtrim ([" : field_nam :
+		                   "]) WHERE ASCII(RIGHT([" : field_nam : "], 1)) = 32"
+
+		process_update_statement ( table_nam, select_statement, update_statement )
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE correct_nulls ( VALUE table_nam ,
+                        VALUE field_nam )
+
+{
+*     Call dynamic SQL to update the fields
+*
+*******************************************************************************}
+
+	DECLARE select_statement ,
+	        update_statement
+
+	table_nam = STRIP ( table_nam )
+	field_nam = STRIP ( field_nam )
+
+	window_set_status ( "Processing " : table_nam : "." : field_nam )
+
+	IF ( database_system ( ) = DATABASE_ORACLE ) THEN
+
+		select_statement = "SELECT CASE WHEN EXISTS ( SELECT 1 from " : table_nam :
+		                   " WHERE " : field_nam : " is not null and trim(" : field_nam : ") is null)" :
+		                   " THEN 1 ELSE 0 END FROM dual"
+
+		update_statement = "UPDATE " : table_nam :
+		                   " SET " : field_nam : " = null " :
+		                   " WHERE " : field_nam : " is not null and trim(" : field_nam : ") is null" :
+		                   " AND ROWNUM <= " : STRIP ( WINDOW_SIZE )
+
+		process_update_statement ( table_nam, select_statement, update_statement )
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE correct_spaces ( VALUE table_nam  ,
+                         VALUE field_nam  ,
+                         VALUE field_size )
+
+{
+*     Call dynamic SQL to update the fields
+*
+*******************************************************************************}
+
+	DECLARE select_statement ,
+	        update_statement ,
+	        field_val
+
+	table_nam = STRIP ( table_nam )
+	field_nam = STRIP ( field_nam )
+
+	window_set_status ( "Processing " : table_nam : "." : field_nam )
+
+	IF ( database_system ( ) = DATABASE_ORACLE ) THEN
+
+		IF field_size > 40 THEN
+			field_val = " "
+		ELSE
+			field_val = PAD ( " ", " ", field_size )
+		ENDIF
+
+		select_statement = "SELECT CASE WHEN EXISTS ( SELECT 1 from " : table_nam :
+		                   " WHERE " : field_nam : " <> '" : field_val : "' and trim(" : field_nam : ") is null)" :
+		                   " THEN 1 ELSE 0 END FROM dual"
+
+		update_statement = "UPDATE " : table_nam :
+		                   " SET " : field_nam : " = '" : field_val : "'" :
+		                   " WHERE " : field_nam : " <> '" : field_val : "' and trim(" : field_nam : ") is null" :
+		                   " AND ROWNUM <= " : STRIP ( WINDOW_SIZE )
+
+		process_update_statement ( table_nam, select_statement, update_statement )
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE process_update_statement ( VALUE table_nam        ,
+                                   VALUE select_statement ,
+                                   VALUE update_statement )
+
+{
+*     Execute the update statement until no rows processed
+*
+*******************************************************************************}
+
+	DECLARE dynamic_sql ,
+	        finished ,
+	        select_return
+
+	finished = FALSE
+
+	REPEAT
+
+		CREATE OBJECT "STD_DYNAMIC_SQL" , dynamic_sql
+
+		dynamic_sql . add_to_sql_statement ( select_statement )
+		dynamic_sql . add_select_integer ()
+
+		dynamic_sql . execute ()
+
+		select_return = dynamic_sql . select ( 1 )
+
+		IF ( select_return <> EMPTY ) AND
+		   ( select_return > 0      ) THEN
+
+			execute_sql ( update_statement )
+			execute_sql ( "COMMIT" )
+
+		ELSE
+
+			finished = TRUE
+
+		ENDIF
+
+	UNTIL ( finished )
+
+ENDROUTINE
+
+{******************************************************************************}
+{******************************************************************************}
+{******************************************************************************}

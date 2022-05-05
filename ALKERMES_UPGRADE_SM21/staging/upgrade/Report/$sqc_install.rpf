@@ -1,0 +1,384 @@
+{******************************************************************************
+*
+* Module Name : $SQC_INSTALL
+*
+* Purpose     : Routines to finish off installing SQC
+*
+* Portability : Not Checked
+*
+* Re-entrant  :
+*
+******************************************************************************}
+
+SET COMPILE_OPTION DECLARE
+SET NAME "DEFER/"
+SET NOTPROTECTED
+ENABLE WINDOWS
+
+{*****************************************************************************}
+
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_VGL
+
+JOIN LIBRARY $LIB_DB
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $ENTITY_NAMES
+JOIN LIBRARY $TABLE_LOAD_SAVE_LIB
+JOIN LIBRARY $LOAD_TABLE_DEFAULTS
+
+{*****************************************************************************}
+{*                            M A I N    C O D E                             *}
+{*****************************************************************************}
+
+main_task ( )
+EXIT
+
+{*****************************************************************************}
+
+ROUTINE main_task 
+
+{
+*	Migrate data if needed and install the table defaults
+*
+******************************************************************************}
+
+	DECLARE status
+
+	{***********************************************************************}
+	{* Table Defaults                                                      *}
+	{***********************************************************************}
+
+	status = load_table_defaults ( "SQCNET_", "", ".TD_CSV" )
+
+	{***********************************************************************}
+	{* Data Migration                                                      *}
+	{***********************************************************************}
+
+	IF ( status = EMPTY ) THEN
+
+		status = migrate_data ( )
+
+	ENDIF
+
+	{***********************************************************************}
+	{* Tell the user what happened                                         *}
+	{***********************************************************************}
+
+	IF ( status = EMPTY )
+
+		flash_message ( "SQC Successfully Installed", TRUE )
+
+	ELSE
+
+		flash_message ( status, TRUE )
+
+	ENDIF
+
+ENDROUTINE
+
+{*****************************************************************************}
+{*                         M I G R A T E    D A T A                          *}
+{*****************************************************************************}
+
+ROUTINE migrate_data
+
+{
+*	Migrate the old SQC data
+*
+******************************************************************************}
+
+	DECLARE status
+	status = EMPTY
+
+	{***********************************************************************}
+	{* Sort out the Entity Names                                           *}
+	{***********************************************************************}
+
+	entity_names_default_blanks ( "SQCWIN_TREND"  )
+	entity_names_default_blanks ( "SQCWIN_HEADER" )
+
+	{***********************************************************************}
+	{* Migrate the Chart Data                                              *}
+	{***********************************************************************}
+
+	migrate_charts ( )
+
+	{***********************************************************************}
+	{* Migrate the SQC Trend Data                                          *}
+	{***********************************************************************}
+
+	migrate_trends ( )
+
+	{***********************************************************************}
+	{* Migrate the SQC Chart Type Data                                     *}
+	{***********************************************************************}
+
+	migrate_types ( )
+
+	RETURN ( status )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE migrate_charts
+
+{
+*	Migrate the old chart data
+*
+******************************************************************************}
+
+	DECLARE chart, field, val, basic, search, op, criteria
+
+	START WRITE TRANSACTION "Migrate SQC Data"
+
+	chart = SELECT sqcwin_header . identity
+	        FOR UPDATE
+	        WHERE analysis_id       = ""
+	        AND   criteria_identity = ""
+
+	WHILE ( chart <> EMPTY ) DO
+
+		basic = TRUE
+
+		{*****************************************************************}
+		{* Process the criteria to see what we have                      *}
+		{*****************************************************************}
+
+		field = SELECT sqcwin_criteria . value_2
+		        WHERE chart_id = chart		
+	
+		WHILE ( field <> EMPTY ) DO
+
+			val = SELECT sqcwin_criteria . value_3
+			op  = SELECT sqcwin_criteria . value_1
+
+			IF ( op = 14 ) THEN
+
+				IF ( ( field <> "ID_NUMERIC" ) OR 
+				     ( val <> 17           ) ) THEN
+
+					basic = FALSE
+
+				ENDIF			
+
+			ELSEIF ( ( op <> 1 ) AND ( op <> 8 ) ) THEN
+
+				basic = FALSE
+
+			ELSEIF ( field = "ANALYSIS" ) THEN
+
+				ASSIGN sqcwin_header . analysis_id = val
+
+			ELSEIF ( field = "PRODUCT" ) THEN
+
+				ASSIGN sqcwin_header . product_name = val
+
+			ELSEIF ( field = "COMPONENT_NAME" ) THEN
+
+				ASSIGN sqcwin_header . component_name = val
+
+			ELSEIF ( field = "LOCATION_ID" ) THEN
+
+				ASSIGN sqcwin_header . location_id = val
+
+			ELSEIF ( field = "TEST_SCHEDULE" ) THEN
+
+				ASSIGN sqcwin_header . test_schedule = val
+
+			ELSEIF ( field = "SAMPLING_POINT" ) THEN
+
+				ASSIGN sqcwin_header . sample_point = val
+
+			ELSEIF ( field = "RESULT_TYPE" ) THEN
+
+				IF ( val <> "N" ) THEN
+
+					basic = FALSE
+
+				ENDIF
+
+			ELSEIF ( LEFTSTRING ( field, 1 ) = "-" ) THEN
+
+				field = EMPTY
+
+			ELSE
+
+				basic = FALSE
+
+			ENDIF
+
+			NEXT sqcwin_criteria
+			field = SELECT sqcwin_criteria . value_2
+
+		ENDWHILE
+
+		{*****************************************************************}
+		{* Create a Criteria record if this is complex                   *}
+		{*****************************************************************}
+
+		ASSIGN sqcwin_header . usebasic_criteria = basic
+
+		IF ( NOT basic )
+
+			search = SELECT sqcwin_header . search_type
+
+			criteria = migrate_criteria ( chart, search )
+
+			ASSIGN sqcwin_header . criteria_identity = criteria
+
+		ENDIF
+
+		{*****************************************************************}
+		{* Save and move to the next criteria                            *}
+		{*****************************************************************}
+
+		UPDATE sqcwin_header
+
+		NEXT sqcwin_header
+		chart = SELECT sqcwin_header . identity
+
+	ENDWHILE
+
+	COMMIT
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE migrate_criteria ( VALUE chart, VALUE search )
+
+{
+*	Migrate a complex SQC criteria
+*
+******************************************************************************}
+
+	DECLARE new_criteria, tayble, order_num, select_array, name, crit
+
+	new_criteria = "SQCWIN_" : chart
+
+	{***********************************************************************}
+	{* Determine which table to use                                        *}
+	{***********************************************************************}
+
+	IF     ( search = 1 ) THEN tayble = "SQCWIN_A_SAMP_TEST_RESULT"
+	ELSEIF ( search = 2 ) THEN tayble = "SQCWIN_C_SAMP_TEST_RESULT"
+	ELSEIF ( search = 3 ) THEN tayble = "SQCWIN_ALL_SAMP_TEST_RESULT"
+	ENDIF
+
+	{***********************************************************************}
+	{* Create a select array from the passed data                          *}
+	{***********************************************************************}
+
+	ARRAY select_array
+
+	order_num = SELECT sqcwin_criteria . order_number
+	            WHERE chart_id = chart
+	            ORDER ON order_number
+
+	WHILE ( order_num <> EMPTY ) DO
+		
+		select_array [ order_num, 1 ] = SELECT sqcwin_criteria . value_1
+		select_array [ order_num, 2 ] = SELECT sqcwin_criteria . value_2
+		select_array [ order_num, 3 ] = SELECT sqcwin_criteria . value_3
+
+		NEXT sqcwin_criteria
+		order_num = SELECT sqcwin_criteria . order_number
+
+	ENDWHILE
+
+	{***********************************************************************}
+	{* Create the new saved criteria                                       *}
+	{***********************************************************************}
+
+	CALL_ROUTINE "criteria_saved_save_select_array" 
+	    USING tayble, new_criteria, select_array
+	    IN LIBRARY "$CRITERIA_SAVED"
+
+	{***********************************************************************}
+	{* Set the Name                                                        *}
+	{***********************************************************************}
+
+	crit = SELECT criteria_saved . identity
+	       FOR UPDATE
+	       WHERE identity   = new_criteria
+	       AND   table_name = tayble
+
+	IF ( crit <> EMPTY ) THEN
+
+		name = entity_names_id_to_name ( new_criteria )
+
+		ASSIGN criteria_saved . name = name
+		UPDATE criteria_saved
+
+	ENDIF
+
+	RETURN ( new_criteria )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE migrate_trends
+
+{
+*	Migrate the old trend data
+*
+******************************************************************************}
+
+	DECLARE trend
+
+	START WRITE TRANSACTION "Migrate Trend Points"
+
+	trend = SELECT sqcwin_trend_point . trend_parameter
+	        FOR UPDATE
+	        WHERE trend_parameter = 2
+
+	WHILE ( trend <> EMPTY ) DO
+
+		ASSIGN sqcwin_trend_point . trend_factor_two = 0
+		UPDATE sqcwin_trend_point
+
+		NEXT sqcwin_trend_point
+		trend = SELECT sqcwin_trend_point . trend_parameter
+
+	ENDWHILE
+
+	COMMIT
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE migrate_types
+
+{
+*	Migrate the old chart types
+*
+******************************************************************************}
+
+	DECLARE level
+
+	START WRITE TRANSACTION "Migrate Chart Types"
+
+	level = SELECT sqcwin_chart_type . mlp_level
+	        FOR UPDATE
+	        WHERE mlp_level = "----------"
+
+	WHILE ( level <> EMPTY ) DO
+
+		ASSIGN sqcwin_chart_type . mlp_level = ""
+		UPDATE sqcwin_chart_type
+
+		NEXT sqcwin_chart_type
+		level = SELECT sqcwin_chart_type . mlp_level
+
+	ENDWHILE
+
+	COMMIT
+
+ENDROUTINE
+
+{*****************************************************************************}
+{*****************************************************************************}
+{*****************************************************************************}

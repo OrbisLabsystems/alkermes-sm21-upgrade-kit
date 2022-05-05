@@ -1,0 +1,8 @@
+EXPLORER_FOLDER_LINK          
+CABINET,FOLDER_NUMBER,ORDER_NUMBER,COLLECTION_NAME
+30,10,10,255
+                       4
+"TABLE_DETAILS","1","1","ChildSamples"
+"TABLE_DETAILS","1","2","Tests"
+"TABLE_DETAILS","2","1","RootSamples"
+"TABLE_DETAILS","66","1","Results"

@@ -1,0 +1,73 @@
+{*******************************************************************************
+*
+* Module Name : $STB_LTE_STUDY_APP
+*
+* Purpose : LTE Support for Stability Study
+*           Implements the APPROVE and HISTORY Functionality for
+*           Stability Study 
+*
+* Document Ref. : N/a
+*
+*******************************************************************************}
+
+ENABLE WINDOWS
+SET NAME "DEFER/"
+SET COMPILE_OPTION DECLARE
+SET NOTPROTECTED
+
+JOIN LIBRARY $LIB_LTE_APPROVE
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $GEN_APPR
+
+{*******************************************************************************
+*                            M A I N C O D E
+*******************************************************************************}
+
+DECLARE option
+option = 1234
+history_study (option)
+EXIT
+
+{*******************************************************************************
+*                        M E N U     R O U T I N E S
+*******************************************************************************}
+
+ROUTINE approve_study ( VALUE option )
+
+{ 
+* Approve Study
+*
+* Parameters   : option - Menu Procedure Number
+* Return Value : N/a
+*
+*******************************************************************************}
+
+    approve ( "STB_STUDY" )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE history_Study ( VALUE option )
+
+{ 
+* Study Approval History
+*
+* Parameters   : option - Menu Procedure Number
+* Return Value : N/a
+*
+*******************************************************************************}
+
+    inspection_labtable_history ( "STB_STUDY", "" )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+{******************************************************************************}
+{******************************************************************************}
+{******************************************************************************}
+
+
+
+
