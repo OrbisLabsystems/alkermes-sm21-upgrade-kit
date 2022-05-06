@@ -23,6 +23,7 @@ No.     	Changed By      Date            Description
 2.5       L. Teodori                      Viewer Module Install
 2.6       E.O'Sullivan    10-DEC-2019     Added Sample Point Type to Sample Point Table. For installation of Micro Dashboards
 2.7       E.O'Sullivan    05-FEB-2020     Addded due date field to Sample Table 
+2.8       Raphael Castro  06-MAY-2022     Merged with SampleManager 21
 }
 
 table_defaults
@@ -31,12 +32,14 @@ table_defaults
 	sqlserver_location                     'PRIMARY' 
 	sqlserver_collation                    'Latin1_General_CI_AS_WS'
 	sqlserver_collation_case_sensitive     'Latin1_General_CS_AS_WS'
-	sqlserver_use_nvarchar                 TRUE ;
+	sqlserver_use_nvarchar                 TRUE 
+	postgresql_location                    'pg_default' ;
 
 index_defaults
 
         oracle_location                    'VGSM_DB' 
-        sqlserver_location                 'PRIMARY' ;
+        sqlserver_location                 'PRIMARY'
+        postgresql_location                'pg_default' ;
 
 table sample_point;
 
@@ -432,10 +435,26 @@ table sample prompt_description 'STRUCTURE_SAMPLE';
 
         field   customer_project
                 links_to customer_project . customer_project_guid as project ;
+                        field   external_id
+                datatype text ( 100 ) ;
+
+        field   external_id_duplicate
+                datatype boolean ;
+
+        field   has_notebook_link
+        datatype boolean
+                used_for has_notebook_link;
                 
+         field   price_option
+                datatype identity
+                default 'NONE'
+                prompt_type choose
+                choose_type PRC_LST_OP;       
+
+        
                 { 1.1 }
 
-        field   study_id
+   	   field   study_id
                 links_to stb_study . identity as parent_study ;
 
         field   study_version
@@ -534,6 +553,7 @@ table sample prompt_description 'STRUCTURE_SAMPLE';
         prompt_description 'STRUCTURE_SAMPLE_SE_STOCK_BATCH';
 
 {==============2.0 STOCK ENHANCEMENTS - END ==============================}
+                     
 
 collection child_formulation on sample_formulation using parent_sample;
 
@@ -542,15 +562,6 @@ collection parent_formulation on sample_formulation using child_sample;
 index sample_id_text_index unique on id_text ;
 
 index sample_job_name_index on job_name ;
-
-{ The following index should be added when using groups on the sample table }
-{ where group_id is the group field with used_for security_id               }
-{ }
-{       index sample_id_numeric_group unique on status, group_id, id_numeric ; }
-{       index sample_id_text_group    unique on status, group_id, id_text ;    }
-{ }
-{ }
-
 
 table sample_formulation;
  
@@ -686,16 +697,20 @@ field lab_execution_id
       links_to lab_execution . lab_execution_id as lab_execution
       default NULL ;
 field sow_guid
-      links_to sow_item_charge.sow_guid as sow_item_charge;
+      links_to sow_item_charge . sow_guid as sow_item_charge ;
 field sow_version
-      links_to sow_item_charge.sow_version as sow_item_charge;
+      links_to sow_item_charge . sow_version as sow_item_charge ;
 field sow_item_order
-      links_to sow_item_charge.sow_item_order as sow_item_charge;
+      links_to sow_item_charge . sow_item_order as sow_item_charge ;
 field sow_item_charge_order_number
-      links_to sow_item_charge.order_number as sow_item_charge;
+      links_to sow_item_charge . order_number as sow_item_charge ;
 field sow_item_charge_count
-      datatype integer;
-
+      datatype integer ;
+field price_option
+      datatype identity
+      default 'NONE'
+      prompt_type choose
+      choose_type PRC_LST_OP;
 {1.8}
 field assigned_to
         links_to personnel . identity ;
@@ -716,10 +731,7 @@ field assigned_to
       field be_batch_id
             links_to batch_header.identity 
             prompt_description 'STRUCTURE_TEST_BATCH_ID';
-{==============================================================================}
-{              * * * *  E N D   M O D I F I C A T I O N  * * * *               }
-{==============================================================================}
-{2.1 [END][SETUP-ID:F3EC2BC6-AE7A-4E0D-B337-4D33616CEC30][SETUPMODE:PART]-----[BEH]}
+
 
 index test_i unique on test_number
         rdb_location 'HASH_STORAGE_AREA'
@@ -830,11 +842,13 @@ field pl_charge_code
       datatype text(10)
       prompt_type choose
       choose_type CHARGECODE ;
+field has_notebook_link
+      datatype boolean
+      used_for has_notebook_link;
 {1.6}
 field a_incubation_min_interval datatype interval;
 field a_incubation_max_interval datatype interval;
-{/1.6}      
-
+{/1.6}     
 
 table versioned_component;
 
@@ -895,6 +909,8 @@ field uncertainty_text
       datatype text(500);
 field entity_criteria
       	links_to criteria_saved . identity;
+field entity_full_id
+      datatype boolean ;
 
 index v_component_order_index on analysis,
                                  analysis_version,
@@ -1001,6 +1017,9 @@ field workflow_node
       links_to workflow_node . workflow_node_guid ;
 field comments datatype text(234)
       default NULL;
+field out_of_range_level links_to mlp_level . level_id ; {failure level}
+field entity_full_id
+      datatype boolean ;
 
 table calculation;
 
@@ -1201,6 +1220,12 @@ field has_attachments
 field include_expression
       datatype text ( 500 ) ;
 
+field out_of_range_backcolor
+      datatype text ( 50 ) ;
+
+field out_of_range_forecolor
+      datatype text ( 50 ) ;
+
 table mlp_header;
 
 field identity datatype identity
@@ -1373,6 +1398,8 @@ field text_phrase  links_to limit_phrase_header.identity;
 field boolean_pass datatype boolean;
 field aql_value
       datatype text(234);
+field out_of_range_backcolor datatype text ( 50 ) ;
+field out_of_range_forecolor datatype text ( 50 ) ;
 
 TABLE MLP_SCHEDULE;
 
@@ -2133,6 +2160,13 @@ field use_maintenance
 	false_word 'F'
 	default 'T';
 
+field monitored_instrument
+	datatype boolean ;
+
+field has_notebook_link
+	datatype boolean
+	used_for has_notebook_link;
+
 table timerqueue;
 
 field entry_number datatype packed_decimal used_for unique_key;
@@ -2189,6 +2223,8 @@ field name
       used_for primary_browse, name;
 field email
       datatype text ( 100 );
+field mobile_number
+	datatype text ( 30 );
 field has_attachments
       datatype boolean
       used_for has_attachments ;
@@ -2207,13 +2243,16 @@ field sm_authentication
       datatype boolean ;
 field contact
       links_to contact . contact_guid ;
+field personnel_mapping
+      datatype text ( 100 ) ;
+field azure_id
+      datatype text ( 40 ) ;
 {1.8}
 field team datatype identity
 	 prompt_type phrase
         identities
         phrase_type QC_TEAMS;
-{/1.8}      
-
+{/1.8}     
 
 table password;
 
@@ -2764,6 +2803,9 @@ table job_header;
 
 { /1.1 }
 
+        field has_notebook_link
+                datatype boolean
+                used_for has_notebook_link;
 { 1.5 }
 
 	   field  stage
@@ -3516,20 +3558,23 @@ field table_name
 	used_for unique_key, primary_browse;
 field field_name      
 	links_to audit_data . field  
-	used_for display_browse;
+	used_for display_browse (2) ;
 field record_key0     
 	links_to audit_event . record_key0 
-	used_for display_browse ;
+	used_for display_browse (3) ;
 field record_name
 	links_to audit_event . record_name ;
 field audit_date      
-	links_to audit_transaction . transaction_date ;
+	links_to audit_transaction . transaction_date 
+      used_for display_browse (4) ;
 field audit_action    
 	links_to audit_event . event_action ;
 field user_name       
-	links_to audit_transaction . user_id ;
+	links_to audit_transaction . user_id
+      used_for display_browse (6) ;
 field value_before    
-	links_to audit_data . value_before ;
+	links_to audit_data . value_before 
+      used_for display_browse (5) ;
 field value_after     
 	links_to audit_data . value_after ;
 field date_before    
@@ -3547,6 +3592,8 @@ field event_reason
 field order_num       
 	links_to audit_data . data
 	used_for unique_key;
+field data_reason
+	links_to audit_data . data_reason ;
 
 view audit_view on_table audit_transaction ,
                          audit_event       ;
@@ -3933,7 +3980,7 @@ table config_header ;
               library '$PROMPT_ROUTINE'
               routine 'prompt_routine';
         field value
-              datatype text ( 255 )
+              datatype text ( 2000 )
               prompt_type user_defined
               library '$CONFIG_PROMPT'
               routine 'prompt_config' ;
@@ -4308,7 +4355,12 @@ view samp_test_view on_table sample,
               links_to sample.sampling_point;
         field recd_date
               links_to sample.recd_date;
-        field analysis_type
+        field sample_type
+              links_to sample.sample_type;
+        field external_id
+              links_to sample.external_id
+              used_for display_browse ( 5 ) ;
+         field analysis_type
               links_to test.analysis_type;
         field be_batch_id
 		    links_to test.be_batch_id;
@@ -4417,6 +4469,10 @@ view mlp_view on_table mlp_header,
               links_to mlp_values . boolean_pass;
         field name
               links_to mlp_header . name;
+        field out_of_range_backcolor
+              links_to mlp_values .out_of_range_backcolor;
+        field out_of_range_forecolor
+              links_to mlp_values .out_of_range_forecolor;
 
 select_clause
 
@@ -4440,7 +4496,9 @@ select_clause
                 MCV . TEXT_SPEC,
                 MCV . TEXT_PHRASE,
                 MCV . BOOLEAN_PASS,
-                MH  . NAME
+                MH  . NAME,
+                MCV . OUT_OF_RANGE_BACKCOLOR,
+                MCV . OUT_OF_RANGE_FORECOLOR
         FROM
                 MLP_HEADER MH,
                 MLP_VALUES MHV,
@@ -4902,6 +4960,10 @@ view samp_test_result on_table sample ,
               links_to sample.standard;
         field batch_id
               links_to sample.batch_id;
+        field preparation_batch
+              links_to test . preparation_batch ;
+        field instrument_batch
+              links_to test . instrument_batch ;
         field analysis
               used_for display_browse(3)
               links_to test.analysis;
@@ -4968,6 +5030,10 @@ view limit_view on_table mlp_values, mlp_components ;
               links_to mlp_values . boolean_pass;
         field places
               links_to mlp_components . places;
+        field out_of_range_backcolor
+              links_to mlp_values . out_of_range_backcolor;
+        field out_of_range_forecolor
+              links_to mlp_values . out_of_range_forecolor;
 
 select_clause
 
@@ -4983,7 +5049,9 @@ select_clause
                 MCV . CALCULATION,
                 MCV . TEXT_PHRASE,
                 MCV . BOOLEAN_PASS,
-                MCC . PLACES
+                MCC . PLACES,
+                MHV . OUT_OF_RANGE_BACKCOLOR,
+                MHV . OUT_OF_RANGE_FORECOLOR
 
         FROM
                 MLP_VALUES MHV,
@@ -5149,13 +5217,11 @@ TABLE batch_tmpl_header ;
         field random_control
               links_to standard . identity ;
 
-{Modified for SDS}
         field random_number
               datatype integer
-	      format 9999999999
+              default  0
               lower_limit 0
               upper_limit 999 ;
-{Modified for SDS}
 
         field print_on_creation
               datatype boolean ;
@@ -5184,7 +5250,7 @@ TABLE batch_tmpl_header ;
               links_to lab_rack_template . lab_rack_template_version as rack_template ;	  
 
         field automatic_select_standards
-              datatype boolean ;	
+              datatype boolean ;			  
 
 {[BEGIN][SETUP-ID:3EC40BFD-B6F7-49C1-BF9F-C8C0243AC75E][SETUPMODE:PART]---[BEH]}
 {==============================================================================}
@@ -5351,6 +5417,7 @@ TABLE batch_header ;
 	      links_to batch_tmpl_header . batch_class 
 	      default 'BASE';
 {Modified for SDS}
+
         field template_id
               links_to batch_tmpl_header . identity ;
 
@@ -5473,6 +5540,10 @@ TABLE batch_header ;
 
         field system_batch
               datatype boolean ;
+
+      field has_notebook_link
+              datatype boolean
+              used_for has_notebook_link;
 
 TABLE batch_entry ;
 
@@ -5767,6 +5838,8 @@ view component_view alias component on_table versioned_analysis,
               links_to versioned_component . uncertainty_text ;
         field entity_criteria
               links_to versioned_component . entity_criteria ;
+        field entity_full_id
+              links_to versioned_component . entity_full_id ;
 
 select_clause
 
@@ -5800,7 +5873,8 @@ select_clause
                 C . ROW_NO,
                 C . ROW_NAME,
                 C . UNCERTAINTY_TEXT,
-                C . ENTITY_CRITERIA
+                C . ENTITY_CRITERIA,
+                C . ENTITY_FULL_ID
 
         FROM
                 VERSIONED_COMPONENT C
@@ -5918,10 +5992,10 @@ table blob_values ;
               datatype identity ( 40 ) ;
         field field_name
               datatype identity ( 40 ) ;
-        field blob_field
-              datatype blob ;
         field stored_file_name
               datatype text (1024);
+        field blob_field
+              datatype blob ;
 
 table archive_job_header
         parent_table job_header
@@ -6192,6 +6266,8 @@ table inspector ;
               links_to personnel . identity ;
         field inspection_presenter
               links_to personnel . identity ;
+        field inspection_reason
+              datatype text ( 234 );
 
 view sample_inspect_view on_table sample, inspector, role_assignment ;
 
@@ -6226,6 +6302,9 @@ view sample_inspect_view on_table sample, inspector, role_assignment ;
               links_to inspector . inspection_text;
         field inspection_presenter
               links_to inspector . inspection_presenter;
+        field inspection_reason
+              links_to inspector . inspection_reason
+              used_for display_browse ( 4 );
         field role_personnel_id
               links_to personnel.identity
               used_for unique_key;
@@ -6248,6 +6327,7 @@ select_clause
                 I . STATUS,
                 I . INSPECTION_TEXT,
                 I . INSPECTION_PRESENTER,
+                I . INSPECTION_REASON,
                 R . OPERATOR_ID,
                 R . GROUP_ID
 
@@ -7159,12 +7239,6 @@ table messaging ;
         field message_number
               datatype packed_decimal
               used_for unique_key ;
-        field priority
-              datatype integer
-              format 9
-              default 2
-              lower_limit 1
-              upper_limit 3 ;
         field read
               datatype boolean ;
         field from_operator_id alias from
@@ -7190,10 +7264,31 @@ table messaging ;
               datatype date ;
         field removeflag
               datatype boolean
-              used_for remove_flag;
+              used_for remove_flag ;
+	  field removed_by_sender
+		  datatype boolean ;
+	  field deleted_by_recipient
+		  datatype boolean ;
+	  field deleted_by_sender
+		  datatype boolean ;		
+        field rich_text_blob_id
+              links_to blob_values . blob_id ;
+        field notified_or_n_a
+              datatype boolean ;
+	  field priority
+		  datatype identity (10)
+		  prompt_type choose
+		  choose_type MESSG_PRI 
+		  default '2' ;
+	  field recipients_list
+		  datatype text ( 2000 ) ;
+	  field message_group_guid
+		  datatype text ( 36 ) ;
+	  field expiry_date
+	      datatype date
+		  default '0' ;
 
 index messaging_operator_id on operator_id, read, removeflag ;
-
 
 table rule ;
 
@@ -7787,7 +7882,9 @@ field review_version
 field authorise_version
         links_to inspector . version;
 
-field description datatype text ( 234 );
+field description 
+        datatype text ( 234 )
+        used_for display_browse ( 3 );
 
 field incident_date datatype date;
 
@@ -8133,6 +8230,28 @@ field override_default_grouping
       datatype boolean;
 field dynamic_form_definition
       links_to dashboard_definition . dashboard_definition_guid ;
+field child_dashboard_definition
+      links_to dashboard_definition . dashboard_definition_guid ;
+field approval_override
+      datatype boolean
+      true_word 'True'
+      false_word 'False'
+      default 'False';
+field approval_single_active_version
+      datatype boolean
+      true_word 'True'
+      false_word 'False'
+      default 'False';
+field approval_inspect_security
+      datatype identity
+      default 'LOW'
+      prompt_type choose
+      choose_type INSP_SECUR;
+field approval_submit_on_add
+      datatype boolean
+      true_word 'Enabled'
+      false_word 'Disabled'
+      default 'Disabled';
 
 table explorer_column;
 
@@ -8323,7 +8442,7 @@ field field_name
         datatype text ( 100 );
 field name
         datatype text ( 100 )
-        used_for primary_browse, name, translation ;
+        used_for primary_browse, name, translation;
 field description
         datatype text;
 field icon_1
@@ -8345,14 +8464,17 @@ field show_phrase_desc
 field icon_routine
         datatype text ( 30 );
 field group_form
-	links_to form.name ;
+        links_to form.name;
 field group_form_task
-      	datatype text ( 100 );	
+        datatype text ( 100 );
 field child_form
-	links_to form.name ;
+        links_to form.name;
 field child_form_task
-      	datatype text ( 100 );	
-        
+        datatype text ( 100 );
+field child_dashboard_definition
+        links_to dashboard_definition . dashboard_definition_guid;
+field group_dashboard_definition
+        links_to dashboard_definition . dashboard_definition_guid;
 
 table explorer_aux;
 
@@ -8404,6 +8526,8 @@ field pre_change_status_routine
 field name
         datatype text ( 100 )
         used_for primary_browse, name;
+field aux_overiew_layout
+        links_to overview_layout . identity;
 
 table explorer_aux_fields;
 
@@ -8437,6 +8561,8 @@ field visible
         true_word 'True'
         false_word 'False'
         default 'True';
+field global_to_set
+        datatype text ( 100 );
 
 table explorer_folder_icon;
 
@@ -11455,7 +11581,10 @@ field explorer_form
       links_to form.name ;
       
 field explorer_form_task
-      datatype text ( 100 );	
+      datatype text ( 100 ) ;
+
+field explorer_dashboard_definition
+      links_to dashboard_definition . dashboard_definition_guid ;
 
 
 {*******************************************************************************
@@ -11709,6 +11838,101 @@ sqlserver_specific_select
 		  SAMPLE,
 		  RESULT
 	    WHERE ( BATCH_ENTRY.[IDENTITY] = BATCH_HEADER.[IDENTITY] ) and
+		  ( BATCH_ENTRY.REVIEW_STATUS <> 'P' ) and
+		  ( TEST.TEST_NUMBER = BATCH_ENTRY.TEST ) AND
+		  ( SAMPLE.ID_NUMERIC = TEST.SAMPLE ) AND
+		  ( MLP_COMPONENTS.PRODUCT_ID = BATCH_HEADER.TEMPLATE_ID ) and
+		  ( MLP_COMPONENTS.ANALYSIS_ID = BATCH_HEADER.ANALYSIS ) AND
+		  ( MLP_COMPONENTS.ENTRY_CODE <> MLP_HEADER.ENTRY_CODE ) AND
+		  ( MLP_VALUES.ENTRY_CODE = MLP_COMPONENTS.ENTRY_CODE ) AND
+		  ( MLP_LEVEL.LEVEL_ID = MLP_VALUES.LEVEL_ID ) and
+		  ( RESULT.TEST_NUMBER = BATCH_ENTRY.TEST ) AND
+		  ( RESULT.NAME = MLP_COMPONENTS.COMPONENT_NAME ) ;
+
+postgresql_specific_select
+
+	  SELECT  DISTINCT 
+		  BATCH_HEADER.IDENTITY,
+		  BATCH_ENTRY.TEST,
+		  BATCH_ENTRY.TYPE,
+		  BATCH_ENTRY.REVIEW_STATUS,
+		  'XXXXXXXXXX',
+		  'XXXXXXXXXX',
+		  'XXXXXXXXXX',
+		  'XXXXXXXXXX',
+		  'XXXXXXXXXX',
+		  'XXXXXXXXXX',
+		  'Z',
+		  SAMPLE.ID_TEXT,
+		  TEST.TEST_COUNT
+	     FROM BATCH_ENTRY,
+		  BATCH_HEADER,
+		  TEST,
+		  SAMPLE
+	    WHERE ( BATCH_ENTRY.IDENTITY = BATCH_HEADER.IDENTITY ) and
+		  ( BATCH_ENTRY.REVIEW_STATUS <> 'P' ) and
+		  ( TEST.TEST_NUMBER = BATCH_ENTRY.TEST ) AND
+		  ( SAMPLE.ID_NUMERIC = TEST.SAMPLE )
+	UNION
+	  SELECT  DISTINCT 
+		  BATCH_HEADER.IDENTITY,
+		  BATCH_ENTRY.TEST,
+		  BATCH_ENTRY.TYPE,
+		  BATCH_ENTRY.REVIEW_STATUS,
+		  MLP_COMPONENTS.COMPONENT_NAME,
+		  MLP_COMPONENTS.UNITS,
+		  MLP_LEVEL.LEVEL_ID,
+		  MLP_VALUES.MIN_LIMIT,
+		  MLP_VALUES.MAX_LIMIT,
+		  RESULT.TEXT,
+		  RESULT.STATUS,
+		  SAMPLE.ID_TEXT,
+		  TEST.TEST_COUNT
+	     FROM BATCH_ENTRY,
+		  BATCH_HEADER,
+		  MLP_COMPONENTS,
+		  MLP_HEADER,
+		  MLP_LEVEL,
+		  MLP_VALUES,
+		  TEST,
+		  SAMPLE,
+		  RESULT
+	    WHERE ( BATCH_ENTRY.IDENTITY = BATCH_HEADER.IDENTITY ) and
+		  ( BATCH_ENTRY.REVIEW_STATUS <> 'P' ) and
+		  ( TEST.TEST_NUMBER = BATCH_ENTRY.TEST ) AND
+		  ( SAMPLE.ID_NUMERIC = TEST.SAMPLE ) AND
+		  ( MLP_COMPONENTS.PRODUCT_ID = BATCH_HEADER.TEMPLATE_ID ) and
+		  ( MLP_COMPONENTS.ANALYSIS_ID = BATCH_HEADER.ANALYSIS ) AND
+		  ( MLP_COMPONENTS.ENTRY_CODE <> MLP_HEADER.ENTRY_CODE ) AND
+		  ( MLP_VALUES.ENTRY_CODE = MLP_COMPONENTS.ENTRY_CODE ) AND
+		  ( MLP_LEVEL.LEVEL_ID = MLP_VALUES.LEVEL_ID ) and
+		  ( RESULT.TEST_NUMBER = BATCH_ENTRY.TEST ) AND
+		  ( RESULT.NAME = MLP_COMPONENTS.COMPONENT_NAME )
+	EXCEPT
+	  SELECT  DISTINCT 
+		  BATCH_HEADER.IDENTITY,
+		  BATCH_ENTRY.TEST,
+		  BATCH_ENTRY.TYPE,
+		  BATCH_ENTRY.REVIEW_STATUS,
+		  'XXXXXXXXXX',
+		  'XXXXXXXXXX',
+		  'XXXXXXXXXX',
+		  'XXXXXXXXXX',
+		  'XXXXXXXXXX',
+		  'XXXXXXXXXX',
+		  'Z',
+		  SAMPLE.ID_TEXT,
+		  TEST.TEST_COUNT
+	     FROM BATCH_ENTRY,
+		  BATCH_HEADER,
+		  MLP_COMPONENTS,
+		  MLP_HEADER,
+		  MLP_LEVEL,
+		  MLP_VALUES,
+		  TEST,
+		  SAMPLE,
+		  RESULT
+	    WHERE ( BATCH_ENTRY.IDENTITY = BATCH_HEADER.IDENTITY ) and
 		  ( BATCH_ENTRY.REVIEW_STATUS <> 'P' ) and
 		  ( TEST.TEST_NUMBER = BATCH_ENTRY.TEST ) AND
 		  ( SAMPLE.ID_NUMERIC = TEST.SAMPLE ) AND
@@ -12322,11 +12546,285 @@ sqlserver_specific_select
 	     ( COMPONENT_VIEW.ANALYSIS = TEST.ANALYSIS ) AND
 	     ( COMPONENT_VIEW.NAME = MLP_COMPONENTS.COMPONENT_NAME ) ;
      
+postgresql_specific_select
+
+	   SELECT BATCH_HEADER.IDENTITY,
+		  BATCH_ENTRY.TEST,
+		  BATCH_ENTRY.ORDER_NUMBER,
+		  BATCH_ENTRY.TYPE,
+		  COMPONENT_VIEW.NAME,
+		  COMPONENT_VIEW.UNITS,
+		  'XXXXXXXXXX',
+		  'XXXXXXXXXX',
+		  'XXXXXXXXXX',
+		  'XXXXXXXXXX',
+		  'X',
+		  'X',
+		  'XXXXXXXXXX',
+		  SAMPLE.ID_TEXT,
+		  'X',
+		  COMPONENT_VIEW.ORDER_NUMBER
+	     FROM BATCH_ENTRY,
+		  BATCH_HEADER,
+	     COMPONENT_VIEW,
+		  TEST,
+		  SAMPLE
+	    WHERE ( BATCH_ENTRY.IDENTITY = BATCH_HEADER.IDENTITY ) and
+		  ( BATCH_ENTRY.TEST = TEST.TEST_NUMBER ) and
+		  ( COMPONENT_VIEW.ANALYSIS = TEST.ANALYSIS ) and
+		  ( SAMPLE.ID_NUMERIC = TEST.SAMPLE )
+	 UNION
+	  SELECT BATCH_HEADER.IDENTITY,
+			 BATCH_ENTRY.TEST,
+		 BATCH_ENTRY.ORDER_NUMBER,
+		 BATCH_ENTRY.TYPE,
+		 COMPONENT_VIEW.NAME,
+		 COMPONENT_VIEW.UNITS,
+		 'XXXXXXXXXX',
+		 'XXXXXXXXXX',
+		 'XXXXXXXXXX',
+		 RESULT.TEXT,
+		  'X',
+		 RESULT.RESULT_TYPE,
+		 RESULT.TRUE_WORD,
+		 SAMPLE.ID_TEXT,
+		 RESULT.STATUS,
+		 COMPONENT_VIEW.ORDER_NUMBER
+	    FROM BATCH_ENTRY,
+		 BATCH_HEADER,
+		 TEST,
+		 COMPONENT_VIEW,
+		 SAMPLE,
+		 RESULT
+	   WHERE ( BATCH_ENTRY.IDENTITY = BATCH_HEADER.IDENTITY ) and
+		 ( BATCH_ENTRY.TEST = TEST.TEST_NUMBER ) and
+		 ( SAMPLE.ID_NUMERIC = TEST.SAMPLE ) AND
+		 ( COMPONENT_VIEW.ANALYSIS = TEST.ANALYSIS ) AND
+		 ( RESULT.TEST_NUMBER = TEST.TEST_NUMBER ) AND
+		 ( RESULT.NAME = COMPONENT_VIEW.NAME )
+	UNION
+	   SELECT BATCH_HEADER.IDENTITY,
+			  BATCH_ENTRY.TEST,
+		  BATCH_ENTRY.ORDER_NUMBER,
+		  BATCH_ENTRY.TYPE,
+		  MLP_COMPONENTS.COMPONENT_NAME,
+		  MLP_COMPONENTS.UNITS,
+		  MLP_LEVEL.LEVEL_ID,
+		  MLP_VALUES.MIN_LIMIT,
+		  MLP_VALUES.MAX_LIMIT,
+		  'XXXXXXXXXX',
+		  MLP_VALUES.BOOLEAN_PASS,
+		  'X',
+		  'XXXXXXXXXX',
+		  SAMPLE.ID_TEXT,
+		  'X',
+		  COMPONENT_VIEW.ORDER_NUMBER
+	     FROM BATCH_ENTRY,
+		  BATCH_HEADER,
+		  MLP_COMPONENTS,
+		  MLP_HEADER,
+		  MLP_LEVEL,
+		  MLP_VALUES,
+		  TEST,
+		  SAMPLE,
+		  COMPONENT_VIEW
+	    WHERE ( BATCH_ENTRY.IDENTITY = BATCH_HEADER.IDENTITY ) and
+		  ( TEST.TEST_NUMBER = BATCH_ENTRY.TEST ) AND
+		  ( SAMPLE.ID_NUMERIC = TEST.SAMPLE ) AND
+		  ( MLP_HEADER.IDENTITY = SAMPLE.PRODUCT ) and
+		  ( MLP_COMPONENTS.ENTRY_CODE = MLP_VALUES.ENTRY_CODE ) and
+		  ( MLP_LEVEL.LEVEL_ID = MLP_VALUES.LEVEL_ID ) and
+		  ( MLP_COMPONENTS.ANALYSIS_ID = BATCH_HEADER.ANALYSIS ) AND
+	     ( COMPONENT_VIEW.ANALYSIS = TEST.ANALYSIS ) AND
+	     ( COMPONENT_VIEW.NAME = MLP_COMPONENTS.COMPONENT_NAME )
+	UNION
+	   SELECT BATCH_HEADER.IDENTITY,
+			  BATCH_ENTRY.TEST,
+		  BATCH_ENTRY.ORDER_NUMBER,
+		  BATCH_ENTRY.TYPE,
+		  MLP_COMPONENTS.COMPONENT_NAME,
+		  MLP_COMPONENTS.UNITS,
+		  MLP_LEVEL.LEVEL_ID,
+		  MLP_VALUES.MIN_LIMIT,
+		  MLP_VALUES.MAX_LIMIT,
+		  RESULT.TEXT,
+		  MLP_VALUES.BOOLEAN_PASS,
+		  RESULT.RESULT_TYPE,
+		  RESULT.TRUE_WORD,
+		  SAMPLE.ID_TEXT,
+		  RESULT.STATUS,
+		  COMPONENT_VIEW.ORDER_NUMBER
+	     FROM BATCH_ENTRY,
+		  BATCH_HEADER,
+		  MLP_COMPONENTS,
+		  MLP_HEADER,
+		  MLP_LEVEL,
+		  MLP_VALUES,
+		  TEST,
+		  SAMPLE,
+		  RESULT,
+		  COMPONENT_VIEW
+	    WHERE ( BATCH_ENTRY.IDENTITY = BATCH_HEADER.IDENTITY ) and
+		  ( TEST.TEST_NUMBER = BATCH_ENTRY.TEST ) AND
+		  ( SAMPLE.ID_NUMERIC = TEST.SAMPLE ) AND
+		  ( MLP_HEADER.IDENTITY = SAMPLE.PRODUCT ) and
+		  ( MLP_COMPONENTS.ENTRY_CODE = MLP_VALUES.ENTRY_CODE ) and
+		  ( MLP_LEVEL.LEVEL_ID = MLP_VALUES.LEVEL_ID ) and
+		  ( MLP_COMPONENTS.ANALYSIS_ID = BATCH_HEADER.ANALYSIS ) AND
+		  ( RESULT.TEST_NUMBER = BATCH_ENTRY.TEST ) AND
+		  ( RESULT.NAME = MLP_COMPONENTS.COMPONENT_NAME ) AND
+	     ( COMPONENT_VIEW.ANALYSIS = TEST.ANALYSIS ) AND
+	     ( COMPONENT_VIEW.NAME = MLP_COMPONENTS.COMPONENT_NAME )
+	EXCEPT
+	   SELECT BATCH_HEADER.IDENTITY,
+			  BATCH_ENTRY.TEST,
+		  BATCH_ENTRY.ORDER_NUMBER,
+		  BATCH_ENTRY.TYPE,
+		  COMPONENT_VIEW.NAME,
+		  COMPONENT_VIEW.UNITS,
+		  'XXXXXXXXXX',
+		  'XXXXXXXXXX',
+		  'XXXXXXXXXX',
+		  'XXXXXXXXXX',
+		  'X',
+		  'X',
+		  'XXXXXXXXXX',
+		  SAMPLE.ID_TEXT,
+		  'X',
+		  COMPONENT_VIEW.ORDER_NUMBER
+	     FROM BATCH_ENTRY,
+		  BATCH_HEADER,
+		    COMPONENT_VIEW,
+		  TEST,
+		  SAMPLE,
+		  RESULT
+	    WHERE ( COMPONENT_VIEW.ANALYSIS = TEST.ANALYSIS ) and
+		  ( BATCH_ENTRY.IDENTITY = BATCH_HEADER.IDENTITY ) and
+		  ( BATCH_ENTRY.TEST = TEST.TEST_NUMBER ) and
+		  ( SAMPLE.ID_NUMERIC = TEST.SAMPLE ) AND
+	     ( RESULT.TEST_NUMBER = TEST.TEST_NUMBER ) AND
+	     ( RESULT.NAME = COMPONENT_VIEW.NAME )
+
+	EXCEPT
+
+	   SELECT BATCH_HEADER.IDENTITY,
+			  BATCH_ENTRY.TEST,
+		  BATCH_ENTRY.ORDER_NUMBER,
+		  BATCH_ENTRY.TYPE,
+		  MLP_COMPONENTS.COMPONENT_NAME,
+		  MLP_COMPONENTS.UNITS,
+		  'XXXXXXXXXX',
+		  'XXXXXXXXXX',
+		  'XXXXXXXXXX',
+		  'XXXXXXXXXX',
+		  'X',
+		  'X',
+		  'XXXXXXXXXX',
+		  SAMPLE.ID_TEXT,
+		  'X',
+	     COMPONENT_VIEW.ORDER_NUMBER
+	     FROM BATCH_ENTRY,
+		  BATCH_HEADER,
+		  MLP_COMPONENTS,
+		  MLP_HEADER,
+		  MLP_LEVEL,
+		  MLP_VALUES,
+		  TEST,
+		  SAMPLE,
+		  COMPONENT_VIEW
+	    WHERE ( BATCH_ENTRY.IDENTITY = BATCH_HEADER.IDENTITY ) and
+		  ( TEST.TEST_NUMBER = BATCH_ENTRY.TEST ) AND
+		  ( SAMPLE.ID_NUMERIC = TEST.SAMPLE ) AND
+		  ( MLP_HEADER.IDENTITY = SAMPLE.PRODUCT ) and
+		  ( MLP_COMPONENTS.ENTRY_CODE = MLP_VALUES.ENTRY_CODE ) and
+		  ( MLP_LEVEL.LEVEL_ID = MLP_VALUES.LEVEL_ID ) and
+		  ( MLP_COMPONENTS.ANALYSIS_ID = BATCH_HEADER.ANALYSIS ) AND
+	     ( COMPONENT_VIEW.ANALYSIS = TEST.ANALYSIS ) AND
+	     ( COMPONENT_VIEW.NAME = MLP_COMPONENTS.COMPONENT_NAME )
+
+	EXCEPT
+	   SELECT BATCH_HEADER.IDENTITY,
+			  BATCH_ENTRY.TEST,
+		  BATCH_ENTRY.ORDER_NUMBER,
+		  BATCH_ENTRY.TYPE,
+		  MLP_COMPONENTS.COMPONENT_NAME,
+		  MLP_COMPONENTS.UNITS,
+		  'XXXXXXXXXX',
+		  'XXXXXXXXXX',
+		  'XXXXXXXXXX',
+		  RESULT.TEXT,
+		  'X',
+		  RESULT.RESULT_TYPE,
+		  RESULT.TRUE_WORD,
+		  SAMPLE.ID_TEXT,
+		  RESULT.STATUS,
+		  COMPONENT_VIEW.ORDER_NUMBER
+	     FROM BATCH_ENTRY,
+		  BATCH_HEADER,
+		  MLP_COMPONENTS,
+		  MLP_HEADER,
+		  MLP_LEVEL,
+		  MLP_VALUES,
+		  TEST,
+		  SAMPLE,
+		  RESULT,
+		  COMPONENT_VIEW
+	    WHERE ( BATCH_ENTRY.IDENTITY = BATCH_HEADER.IDENTITY ) and
+		  ( TEST.TEST_NUMBER = BATCH_ENTRY.TEST ) AND
+		  ( SAMPLE.ID_NUMERIC = TEST.SAMPLE ) AND
+		  ( MLP_HEADER.IDENTITY = SAMPLE.PRODUCT ) and
+		  ( MLP_COMPONENTS.ENTRY_CODE = MLP_VALUES.ENTRY_CODE ) and
+		  ( MLP_LEVEL.LEVEL_ID = MLP_VALUES.LEVEL_ID ) and
+		  ( MLP_COMPONENTS.ANALYSIS_ID = BATCH_HEADER.ANALYSIS ) AND
+	     ( RESULT.TEST_NUMBER = BATCH_ENTRY.TEST ) AND
+	     ( RESULT.NAME = MLP_COMPONENTS.COMPONENT_NAME ) AND
+	     ( COMPONENT_VIEW.ANALYSIS = TEST.ANALYSIS ) AND
+	     ( COMPONENT_VIEW.NAME = MLP_COMPONENTS.COMPONENT_NAME )
+
+	EXCEPT
+	   SELECT BATCH_HEADER.IDENTITY,
+			  BATCH_ENTRY.TEST,
+		  BATCH_ENTRY.ORDER_NUMBER,
+		  BATCH_ENTRY.TYPE,
+		  MLP_COMPONENTS.COMPONENT_NAME,
+		  MLP_COMPONENTS.UNITS,
+		  MLP_LEVEL.LEVEL_ID,
+		  MLP_VALUES.MIN_LIMIT,
+		  MLP_VALUES.MAX_LIMIT,
+		  'XXXXXXXXXX',
+		  MLP_VALUES.BOOLEAN_PASS,
+		  'X',
+		  'XXXXXXXXXX',
+		  SAMPLE.ID_TEXT,
+		  'X',
+		  COMPONENT_VIEW.ORDER_NUMBER
+	     FROM BATCH_ENTRY,
+		  BATCH_HEADER,
+		  MLP_COMPONENTS,
+		  MLP_HEADER,
+		  MLP_LEVEL,
+		  MLP_VALUES,
+		  TEST,
+		  SAMPLE,
+		  RESULT,
+		  COMPONENT_VIEW
+	    WHERE ( BATCH_ENTRY.IDENTITY = BATCH_HEADER.IDENTITY ) and
+		  ( TEST.TEST_NUMBER = BATCH_ENTRY.TEST ) AND
+		  ( SAMPLE.ID_NUMERIC = TEST.SAMPLE ) AND
+		  ( MLP_HEADER.IDENTITY = SAMPLE.PRODUCT ) and
+		  ( MLP_COMPONENTS.ENTRY_CODE = MLP_VALUES.ENTRY_CODE ) and
+		  ( MLP_LEVEL.LEVEL_ID = MLP_VALUES.LEVEL_ID ) and
+		  ( MLP_COMPONENTS.ANALYSIS_ID = BATCH_HEADER.ANALYSIS ) AND
+		  ( RESULT.TEST_NUMBER = BATCH_ENTRY.TEST ) AND
+	     ( RESULT.NAME = MLP_COMPONENTS.COMPONENT_NAME ) AND
+	     ( COMPONENT_VIEW.ANALYSIS = TEST.ANALYSIS ) AND
+	     ( COMPONENT_VIEW.NAME = MLP_COMPONENTS.COMPONENT_NAME ) ;
+
 {*******************************************************************************
 * Report View r_batch_tmpl_components_list
 *******************************************************************************}
 
-view r_batch_tmpl_components_list ;
+view r_batch_tmpl_components_list on_table component_view ;
 
 	field identity
 		links_to mlp_header . identity;
@@ -12451,7 +12949,6 @@ oracle_specific_select
 		VERSIONED_C_L_ENTRY.COMP_LIST = MLP_COMPONENTS.PRODUCT_ID AND
 		BATCH_TMPL_HEADER.IDENTITY = MLP_COMPONENTS.PRODUCT_ID ;
 
-
 sqlserver_specific_select
 
 	SELECT 		MLP_HEADER.[IDENTITY],
@@ -12542,6 +13039,95 @@ sqlserver_specific_select
 		VERSIONED_C_L_ENTRY.COMP_LIST = MLP_COMPONENTS.PRODUCT_ID AND
 		BATCH_TMPL_HEADER.[IDENTITY] = MLP_COMPONENTS.PRODUCT_ID ;
 
+postgresql_specific_select
+
+	SELECT 		MLP_HEADER.IDENTITY,
+		MLP_VALUES.LEVEL_ID ,
+		'XXXXX',
+		'XXXXX',
+		'X',
+		COMPONENT_VIEW.NAME,
+		COMPONENT_VIEW.RESULT_TYPE,
+		COMPONENT_VIEW.PLACES,
+		COMPONENT_VIEW.UNITS,
+		VERSIONED_C_L_ENTRY.order_number ,
+		VERSIONED_C_L_ENTRY.replicate_count ,
+		VERSIONED_C_L_ENTRY.result_entry ,
+		VERSIONED_C_L_ENTRY.create_always ,
+		VERSIONED_C_L_ENTRY.analysis_version,
+		VERSIONED_C_L_ENTRY.spike_value,
+		BATCH_TMPL_HEADER.ANALYSIS 
+	FROM 		COMPONENT_VIEW , 
+		MLP_VALUES , 
+		MLP_HEADER,
+		VERSIONED_C_L_ENTRY,
+		BATCH_TMPL_HEADER
+	WHERE 	COMPONENT_VIEW.ANALYSIS = BATCH_TMPL_HEADER.ANALYSIS AND
+	      	MLP_VALUES.ENTRY_CODE = MLP_HEADER.ENTRY_CODE AND
+		VERSIONED_C_L_ENTRY.ANALYSIS = COMPONENT_VIEW.ANALYSIS and
+		VERSIONED_C_L_ENTRY.NAME = COMPONENT_VIEW.NAME AND
+		VERSIONED_C_L_ENTRY.COMP_LIST = MLP_HEADER.IDENTITY AND
+		BATCH_TMPL_HEADER.IDENTITY = MLP_HEADER.IDENTITY
+	UNION
+	SELECT		MLP_COMPONENTS.PRODUCT_ID,
+		MLP_VALUES.LEVEL_ID ,
+		MLP_VALUES.MIN_LIMIT ,
+		MLP_VALUES.MAX_LIMIT ,
+		MLP_VALUES.BOOLEAN_PASS ,
+		MLP_COMPONENTS.COMPONENT_NAME,
+		MLP_COMPONENTS.COMPONENT_TYPE,
+		MLP_COMPONENTS.PLACES,
+		MLP_COMPONENTS.UNITS,
+		VERSIONED_C_L_ENTRY.order_number ,
+		VERSIONED_C_L_ENTRY.replicate_count ,
+		VERSIONED_C_L_ENTRY.result_entry ,
+		VERSIONED_C_L_ENTRY.create_always ,
+		VERSIONED_C_L_ENTRY.analysis_version,
+		VERSIONED_C_L_ENTRY.spike_value,
+		BATCH_TMPL_HEADER.ANALYSIS 
+	FROM 		MLP_COMPONENTS , 
+		MLP_VALUES,
+		VERSIONED_C_L_ENTRY,
+		BATCH_TMPL_HEADER
+	WHERE 	MLP_COMPONENTS.ANALYSIS_ID = BATCH_TMPL_HEADER.ANALYSIS  AND
+		MLP_COMPONENTS.PRODUCT_VERSION = ( SELECT MAX ( PRODUCT_VERSION )
+		                                     FROM MLP_COMPONENTS
+		                                    WHERE ANALYSIS_ID = BATCH_TMPL_HEADER.ANALYSIS  ) AND
+      	MLP_VALUES.ENTRY_CODE = MLP_COMPONENTS.ENTRY_CODE AND
+		VERSIONED_C_L_ENTRY.ANALYSIS = MLP_COMPONENTS.ANALYSIS_ID and
+		VERSIONED_C_L_ENTRY.NAME = MLP_COMPONENTS.COMPONENT_NAME AND
+		VERSIONED_C_L_ENTRY.COMP_LIST = MLP_COMPONENTS.PRODUCT_ID AND
+		BATCH_TMPL_HEADER.IDENTITY = MLP_COMPONENTS.PRODUCT_ID
+	EXCEPT
+	SELECT		MLP_COMPONENTS.PRODUCT_ID,
+		MLP_VALUES.LEVEL_ID ,
+		'XXXXX',
+		'XXXXX',
+		'X',
+		MLP_COMPONENTS.COMPONENT_NAME,
+		MLP_COMPONENTS.COMPONENT_TYPE,
+		MLP_COMPONENTS.PLACES,
+		MLP_COMPONENTS.UNITS,
+		VERSIONED_C_L_ENTRY.order_number ,
+		VERSIONED_C_L_ENTRY.replicate_count ,
+		VERSIONED_C_L_ENTRY.result_entry ,
+		VERSIONED_C_L_ENTRY.create_always ,
+		VERSIONED_C_L_ENTRY.analysis_version,
+		VERSIONED_C_L_ENTRY.spike_value,
+		BATCH_TMPL_HEADER.ANALYSIS 
+	FROM 		MLP_COMPONENTS , 
+		MLP_VALUES,
+		VERSIONED_C_L_ENTRY,
+		BATCH_TMPL_HEADER
+	WHERE 	MLP_COMPONENTS.ANALYSIS_ID = BATCH_TMPL_HEADER.ANALYSIS AND
+		MLP_COMPONENTS.PRODUCT_VERSION = ( SELECT MAX ( PRODUCT_VERSION )
+		                                     FROM MLP_COMPONENTS
+		                                    WHERE ANALYSIS_ID = BATCH_TMPL_HEADER.ANALYSIS  ) AND
+	      	MLP_VALUES.ENTRY_CODE = MLP_COMPONENTS.ENTRY_CODE AND
+		VERSIONED_C_L_ENTRY.ANALYSIS = MLP_COMPONENTS.ANALYSIS_ID and
+		VERSIONED_C_L_ENTRY.NAME = MLP_COMPONENTS.COMPONENT_NAME AND
+		VERSIONED_C_L_ENTRY.COMP_LIST = MLP_COMPONENTS.PRODUCT_ID AND
+		BATCH_TMPL_HEADER.IDENTITY = MLP_COMPONENTS.PRODUCT_ID ;
 
 {*******************************************************************************
 * Report View r_sample_worksheet
@@ -12957,6 +13543,147 @@ sqlserver_specific_select
 	      VERSIONED_COMPONENT.ANALYSIS_VERSION = VERSIONED_C_L_HEADER.ANALYSIS_VERSION AND
 	      VERSIONED_COMPONENT.NAME = VERSIONED_C_L_ENTRY.NAME ;
       
+postgresql_specific_select
+
+	SELECT TEST_SCHED_ENTRY.IDENTITY,
+	       VERSIONED_C_L_HEADER.ANALYSIS,
+	       VERSIONED_C_L_HEADER.ANALYSIS_VERSION,
+	       'XXXXX',
+	       'XXXXX',
+	       'XXXXX',
+	       999,
+	       'X',
+	       'XXXXX',
+	       'XXXXX',
+	       'XXXXX',
+	       'X',
+	       TEST_SCHED_ENTRY.INSTRUMENT_ID
+	FROM  VERSIONED_C_L_HEADER , TEST_SCHED_ENTRY
+	WHERE VERSIONED_C_L_HEADER.COMP_LIST = TEST_SCHED_ENTRY.COMPONENT_LIST
+	UNION
+	SELECT TEST_SCHED_ENTRY.IDENTITY,
+	       VERSIONED_C_L_HEADER.ANALYSIS,
+	       VERSIONED_C_L_HEADER.ANALYSIS_VERSION,
+	       VERSIONED_C_L_ENTRY.NAME,
+	       VERSIONED_C_L_ENTRY.ORDER_NUMBER,
+	       VERSIONED_COMPONENT.UNITS,
+	       VERSIONED_COMPONENT.PLACES,
+	       VERSIONED_COMPONENT.RESULT_TYPE,
+	       'XXXXX',
+	       'XXXXX',
+	       'XXXXX',
+	       'X',
+	       TEST_SCHED_ENTRY.INSTRUMENT_ID
+	FROM  VERSIONED_C_L_ENTRY,VERSIONED_C_L_HEADER,VERSIONED_COMPONENT ,TEST_SCHED_ENTRY
+	WHERE VERSIONED_C_L_ENTRY.ANALYSIS = VERSIONED_C_L_HEADER.ANALYSIS AND
+	      VERSIONED_C_L_ENTRY.ANALYSIS_VERSION = VERSIONED_C_L_HEADER.ANALYSIS_VERSION AND
+	      VERSIONED_C_L_HEADER.COMP_LIST = TEST_SCHED_ENTRY.COMPONENT_LIST AND
+	      VERSIONED_C_L_ENTRY.COMP_LIST = TEST_SCHED_ENTRY.COMPONENT_LIST AND
+	      VERSIONED_COMPONENT.ANALYSIS = VERSIONED_C_L_HEADER.ANALYSIS AND
+	      VERSIONED_COMPONENT.ANALYSIS_VERSION = VERSIONED_C_L_HEADER.ANALYSIS_VERSION AND
+	      VERSIONED_COMPONENT.NAME = VERSIONED_C_L_ENTRY.NAME 
+	UNION
+	SELECT TEST_SCHED_ENTRY.IDENTITY,
+	       VERSIONED_C_L_HEADER.ANALYSIS,
+	       VERSIONED_C_L_HEADER.ANALYSIS_VERSION,
+	       VERSIONED_C_L_ENTRY.NAME,
+	       VERSIONED_C_L_ENTRY.ORDER_NUMBER,
+	       VERSIONED_COMPONENT.UNITS,
+	       VERSIONED_COMPONENT.PLACES,
+	       VERSIONED_COMPONENT.RESULT_TYPE,
+	       MLP_VALUES.LEVEL_ID ,
+	       MLP_VALUES.MIN_LIMIT ,
+	       MLP_VALUES.MAX_LIMIT,
+	       MLP_VALUES.BOOLEAN_PASS,
+	       TEST_SCHED_ENTRY.INSTRUMENT_ID
+	FROM  VERSIONED_C_L_ENTRY,VERSIONED_C_L_HEADER, MLP_COMPONENTS , MLP_VALUES ,VERSIONED_COMPONENT,
+	      TEST_SCHED_ENTRY
+	WHERE VERSIONED_C_L_ENTRY.ANALYSIS = VERSIONED_C_L_HEADER.ANALYSIS AND
+	      VERSIONED_C_L_ENTRY.ANALYSIS_VERSION = VERSIONED_C_L_HEADER.ANALYSIS_VERSION AND
+	      VERSIONED_C_L_HEADER.COMP_LIST = TEST_SCHED_ENTRY.COMPONENT_LIST AND
+	      VERSIONED_C_L_ENTRY.COMP_LIST = TEST_SCHED_ENTRY.COMPONENT_LIST AND
+	      MLP_COMPONENTS.ANALYSIS_ID = VERSIONED_C_L_HEADER.ANALYSIS AND
+	      MLP_COMPONENTS.PRODUCT_ID = TEST_SCHED_ENTRY.COMPONENT_LIST AND
+	      MLP_COMPONENTS.COMPONENT_NAME = VERSIONED_C_L_ENTRY.NAME AND
+	      MLP_VALUES.ENTRY_CODE = MLP_COMPONENTS.ENTRY_CODE AND
+	      VERSIONED_COMPONENT.ANALYSIS = VERSIONED_C_L_HEADER.ANALYSIS AND
+	      VERSIONED_COMPONENT.ANALYSIS_VERSION = VERSIONED_C_L_HEADER.ANALYSIS_VERSION AND
+	      VERSIONED_COMPONENT.NAME = VERSIONED_C_L_ENTRY.NAME
+	EXCEPT
+	SELECT TEST_SCHED_ENTRY.IDENTITY,
+	       VERSIONED_C_L_HEADER.ANALYSIS,
+	       VERSIONED_C_L_HEADER.ANALYSIS_VERSION,
+	       'XXXXX',
+	       'XXXXX',
+	       'XXXXX',
+	       999,
+	       'X',
+	       'XXXXX',
+	       'XXXXX',
+	       'XXXXX',
+	       'X',
+	       TEST_SCHED_ENTRY.INSTRUMENT_ID
+	FROM  VERSIONED_C_L_ENTRY,VERSIONED_C_L_HEADER, MLP_COMPONENTS , MLP_VALUES,VERSIONED_COMPONENT,
+	      TEST_SCHED_ENTRY
+	WHERE VERSIONED_C_L_ENTRY.ANALYSIS = VERSIONED_C_L_HEADER.ANALYSIS AND
+	      VERSIONED_C_L_ENTRY.ANALYSIS_VERSION = VERSIONED_C_L_HEADER.ANALYSIS_VERSION AND
+	      VERSIONED_C_L_HEADER.COMP_LIST = TEST_SCHED_ENTRY.COMPONENT_LIST AND
+	      VERSIONED_C_L_ENTRY.COMP_LIST = TEST_SCHED_ENTRY.COMPONENT_LIST AND
+	      MLP_COMPONENTS.ANALYSIS_ID = VERSIONED_C_L_HEADER.ANALYSIS AND
+	      MLP_COMPONENTS.PRODUCT_ID = TEST_SCHED_ENTRY.COMPONENT_LIST AND
+	      MLP_COMPONENTS.COMPONENT_NAME = VERSIONED_C_L_ENTRY.NAME AND
+	      MLP_VALUES.ENTRY_CODE = MLP_COMPONENTS.ENTRY_CODE AND
+	      VERSIONED_COMPONENT.ANALYSIS = VERSIONED_C_L_HEADER.ANALYSIS AND
+	      VERSIONED_COMPONENT.ANALYSIS_VERSION = VERSIONED_C_L_HEADER.ANALYSIS_VERSION AND
+	      VERSIONED_COMPONENT.NAME = VERSIONED_C_L_ENTRY.NAME
+	EXCEPT
+	SELECT TEST_SCHED_ENTRY.IDENTITY,
+	       VERSIONED_C_L_HEADER.ANALYSIS,
+	       VERSIONED_C_L_HEADER.ANALYSIS_VERSION,
+	       'XXXXX',
+	       'XXXXX',
+	       'XXXXX',
+	       999,
+	       'X',
+	       'XXXXX',
+	       'XXXXX',
+	       'XXXXX',
+	       'X',
+	       TEST_SCHED_ENTRY.INSTRUMENT_ID
+	FROM  VERSIONED_C_L_ENTRY,VERSIONED_C_L_HEADER,VERSIONED_COMPONENT , TEST_SCHED_ENTRY
+	WHERE VERSIONED_C_L_ENTRY.ANALYSIS = VERSIONED_C_L_HEADER.ANALYSIS AND
+	      VERSIONED_C_L_ENTRY.ANALYSIS_VERSION = VERSIONED_C_L_HEADER.ANALYSIS_VERSION AND
+	      VERSIONED_C_L_HEADER.COMP_LIST = TEST_SCHED_ENTRY.COMPONENT_LIST AND
+	      VERSIONED_C_L_ENTRY.COMP_LIST = TEST_SCHED_ENTRY.COMPONENT_LIST
+	EXCEPT
+	SELECT TEST_SCHED_ENTRY.IDENTITY,
+	       VERSIONED_C_L_HEADER.ANALYSIS,
+	       VERSIONED_C_L_HEADER.ANALYSIS_VERSION,
+	       VERSIONED_C_L_ENTRY.NAME,
+	       VERSIONED_C_L_ENTRY.ORDER_NUMBER,
+	       VERSIONED_COMPONENT.UNITS,
+	       VERSIONED_COMPONENT.PLACES,
+	       VERSIONED_COMPONENT.RESULT_TYPE,
+	       'XXXXX',
+	       'XXXXX',
+	       'XXXXX',
+	       'X',
+	       TEST_SCHED_ENTRY.INSTRUMENT_ID
+	FROM  VERSIONED_C_L_ENTRY,VERSIONED_C_L_HEADER, MLP_COMPONENTS , MLP_VALUES,VERSIONED_COMPONENT,
+	      TEST_SCHED_ENTRY
+	WHERE VERSIONED_C_L_ENTRY.ANALYSIS = VERSIONED_C_L_HEADER.ANALYSIS AND
+	      VERSIONED_C_L_ENTRY.ANALYSIS_VERSION = VERSIONED_C_L_HEADER.ANALYSIS_VERSION AND
+	      VERSIONED_C_L_HEADER.COMP_LIST = TEST_SCHED_ENTRY.COMPONENT_LIST AND
+	      VERSIONED_C_L_ENTRY.COMP_LIST = TEST_SCHED_ENTRY.COMPONENT_LIST AND
+	      MLP_COMPONENTS.ANALYSIS_ID = VERSIONED_C_L_HEADER.ANALYSIS AND
+	      MLP_COMPONENTS.PRODUCT_ID = TEST_SCHED_ENTRY.COMPONENT_LIST AND
+	      MLP_COMPONENTS.COMPONENT_NAME = VERSIONED_C_L_ENTRY.NAME AND
+	      MLP_VALUES.ENTRY_CODE = MLP_COMPONENTS.ENTRY_CODE AND
+	      MLP_VALUES.ENTRY_CODE = MLP_COMPONENTS.ENTRY_CODE AND
+	      VERSIONED_COMPONENT.ANALYSIS = VERSIONED_C_L_HEADER.ANALYSIS AND
+	      VERSIONED_COMPONENT.ANALYSIS_VERSION = VERSIONED_C_L_HEADER.ANALYSIS_VERSION AND
+	      VERSIONED_COMPONENT.NAME = VERSIONED_C_L_ENTRY.NAME ;
+
 {*******************************************************************************
 * Report View r_worksheet
 *******************************************************************************}
@@ -13149,6 +13876,78 @@ sqlserver_specific_select
 		WORKSHEET
 	LEFT OUTER JOIN PERSONNEL ON PERSONNEL.[IDENTITY] = WORKSHEET.ASSIGNED_OPERATOR
 	  WHERE ( VERSIONED_COMPONENT.ANALYSIS = VERSIONED_ANALYSIS.[IDENTITY] ) AND
+		( VERSIONED_ANALYSIS.ANALYSIS_VERSION = '         1' ) AND
+		( VERSIONED_COMPONENT.ANALYSIS_VERSION = '         1' ) ;
+
+postgresql_specific_select
+
+	 SELECT WORKSHEET.IDENTITY,
+		VERSIONED_ANALYSIS.DESCRIPTION,
+		99999999.9,
+		99999999.9,
+		'XXXXXXXXXX',
+		'XXXXXXXXXX',
+		VERSIONED_ANALYSIS.CALCULATION,
+		VERSIONED_ANALYSIS.IDENTITY,
+		'X',
+		'XXXXXXXXXX',
+		'XXXXXXXXXX',
+		WORKSHEET.ASSIGNED_OPERATOR,
+		WORKSHEET.DATE_GENERATED,
+		PERSONNEL.DESCRIPTION,
+		'XXXXXXXXXX'
+	   FROM VERSIONED_ANALYSIS,
+		WORKSHEET
+	   LEFT OUTER JOIN PERSONNEL ON PERSONNEL.IDENTITY = WORKSHEET.ASSIGNED_OPERATOR 
+	  WHERE ( VERSIONED_ANALYSIS.ANALYSIS_VERSION = '         1' ) 
+
+	UNION
+
+	 SELECT WORKSHEET.IDENTITY,
+		VERSIONED_ANALYSIS.DESCRIPTION,
+		VERSIONED_COMPONENT.MINIMUM,
+		VERSIONED_COMPONENT.MAXIMUM,
+		VERSIONED_COMPONENT.UNITS,
+		VERSIONED_COMPONENT.NAME,
+		VERSIONED_ANALYSIS.CALCULATION,
+		VERSIONED_ANALYSIS.IDENTITY,
+		VERSIONED_COMPONENT.RESULT_TYPE,
+		VERSIONED_COMPONENT.TRUE_WORD,
+		VERSIONED_COMPONENT.FALSE_WORD,
+		WORKSHEET.ASSIGNED_OPERATOR,
+		WORKSHEET.DATE_GENERATED,
+		PERSONNEL.DESCRIPTION,
+		VERSIONED_COMPONENT.ORDER_NUMBER
+	   FROM VERSIONED_ANALYSIS,
+		VERSIONED_COMPONENT,
+		WORKSHEET
+	 LEFT OUTER JOIN PERSONNEL ON PERSONNEL.IDENTITY = WORKSHEET.ASSIGNED_OPERATOR
+	  WHERE ( VERSIONED_COMPONENT.ANALYSIS = VERSIONED_ANALYSIS.IDENTITY ) AND
+		( VERSIONED_ANALYSIS.ANALYSIS_VERSION = '         1' ) AND
+		( VERSIONED_COMPONENT.ANALYSIS_VERSION = '         1' )
+
+	EXCEPT
+
+	 SELECT WORKSHEET.IDENTITY,
+		VERSIONED_ANALYSIS.DESCRIPTION,
+		99999999.9,
+		99999999.9,
+		'XXXXXXXXXX',
+		'XXXXXXXXXX',
+		VERSIONED_ANALYSIS.CALCULATION,
+		VERSIONED_ANALYSIS.IDENTITY,
+		'X',
+		'XXXXXXXXXX',
+		'XXXXXXXXXX',
+		WORKSHEET.ASSIGNED_OPERATOR,
+		WORKSHEET.DATE_GENERATED,
+		PERSONNEL.DESCRIPTION,
+		'XXXXXXXXXX'
+	   FROM VERSIONED_ANALYSIS,
+		VERSIONED_COMPONENT,
+		WORKSHEET
+	LEFT OUTER JOIN PERSONNEL ON PERSONNEL.IDENTITY = WORKSHEET.ASSIGNED_OPERATOR
+	  WHERE ( VERSIONED_COMPONENT.ANALYSIS = VERSIONED_ANALYSIS.IDENTITY ) AND
 		( VERSIONED_ANALYSIS.ANALYSIS_VERSION = '         1' ) AND
 		( VERSIONED_COMPONENT.ANALYSIS_VERSION = '         1' ) ;
 
@@ -13345,8 +14144,81 @@ sqlserver_specific_select
 		( RESULT.TEST_NUMBER = TEST.TEST_NUMBER ) AND
 		( RESULT.NAME = VERSIONED_COMPONENT.NAME) ;
 			
+postgresql_specific_select
 
+	 SELECT WORKSHEET.IDENTITY,
+		TEST.SAMPLE,   
+		TEST.TEST_COUNT,
+		TEST.TEST_NUMBER,   
+		SAMPLE.ID_TEXT,
+		VERSIONED_COMPONENT.NAME,
+		VERSIONED_COMPONENT.ORDER_NUMBER,
+		VERSIONED_COMPONENT.RESULT_TYPE,
+		VERSIONED_COMPONENT.TRUE_WORD,
+		VERSIONED_COMPONENT.FALSE_WORD,
+		VERSIONED_COMPONENT.UNITS,
+		'XXXXXXXXXX'
+	    FROM WORKSHEET,
+		 TEST, 
+		 SAMPLE,   
+		 VERSIONED_COMPONENT
+	   WHERE ( TEST.WORKSHEET = WORKSHEET.LINK_NUMBER ) AND
+		 ( SAMPLE.ID_NUMERIC = TEST.SAMPLE ) AND
+		 ( VERSIONED_COMPONENT.ANALYSIS = TEST.ANALYSIS ) AND
+		 ( VERSIONED_COMPONENT.ANALYSIS_VERSION = TEST.ANALYSIS_VERSION )
 
+	UNION
+
+	  SELECT WORKSHEET.IDENTITY,
+		 TEST.SAMPLE,   
+		 TEST.TEST_COUNT,
+		TEST.TEST_NUMBER,   
+		 SAMPLE.ID_TEXT,
+		VERSIONED_COMPONENT.NAME,
+		VERSIONED_COMPONENT.ORDER_NUMBER,
+		VERSIONED_COMPONENT.RESULT_TYPE,
+		VERSIONED_COMPONENT.TRUE_WORD,
+		VERSIONED_COMPONENT.FALSE_WORD,
+		VERSIONED_COMPONENT.UNITS,
+		RESULT.TEXT
+	    FROM WORKSHEET,
+		 TEST, 
+		 SAMPLE,   
+		 VERSIONED_COMPONENT,
+		RESULT
+	   WHERE ( TEST.WORKSHEET = WORKSHEET.LINK_NUMBER ) AND
+		 ( SAMPLE.ID_NUMERIC = TEST.SAMPLE ) AND
+		 ( VERSIONED_COMPONENT.ANALYSIS = TEST.ANALYSIS ) AND
+		 ( VERSIONED_COMPONENT.ANALYSIS_VERSION = TEST.ANALYSIS_VERSION ) AND
+		( RESULT.TEST_NUMBER = TEST.TEST_NUMBER ) AND
+		( RESULT.NAME = VERSIONED_COMPONENT.NAME)
+
+	EXCEPT
+
+	  SELECT WORKSHEET.IDENTITY,
+		 TEST.SAMPLE,   
+		 TEST.TEST_COUNT,
+		TEST.TEST_NUMBER,   
+		 SAMPLE.ID_TEXT,
+		VERSIONED_COMPONENT.NAME,
+		VERSIONED_COMPONENT.ORDER_NUMBER,
+		VERSIONED_COMPONENT.RESULT_TYPE,
+		VERSIONED_COMPONENT.TRUE_WORD,
+		VERSIONED_COMPONENT.FALSE_WORD,
+		VERSIONED_COMPONENT.UNITS,
+		'XXXXXXXXXX'
+	    FROM WORKSHEET,
+		 TEST, 
+		 SAMPLE,   
+		 VERSIONED_COMPONENT,
+		RESULT
+	   WHERE ( TEST.WORKSHEET = WORKSHEET.LINK_NUMBER ) AND 
+		 ( SAMPLE.ID_NUMERIC = TEST.SAMPLE ) AND
+		 ( VERSIONED_COMPONENT.ANALYSIS = TEST.ANALYSIS ) AND
+		 ( VERSIONED_COMPONENT.ANALYSIS_VERSION = TEST.ANALYSIS_VERSION ) AND
+		( RESULT.TEST_NUMBER = TEST.TEST_NUMBER ) AND
+		( RESULT.NAME = VERSIONED_COMPONENT.NAME) ;
+	
 table instrument_template;
 
 	field identity
@@ -13683,6 +14555,9 @@ table instrument_part ;
 		false_word 'F'
 		default 'T';
 
+	field has_notebook_link
+		datatype boolean
+		used_for has_notebook_link;
 
 table instrument_part_link noindex;
 
@@ -15042,10 +15917,6 @@ table stock_inventory;
    field be_batch_id
       links_to batch_header . identity
       prompt_description 'STRUCTURE_STOCK_INVENTORY_BE_BATCH_ID';
-{==============================================================================}
-{              * * * *  E N D   M O D I F I C A T I O N  * * * *               }
-{==============================================================================}
-{[END][SETUP-ID:763E8A8A-107A-4CEB-ACE9-A386F630BA8E][SETUPMODE:PART]-----[EB]}
 
 index stock_inventory_test_stock on test, stock;
 index stock_inventory_stock_batch on stock, stock_batch;
@@ -18148,8 +19019,9 @@ table test_parameter ;
 	field phrase_valid_only
 	      datatype boolean ;
 
-field rounding_formula datatype text ( 500 )
-      default NULL ;
+	field rounding_formula 
+	      datatype text ( 500 )
+	      default NULL ;
 
 	field sig_figs_number datatype integer
 	      default -1
@@ -18231,8 +19103,9 @@ table entity_template_parameter ;
 	field phrase_valid_only
 	      datatype boolean ;
 
-	field rounding_formula datatype text ( 500 )
-		 default NULL ;
+	field rounding_formula 
+	      datatype text ( 500 )
+	      default NULL ;
 
 	field sig_figs_number datatype integer
 	      default -1
@@ -18574,6 +19447,20 @@ table lab_method ;
 	field plate_step_param_id
 	      links_to lab_method_step_parameter . lab_method_step_parameter_id as plate_step_parameter ;
 
+	field xr_enabled
+	      datatype boolean
+	      true_word 'True'
+	      false_word 'False'
+	      default 'False' ;
+
+	field introduction_alt_text
+	      used_for translation
+	      datatype text ( 2000 ) ;
+
+	field prerequisite_alt_text
+	      used_for translation
+	      datatype text ( 2000 ) ;
+
 table lab_method_step ;
 
 	field lab_method_step_id
@@ -18755,6 +19642,19 @@ table lab_method_step ;
 	      false_word 'F'
 	      default 'F' ;
 
+	field media_attachment
+	      links_to attachment . attachment_guid ;
+
+	field media_link
+	      datatype text ( 250 ) ;
+
+	field launch_expression
+	      datatype text ( 250 ) ;
+
+	field instruction_alt_text
+	      used_for translation
+	      datatype text ( 2000 ) ;
+
 table lab_method_step_variable ;
 
 	field lab_method_step_variable_id
@@ -18797,7 +19697,7 @@ table lab_method_step_parameter ;
 	      datatype text ( 500 ) ;
 
 	field parameter_type
-	      default 'BOOLEAN'
+	      default 'NUMERIC'
 	      links_to parameter_type . identity as parameter_type;
 
 	field default_value
@@ -18986,7 +19886,7 @@ table lab_method_step_parameter ;
 	      default 'F'
 	      false_word 'F'
 	      true_word 'T' ;
-
+		  
 table lab_method_step_substance ;
 
 	field lab_method_step_id
@@ -19141,6 +20041,10 @@ table lab_parsing_script ;
 
 	field lab_data_source_version
 	      links_to lab_data_source . lab_data_source_version as lab_data_source ;
+
+	field execution_timeout
+	      datatype integer
+	      default 30;
 
 table lab_mapping ;
 
@@ -19592,6 +20496,15 @@ table lab_execution ;
 
 	field plate_id
 	      links_to plate . plate_id as plate ;
+		  
+	field callback_step
+	      links_to lab_method_step . lab_method_step_id as callback_step ;
+
+	field xr_enabled
+	      datatype boolean
+	      true_word 'True'
+	      false_word 'False'
+	      default 'False' ;
 
 table lab_execution_link_history;
 
@@ -19608,6 +20521,9 @@ table lab_execution_link_history;
 
 	field lab_execution_target
 	      links_to lab_execution_step . lab_execution_step_id as lab_execution_target ;
+		  
+	field lab_execution_source_step
+	      links_to lab_execution_step . lab_execution_step_id as lab_execution_source_step ;
 
 table lab_execution_link ;
 
@@ -19832,6 +20748,15 @@ table lab_execution_step ;
 	      false_word 'F'
 	      default 'F' ;
 		  
+	field step_reopened
+	      datatype boolean
+	      true_word 'T'
+	      false_word 'F'
+	      default 'F' ;
+		  
+	field instruction_blob
+	      links_to blob_values . blob_id ;
+		  
 table lab_execution_step_parameter ;
 
 	field lab_execution_step_param_id
@@ -19998,8 +20923,9 @@ table lab_execution_step_parameter ;
 	field samples_batch
 	      datatype boolean ;
 		  
-field rounding_formula datatype text ( 500 )
-      default NULL ;
+	field rounding_formula
+	      datatype text ( 500 )
+	      default NULL ;
 
 	field sig_figs_number datatype integer
 	      default -1
@@ -20700,6 +21626,12 @@ table schema_layout ;
 		true_word 'Y'
 		false_word 'N';
 
+	field dbase_is_postgresql
+		datatype boolean
+		default 'N'
+		true_word 'Y'
+		false_word 'N';
+
 	field packed_decimal_as_integer
 		datatype boolean
 		default 'N'
@@ -20727,7 +21659,7 @@ table schema_layout ;
 	field td_location_sql_server
 		datatype text (32);
 
-	field td_location_ingres
+	field td_location_postgresql
 		datatype text (32);
 
 	field td_location_rdb
@@ -20739,7 +21671,7 @@ table schema_layout ;
 	field id_location_oracle
 		datatype text (32);
 
-	field id_location_ingres
+	field id_location_postgresql
 		datatype text (32);
 
 	field id_location_rdb
@@ -20898,10 +21830,16 @@ table schema_table ;
 	field oracle_specific
 		datatype text (500);
 
+	field postgresql_specific
+		datatype text (500);
+
 	field sqlserver_location
 		datatype text (500);
 
 	field oracle_location
+		datatype text (500);
+
+	field postgresql_location
 		datatype text (500);
 
 table schema_sequence ;
@@ -21038,10 +21976,16 @@ table schema_table_index ;
 	field oracle_specific
 		datatype text (500);
 
+	field postgresql_specific
+		datatype text (500);
+
 	field sqlserver_location
 		datatype text (500);
 
 	field oracle_location
+		datatype text (500);
+
+	field postgresql_location
 		datatype text (500);
 
 table schema_table_field ;
@@ -21236,6 +22180,9 @@ table schema_table_field ;
 
 	field is_has_attachments_field
 		datatype boolean;
+
+	field is_has_notebook_link_field
+		datatype boolean;
 	
 	field audit_mode
 		datatype integer
@@ -21425,6 +22372,36 @@ table schema_view ;
 	      datatype text (4000);
 
 	field sql_server_select_clause_j
+	      datatype text (4000);
+
+	field postgresql_select_clause_a
+	      datatype text (4000);
+
+	field postgresql_select_clause_b
+	      datatype text (4000);
+
+	field postgresql_select_clause_c
+	      datatype text (4000);
+
+	field postgresql_select_clause_d
+	      datatype text (4000);
+
+	field postgresql_select_clause_e
+	      datatype text (4000);
+
+	field postgresql_select_clause_f
+	      datatype text (4000);
+
+	field postgresql_select_clause_g
+	      datatype text (4000);
+
+	field postgresql_select_clause_h
+	      datatype text (4000);
+
+	field postgresql_select_clause_i
+	      datatype text (4000);
+
+	field postgresql_select_clause_j
 	      datatype text (4000);
 
 	field parent_table_guid
@@ -21623,6 +22600,9 @@ table schema_view_field ;
 		datatype boolean;
 
 	field is_has_attachments_field
+		datatype boolean;
+
+	field is_has_notebook_link_field
 		datatype boolean;
 
 	field is_primary_browse
@@ -23001,6 +23981,10 @@ table plate ;
 	field disposed_by
 	      links_to personnel . identity ;
 
+	field has_notebook_link
+	      datatype boolean
+	      used_for has_notebook_link;
+
 table plate_parameter ;
 
 	field plate_id
@@ -23780,6 +24764,24 @@ table dm_capture_source ;
 	      false_word 'No'
 	      default 'Yes' ;
 
+	field use_cache
+	      datatype boolean
+	      true_word 'Yes'
+	      false_word 'No'
+	      default 'No' ;
+
+	field invalidate_cache
+	      datatype boolean
+	      true_word 'Yes'
+	      false_word 'No'
+	      default 'No' ;
+
+	field remove_superseded
+	      datatype boolean
+	      true_word 'Yes'
+	      false_word 'No'
+	      default 'No' ;
+	      
 table dm_data_destination ;
 
 	field dm_data_destination_id
@@ -23923,6 +24925,9 @@ table dm_package_property ;
 
 	field entity_type
 	      datatype text(30) ;
+
+	field entity_field_name
+	      datatype text(100) ;
 
 table dm_server_computer ;
 
@@ -25110,6 +26115,12 @@ table price_list_charge_code;
 		prompt_type choose
 		choose_type CHARGECODE ;
 
+	field price_option
+		datatype identity
+		default 'NONE'
+		prompt_type choose
+		choose_type PRC_LST_OP;
+
 	field rate
 		datatype real
 		format '999999999.99'
@@ -25133,12 +26144,20 @@ table price_list_entry;
 		datatype text(100)
 		used_for unique_key;
 
+	field price_option
+		datatype identity
+		used_for unique_key, display_browse(1)
+		default 'NONE'
+		prompt_type choose
+		choose_type PRC_LST_OP;
+
 	field name
 		datatype text(100)
 		used_for primary_browse, name;
 
 	field description
-		datatype text(234);
+		datatype text(234)
+		used_for display_browse(2);
 
 	field rate
 		datatype real
@@ -25646,6 +26665,12 @@ table sow_item;
 		default '         1'
 		links_to workflow . workflow_version as sample_workflow;
 
+	field price_option
+		datatype identity
+		default 'NONE'
+		prompt_type choose
+		choose_type PRC_LST_OP;
+
 table sow_item_charge;
 
 	field sow_guid
@@ -25954,6 +26979,12 @@ table invoice_item;
 	field sow_item_order
 		links_to sow_item.order_number as sow_item;
 
+	field price_option
+		datatype identity
+		default 'NONE'
+		prompt_type choose
+		choose_type PRC_LST_OP;
+
 	field item_price
 		datatype real
 		format '999999999.99'
@@ -26027,7 +27058,7 @@ table invoice_sample;
 		datatype text(100);
 
 	field description
-		datatype text(234);		
+		datatype text(234);
 
 	field price
 		datatype real
@@ -26060,13 +27091,13 @@ table invoice_sample_charge;
 		datatype text(100);
 
 	field description
-		datatype text(234);		
+		datatype text(234);
 
 	field charge_table_name
 		datatype text(100);
 
 	field charge_identity
-		datatype text(234);		
+		datatype text(234);
 
 	field price
 		datatype real
@@ -26128,6 +27159,10 @@ table molecule ;
 
 	field mol_blob
 	      links_to blob_values . blob_id ;
+
+	field has_notebook_link
+	      datatype boolean
+	      used_for has_notebook_link;
 
 {*************************************************}
 {* Additional Tables/Fields for Portal           *}
@@ -26405,6 +27440,12 @@ table portal_form_panel ;
 		lower_limit 1
 		upper_limit 12 ;
 
+	field row_span
+		datatype integer
+		default 1
+		lower_limit 1
+		upper_limit 12 ;
+
 table portal_form_element;
 
 	field portal_form_element_guid
@@ -26454,7 +27495,7 @@ table portal_form_element_parameter;
 		used_for primary_browse, name ;
 
 	field parameter_value
-		datatype text(234)
+		datatype text(256)
 		used_for display_browse ( 2 ) ;
 
 	field parameter_type
@@ -26463,6 +27504,9 @@ table portal_form_element_parameter;
 		choose_type P_PARA_TYP ;
 
 	field value_mandatory
+		datatype boolean ;
+
+	field is_formula
 		datatype boolean ;
 
 table portal_element_type;
@@ -26581,6 +27625,9 @@ table portal_element_type_parameter;
 		datatype boolean ;
 
 	field abstract
+		datatype boolean ;
+
+	field allow_formula
 		datatype boolean ;
 
 table portal_browse;
@@ -26714,6 +27761,15 @@ table portal_grid_column ;
 		false_word 'F'
 		default 'T';
 
+	field sort_index
+		datatype integer
+		lower_limit 0;
+
+	field sort_order
+		datatype text
+		prompt_type phrase
+		phrase_type p_sort_ord;
+
 	field width
 		datatype integer
 		default 100;
@@ -26799,7 +27855,14 @@ table analyst_notebook ;
 	      true_word 'T'
 	      false_word 'F'
 	      default 'F';
-		  
+	
+      field category
+	      datatype text  ( 10 )
+	      used_for display_browse ( 3 )
+            default 'GENERAL'
+	      prompt_type choose
+	            choose_type NOTE_CAT ;
+
 table analyst_notebook_page ;
 
 	field analyst_notebook_guid
@@ -26839,6 +27902,9 @@ table analyst_notebook_page ;
 	field page_blob_id
 	      links_to blob_values . blob_id ;
 
+	field plain_text_clob
+	       links_to clob_values . clob_id;
+
 	field page_locked
 	      datatype boolean;
 
@@ -26853,6 +27919,30 @@ table analyst_notebook_page ;
 
 	field review_comments
 	      datatype text ( 500 ) ;
+
+	field store_searchable_doc
+	      datatype boolean
+	      true_word 'T'
+	      false_word 'F'
+	      default 'T' ;
+
+	field store_searchable_pdf
+	      datatype boolean
+	      true_word 'T'
+	      false_word 'F'
+	      default 'T' ;
+
+	field store_searchable_sheet
+	      datatype boolean
+	      true_word 'T'
+	      false_word 'F'
+	      default 'F' ;
+
+	field page_data_reader
+	      links_to notebook_page_data_reader . page_data_reader_id ;
+
+	field page_transcriptor
+	      links_to notebook_page_transcriptor . page_transcriptor_id ;
 
 table analyst_page_entity ;
 
@@ -26934,6 +28024,12 @@ table analyst_notebook_page_template ;
 
 	field pdf_blob_id
 	      links_to blob_values . blob_id ;
+
+	field page_data_reader
+	      links_to notebook_page_data_reader . page_data_reader_id ;
+
+	field page_transcriptor
+	      links_to notebook_page_transcriptor . page_transcriptor_id ;
 
 table analyst_notebook_log ;
 
@@ -27018,6 +28114,38 @@ table dashboard_definition ;
 	field entity_type
 		datatype text ( 100 ) ;
 
+	field back_color
+		datatype text ( 50 ) ;
+
+	field padding
+		datatype integer
+		default 0
+		lower_limit 0
+		upper_limit 12 ;
+
+	field left_padding
+		datatype integer
+		default 0
+		lower_limit 0
+		upper_limit 12 ;
+
+	field top_padding
+		datatype integer
+		default 0
+		lower_limit 0
+		upper_limit 12 ;
+
+	field right_padding
+		datatype integer
+		default 0
+		lower_limit 0
+		upper_limit 12 ;
+
+	field bottom_padding
+		datatype integer
+		default 0
+		lower_limit 0
+		upper_limit 12 ;
 
 table dashboard_panel ;
 
@@ -27063,6 +28191,12 @@ table dashboard_panel ;
 		upper_limit 12 ;
 
 	field column_span
+		datatype integer
+		default 1
+		lower_limit 1
+		upper_limit 12 ;
+
+	field row_span
 		datatype integer
 		default 1
 		lower_limit 1
@@ -27120,7 +28254,7 @@ table dashboard_widget_parameter;
 	field parameter_type
 		datatype identity
 		prompt_type choose
-		choose_type P_PARA_TYP ;
+		choose_type W_PARA_TYP ;
 	
 	field value_mandatory
 		datatype boolean ;
@@ -27130,6 +28264,9 @@ table dashboard_widget_parameter;
 		
 	field widget_control_property
 		datatype text(234);
+
+	field parameter_image
+		links_to blob_values . blob_id ;
 
 table widget_definition;
 
@@ -27176,6 +28313,14 @@ table widget_definition;
 
 	field base_control
 		links_to widget_definition . widget_definition_guid;
+		
+	field category
+		datatype identity
+		default 'UNCA'
+		prompt_type phrase
+		valid
+		identities
+		phrase_type WIDGET_CAT ;
 
 table widget_definition_parameter;
 
@@ -27211,7 +28356,7 @@ table widget_definition_parameter;
 	field parameter_type
 		datatype identity
 		prompt_type choose
-		choose_type P_PARA_TYP ;
+		choose_type W_PARA_TYP ;
 
 	field parameter_phrase
 		links_to phrase_header . identity;
@@ -27238,6 +28383,789 @@ table widget_definition_parameter;
 	field widget_control_property
 		datatype text(234);
 
+table sweeper_header ;
+
+	field sweeper_header_guid
+	      used_for unique_key
+	      datatype guid ;
+
+	field machine_name
+	      used_for primary_browse, name
+	      datatype text (100);
+
+	field description
+	      used_for display_browse ( 3 )
+	      datatype text (234);
+
+	field group_id
+	      links_to group_header . identity 
+	      used_for security_id;
+
+	field modified_on
+	      used_for modified_on
+	      datatype date;
+
+	field modified_by
+	      links_to personnel . identity 
+	      used_for modified_by;
+
+	field modifiable
+	      used_for modifiable
+	      datatype boolean;
+
+	field removeflag
+	      used_for remove_flag
+	      datatype boolean;
+
+	field active
+	      datatype boolean
+	      true_word 'T'
+	      false_word 'F'
+	      default 'T';
+	
+	field frequency_seconds
+	      default 20
+	      datatype integer ;
+
+	field responsible_operator
+		links_to personnel . identity ;
+	
+	field distribution_list
+	      links_to printer . identity ;
+
+	field error_workflow_guid
+	      links_to workflow . workflow_guid  as error_workflow;
+
+	field error_workflow_version
+	      links_to workflow . workflow_version  as error_workflow;
+
+	field unresponsive_workflow_guid
+	      links_to workflow . workflow_guid  as unresponsive_workflow;
+
+	field unresponsive_workflow_version
+	      links_to workflow . workflow_version  as unresponsive_workflow;
+
+	field unresponsive_minutes
+	      default 60
+	      datatype integer ;
+
+	field unresponsive_message
+	      datatype text(500) ;
+
+table sweeper_entry ;
+
+	field sweeper_header_guid
+	      links_to parent  sweeper_header . sweeper_header_guid as sweeper ;
+
+	field entry_guid
+	      used_for unique_key
+	      datatype guid ;
+
+	field order_number
+	      used_for ordering, primary_browse
+	      datatype packed_decimal;
+	
+	field description
+	      used_for display_browse ( 5 )
+	      datatype text (234);
+
+	field client_source_directory
+	      used_for display_browse ( 2 )
+	      datatype text (500);
+
+	field client_destination_direction
+	      used_for display_browse ( 3 )
+	      datatype text (500);
+	
+	field file_filter
+	      used_for display_browse ( 4 )
+	      datatype text (100)
+	      default '*.txt';
+
+	field sweeper_type
+	      datatype text  ( 1 )
+	      used_for display_browse ( 6 )
+	      prompt_type choose
+	            choose_type SW_ACT_T;
+
+	field workflow_workflow_guid
+	      links_to workflow . workflow_guid  as workflow;
+
+	field workflow_workflow_version
+	      links_to workflow . workflow_version  as workflow;
+
+	field lab_import_definition_id
+	      links_to lab_import_definition . lab_import_definition_id  as lab_import_definition;
+
+	field active
+	      datatype boolean
+            used_for display_browse ( 7 )
+	      true_word 'T'
+	      false_word 'F'
+	      default 'T';
+	
+	field new_extension
+	      datatype text  ( 10 )
+            used_for display_browse ( 8 );
+
+table sweeper_log ;
+
+	field sweeper_header_guid
+	      links_to parent  sweeper_header . sweeper_header_guid as sweeper
+	      used_for unique_key;
+
+	field log_guid
+	      used_for unique_key
+	      datatype guid ;
+
+	field machine_name
+	      datatype text(100) used_for display_browse(3);
+	
+	field original_sweeper_name
+	      datatype text (100) used_for display_browse(2);
+
+	field order_number
+	      used_for ordering
+	      datatype packed_decimal;
+
+      field log_type
+	      datatype identity (10)
+	      prompt_type choose
+	      choose_type SW_LG_TYPE;
+
+	field log_time
+	      datatype date used_for primary_browse;
+
+	field client_information
+	      datatype text (500);
+
+	field log_information
+	      datatype text (4000) used_for display_browse(4);
+
+	field original_filename
+	      datatype text (500) used_for display_browse(5);
+
+	field original_folder
+	      datatype text(500) used_for display_browse(6);
+
+	field original_full_path
+	      datatype text (500) ;
+
+	field archived_file_blob
+	      links_to blob_values . blob_id ;
+
+	field data_size
+	      datatype text (100) used_for display_browse(8);
+
+	field entry_guid
+	      links_to sweeper_entry . entry_guid as sweeper_entry ;
+
+	field has_been_re_processed
+	      datatype boolean used_for display_browse(7);
+
+	field has_attachments
+	      datatype boolean
+	      used_for has_attachments ;
+
+table sweeper_check_in;
+
+	field sweeper_header
+	      links_to sweeper_header . sweeper_header_guid
+	      used_for unique_key ;
+
+	field check_in_time
+	      datatype date;
+	
+	field unresponsive_wflow_triggered
+	      datatype boolean
+	      true_word 'T'
+	      false_word 'F'
+	      default 'F';
+
+table plugin;
+
+	field key_guid
+	      used_for unique_key
+	      datatype guid ;
+
+	field name
+	      used_for primary_browse, name
+	      datatype text ( 100 );
+
+	field description
+	      used_for display_browse
+	      datatype text ( 255 ) ;
+
+	field plugin_provider
+	      datatype text ( 100 );
+
+	field plugin_type
+	      datatype text ( 100 );
+
+	field icon
+	      links_to icon . identity;
+
+	field default_for_type
+	      used_for display_browse
+	      datatype boolean;
+
+	field group_id
+	      links_to group_header.identity
+	      used_for security_id ;
+
+	field modified_on
+	      used_for modified_on
+	      datatype date;
+
+	field modified_by
+	      links_to personnel . identity 
+	      used_for modified_by;
+
+	field modifiable
+	      used_for modifiable
+	      datatype boolean;
+
+	field removeflag
+	      used_for remove_flag
+	      datatype boolean;
+
+
+table plugin_parameter;
+
+	field plugin_parameter_key
+	      used_for unique_key
+	      datatype guid;
+
+	field plugin
+	      links_to parent plugin . key_guid ;
+
+	field parameter_name
+	      datatype text ( 100 );
+
+	field parameter_value
+	      datatype text ( 2000 );
+
+table overview_layout;
+
+	field identity
+	    datatype identity ( 40 )
+	    used_for primary_browse, unique_key ;
+
+	field name
+	    datatype text ( 100 )
+	    used_for display_browse ( 2 ), name;
+
+	field description
+	    datatype text(234)
+	    used_for display_browse ( 3 ) ;
+
+	field group_id
+	    links_to group_header . identity
+	    used_for security_id ;
+
+	field modified_on
+	    datatype date
+	    used_for modified_on ;
+
+	field modified_by
+	    links_to personnel.identity
+	    used_for modified_by ;
+
+	field modifiable
+	    datatype boolean
+	    used_for modifiable ;
+
+	field removeflag
+	    datatype boolean
+	    used_for remove_flag ;
+
+	field null_cell_color
+	    default ''
+	    datatype text ( 50 ) ;
+
+	field show_explorer_rmb
+	    datatype boolean
+	    true_word 'T'
+	    false_word 'F'
+	    default 'T';
+
+table overview_entity_type ;
+
+	field overview_entity_type_guid
+	    datatype guid
+	    used_for unique_key ;
+
+	field overview_entity_type_id
+	    links_to parent overview_layout . identity as overview_layout ;
+
+	field entity_type
+	    datatype text ( 100 ) ;
+
+	field order_number
+		datatype packed_decimal
+		used_for ordering ;
+
+	field icon
+	    links_to icon . identity ;
+
+table overview_layout_column ;
+
+	field overview_layout_column_guid
+	    datatype guid
+	    used_for unique_key ;
+
+	field overview_entity_type_guid
+	    links_to parent overview_entity_type . overview_entity_type_guid as overview_entity_type ;
+	
+	field property_name
+	    datatype text ( 100 )
+	    used_for display_browse ( 2 ) ;
+
+	field property_expression
+	    datatype text ( 500 )
+	    used_for display_browse ( 3 ) ;
+
+	field icon_expression
+	    datatype text ( 500 ) ;
+
+	field title
+	    datatype text ( 234 )
+	    used_for display_browse ( 1 ) ;
+
+	field order_number
+	    datatype packed_decimal
+	    used_for ordering ;
+
+	field hide_if_empty
+	    datatype boolean
+	    true_word 'T'
+	    false_word 'F'
+	    default 'T';
+
+	field icon
+	    links_to icon . identity ;
+
+	field width
+	    datatype integer
+		default 200
+	    lower_limit 0
+	    upper_limit 99999 ;
+
+table overview_layout_column_format ;
+
+	field column_format_guid
+		datatype guid
+		used_for unique_key ;
+
+	field overview_layout_column_guid
+		links_to parent overview_layout_column . overview_layout_column_guid as overview_layout_column ;
+	
+	field order_number
+		datatype packed_decimal
+		used_for ordering ;
+
+	field expression
+		datatype text ( 500 )
+		used_for primary_browse, name ;
+
+	field bold
+	    datatype boolean ;
+
+	field italic
+	    datatype boolean ;
+
+	field underline
+	    datatype boolean ;
+
+	field strikeout
+	    datatype boolean ;
+
+	field back_color
+		datatype text ( 50 ) ;
+
+	field fore_color
+		datatype text ( 50 ) ;
+
+table clob_values ;
+
+	field clob_id
+	      datatype packed_decimal
+	      used_for unique_key ;
+	field is_binary
+	      datatype boolean;
+	field table_name
+	      datatype identity ( 40 ) ;
+	field field_name
+	      datatype identity ( 40 ) ;
+	field stored_file_name
+	      datatype text (1024);
+	field clob_field
+	      datatype clob ;
+
+view analyst_notebook_pages_view ;
+
+	field target_type
+	    links_to phrase . phrase_text ;
+	field target_identity
+	    links_to analyst_page_entity . target_identity 	;
+	field notebook_title
+	    links_to analyst_notebook . title 	;
+	field page_title
+	    links_to analyst_notebook_page . title ;
+
+select_clause
+
+	SELECT
+		[PHRASE].[PHRASE_TEXT] AS TARGET_TYPE,
+		[ANALYST_PAGE_ENTITY].[TARGET_IDENTITY] AS TARGET_IDENTITY,
+		[ANALYST_NOTEBOOK].[TITLE] AS NOTEBOOK_TITLE,
+		[ANALYST_NOTEBOOK_PAGE].[TITLE] AS PAGE_TITLE
+	FROM
+		[ANALYST_NOTEBOOK] INNER JOIN
+		[ANALYST_NOTEBOOK_PAGE] ON [ANALYST_NOTEBOOK].[NOTEBOOK_GUID] = [ANALYST_NOTEBOOK_PAGE].[ANALYST_NOTEBOOK_GUID] INNER JOIN
+		[ANALYST_PAGE_ENTITY] INNER JOIN
+		[PHRASE] ON [ANALYST_PAGE_ENTITY].[TARGET_TYPE] = [PHRASE].[PHRASE_ID]  ON [ANALYST_NOTEBOOK_PAGE].[PAGE_GUID] = [ANALYST_PAGE_ENTITY].[PAGE_GUID]
+	WHERE 
+		[PHRASE].[PHRASE_TYPE] LIKE 'ANPAGEENT';
+
+table statistical_script ;
+
+	field stat_script_definition_guid
+	      used_for unique_key
+	      datatype guid ;
+
+	field name
+	      used_for primary_browse, name 
+	      datatype text ( 100 ) ;
+
+	field description
+	      used_for display_browse
+	      datatype text ( 255 ) ;
+
+	field modified_on
+	      used_for modified_on
+	      datatype date ;
+
+	field modified_by
+	      links_to personnel . identity 
+	      used_for modified_by ;
+
+	field modifiable
+	      used_for modifiable
+	      datatype boolean ;
+
+	field remove_flag
+	      used_for remove_flag
+	      datatype boolean ;
+
+	field script
+	      links_to blob_values . blob_id ;
+
+	field input
+	      datatype text ( 255 ) ;
+
+	field output
+	      datatype text ( 255 ) ;
+
+	field remove_script_files
+	      datatype boolean 
+	      true_word 'T'
+	      false_word 'F'
+	      default 'T' ;
+
+	field lab_parsing_script_id
+	      links_to lab_parsing_script . lab_parsing_script_id as lab_parsing_script ;
+
+	field lab_parsing_script_version
+	      links_to lab_parsing_script . lab_parsing_script_version as lab_parsing_script ;
+
+table statistical_script_parameter ;
+
+	field statistical_script
+	      links_to parent statistical_script.stat_script_definition_guid;
+
+	field statistical_script_parameter_guid
+	       datatype guid
+	       used_for unique_key ;
+
+	field order_number
+	      datatype packed_decimal
+	      used_for ordering ;
+
+	field name
+	      datatype text ( 100 )
+	      used_for primary_browse, name ;
+
+	field description
+	      datatype text ( 234 )
+	      used_for display_browse ( 1 ) ;
+
+	field parameter_type
+	      datatype identity
+	      prompt_type choose
+	      choose_type STATSCRTYP
+	      default 'CSV' ;
+
+	field output
+	      datatype boolean ;
+
+table notification;
+
+	field notification_guid
+	      datatype guid
+	      used_for unique_key ;
+
+	field notified
+	      datatype boolean ;
+
+	field date_created
+	      datatype date 
+	      default '0' ;
+
+	field notification_text
+	      datatype text ( 2000 )
+	      used_for display_browse ( 4 ) ;
+
+	field operator_id
+	      links_to personnel . identity
+	      used_for display_browse ;
+
+	field notification_type
+	      datatype text ( 20 ) ;
+
+	field caption
+	      datatype text ( 100 ) ;
+
+	field icon
+	      datatype text ( 20 ) ;
+
+	field command
+	      datatype text ( 100 ) ;
+
+	field dismissed
+	      datatype boolean ;
+
+	field permanent_flag
+		datatype boolean ;
+
+	field expiry_date
+	      datatype date
+		default '0' ;
+
+table notebook_page_transcriptor ;
+
+	field page_transcriptor_id
+	      used_for unique_key
+	      datatype guid ;
+
+	field name
+	      used_for primary_browse, name
+	      datatype text ( 100 ) ;
+
+	field group_id
+	      links_to group_header . identity
+	      used_for security_id ;
+
+	field description
+	      used_for display_browse ( 3 )
+	      datatype text ( 255 ) ;
+
+	field modified_on
+	      used_for modified_on
+	      datatype date ;
+
+	field modified_by
+	      links_to personnel . identity
+	      used_for modified_by ;
+
+	field modifiable
+	      used_for modifiable
+	      datatype boolean ;
+
+	field remove_flag
+	      used_for remove_flag
+	      datatype boolean ;
+
+table notebook_transcriptor_entry ;
+
+	field transcriptor_entry_id
+	      used_for unique_key
+	      datatype guid ;
+
+	field transcriptor_id
+	      links_to parent notebook_page_transcriptor . page_transcriptor_id as notebook_page_transcriptor
+	      used_for unique_key ;
+
+	field order_number
+	      used_for ordering
+	      datatype packed_decimal ;
+
+	field context
+	      datatype text ( 100 ) ;
+		  
+	field analysis_id
+	      links_to versioned_analysis . identity as analysis ;
+
+	field analysis_version
+	      links_to versioned_analysis . analysis_version as analysis ;
+
+	field address_method
+	      datatype text (10)
+                prompt_type choose
+                choose_type LOOKUPMTHD ;
+
+	field address_argument
+	      datatype text ( 50 ) ;
+
+	field component_name
+	      datatype text ( 50 ) ;
+
+	field allow_ad_hoc
+	      datatype boolean ;
+
+	field skip_if_empty
+	      datatype boolean ;
+
+table notebook_page_data_reader ;
+
+	field page_data_reader_id
+	      used_for unique_key
+	      datatype guid ;
+
+	field name
+	      used_for primary_browse, name
+	      datatype text ( 100 ) ;
+
+	field group_id
+	      links_to group_header . identity
+	      used_for security_id ;
+
+	field description
+	      used_for display_browse ( 3 )
+	      datatype text ( 255 ) ;
+
+	field modified_on
+	      used_for modified_on
+	      datatype date ;
+
+	field modified_by
+	      links_to personnel . identity
+	      used_for modified_by ;
+
+	field modifiable
+	      used_for modifiable
+	      datatype boolean ;
+
+	field remove_flag
+	      used_for remove_flag
+	      datatype boolean ;
+	
+	field lab_data_source_id
+	      links_to lab_data_source . lab_data_source_id as lab_data_source ;
+
+	field lab_data_source_version
+	      links_to lab_data_source . lab_data_source_version as lab_data_source ;
+
+	field lab_parsing_script_id
+	      links_to lab_parsing_script . lab_parsing_script_id as lab_parsing_script ;
+
+	field lab_parsing_script_version
+	      links_to lab_parsing_script . lab_parsing_script_version as lab_parsing_script ;
+
+	field lab_alias_id
+	      links_to lab_alias . lab_alias_id as lab_alias ;
+
+	field lab_alias_version
+	      links_to lab_alias . lab_alias_version as lab_alias ;
+
+	field workflow_id
+	      links_to workflow . workflow_guid as workflow ;
+
+	field workflow_version
+	      links_to workflow . workflow_version as workflow ;
+
+	field commit_workflow_entities
+	      datatype boolean
+	      default 'T'
+	      true_word 'T'
+	      false_word 'F' ;
+
+	field link_entities_to_page
+	      datatype boolean
+	      default 'T'
+	      true_word 'T'
+	      false_word 'F' ;
+
+table notebook_data_reader_entry ;
+
+	field data_reader_entry_id
+	      used_for unique_key
+	      datatype guid ;
+
+	field data_reader_id
+	      links_to parent notebook_page_data_reader . page_data_reader_id as notebook_page_data_reader
+	      used_for unique_key ;
+
+	field order_number
+	      used_for ordering
+	      datatype packed_decimal ;
+
+	field variable_name
+	      datatype text ( 100 ) ;
+
+	field address_method
+	      datatype text (10)
+	          prompt_type choose
+	          choose_type LOOKUPMTHD ;
+
+	field address_argument
+	      datatype text ( 200 ) ;
+
+table notebook_wkflow_reader_entry ;
+
+	field workflow_reader_entry_id
+	      used_for unique_key
+	      datatype guid ;
+
+	field workflow_reader_id
+	      links_to parent notebook_page_data_reader . page_data_reader_id as notebook_page_data_reader
+	      used_for unique_key ;
+
+	field order_number
+	      used_for ordering
+	      datatype packed_decimal ;
+
+	field workflow_value
+	      datatype text ( 100 ) ;
+
+	field address_method
+	      datatype text (10)
+	          prompt_type choose
+	          choose_type LOOKUPMTHD ;
+
+	field address_argument
+	      datatype text ( 200 ) ;
+
+table lab_method_expert ;
+
+	field lab_method_expert_id
+	      datatype guid
+	      used_for unique_key ;
+
+	field lab_method_id
+	      links_to parent lab_method . lab_method_id as lab_method ;
+
+	field lab_method_version
+	      links_to parent lab_method . lab_method_version as lab_method ;
+
+	field order_num
+	      datatype packed_decimal
+	      used_for ordering ;
+
+	field operator 
+	      links_to personnel . identity ;
+	field comments
+	      datatype text ( 500 ) ;
 { 1.1 }
 
 table stb_article ;
@@ -33657,4 +35585,5 @@ select_clause
 {              * * * * 2.5 E N D   M O D I F I C A T I O N  * * * *               }
 {==============================================================================}
 {[END][SETUP-ID:B0AB64EE-AA95-4784-AA01-ED18758458AE][SETUPMODE:AUTO]-----[VWR]}
+
 
