@@ -209,9 +209,9 @@ field has_attachments
       used_for has_attachments ;
 
 table sample prompt_description 'STRUCTURE_SAMPLE'
-        noindex
-        oracle_location 'ACTIVE'
-        ;                            {2.0}
+        noindex ;
+
+        
 
         field   id_numeric
                 alias    idnumeric
@@ -1095,60 +1095,61 @@ field analytical_prot_no
 {/137}
 
 { 139.0}
+
+{/ 139.0}
+
+ {6.0 SAMPLE TABLE INDEXES}
  
      field labels_printed
            datatype date
            default '0' ; 
 
-{/ 139.0}
 
-    {6.0 SAMPLE TABLE INDEXES}
 
-         index sample_i unique on id_numeric
-               oracle_location 'ACTIVE_I'
-               ;
+         index sample_i unique on id_numeric ;
+          
 
-         index sample_group_id_numeric_index unique on status, group_id, id_numeric
-               oracle_location 'ACTIVE_I'
-               ;
-         index sample_group_id_text_index unique on status, group_id, id_text
-               oracle_location 'ACTIVE_I'
-               ;
+         index sample_group_id_numeric_index unique on status, group_id, id_numeric ;
+          
 
-         index sample_sampled_date_index on  sampled_date
-               oracle_location 'ACTIVE_I'
-               ;
-         index sample_login_date_index on    login_date
-               oracle_location 'ACTIVE_I'
-               ;
-         index sample_samp_point_index on    sampling_point
-               oracle_location 'ACTIVE_I'
-               ;
-         index sample_product_index on       product
-               oracle_location 'ACTIVE_I'
-               ;
-         index sample_test_schedule_index on test_schedule
-               oracle_location 'ACTIVE_I'
-               ;
-         index sample_template_index on      template_id
-               oracle_location 'ACTIVE_I'
-               ;
-         index sample_location_index on      location_id
-               oracle_location 'ACTIVE_I'
-               ;
-         index sample_batch_name_index on batch_name
-               oracle_location 'ACTIVE_I'
-               ;
+         index sample_group_id_text_index unique on status, group_id, id_text ;
+          
+
+         index sample_sampled_date_index on  sampled_date ;
+          
+
+         index sample_login_date_index on    login_date ;
+          
+
+         index sample_samp_point_index on    sampling_point ;
+          
+
+         index sample_product_index on       product ;
+             
+
+         index sample_test_schedule_index on test_schedule ;
+              
+
+         index sample_template_index on      template_id ;
+              
+
+         index sample_location_index on      location_id ;
+              
+              
+         index sample_batch_name_index on batch_name ;
+              
   
-     {/6.0}
+index sample_id_text_index unique on id_text ;
+
+index sample_job_name_index on job_name ;
+
+   
 
 collection child_formulation on sample_formulation using parent_sample;
 
 collection parent_formulation on sample_formulation using child_sample; 
 
-index sample_id_text_index unique on id_text ;
 
-index sample_job_name_index on job_name ;
 
 { The following index should be added when using groups on the sample table }
 { where group_id is the group field with used_for security_id               }
@@ -1182,9 +1183,9 @@ table sample_formulation;
 	      links_to unit_header.identity;
 
 
-table test noindex 
-      oracle_location 'ACTIVE'
-      ;   {7.0}
+table test noindex ;
+    
+     { oracle_location 'ACTIVE'      ; }  {7.0}
 
 field test_number datatype packed_decimal
       used_for unique_key;
@@ -1358,33 +1359,21 @@ field   test_flag
             true_word 'Yes'
             false_word 'No'
             default 'No';
-{/137}
 
-   {9.0 TEST TABLE INDEXES}
 
-index test_i unique on test_number                                      {93.0}
+index test_i unique on test_number                                  
         rdb_location 'HASH_STORAGE_AREA'
-      rdb_specific 'TYPE IS HASHED'
-      oracle_location 'ACTIVE_I'
-      ;
-
-index samp_anal_index on sample , analysis
-      oracle_location 'ACTIVE_I'
-      ;
-
-index test_analysis_index on analysis
-      oracle_location 'ACTIVE_I'
-      ;
-
-index test_worksheet on worksheet
-      oracle_location 'ACTIVE_I'                        
- 
- 
-{/9.0}      ;
-   
+      rdb_specific 'TYPE IS HASHED';
+    
 
 index samp_anal_index on sample , analysis ;
+    
 
+index test_analysis_index on analysis ;
+    
+
+index test_worksheet on worksheet ;
+                             
 
 index test_instrument_index on Instrument ;
 
@@ -1502,8 +1491,8 @@ field hazards                     {/101.0}
       datatype text (234);
 
 
-index anal_vers_grp on group_id
-	oracle_location 'STATIC_I';   {10.0}
+index anal_vers_grp on group_id ;
+	
 
 table versioned_component rename_table component;
 
@@ -1593,9 +1582,8 @@ field formula datatype text ( 500 )
 
 
 table result
-      noindex
-      oracle_location 'ACTIVE'
-      ;  {11.0}
+      noindex ;
+     
 
 field test_number
       links_to parent test . test_number
@@ -1729,15 +1717,13 @@ field im_ip datatype text (25);
 field empower_sampleset  datatype text(40); {/121.0}
 
 
-{15.0 RESULT TABLE INDEXES}
 
-index result_i unique on test_number , name
-    oracle_location 'ACTIVE_I'
-    ;
 
-index result_auth_date_index on date_authorised
-    oracle_location 'ACTIVE_I'
-    ;
+index result_i unique on test_number , name ;
+    
+
+index result_auth_date_index on date_authorised ;
+   
 
 {/15.0}
 
@@ -1861,7 +1847,9 @@ TABLE PREPARATION         ;
                 DATATYPE BOOLEAN
                 USED_FOR HAS_ATTACHMENTS ;
                 
-                index TEST_INDEX on group_id; {16.0}
+                index TEST_INDEX on group_id; 
+                
+                {16.0}
 
 table mlp_level
       alias mlp_levels;
@@ -2408,9 +2396,8 @@ field   comparison
         prompt_type choose       choose_type LIMIT_COMP;
 
 table worksheet
-      noindex
-      oracle_location 'ACTIVE_MISC'
-      ; {18.0}
+      noindex ;
+     
 
 field worksheet_type datatype identity
       prompt_type choose
@@ -2428,15 +2415,13 @@ field link_number alias worksheet_number datatype packed_decimal
       alias worksheet_link;
 field date_generated datatype date;
 
-{19.0 WORKSHEET TABLE INDEXES}
 
-index worksheet_i unique on worksheet_type, identity
-      oracle_location 'ACTIVE_MISC_I'
-      ;
 
-index worksheet_identity on identity
-      oracle_location 'ACTIVE_I'
-      ;
+index worksheet_i unique on worksheet_type, identity ;
+     
+
+index worksheet_identity on identity ;
+     
 
 
 {/19.0}
@@ -3079,9 +3064,8 @@ field instrument
 {/120}	
 
 table timerqueue
-      noindex
-      oracle_location 'ACTIVE_MISC'
-      ;   {22.0}
+      noindex ;
+     
 
 field entry_number datatype packed_decimal used_for unique_key;
 field run_time datatype date;
@@ -3124,13 +3108,9 @@ field event_type
         datatype integer
         default 1 ;
 
-{/24.0}
 
-{25.0}
-
-index timerqueue_i unique on entry_number
-      oracle_location 'ACTIVE_MISC_I'
-      ;
+index timerqueue_i unique on entry_number ;
+    
 
 {/25.0}
 
@@ -3597,9 +3577,8 @@ field listid         links_to samp_tmpl_header . identity used_for unique_key ;
 field order_num      datatype packed_decimal used_for unique_key , ordering ;
 
 table job_header 
-      noindex
-      oracle_location 'ACTIVE'
-      ;    {26.0}
+      noindex ;
+     
 
         field job_name
 
@@ -3832,9 +3811,6 @@ field smidi_lot                datatype text(20)                                
 
 {29.0}
 
-index job_header_i unique on job_name
-      oracle_location 'ACTIVE_I';
-
 {/29.0}
 
 {101.0}
@@ -3923,7 +3899,10 @@ index job_header_i unique on job_name
                 default 'DEFAULT'
                 valid identities
                 phrase_type RM_PROFILE;
-{\101.0}                
+
+
+index job_header_i unique on job_name ;
+    
 
 collection retain_samples on sample using retain_associated_job_name ;
 
@@ -4541,9 +4520,9 @@ field has_attachments
         used_for has_attachments;
 
 table audit_transaction 
-      noindex
-      oracle_location 'ACTIVE'
-      ;   {31.0}
+      noindex ;
+     
+
 
 field transaction
         datatype  packed_decimal
@@ -4565,22 +4544,20 @@ field transaction_date
 field session_id
         links_to access_log . session_id ;
 
-{32.0}
 
-index audit_session_id on session_id
-      oracle_location 'ACTIVE_I'
-      ;
 
-index audit_transaction_i unique on  transaction
-      oracle_location 'ACTIVE_I'
-      ;
+index audit_session_id on session_id ;
+     
+
+index audit_transaction_i unique on  transaction ;
+     
 
 {/32.0}
 
 table audit_event
-      noindex
-      oracle_location 'ACTIVE'
-      ;  {33.0}
+      noindex ;
+     
+
 
 field event
         datatype  packed_decimal
@@ -4609,21 +4586,18 @@ field event_reason
         prompt_type     phrase 			
         phrase_type     audit_text ;
 
-{34.0}
-index audit_table_no_index on table_name , record_key0
-      oracle_location 'ACTIVE_I'
-      ;
 
-index audit_event_i unique on event
-      oracle_location 'ACTIVE_I'
-      ;
+index audit_table_no_index on table_name , record_key0 ;
+     
+
+index audit_event_i unique on event ;
+     
 
 {/34.0}
 
 table audit_data 
-      noindex
-      oracle_location 'ACTIVE'
-      ;    {35.0}
+      noindex ;
+     
 
 field data
         datatype  packed_decimal
@@ -4665,21 +4639,15 @@ field real_after
         datatype real
         default NULL ;
 
-{36.0}
+
 
 index audit_field_index on event, field ;
 
-index audit_field_index on field
-      oracle_location 'ACTIVE_I'
-      ;
 
-index audit_data_i unique on data
-      oracle_location 'ACTIVE_I'
-      ;
+    
 
-index audit_event_index on event
-      oracle_location 'ACTIVE_I'
-      ;
+index audit_data_i unique on data;
+    
 {/36.0}
 
 view audit_values on_table audit_event       ,
@@ -5000,10 +4968,8 @@ table c_sample
       prompt_description 'STRUCTURE_SAMPLE'
       noindex
       parent_table sample
-      tableset default_table_set
-      oracle_location 'COMMITTED'		{38.0}  
-        ;  
-{39.0}
+      tableset default_table_set ;
+  
 
 index c_sample_id_text_index unique on id_text ;
 
@@ -5011,25 +4977,6 @@ index c_sample_job_name_index on job_name ;
 
 index c_sample_status_index unique on id_numeric , status ;
 
-index c_sample_i unique on id_numeric
-      oracle_location 'COMMITTED_I'
-      ;
-      
-index c_sample_id_text_index unique on id_text
-      oracle_location 'COMMITTED_I'
-      ;
-
-index c_sample_group_id_numeric_i unique on status, group_id, id_numeric
-      oracle_location 'COMMITTED_I'
-      ;
-
-index c_sample_group_id_text_index unique on status, group_id, id_text
-      oracle_location 'COMMITTED_I'
-      ;
-
-index c_sample_job_name_index on job_name
-      oracle_location 'COMMITTED_I'
-      ;
 
 {/39.0}
 
@@ -5042,27 +4989,9 @@ table c_sample_formulation
 table c_test
       noindex
       parent_table test
-      tableset default_table_set
-      oracle_location 'COMMITTED'
-      ; {40.0}
+      tableset default_table_set ;
+     
 
-{41.0}
-
-index c_test_i unique on test_number
-      rdb_location 'HASH_STORAGE_AREA'
-      rdb_specific 'TYPE IS HASHED'
-      oracle_location 'COMMITTED_I'
-      ;
-
-index c_samp_anal_index on sample , analysis
-      oracle_location 'COMMITTED_I'
-      ;
-
-index c_test_analysis_index on analysis
-      oracle_location 'COMMITTED_I'
-      ;
-
-{/41.0}
 
 index c_test_i unique on test_number
         rdb_location 'HASH_STORAGE_AREA'
@@ -5075,82 +5004,42 @@ index c_test_analysis_index on analysis ;
 table c_result 
       noindex
       parent_table result
-      tableset default_table_set
-      oracle_location 'COMMITTED'
-      ;  {42.0}
+      tableset default_table_set ;
+     
 
-{43.0}
-
-index c_result_i unique on test_number , name
-      oracle_location 'COMMITTED_I'
-      ;
-{/43.0}
 
 table c_job_header
       parent_table job_header
       noindex
-      tableset default_table_set
-      oracle_location 'COMMITTED';  {44.0}
+      tableset default_table_set ;
+     
 
-{45.0}
-index c_job_header_i unique on job_name
-      oracle_location 'COMMITTED_I'
-      ;
-{/45.0}
+
 
 table c_audit_transaction
       noindex
       parent_table audit_transaction
-      tableset default_table_set
-      oracle_location 'COMMITTED';  {46.0}
+      tableset default_table_set;
+     
 
-{47.0}
-index c_audit_transaction_i unique on transaction
-      oracle_location 'COMMITTED_I'
-      ; 
-{/47.0}
 
 table c_audit_event
       noindex
       parent_table audit_event
-      tableset default_table_set
-      oracle_location 'COMMITTED'
-      ; {48.0}
+      tableset default_table_set;
+     
 
-index c_audit_table_no_index on table_name , record_key0; {49.0}
-
-index c_audit_event_i unique on event
-      oracle_location 'COMMITTED_I'
-      ;
-
-index c_audit_table_no_index on table_name , record_key0
-      oracle_location 'COMMITTED_I'
-      ;
-{/49.0}
+index c_audit_table_no_index on table_name , record_key0; 
 
 table c_audit_data
       noindex
       parent_table audit_data
-      tableset default_table_set
-      oracle_location 'COMMITTED'
-      ; {50.0}
+      tableset default_table_set ;
+     
 
-{51.0}
 
-index c_audit_field_index on event, field ; {51.0}
 
-index c_audit_data_i unique on data
-      oracle_location 'COMMITTED_I'
-      ;
-
-index c_audit_event_index on event
-      oracle_location 'COMMITTED_I'
-      ;
-
-index c_audit_field_index on event, field                               {93.0}
-      oracle_location 'COMMITTED_I'
-      ;
-{/51.0}
+index c_audit_field_index on event, field ; 
 
 view c_audit_values
         parent_table audit_values
@@ -8373,9 +8262,9 @@ select_clause
 
 
 table access_log
-      noindex
-      oracle_location 'ACTIVE_MISC'
-      ; {61.0}
+      noindex ;
+      
+      
 
 field session_id
         datatype packed_decimal
@@ -8421,13 +8310,7 @@ field result
         true_word 'Success'
         false_word 'Failed' ;
 field logout_date
-        datatype date ;					{62.0}
-
-
-index access_log_i unique on session_id      
-      oracle_location 'ACTIVE_MISC_I'
-      ;
-{/62.0}
+        datatype date ;					
 
 table lims_table ;
 
@@ -16752,7 +16635,7 @@ table stock_batch;
         field modifiable
 		datatype boolean
 		used_for modifiable;
-{/133.0}
+
 
 index stock_batch_stock_loc_batch on stock, location, batch;
 index stock_batch_batch on batch, stock;
@@ -32636,7 +32519,7 @@ TABLE smidi_background;
 	field modified_by       links_to personnel.identity     used_for modified_by                     ;
 	field removeflag        datatype boolean                used_for remove_flag                     ;
 
-TABLE smidi_logfiles ORACLE_SPECIFIC 'storage (initial 2M next 1M)' noindex;
+TABLE smidi_logfiles noindex ; 
 	field service         links_to smidi_background.service      used_for unique_key              ;
 	field order_number      links_to smidi_background.service  used_for unique_key,ordering     ;
 	field smidi_logfile     datatype text(80)               allowed_characters '0..9a..zA..Z/_#$.:\' ;
@@ -32736,7 +32619,7 @@ TABLE smidi_query;
 	field modifiable         datatype boolean               used_for modifiable                      ;
 	field removeflag         datatype boolean               used_for remove_flag                     ;
 
-TABLE smidi_points_query ORACLE_SPECIFIC 'storage (initial 2M next 1M)';
+TABLE smidi_points_query; {ORACLE_SPECIFIC 'storage (initial 2M next 1M)'; }
 	field smidi_system       links_to smidi_system.identity   used_for unique_key                    ;
 	field from_ip_lot        datatype identity(12)            used_for unique_key                    ;
 	field from_ip_op_no      datatype text(4)                 used_for unique_key                    ;
@@ -32796,7 +32679,7 @@ TABLE smidi_points_query ORACLE_SPECIFIC 'storage (initial 2M next 1M)';
 { SMIDI tables for download/upload and background processes            }
 {**********************************************************************}
 
-TABLE smidi_download_queue ORACLE_SPECIFIC 'storage (initial 2M next 2M)' noindex;
+TABLE smidi_download_queue noindex;
 	field smidi_system      links_to smidi_system.identity    used_for unique_key                    ;
 	field smidi_query       links_to smidi_query.identity     used_for unique_key                    ;
 	field sap_lot           datatype text(22)                 used_for unique_key                    ;
@@ -32813,9 +32696,9 @@ TABLE smidi_download_queue ORACLE_SPECIFIC 'storage (initial 2M next 2M)' noinde
 	field subsystem         datatype text(6)                                                         ;
 	field message           datatype text(1200);
 
-	INDEX smidi_download_queue_i unique on smidi_system,smidi_query,sap_lot,sap_object,order_number ORACLE_SPECIFIC 'storage (initial 1M next 1M)';
+	INDEX smidi_download_queue_i unique on smidi_system,smidi_query,sap_lot,sap_object,order_number;
 
-TABLE smidi_upload_queue 	ORACLE_SPECIFIC 'storage (initial 1M next 1M)' noindex;
+TABLE smidi_upload_queue noindex ;	
 	field job_name            datatype text(30)               used_for unique_key                    ;
 	field id_numeric          datatype text(20)               used_for unique_key                    ;
 	field test_number         datatype text(20)               used_for unique_key                    ;
@@ -32865,17 +32748,17 @@ TABLE smidi_upload_queue 	ORACLE_SPECIFIC 'storage (initial 1M next 1M)' noindex
 	field qmidi_object        links_to smidi_system.qmidi_object                                     ;
 	field error               datatype text(100)                                                     ;
 
-	INDEX smidi_upload_q1     on smidi_lot,sap_result_conf_no ORACLE_SPECIFIC 'storage  (initial 1M next 1M)';
+	INDEX smidi_upload_q1     on smidi_lot,sap_result_conf_no ; 
 
 {**********************************************************************}
 { SMIDI tables low level SAP objects                                   }
 {**********************************************************************}
 
-TABLE smidi_insppoint ORACLE_SPECIFIC 'storage (initial 1M next 1M)' noindex
-      oracle_location 'ACTIVE_MISC'
-    ;                                                           { 67.0 }
+TABLE smidi_insppoint noindex ;
 
-	field smidi_system            links_to smidi_system.identity    used_for unique_key              ;
+
+
+      field smidi_system            links_to smidi_system.identity    used_for unique_key              ;
 	field request_key             datatype text(22)                 used_for unique_key              ;
 	field job                     links_to job_header.job_name                                       ;
 	field sample                  links_to sample.id_numeric                                         ;
@@ -32908,19 +32791,16 @@ TABLE smidi_insppoint ORACLE_SPECIFIC 'storage (initial 1M next 1M)' noindex
 	field qmidi_object            links_to smidi_system.qmidi_object                                 ;
 	field message                 datatype text(234)                                                 ;
 
-{ 67.0 }
-	INDEX smidi_insppoint_i unique on smidi_system,request_key ORACLE_SPECIFIC 'storage  (initial 1M next 1M)'
-      oracle_location 'ACTIVE_MISC_I'    ;
 
-	INDEX smidi_request_key        on request_key ORACLE_SPECIFIC 'storage  (initial 1M next 1M)'
-      oracle_location 'ACTIVE_MISC_I'    ;
-
-{ end 67.0 }
+	INDEX smidi_insppoint_i unique on smidi_system,request_key ;
+      
+      INDEX smidi_request_key        on request_key ;
 
 
-TABLE smidi_request_header ORACLE_SPECIFIC 'storage (initial 1M next 1M)'
-       oracle_location 'ACTIVE_MISC'
-     ;                                                   { 67.0 }
+
+
+TABLE smidi_request_header ;
+
 
 	field smidi_system            links_to smidi_system.identity    used_for unique_key              ;
 	field request_key             datatype text(30)                 used_for unique_key              ;
@@ -32932,24 +32812,19 @@ TABLE smidi_request_header ORACLE_SPECIFIC 'storage (initial 1M next 1M)'
 	field message                 datatype text(1000)                                                ;
 	field qiwlr                   datatype text(200)                                                 ;
 
-{ 67.0 }
-
- index smidi_req_head_job_i on job_key               
-       oracle_location 'ACTIVE_MISC_I'
-       ;
-
-{ Already exists 
- index smidi_request_header_i unique on smidi_system, request_key
-       oracle_location 'ACTIVE_MISC_I'
-          ;
-}
-
-{ end 67.0 }
 
 
-TABLE smidi_request_record ORACLE_SPECIFIC 'storage (initial 1M next 1M)'
-     oracle_location 'ACTIVE_MISC'
-       ;   
+ index smidi_req_head_job_i on job_key ;     
+
+   
+
+
+
+TABLE smidi_request_record ;
+
+
+
+
 	field smidi_system            links_to smidi_system.identity    used_for unique_key              ;
 	field request_key             datatype text(30)                 used_for unique_key              ;
 	field result_key              datatype text(20)                 used_for unique_key              ;
@@ -32974,20 +32849,13 @@ TABLE smidi_request_record ORACLE_SPECIFIC 'storage (initial 1M next 1M)'
 	field qmidi_object            links_to smidi_system.qmidi_object                                 ;
 	field userinfo                datatype text(1);
 
-{ 67.0 }
 
-	INDEX smidi_request_1    unique on smidi_lot,result_key                 ORACLE_SPECIFIC 'storage  (initial 1M next 1M)'
-    oracle_location 'ACTIVE_MISC_I';  { <- result.sap_result_conf_no exists              }
-	INDEX smidi_lot_ana_comp        on smidi_lot,analysis_id,component_name ORACLE_SPECIFIC 'storage  (initial 1M next 1M)'
-    oracle_location 'ACTIVE_MISC_I';  { <-- if you do NOT have result.sap_result_conf_no }
 
-{ Already exists 
-      INDEX smidi_request_record_i unique on smidi_system, request_key, result_key ORACLE_SPECIFIC 'storage  (initial 1M next 1M)'
-                oracle_location 'ACTIVE_MISC_I'
-                 ;
-}
+	INDEX smidi_request_1    unique on smidi_lot,result_key ;
 
-{ end 67.0 }
+       INDEX smidi_lot_ana_comp        on smidi_lot,analysis_id,component_name ;
+
+
 
 
 {**********************************************************************}
@@ -36547,11 +36415,8 @@ table mill_int_sset;  { SM-Millennium Interface SampleSet Table }
         datatype text;
 
     field status
-        datatype integer; { 0 = Not Processed
-                            1 = In Process No Results 
-                            2 = In Process Results Received
-                            3 = Results Entered   }
-
+        datatype integer; 
+        
 
 index mill_int_sset_transid_index on transaction_id ;
 
@@ -36631,17 +36496,14 @@ table mill_int_rset; { SM-Millennium Interface ResultSet Table }
         datatype date;
 
     field status
-        datatype integer; { 0 = No Result
-                            1 = Results Received
-                            2 = Results Entered }
-
+        datatype integer;
 
 index mill_int_rset_test_index on test_number_key ;
 index mill_int_rset_name_index on name_key ;
 index mill_int_rset_analysis_index on analysis ;
 index mill_int_rset_injection_index on injection_order ;
 index mill_int_rset_res_type_index on mill_res_type;
-index mill_int_rset_vial_no_index on vial_no;
+index mill_int_rset_vial_no_index on vial_no; 
 
 table mill_int_trans_c;
 
@@ -38895,8 +38757,8 @@ table wsheet_tmpl_entry;
               false_word 'No'
               default 'Yes';
 
-table wsheet_info
-      oracle_location 'VGSM_DB' noindex;
+table wsheet_info noindex ;
+      
 
         field worksheet_id
               datatype text(20)
@@ -38950,11 +38812,11 @@ table wsheet_info
         field reason
               datatype text ( 234 );
 
-index wsheet_info_test_number_index on test_number 
-      oracle_location 'VGSM_DB';
+index wsheet_info_test_number_index on test_number ; 
+     
 
-index wsheet_info_identity_index on identity 
-      oracle_location 'VGSM_DB';
+index wsheet_info_identity_index on identity ;
+      
 
 view wsheet_info_view on_table sample,
                                test,
