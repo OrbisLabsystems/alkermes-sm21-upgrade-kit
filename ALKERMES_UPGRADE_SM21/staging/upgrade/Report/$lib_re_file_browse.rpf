@@ -1,0 +1,603 @@
+{******************************************************************************
+*
+* Module Name   :
+*
+* Purpose       :
+*
+* Document Ref. :
+*
+* Specification :
+*
+* Portability   : Not Checked
+*
+* Re-entrant    : Yes
+*
+*******************************************************************************
+*
+* Modification History
+* 
+* Reference   Date          By             Description
+* ---------   ------------  -----------    -------------------------------------
+* 1.1         07-DEC-2015   M. Allen E Gavin Add date to the filename. TS1600031896
+
+*******************************************************************************}
+
+SET COMPILE_OPTION DECLARE
+SET NOTPROTECTED
+
+{******************************************************************************}
+
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $PROMPT_FILE
+
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_CLIENT
+JOIN STANDARD_LIBRARY STD_DDE
+JOIN STANDARD_LIBRARY STD_MESSAGE
+JOIN STANDARD_LIBRARY STD_OUTPUT
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_TRANSFER
+JOIN STANDARD_LIBRARY STD_DATABASE
+
+{******************************************************************************}
+
+CONSTANT SMP_TEXTFILE  = "SMP$TEXTFILES"
+CONSTANT USE_GUID_NAME = TRUE
+
+CONSTANT LINKED_RADIO_POS = 1
+CONSTANT LINKED_NAME_POS  = 2
+CONSTANT SERVER_NAME_POS  = 4
+CONSTANT CLIENT_NAME_POS  = 5
+
+{******************************************************************************}
+
+GLOBAL
+
+ROUTINE lib_re_file_browse_file_view ( result_object )
+
+{
+*	View the file associated with this result
+*
+*******************************************************************************}
+
+	DECLARE result_type, file_name
+
+	IF ( result_object <> EMPTY )
+
+		result_type = result_object . get_result_type ( )
+
+		IF ( result_type = "F" )
+
+			file_name = result_object . result_str
+
+			IF ( ( file_name <> EMPTY ) AND NOT ( BLANK ( file_name ) ) ) THEN
+
+				file_name = STRIP ( file_name )
+				lib_re_file_browse_show_file ( file_name )
+
+			ENDIF
+
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_re_file_browse_show_file ( file_name )
+
+{
+*	Lookup the appropraite application for the passed file name
+*
+*******************************************************************************}
+
+	DECLARE client_file_name ,
+	        status           ,
+	        attrib           ,
+	        date_created     ,
+	        date_modified    ,
+	        high_size        ,
+	        low_size         ,
+	        mess_ptr
+
+	status = EMPTY
+
+	IF FILE EXISTS ( file_name ) THEN
+
+		client_file_name = client_temporary_file ( ) : "." :
+		                   lib_re_file_browse_get_file_extension ( file_name )
+
+		transfer_binary_from_server ( file_name, client_file_name )
+
+	ELSEIF client_get_file_attributes ( file_name     ,
+	                                    attrib        ,
+	                                    date_created  ,
+	                                    date_modified ,
+	                                    high_size     ,
+	                                    low_size      ) THEN
+
+		client_file_name = client_temporary_file ( ) : "." :
+		                   lib_re_file_browse_get_file_extension ( file_name )
+
+		client_copy_file ( file_name, client_file_name )
+
+	ELSE
+
+		message_fetch ( "RE_FILE_NOT_FOUND" , mess_ptr )
+		message_add_parameter ( mess_ptr, file_name )
+		status = message_get_text ( mess_ptr , 1 )
+
+	ENDIF
+
+	IF status = EMPTY THEN
+
+		IF NOT client_shell_execute ( client_file_name ) THEN
+
+			message_fetch ( "RE_FILE_APP_NOT_FOUND" , mess_ptr )
+			message_add_parameter ( mess_ptr, file_name )
+			status = message_get_text ( mess_ptr , 1 )
+
+		ENDIF
+
+	ENDIF
+
+	IF status <> EMPTY THEN
+
+		flash_message ( status, TRUE )
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+GLOBAL
+
+ROUTINE lib_re_file_browse_choose_file ( file_prompt )
+
+{
+*	Allow user to choose a file for association or upload
+*
+*******************************************************************************}
+
+	DECLARE radio1 ,
+	        radio2 ,
+	        browse_form ,
+	        start_column ,
+	        prompt_width ,
+	        linked_file_object ,
+	        server_file_object ,
+	        upload_file_object ,
+	        upload_button ,
+	        can_exit ,
+	        is_server_file ,
+	        button_width ,
+	        button_space ,
+	        button_column ,
+	        button_prompt
+
+	is_server_file = lib_re_file_browse_is_server_file ( file_prompt )
+
+	CREATE OBJECT PROMPT_CLASS_FORM , browse_form
+
+	browse_form . height           = 10
+	browse_form . width            = 70
+	browse_form . row              = 12
+	browse_form . column           = (( GLOBAL ( "SCREEN_WIDTH" ) - 70 ) DIV 2 )
+	browse_form . border           = TRUE
+	browse_form . header           = get_user_message ( "RE_FILE_BROWSE_HEADER", 1 )
+	browse_form . prompt_id        = "$LIB_RE_FILE_BROWSE"
+	browse_form . button_style     = FORM_BUTTON_NONE
+
+	start_column = 4
+	prompt_width = 17
+
+	{ Add the linked file prompts }
+
+	browse_form . add_frame ( "", 1, 2, 1, browse_form . width)
+
+	PROMPT OBJECT radio1
+	    ON LINE 1 FROM 2
+	    FORMAT BOOLEAN
+	    WITH ( is_radio        = TRUE                                          ,
+	           toggled_routine = "toggle_context_routine"                      ,
+	           value           = NOT is_server_file                            ,
+	           user_info       = 1                                             ,
+	           vgl_library     = GLOBAL ( "CURRENT_LIBRARY" )                  ,
+	           caption         = get_user_message ( "RE_FILE_RADIO_LINKED", 1 ))
+
+	browse_form . add_prompt ( radio1 )
+
+	browse_form . add_display ( get_user_message ( "RE_FILE_NAME_LINKED", 1 )   ,
+	                            start_column                                    ,
+	                            2                                               ,
+	                            PROMPT_RENDITION_RAISED + PROMPT_RENDITION_BOLD )
+
+	PROMPT OBJECT linked_file_object
+		BROWSE ON FILE
+		ON LINE 2 FROM ( start_column + prompt_width )
+		TO browse_form . width - 3
+		WITH ( client_file    = TRUE                         ,
+		       vgl_library    = GLOBAL ( "CURRENT_LIBRARY" ) ,
+		       allow_multiple = FALSE                        ,
+		       format_only    = FALSE                        ,
+		       enabled        = NOT is_server_file           )
+
+	browse_form . add_prompt ( linked_file_object )
+
+	{ Add the upload file prompts }
+
+	browse_form . add_frame ( "", 1, 5, 3, browse_form . width)
+
+	PROMPT OBJECT radio2
+	    ON LINE 4 FROM 2
+	    FORMAT BOOLEAN
+	    WITH ( is_radio        = TRUE                                          ,
+	           toggled_routine = "toggle_context_routine"                      ,
+	           value           = is_server_file                                ,
+	           user_info       = 2                                             ,
+	           vgl_library     = GLOBAL ( "CURRENT_LIBRARY" )                  ,
+	           caption         = get_user_message ( "RE_FILE_RADIO_UPLOAD", 1 ))
+
+	browse_form . add_prompt ( radio2 )
+
+	browse_form . add_display ( get_user_message ( "RE_FILE_SERVER_NAME_UPLOAD", 1 ),
+	                            start_column                                        ,
+	                            5                                                   ,
+	                            PROMPT_RENDITION_RAISED + PROMPT_RENDITION_BOLD     )
+
+	PROMPT OBJECT server_file_object
+		FORMAT TEXT
+		ON LINE 5 FROM ( start_column + prompt_width )
+		TO browse_form . width - 3
+		WITH ( enabled = FALSE )
+
+	browse_form . add_prompt ( server_file_object )
+
+	browse_form . add_display ( get_user_message ( "RE_FILE_CLIENT_NAME_UPLOAD", 1 ),
+	                            start_column                                        ,
+	                            6                                                   ,
+	                            PROMPT_RENDITION_RAISED + PROMPT_RENDITION_BOLD     )
+
+	PROMPT OBJECT upload_file_object
+		FORMAT TEXT
+		ON LINE 6 FROM ( start_column + prompt_width )
+		TO browse_form . width - 3
+		WITH ( enabled = FALSE )
+
+	browse_form . add_prompt ( upload_file_object )
+
+	PROMPT OBJECT upload_button
+		CLASS "STD_PROMPT_BUTTON"
+		WITH ( caption             = get_user_message ( "RE_FILE_BUTTON_UPLOAD", 1 ),
+		       row                 = 7.2                                            ,
+		       column              = start_column + prompt_width                    ,
+		       width               = 11                                             ,
+		       height              = 0.8                                            ,
+		       enabled             = is_server_file                                 ,
+		       mouse_click_routine = "LIB_RE_FILE_BROWSE_UPLOAD_FILE"               ,
+		       user_info           = file_prompt                                    )
+
+	browse_form . add_prompt ( upload_button )
+
+	{ Add buttons }
+
+	button_width  = 10
+	button_space  = (browse_form . width - ( 4 * button_width )) DIV 5
+	button_column = button_space
+
+	PROMPT OBJECT button_prompt
+		CLASS "STD_PROMPT_BUTTON"
+		WITH ( caption             = get_user_message ( "SMP_PROMPT_BUTTON_OK", 1 ) ,
+		       row                 = 9                                              ,
+		       column              = button_column                                  ,
+		       width               = button_width                                   ,
+		       send_lastkey        = "DO"                                           )
+
+	browse_form . add_prompt ( button_prompt )
+
+	button_column = button_column + button_width + button_space
+
+	PROMPT OBJECT button_prompt
+		CLASS "STD_PROMPT_BUTTON"
+		WITH ( caption             = get_user_message ( "RE_FILE_BUTTON_VIEW", 1 ) ,
+		       row                 = 9                                             ,
+		       column              = button_column                                 ,
+		       width               = button_width                                  ,
+		       user_info           = file_prompt                                   ,
+		       vgl_library         = GLOBAL ( "CURRENT_LIBRARY" )                  ,
+		       mouse_click_routine = "LIB_RE_FILE_BROWSE_VIEW_CLICK"               )
+
+	browse_form . add_prompt ( button_prompt )
+
+	button_column = button_column + button_width + button_space
+
+	PROMPT OBJECT button_prompt
+		CLASS "STD_PROMPT_BUTTON"
+		WITH ( caption             = get_user_message ( "SMP_PROMPT_BUTTON_HELP", 1 ) ,
+		       row                 = 9                                                ,
+		       column              = button_column                                    ,
+		       width               = button_width                                     ,
+		       send_lastkey        = "HELP"                                           )
+
+	browse_form . add_prompt ( button_prompt )
+
+	button_column = button_column + button_width + button_space
+
+	PROMPT OBJECT button_prompt
+		CLASS "STD_PROMPT_BUTTON"
+		WITH ( caption             = get_user_message ( "SMP_PROMPT_BUTTON_CANCEL", 1 ) ,
+		       row                 = 9                                                  ,
+		       column              = button_column                                      ,
+		       width               = button_width                                       ,
+		       send_lastkey        = "EXIT"                                             )
+
+	browse_form . add_prompt ( button_prompt )
+
+	IF is_server_file THEN
+		server_file_object . value = file_prompt . value
+	ELSE
+		linked_file_object . value = file_prompt . value
+	ENDIF
+
+	{ Run the form }
+
+	browse_form . start_prompt ( )
+
+	REPEAT
+
+		browse_form . wait_prompt ( )
+
+		can_exit = TRUE
+
+		IF ( browse_form . get_lastkey ( ) <> "EXIT" ) THEN
+
+			IF ( radio1 . value ) THEN
+
+				IF ( BLANK ( linked_file_object . value )) THEN
+					can_exit = FALSE
+				ELSE
+					file_prompt . set_text ( linked_file_object . value )
+				ENDIF
+
+			ELSEIF ( radio2 . value ) THEN
+
+				IF BLANK ( server_file_object . value ) OR
+				   BLANK ( upload_file_object . value ) THEN
+					can_exit = FALSE
+				ELSE
+
+					transfer_binary_to_server ( upload_file_object . value ,
+					                            server_file_object . value )
+
+					file_prompt . set_text ( server_file_object . value )
+
+				ENDIF
+
+			ELSE
+
+				can_exit = FALSE
+
+			ENDIF
+
+		ENDIF
+
+	UNTIL can_exit
+
+	browse_form . end_prompt ( )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_re_file_browse_upload_file ( upload_button )
+
+{
+*	Upload the client file
+*
+*******************************************************************************}
+
+	DECLARE client_file ,
+	        file_extn ,
+	        server_file
+
+ {1.1}       		
+	DECLARE date_txt
+	        
+        SET DATE FORMAT "YYYYMZDZH24MISS"
+        date_txt = NOW
+ {/1.1}
+
+	client_file = client_find_file ( FALSE                                                 ,
+	                                 ""                                                    ,
+	                                 ""                                                    ,
+	                                 get_user_message ( "RE_FILE_FILTER", 1 )              ,
+	                                 get_user_message ( "RE_FILE_CLIENT_BROWSE_HEADER", 1 ),
+	                                 ""                                                    )
+
+	IF client_file <> EMPTY THEN
+
+		upload_button . parent_prompt . prompt_objects [5] .
+		                                  set_text ( client_file )
+
+		file_extn = lib_re_file_browse_get_file_extension ( client_file )
+
+		server_file = lib_re_file_browse_form_server_name
+		                          ( upload_button . user_info )
+
+		server_file = server_file : date_txt : "." : file_extn  {1.1}
+
+		upload_button . parent_prompt . prompt_objects [4] .
+		                                  set_text ( server_file )
+
+	ENDIF
+
+      RESTORE DATE FORMAT {1.1}
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_re_file_browse_view_click ( button )
+
+{
+*	Upload the client file
+*
+*******************************************************************************}
+
+	DECLARE form
+
+	form = button . parent_prompt
+
+	IF form . prompt_objects [ LINKED_RADIO_POS ] . value THEN
+
+		lib_re_file_browse_show_file (
+		     form . prompt_objects [ LINKED_NAME_POS ] . value  )
+
+	ELSEIF FILE EXISTS ( form . prompt_objects [ SERVER_NAME_POS ] . value ) THEN
+
+		lib_re_file_browse_show_file (
+		     form . prompt_objects [ SERVER_NAME_POS ] . value  )
+
+	ELSE
+
+		lib_re_file_browse_show_file (
+		     form . prompt_objects [ CLIENT_NAME_POS ] . value  )
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_re_file_browse_form_server_name ( file_prompt )
+
+{
+*	Allow user to choose a file for association or upload
+*
+*******************************************************************************}
+
+	DECLARE result_object ,
+	        test_number ,
+	        name ,
+	        directory ,
+	        file_name
+
+	result_object = file_prompt . user_info
+
+	test_number = SELECT result . test_number IN OBJECT result_object
+	test_number = SUBSTITUTE ( test_number, " ", "0" )
+
+	IF ( USE_GUID_NAME ) THEN
+
+		{ There should never be a duplicate name, but lets make sure }
+
+		REPEAT
+
+			name = GENERATE_GUID ( )
+			name = "-" : TOLOWER ( name )
+			name = test_number : STRIP ( name )
+
+			file_name = SMP_TEXTFILE : ":" : name
+
+		UNTIL ( NOT FILE EXISTS ( file_name ) )
+
+	ELSE
+
+		name = SELECT result . name IN OBJECT result_object
+		name = test_number : STRIP ( name )
+
+	ENDIF
+
+	directory = lib_utils_logical_to_string ( SMP_TEXTFILE )
+
+	RETURN ( directory : "\" : name )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_re_file_browse_get_file_extension ( client_file )
+
+{
+*	Find the extension of the passed file name
+*
+*******************************************************************************}
+
+	DECLARE last_char_pos ,
+	        char_pos ,
+	        name_len
+
+	last_char_pos = 0
+	name_len      = STRINGLENGTH ( client_file )
+	char_pos      = INDEX ( client_file , "." )
+
+	WHILE ( char_pos <> last_char_pos ) DO
+		last_char_pos = char_pos
+		char_pos = char_pos +
+		           INDEX ( RIGHTSTRING ( client_file           ,
+		                                 name_len - char_pos ) ,
+		                   "." )
+	ENDWHILE
+
+	RETURN ( RIGHTSTRING ( client_file, name_len - char_pos ))
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_re_file_browse_is_server_file ( file_prompt )
+
+{
+*	Allow user to choose a file for association or upload
+*
+*******************************************************************************}
+
+	DECLARE upload_file_name ,
+	        is_server_file
+
+	upload_file_name = lib_re_file_browse_form_server_name ( file_prompt )
+
+	IF INDEX ( TOUPPER ( file_prompt . value) , TOUPPER ( upload_file_name )) = 1 THEN
+
+		is_server_file = FILE EXISTS ( file_prompt . value )
+
+	ELSE
+
+		is_server_file = FALSE
+
+	ENDIF
+
+	RETURN ( is_server_file )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE toggle_context_routine ( self )
+
+{
+*	Allow user to choose a file for association or upload
+*
+*******************************************************************************}
+
+	DECLARE set_associated
+
+	IF ( self . user_info = 1 ) THEN
+		set_associated = self . value
+	ELSE
+		set_associated = NOT self . value
+	ENDIF
+
+	self . parent_prompt . prompt_objects [1] . set_text ( set_associated )
+	self . parent_prompt . prompt_objects [3] . set_text ( NOT set_associated )
+
+	self . parent_prompt . prompt_objects [2] . set_enabled ( set_associated )
+	self . parent_prompt . prompt_objects [6] . set_enabled ( NOT set_associated )
+
+ENDROUTINE
+
+{******************************************************************************}
+{******************************************************************************}
+{******************************************************************************}

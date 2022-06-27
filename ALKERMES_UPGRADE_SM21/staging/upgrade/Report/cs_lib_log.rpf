@@ -1,0 +1,742 @@
+{
+
+Program :   CS_LIB_LOG
+
+Description :
+
+Modificaton History
+
+SM      Ref.    Change  Date        Name                Description
+------- ------- ------- ----------- ------------------- -------------------------------------------------------
+2002-R1 1       SM79    01-MAY-2004 Ken Jacobs          Redesigned from original Ken Jacobs idea
+
+9.2.1   2       ABN200  29-SEP-2008 Ken Jacobs          Correct writing of client and server time for SM9
+
+9.2.1   3       CS040   05-JUL-2010 Ken Jacobs          Add race2 & transaction2
+
+2001-R1	4	KJ1	04-AUG-2010 Ken Jacobs          Comment out 9+ function
+
+}
+
+{ ---------------------------------------------------------------------------------------------------- }
+
+SET COMPILE_OPTION DECLARE
+
+
+JOIN STANDARD_LIBRARY std_array
+JOIN STANDARD_LIBRARY std_class
+JOIN STANDARD_LIBRARY std_general
+JOIN STANDARD_LIBRARY std_global
+
+JOIN LIBRARY $lib_utils
+
+ENABLE WINDOWS
+
+{ ---------------------------------------------------------------------------------------------------- }
+
+GLOBAL CONSTANT LOG_FILE_CLASS             = "CS_LOG_FILE_CLASS"
+
+GLOBAL CONSTANT CACHE_FLUSH_NEVER          = "Cache Flush Never"               { Never flush cache - cache has to be flushed by calling program }
+GLOBAL CONSTANT CACHE_FLUSH_ERROR_TRANS    = "Cache Flush Error/Transaction"   { Flush cache after every error or transaction message - allow for caching of trace messages only }
+GLOBAL CONSTANT CACHE_FLUSH_EVERY_MESSAGE  = "Cache Flush Every Message"       { flush cache after every message}
+
+{ ---------------------------------------------------------------------------------------------------- }
+
+CONSTANT LOG_FILE_MESSAGE_CACHE_CLASS = "CS_LOG_FILE_MESSAGE_CACHE_CLASS"
+
+CONSTANT MESSAGE_FATAL        = "FATAL"
+CONSTANT MESSAGE_ERROR        = "ERROR"
+CONSTANT MESSAGE_WARNING      = "WARN "
+CONSTANT MESSAGE_TRANSACTION  = "TRANS"
+CONSTANT MESSAGE_TRACE        = "TRACE"
+
+SET NAME "defer/"
+DECLARE ken
+
+cs_lib_log_define_class()
+CREATE OBJECT LOG_FILE_CLASS, ken
+ken.module="KEN"
+
+ken.transaction( "test" )
+
+{ ---------------------------------------------------------------------------------------------------- }
+{ ---------------------------------------------------------------------------------------------------- }
+{ ---------------------------------------------------------------------------------------------------- }
+{ Log File Object }
+{ ---------------------------------------------------------------------------------------------------- }
+
+GLOBAL ROUTINE cs_lib_log_define_class
+
+    {
+    Description :
+    }
+
+    IF ( NOT class_defined( LOG_FILE_CLASS ) )
+
+        DEFINE CLASS LOG_FILE_CLASS
+            INITIALISATION
+            PROPERTIES
+                "directory",                { Directory for the log file                }
+                "module",                   { Module name for log file                  }
+                "file_type",                { File type for the log file                }
+                "file_date_format",         { Date time format for file name            }
+                "flash_trace",              { TRUE = flash_message when interactive     }
+                "flash_trans",              { TRUE = flash_message when interactive     }
+                "flash_error",              { TRUE = flash_message when interactive     }
+                "trace",                    { TRUE = Tracing enabled                    }
+                "pause",                    { Pause flag for flash message              }
+                "cascade",                  { Cascade messages through log files        }
+                "include_client_time",      { Include client time in message            }
+                "time_format",              { Date time format message time stamp       }
+                "cache_flush",              { When is cache flushed                     }
+                "server_date_time",         { Internal. Date/time stamp for the message }
+                "client_date_time",         { Internal. Date/time stamp for the message }
+                "severity",                 { Internal. Severity of the message         }
+                "message",                  { Internal. Current Message text            }
+                "message_cache"             { Internal. Collection of cached messages   }
+            ACTIONS
+                "trace",
+                "trace2",
+                "transaction",
+                "transaction2",
+                "warning",
+                "error",
+                "fatal",
+                "message",
+                "flush_cache",
+                "delete_cache",
+                "set_time_stamp",           { Internal                                  }
+                "add_to_cache"              { Internal                                  }
+        END CLASS
+
+        DEFINE CLASS LOG_FILE_MESSAGE_CACHE_CLASS
+            INHERIT "STD_COLLECTED"
+            PROPERTIES
+                "filename",
+                "messages"
+            ACTIONS
+                "open_file",                    { Internal                                  }
+                "write_cache",                  { Internal                                  }
+                "write_file",                   { Internal                                  }
+                "close_file"                    { Internal                                  }
+            END CLASS
+
+    ENDIF
+
+
+    RETURN
+
+ENDROUTINE
+
+{ ---------------------------------------------------------------------------------------------------- }
+
+ROUTINE cs_log_file_class_class_initialisation
+    (
+            self
+    )
+
+    {
+    Description :
+    }
+
+    {**********************************************************
+    * These properties can be overridden by the caller
+    ***********************************************************}
+    self.directory              = "SMP$LOGFILES:"
+    self.module                 = GLOBAL( "current_library" )
+    self.file_type              = ".LOG"
+    self.file_date_format       = "YYYZMZDZ"
+
+    self.flash_trace            = FALSE
+    self.flash_trans            = FALSE
+    self.flash_error            = TRUE
+
+    self.trace                  = FALSE
+    self.pause                  = TRUE
+    self.cascade                = TRUE
+    self.include_client_time    = TRUE
+    self.time_format            = "H24:MI:SS"
+    self.cache_flush            = CACHE_FLUSH_ERROR_TRANS
+
+    {**********************************************************
+    * These are internal
+    ***********************************************************}
+
+    CREATE OBJECT "STD_COLLECTION", self.message_cache
+    self.message_cache.add_index( "filename" )
+
+    RETURN
+
+ENDROUTINE
+
+{ ---------------------------------------------------------------------------------------------------- }
+
+ROUTINE cs_log_file_class_action_trace
+    (
+            self,
+    VALUE   message
+    )
+
+    {
+    Description :
+    }
+
+    IF ( self.trace )
+
+        self.severity  = MESSAGE_TRACE
+        self.message( message )
+
+    ENDIF
+
+    RETURN
+
+ENDROUTINE
+
+{ ---------------------------------------------------------------------------------------------------- }
+
+ROUTINE cs_log_file_class_action_trace2
+    (
+            self,
+    VALUE   message1,
+    VALUE   message2
+    )
+
+    {
+    Description :
+    }
+
+    IF ( self.trace )
+
+        self.severity  = MESSAGE_TRACE
+        self.message( LEFTSTRING( message1, 40 ) : " > " : message2 )
+
+    ENDIF
+
+    RETURN
+
+ENDROUTINE
+
+{ ---------------------------------------------------------------------------------------------------- }
+
+ROUTINE cs_log_file_class_action_transaction
+    (
+            self,
+    VALUE   message
+    )
+
+    {
+    Description :
+    }
+
+    self.severity  = MESSAGE_TRANSACTION
+    self.message( message )
+
+    RETURN
+
+ENDROUTINE
+
+{ ---------------------------------------------------------------------------------------------------- }
+
+ROUTINE cs_log_file_class_action_transaction2
+    (
+            self,
+    VALUE   message1,
+    VALUE   message2
+    )
+
+    {
+    Description :
+    }
+
+    self.severity  = MESSAGE_TRANSACTION
+    self.message( LEFTSTRING( message1, 40 ) : " > " : message2 )
+
+    RETURN
+
+ENDROUTINE
+
+{ ---------------------------------------------------------------------------------------------------- }
+
+ROUTINE cs_log_file_class_action_warning
+    (
+            self,
+    VALUE   message
+    )
+
+    {
+    Description :
+    }
+
+    self.severity  = MESSAGE_WARNING
+    self.message( message )
+
+    RETURN
+
+ENDROUTINE
+
+{ ---------------------------------------------------------------------------------------------------- }
+
+ROUTINE cs_log_file_class_action_error
+    (
+            self,
+    VALUE   message
+    )
+
+    {
+    Description :
+    }
+
+    self.severity  = MESSAGE_ERROR
+    self.message( message )
+
+    RETURN
+
+ENDROUTINE
+
+{ ---------------------------------------------------------------------------------------------------- }
+
+ROUTINE cs_log_file_class_action_fatal
+    (
+            self,
+    VALUE   message
+    )
+
+    {
+    Description :
+    }
+
+    self.severity  = MESSAGE_FATAL
+    self.message( message )
+
+    RETURN
+
+ENDROUTINE
+
+{ ---------------------------------------------------------------------------------------------------- }
+
+ROUTINE cs_log_file_class_action_set_time_stamp
+    (
+            self
+    )
+
+    {
+    Description :
+    
+    ABN200 From 9.0 client/server timezone information is handled differently
+    
+    }
+
+    DECLARE timezone_offset_minutes
+    DECLARE timezone_offset_interval
+    DECLARE hours
+    DECLARE minutes
+
+    self.client_date_time = NOW
+
+    IF ( global_exists( "TIMEZONE_CLIENT" ) )   { from 9.0 }
+    
+        {self.server_date_time = client_date_to_server( self.client_date_time )} {KJ1}
+        self.server_date_time = self.client_date_time                            {KJ1}
+
+    ELSE
+    
+        timezone_offset_minutes = GLOBAL( "timezone_offset" )
+
+        IF ( timezone_offset_minutes <> 0 )
+
+            {**********************************************************
+            * The time zone offset is in minutes
+            * From this work out the equivalent hours and minutes
+            * as these can then be put into a string that can be
+            * converted to an interval
+            * And finally add a -ve if required. Think carefully!
+            * If the timezone offset is 60, then we have to subtract 60
+            * from the client time to get the server time!
+            ***********************************************************}
+            minutes = ABS( timezone_offset_minutes ) MOD 60
+            hours   = ABS( timezone_offset_minutes ) DIV 60
+
+            timezone_offset_interval = "0000 "
+                                     : NUMBER_TO_TEXT( hours, "99" )
+                                     : ":"
+                                     : NUMBER_TO_TEXT( minutes, "99" )
+                                     : ":00.00"
+
+            IF ( timezone_offset_minutes > 0 )
+
+                timezone_offset_interval = "-" : timezone_offset_interval
+
+            ENDIF
+
+            self.server_date_time = self.client_date_time + INTERVAL( timezone_offset_interval )
+
+        ELSE
+
+            self.server_date_time = self.client_date_time
+
+        ENDIF
+
+    ENDIF
+    
+    RETURN
+
+ENDROUTINE
+
+{ ---------------------------------------------------------------------------------------------------- }
+
+ROUTINE cs_log_file_class_action_message
+    (
+            self,
+    VALUE   message
+    )
+
+    {
+    Description :
+    }
+
+    self.set_time_stamp()
+
+    {**********************************************************
+    * Make up the full message string to be written to the log
+    ***********************************************************}
+    SET DATE FORMAT self.time_format
+
+    self.message = self.server_date_time
+                   : " "
+
+    IF ( self.include_client_time )
+
+        self.message = self.message
+                       : self.client_date_time
+                       : " "
+
+    ENDIF
+
+    self.message = self.message
+                   : RIGHTSTRING( STRIP( GLOBAL( "process_id" ) ), 10 )
+                   : " "
+                   : PAD( OPERATOR, " ", 10 )
+                   : " "
+                   : PAD( self.severity, " ", 10 )
+                   : " "
+                   : message
+
+
+    RESTORE DATE FORMAT
+
+    IF ( self . severity = MESSAGE_FATAL )
+    OR ( self . severity = MESSAGE_ERROR )
+    OR ( self . severity = MESSAGE_WARNING )
+
+        self.add_to_cache( MESSAGE_ERROR )
+
+        IF ( self.cascade )
+
+            self.add_to_cache( MESSAGE_TRANSACTION )
+
+            IF ( self.trace )
+
+                self.add_to_cache( MESSAGE_TRACE )
+
+            ENDIF
+
+        ENDIF
+
+        IF ( self.cache_flush = CACHE_FLUSH_ERROR_TRANS )
+        OR ( self.cache_flush = CACHE_FLUSH_EVERY_MESSAGE )
+
+            self.flush_cache()
+
+        ENDIF
+
+        IF ( self.flash_error )
+
+            flash_message( self.message, TRUE )
+
+        ENDIF
+
+    ELSEIF ( self . severity = MESSAGE_TRANSACTION )
+
+        self.add_to_cache( MESSAGE_TRANSACTION )
+
+        IF  ( self.cascade )
+        AND ( self.trace )
+
+            self.add_to_cache( MESSAGE_TRACE )
+
+        ENDIF
+
+        IF ( self.cache_flush = CACHE_FLUSH_ERROR_TRANS )
+        OR ( self.cache_flush = CACHE_FLUSH_EVERY_MESSAGE )
+
+            self.flush_cache()
+
+        ENDIF
+
+        IF ( self.flash_trans )
+
+            flash_message( self.message, TRUE )
+
+        ENDIF
+
+    ELSEIF( self . severity = MESSAGE_TRACE )
+
+        self.add_to_cache( MESSAGE_TRACE )
+
+        IF ( self.cache_flush = CACHE_FLUSH_EVERY_MESSAGE )
+
+            self.flush_cache()
+
+        ENDIF
+
+        IF ( self.flash_trace )
+
+            flash_message( self.message, TRUE )
+
+        ENDIF
+
+    ENDIF
+
+    RETURN
+
+ENDROUTINE
+
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE cs_log_file_class_action_add_to_cache
+    (
+            self,
+    VALUE   severity
+    )
+
+    {
+    Description :
+    }
+
+    DECLARE filename
+    DECLARE cache
+    DECLARE i
+
+    filename = severity
+
+    IF ( NOT blank( self.module ) )
+
+        filename = filename
+                 : "-"
+                 : self.module
+
+    ENDIF
+
+    IF ( NOT blank( self.file_date_format ) )
+
+        SET DATE FORMAT self.file_date_format
+
+        filename = filename
+                 : "-"
+                 : self.server_date_time
+
+        RESTORE DATE FORMAT
+
+    ENDIF
+
+    filename = filename : self.file_type
+
+    cache = self.message_cache.get_by_index( "filename", filename )
+
+    IF ( cache = EMPTY )
+
+        CREATE OBJECT LOG_FILE_MESSAGE_CACHE_CLASS, cache
+        cache.filename = filename
+        ARRAY cache.messages    ARRAY_SIZE(0)
+        self.message_cache.add( cache )
+
+    ENDIF
+
+    i = size_of_array( cache.messages )
+    i = i + 1
+    cache.messages[i] = self.message
+
+    RETURN
+
+ENDROUTINE
+
+
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE cs_log_file_class_action_flush_cache
+    (
+            self
+    )
+
+    {
+    Description :
+    }
+
+    DECLARE cache
+    DECLARE i
+    DECLARE filename
+
+    i = 1
+    WHILE ( i <= self.message_cache.size() )
+
+        cache = self.message_cache.get_by_number( i )
+        filename = self.directory : cache.filename
+
+        IF ( cache . open_file( filename ) )
+
+            cache . write_cache( filename )
+            cache . close_file( filename )
+
+        ENDIF
+
+        ARRAY cache.messages    ARRAY_SIZE(0)
+
+        i = i + 1
+
+    ENDWHILE
+
+    RETURN
+
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE cs_log_file_class_action_delete_cache
+    (
+            self
+    )
+
+    {
+    Description : Delete cached messages without writing to log file
+    }
+
+    DECLARE cache
+    DECLARE i
+
+    i = 1
+    WHILE ( i <= self.message_cache.size() )
+
+        cache = self.message_cache.get_by_number( i )
+
+        ARRAY cache.messages    ARRAY_SIZE(0)
+
+        i = i + 1
+
+    ENDWHILE
+
+    RETURN
+
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE cs_log_file_message_cache_class_action_open_file
+    (
+            self,
+    VALUE   filename
+    )
+
+    {
+    Description :
+    }
+
+    DECLARE status
+
+    FILE EXTEND filename, status
+
+    IF ( status <> EMPTY )
+
+        flash_message( status, TRUE )
+
+    ENDIF
+
+    RETURN( status = EMPTY )
+
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE cs_log_file_message_cache_class_action_write_cache
+    (
+            self,
+    VALUE   filename
+    )
+
+    {
+    Description :
+    }
+
+    DECLARE i
+    DECLARE success
+
+    success = TRUE
+    i = 1
+
+    WHILE ( i <= size_of_array( self.messages ) )
+    AND   ( success = TRUE )
+
+        self . write_file( filename, self.messages[i] )
+        i = i + 1
+
+    ENDWHILE
+
+    RETURN( success )
+
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE cs_log_file_message_cache_class_action_write_file
+    (
+            self,
+    VALUE   filename,
+    VALUE   message
+    )
+
+    {
+    Description :
+    }
+
+    DECLARE status
+
+    FILE WRITE filename, message, status
+
+    IF ( status <> EMPTY )
+
+        flash_message( status, TRUE )
+
+    ENDIF
+
+    RETURN( status = EMPTY )
+
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE cs_log_file_message_cache_class_action_close_file
+    (
+            self,
+    VALUE   filename
+    )
+
+    {
+    Description :
+    }
+
+    DECLARE status
+
+    FILE CLOSE filename, status
+
+    IF ( status <> EMPTY )
+
+        flash_message( status, TRUE )
+
+    ENDIF
+
+    RETURN( status = EMPTY )
+
+ENDROUTINE
+
+

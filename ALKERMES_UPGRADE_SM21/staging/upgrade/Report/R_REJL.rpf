@@ -1,0 +1,470 @@
+{------------------------------------------------------------------------------}
+{                                                                              }
+{       TENSOR TECHNOLOGIES - PRINT REJECT SAMPLE LABELS PROGRAM               }
+{                                                                              }
+{       Document     :  96378-02.DOC, Reject Labels ( issue 1.04 )             }
+{       Filename     :  B_REJL.RPF                                             }
+{       Version      :  1.0                                                    }
+{       Author       :  Caitriona Ni Mhaille                                   }
+{       Date Created :	9/4/96                                                 }
+{       Description  :  Reject Labels are produced using the Standard          }
+{                       Blue Reject Label on a Tractor Feed Printer. The       }
+{                       LIMS prompts with a request screen for the Material,   }
+{                       Code Con.:, Con/Lot No.:, Date, Drum No. and           }
+{                       Quantity.                                              }
+{                       The LIMS will then produce a test label. When the      }
+{                       label has printed, the LIMS will request if the user   }
+{                       wants to                                               }
+{                          · Return to the request screen,                     }
+{                          · Produce multiple labels for the information       }
+{                            entered                                           }
+{                          · Exit                                              }
+{                                                                              }
+{------------------------------------------------------------------------------}
+{                                                                              }
+{ Modification History                                                         }
+{                                                                              }
+{ Ver   Date      By       Description                                         }
+{ ---   -------   --       ---------------------------------------------       }
+{ 1.0   04/4/96   CNM      Created                                             }
+{ 1.01  29/4/96   JMW      Works Test Design Change                            }
+{                          Material Default should come from MLP Description   }
+{------------------------------------------------------------------------------}
+
+SET NAME "DEFER/"
+
+SET NOTPROTECTED
+
+JOIN STANDARD_LIBRARY std_utils
+JOIN STANDARD_LIBRARY std_prompt
+
+CONSTANT REJECTED = "Rejected"
+
+    get_reject_information ()
+
+EXIT
+
+ROUTINE get_reject_information
+{------------------------------------------------------------------------------}
+{                                                                              }
+{ ROUTINE get_reject_information        This routine gets the main information }
+{                                       for the reject label sample . This is  }
+{                                       done with a form which queries the     }
+{                                       user                                   }
+{                                                                              }
+{------------------------------------------------------------------------------}
+{                                                                              }
+{ PARAMETERS      PASSED BY     DESCRIPTION                                    }
+{                                                                              }
+{------------------------------------------------------------------------------}
+
+
+    DECLARE rejection_information, reject_form, row, array_counter
+
+    ARRAY reject_information
+
+    row = 1
+
+    CREATE OBJECT PROMPT_CLASS_FORM, reject_form
+        reject_form . height = 5
+        reject_form . width  = 60
+        reject_form . row    = ( GLOBAL ( "SCREEN_HEIGHT" ) - 5 ) / 2
+        reject_form . column = ( GLOBAL ( "SCREEN_WIDTH" ) - 60 ) / 2
+        reject_form . header = "Reject Label"
+        reject_form . footer = "<DO> to Print, <EXIT> to Quit"
+        reject_form . confirm_required = TRUE
+        reject_form . return_behaviour = FORM_RETURN_STAY
+
+
+    samp_id = SELECT SAMPLE . id_numeric
+              WHERE ( id_numeric = get_sample_id () )
+
+
+                                     { ====================================== }
+                                     { Modification, V1.01, JMW, 29/04/96     }
+                                     { ====================================== }
+                                     { MLP Description for "Material"         }
+                                     { ====================================== }
+
+    PROMPT OBJECT reject_form . prompt_objects [ 1 ]
+        FORMAT text234
+        WITH ( length = 60 )
+        ON LINE row FROM 15
+        WITH ( value = SELECT MLP_HEADER . description
+                        WHERE ( identity = SELECT SAMPLE . product_name ))
+
+    row = row + 1
+
+    PROMPT OBJECT reject_form . prompt_objects [ 2 ]
+        FORMAT text
+        WITH ( length = 19,
+               value  = SELECT SAMPLE . product_name )
+       ON LINE row FROM 15
+
+    row = row + 1
+
+    PROMPT OBJECT reject_form . prompt_objects [ 3 ]
+        FORMAT text
+        WITH ( length = 19 )
+        ON LINE row FROM 15
+        WITH ( value = SELECT SAMPLE . batch_name )
+
+    PROMPT OBJECT reject_form . prompt_objects [ 4 ]
+        FORMAT date
+        WITH ( length = 19 )
+        ON LINE row FROM 43
+        WITH ( value = NOW )
+
+    row = row + 1
+
+    PROMPT OBJECT reject_form . prompt_objects [ 5 ]
+        FORMAT text
+        WITH ( length = 19 )
+        ON LINE row FROM 15
+        WITH ( value = SELECT SAMPLE . no_drums )
+
+    row = row + 1
+
+    PROMPT OBJECT reject_form . prompt_objects [ 6 ]
+        FORMAT text
+        WITH ( length = 19 )
+        ON LINE row FROM 15
+        WITH ( value = SELECT SAMPLE . sample_weight )
+
+                                        { =============================== }
+                                        { prompt_objects array out putted }
+                                        { to the screen in the form       }
+                                        { reject_form                     }
+                                        { =============================== }
+
+    reject_form . start_prompt ()
+
+    DISPLAY "Material    :" ON LINE 1 FROM 1  IN WINDOW reject_form.window
+    DISPLAY "Code No     :" ON LINE 2 FROM 1  IN WINDOW reject_form.window
+    DISPLAY "Con/Lot No  :" ON LINE 3 FROM 1  IN WINDOW reject_form.window
+    DISPLAY "Date : "       ON LINE 3 FROM 35 IN WINDOW reject_form.window
+    DISPLAY "No of Drums :" ON LINE 4 FROM 1  IN WINDOW reject_form.window
+    DISPLAY "Quantity    :" ON LINE 5 FROM 1  IN WINDOW reject_form.window
+
+                                        { ================================ }
+                                        { query user until DO or EXIT used }
+                                        { ================================ }
+    REPEAT
+
+        reject_form . wait_prompt ()
+
+    UNTIL ( reject_form . get_lastkey () = "EXIT" ) OR
+          ( reject_form . get_lastkey () = "DO" )
+
+    reject_form . end_prompt ()
+
+    IF ( reject_form . get_lastkey () = "DO" ) THEN
+
+        array_counter = 0
+
+                                        { =============================== }
+                                        { load the reject_information     }
+                                        { array                           }
+                                        { =============================== }
+        WHILE ( array_counter < 6 ) DO
+
+            array_counter = array_counter + 1
+            reject_information [ array_counter ] =
+                reject_form . prompt_objects [ array_counter ] . value
+
+        ENDWHILE
+
+        array_counter = array_counter + 1
+        reject_information [ array_counter ] = 0
+        array_counter = array_counter + 1
+        reject_information [ array_counter ] = samp_id
+
+        print_labels ( reject_information,
+                       reject_form . prompt_objects [ 5 ] . value )
+
+    ENDIF
+
+ENDROUTINE { end of get_reject_information }
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE get_sample_id                                                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{                                                                              }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{                                                                              }
+{                                                                              }
+{==============================================================================}
+ROUTINE get_sample_id
+
+DECLARE sel_array
+
+ARRAY sel_array ARRAYSIZE(1,3)               { Sel_array restricts what the }
+
+sel_array[1,1] = ARRAY_SELECT_EQ             { user can browse on - rejected }
+sel_array[1,2] = "authorisation_notes"       { samples only                  }
+sel_array[1,3] = "Rejected"
+
+
+    CREATE OBJECT PROMPT_CLASS_FORM , samp_form
+        samp_form . height = 1
+        samp_form . width  = 35
+        samp_form . row    = ( GLOBAL ( "SCREEN_HEIGHT" )   / 2 )
+        samp_form . column = ( GLOBAL ( "SCREEN_WIDTH" ) - 35 ) / 2
+        samp_form . header = "Sample ID"
+        samp_form . footer = "<DO> to confirm, <EXIT> to quit"
+
+    PROMPT OBJECT samp_form . prompt_objects [ 1 ]
+        BROWSE ON sample
+        ON LINE 1 FROM 11
+        with ( mandatory_array = sel_array)
+
+    samp_form . start_prompt ()
+
+    DISPLAY "Sample ID : " ON LINE 1 FROM 1 IN WINDOW samp_form . window
+
+    REPEAT
+
+        samp_form . wait_prompt ()
+        IF ( samp_form . get_lastkey () = "EXIT" ) THEN EXIT ENDIF
+
+    UNTIL ( samp_form . get_lastkey () = "DO" ) AND
+          ( samp_form . prompt_objects [ 1 ] . value <> "" )
+
+    samp_form . end_prompt ()
+
+    RETURN ( samp_form . prompt_objects [ 1 ] . value )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+{                                                                              }
+{ ROUTINE print_labels                  This routine controls the printing of  }
+{                                       the test labels followed by the main   }
+{                                       print if the test is acceptable        }
+{                                                                              }
+{------------------------------------------------------------------------------}
+{                                                                              }
+{ PARAMETERS             PASSED BY     DESCRIPTION                             }
+{ rejection_information  REFERENCE     holds the information to be outputted   }
+{                                      to the array                            }
+{ no_to_print            REFERENCE     number of labels to print               }
+{                                                                              }
+{------------------------------------------------------------------------------}
+
+ROUTINE print_labels ( reject_information, no_to_print )
+    DECLARE counter, exit_value
+
+    counter = 0
+    reject_information [ 7 ] = counter
+
+    exit_value = print_test_label ( reject_information )
+
+                                        { =============================== }
+                                        { print reject labels while there }
+                                        { is some to print and the prog   }
+                                        { not cancelled                   }
+                                        { =============================== }
+
+    WHILE ( counter <= no_to_print ) AND ( exit_value = TRUE ) DO
+        reject_information [ 7 ] = counter
+        print_label ( reject_information )
+        update_no_of_labels ( reject_information [ 8 ] )
+        counter = counter + 1
+    ENDWHILE
+
+    NEW PAGE
+
+    FLUSH_LITERAL
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+{                                                                              }
+{ ROUTINE print_test_label              This routine controls the printing of  }
+{                                       the test labels                        }
+{                                                                              }
+{------------------------------------------------------------------------------}
+{                                                                              }
+{ PARAMETERS             PASSED BY     DESCRIPTION                             }
+{ rejection_information  VALUE         holds the information to be outputted   }
+{                                      to the array                            }
+{                                                                              }
+{------------------------------------------------------------------------------}
+
+ROUTINE print_test_label ( reject_information )
+
+    DECLARE continue_test, return_value
+
+    continue_test = TRUE
+
+    CREATE OBJECT PROMPT_CLASS_FORM, label_ok_form
+
+        label_ok_form . height = 1
+        label_ok_form . width  = 30
+        label_ok_form . row    = GLOBAL ( "SCREEN_HEIGHT" ) / 2
+        label_ok_form . column = ( GLOBAL ( "SCREEN_WIDTH" ) - 30 ) / 2
+        label_ok_form . header = "Test Reject Label"
+        label_ok_form . footer = "<DO> to Print, <EXIT> to Quit"
+
+    PROMPT OBJECT label_ok_form . prompt_objects [ 1 ]
+           FORMAT boolean
+           WITH ( true_word  = "all labels",
+                  false_word = "test label" )
+           ON LINE 1 FROM 14
+
+    label_ok_form . start_prompt ()
+                                        { =============================== }
+                                        { query test labels until user is }
+                                        { satisfied                       }
+                                        { =============================== }
+    WHILE ( continue_test = TRUE ) DO
+
+        label_ok_form . repaste ()
+
+        DISPLAY "Print : " ON LINE 1 FROM 5  IN WINDOW label_ok_form.window
+
+        label_ok_form . prompt_objects [ 1 ] . value = FALSE
+
+                                        { ================================ }
+                                        { query user until DO or EXIT used }
+                                        { ================================ }
+        REPEAT
+
+            label_ok_form . wait_prompt ()
+
+        UNTIL ( label_ok_form . get_lastkey () = "EXIT" ) OR
+              ( label_ok_form . get_lastkey () = "DO"   )
+
+        IF ( label_ok_form . get_lastkey () = "EXIT" ) THEN
+            return_value  = FALSE
+            continue_test = FALSE
+        ELSEIF ( label_ok_form . get_lastkey () = "DO" ) AND
+               ( label_ok_form . prompt_objects [ 1 ] . value = "TRUE" ) THEN
+            return_value  = TRUE
+            continue_test = FALSE
+        ELSEIF ( label_ok_form . get_lastkey () = "DO" ) AND
+               ( label_ok_form . prompt_objects [ 1 ] . value = "FALSE" ) THEN
+            print_label ( reject_information )
+            NEW PAGE
+            FLUSH_LITERAL
+            continue_test = TRUE
+        ELSE
+            continue_test = TRUE
+        ENDIF
+
+    ENDWHILE
+
+    label_ok_form . end_prompt ()
+
+    RETURN ( return_value )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+{                                                                              }
+{ ROUTINE print_label                   This routine controls the printing of  }
+{                                       the reject labels                      }
+{                                                                              }
+{------------------------------------------------------------------------------}
+{                                                                              }
+{ PARAMETERS             PASSED BY     DESCRIPTION                             }
+{ rejection_information  VALUE         holds the information to be outputted   }
+{                                      to the array                            }
+{                                                                              }
+{------------------------------------------------------------------------------}
+
+ROUTINE print_label ( reject_information )
+
+    DECLARE mat, code, con, con_date, drum, max_drum, quantity, issued_by
+
+    mat       = reject_information [ 1 ]
+    code      = reject_information [ 2 ]
+    con       = reject_information [ 3 ]
+    con_date  = LEFTSTRING ( reject_information [ 4 ], 11 )
+    drum      = reject_information [ 7 ]
+    max_drum  = reject_information [ 5 ]
+    quantity  = reject_information [ 6 ]
+    issued_by = "Issued By :"
+
+    LITERAL
+
+
+
+
+          $mat__________________________________________
+
+
+          $code_________________________________________
+
+
+          $con______           $con_date______________
+
+
+          $drum_____           $max_drum_____
+
+          $quantity________________________
+
+                         $issued_by________
+
+    $ENDLITERAL
+
+    NEW PAGE
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE update_no_of_labels                                                 }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{                                                                              }
+{  12-Apr-1996  CNM             Increments the no_of_labels field on the sample}
+{                               by 1.                                          }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{  sample_id              VALUE                Unique identifier of a sample   }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE  update_no_of_labels ( VALUE sample_id )
+
+    DECLARE no_of_labels
+
+    no_of_labels = SELECT sample.no_of_labels FOR UPDATE
+                   WHERE ( id_numeric = sample_id )
+
+
+    START WRITE TRANSACTION "Update no_of_labels"
+
+    ASSIGN sample.no_of_labels = no_of_labels + 1
+    UPDATE sample
+    COMMIT
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+{                            END OF R_REJL.RPF                                 }
+{------------------------------------------------------------------------------}

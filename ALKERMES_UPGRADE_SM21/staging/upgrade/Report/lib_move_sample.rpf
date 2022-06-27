@@ -1,0 +1,478 @@
+{******************************************************************************
+*
+* Module Name          : LIB_MOVE_SAMPLE
+*
+* Purpose              : Screen to change location of samples
+*
+* Portability          : Not Checked
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By             Description
+* -------   -----------  ----------     ---------------------------------------
+* 1.0       06-Jul-2012  M. Allen	    Release Version 
+* 2.0       23-Jan-2013  S. Patchell    PR 23696
+* 3.0	    11-Jun-2013	 M. Allen	    CC-GVL-2013-0423- Add prompt for box number
+* 4.0	    24-Sep-2013	 M. Allen           CC-GVL-2013-0502 - Increase size of prompt
+*
+*******************************************************************************}
+
+ENABLE WINDOWS
+SET NAME "DISPLAY/"
+SET NOTPROTECTED
+SET COMPILE_OPTION DECLARE
+
+JOIN STANDARD_LIBRARY STD_VGL
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_DATABASE
+
+JOIN LIBRARY $LABTABLIB
+JOIN LIBRARY $LIB_UTILS
+
+DECLARE barcode_prompt,
+        grid,
+		samp_list,
+		samp_list_1,
+		location_prompt,
+		val_location, 
+		box_no_prompt,
+		val_box_no
+
+ROUTINE move_samples ( self )
+
+{
+*  Form to move samples(scan barcodes) and update location
+*  
+*******************************************************************************}
+    DECLARE form,
+			counter
+	    
+    CREATE OBJECT "std_form", form
+        
+    form . height = 18
+    form . width  = 68
+    form . row    = 1
+    form . column = 10
+    form . border = TRUE    
+    form . header = "Move Samples(Scan Barcode)"
+    form . active_prompt = 1
+    form . return_behaviour = FORM_RETURN_STAY
+               
+    { Location prompt }			   
+    PROMPT OBJECT location_prompt
+    BROWSE ON location
+    ON LINE 1 FROM 20
+
+    { Box No prompt }			   
+    PROMPT OBJECT box_no_prompt
+    FORMAT TEXT
+	WITH (length = 35) {4.0}
+    ON LINE 3 FROM 20
+ 
+   { Barcode prompt }			   
+    PROMPT OBJECT barcode_prompt
+    FORMAT TEXT
+	WITH (length = 20,
+	      leave_prompt_routine = "populate_grid") {2.0 PR 23696 changed from validation_routine}
+    ON LINE 5 FROM 20
+
+    form . add_display ( "New Location",
+					2,
+					1,
+			       PROMPT_RENDITION_NORMAL )
+
+    form . add_display ( "Box Number",
+					2,
+					3,
+			       PROMPT_RENDITION_NORMAL )
+
+
+    form . add_display ( "Scan Sample",
+					2,
+					5,
+			       PROMPT_RENDITION_NORMAL )
+
+					
+                                     
+    form . add_prompt ( location_prompt )
+    form . add_prompt ( box_no_prompt )
+    form . add_prompt ( barcode_prompt )
+    
+	{ GRID }
+    CREATE OBJECT "STD_GRID_EDITOR", grid
+ 
+    grid . height = 10
+    grid . width = 68
+    grid . row = 8
+    grid . column = 2
+    grid . cell_columns = 5
+    grid . title_text_top [ 1 , 1 ] = "Location"
+    grid . title_text_top [ 2 , 1 ] = "Template"
+    grid . title_text_top [ 3 , 1 ] = "Id numeric"
+    grid . title_text_top [ 4 , 1 ] = "Id Text"
+    grid . title_text_top [ 5 , 1 ] = "Box No."
+
+    grid . title_size_top = 1
+	
+	grid . column_size [ 1 ] = 10
+	grid . column_size [ 2 ] = 10
+	grid . column_size [ 3 ] = 15
+	grid . column_size [ 4 ] = 28
+	grid . column_size [ 5 ] = 10
+
+	grid . title_separator_top = GRID_SEPARATOR_BOTH
+	grid . display_cell_routine = "display_components"
+	grid . prompt_cell_routine = "prompt_components"			
+	grid . return_behaviour = GRID_RETURN_FOLLOW
+
+
+	form . add_prompt ( grid )
+	 
+    ARRAY grid . user_info ARRAYSIZE ( 0 , 5 )
+	
+	ARRAY samp_list ARRAYSIZE ( 0, 5 )
+	ARRAY samp_list_1 ARRAYSIZE ( 0 )
+	
+    form . start_prompt()
+    form . wait_prompt()
+
+ 
+	val_location = location_prompt . text
+
+	val_box_no = box_no_prompt . text
+
+	
+	IF form . get_lastkey () = "DO" THEN
+		
+		counter = 1
+		
+		WHILE counter <= size_of_array ( grid . user_info ) DO
+						
+			{ Update samples with barcodes } 
+			{update_sample_barcode ( grid . user_info [ counter , 5 ], grid . user_info [ counter , 4 ] )}
+			
+			counter = counter + 1
+ 
+		ENDWHILE
+		
+		{ Update jobs }
+		counter = 1
+ 			
+		WHILE counter <= size_of_array (samp_list_1) DO
+			
+			update_sample ( samp_list_1 [ counter ] )
+			
+			counter = counter + 1
+ 
+		ENDWHILE
+
+	ENDIF
+	
+    form . end_prompt()
+        	  
+ENDROUTINE { move_samples }
+
+
+ROUTINE populate_grid ( self )
+
+{
+*  Populates the grid listing sample information as samples are scanned.
+*  
+*******************************************************************************}
+
+    DECLARE val_sample_id,
+			counter,
+			sample_found
+                
+		val_sample_id =  barcode_prompt . text
+		
+		{val_sample_id = SELECT sample.id_numeric FOR UPDATE WHERE id_numeric = val_sample_id}	
+		
+		IF val_sample_id = EMPTY THEN	
+		
+			flashmessage ("Sample " : STRIP(val_sample_id) : " not found ", TRUE)		
+			
+		ELSE
+		
+			{ Check if sample has alraedy been added to the grid }
+			counter = 1
+			sample_found = FALSE
+ 			
+			WHILE ( counter <= size_of_array (samp_list_1) ) AND ( sample_found = FALSE ) DO
+			
+				IF ( val_sample_id= samp_list_1 [ counter ] ) THEN
+					sample_found = TRUE
+				ENDIF
+				
+				counter = counter + 1
+ 
+			ENDWHILE
+			
+			IF sample_found = FALSE THEN
+			
+				samp_list_1 [ (size_of_array ( samp_list_1) + 1 ) ] = val_sample_id
+			
+				
+				
+			
+				{ counter = 0 }
+				counter = size_of_array ( samp_list )
+ 
+				WHILE val_sample_id <> EMPTY DO
+ 
+					counter = counter + 1
+ 
+					samp_list [ counter , 1 ] = SELECT sample . location_id  WHERE id_numeric = val_sample_id
+					samp_list [ counter , 2 ] = SELECT sample . template_id
+					samp_list [ counter , 3 ] = val_sample_id
+					samp_list [ counter , 4 ] = SELECT sample . id_text 
+					samp_list [ counter , 5 ] = SELECT sample . box_no
+ 
+					NEXT sample
+ 
+					val_sample_id = SELECT sample . id_numeric
+ 
+				ENDWHILE
+ 
+				{ Fill grid }
+
+				array_sort ( samp_list , ARRAY_SORT_ASCENDING )
+
+				counter = 1
+ 			
+				WHILE counter <= size_of_array (samp_list) DO
+
+					grid . user_info [ counter , 1 ] = samp_list [ counter , 1 ]
+					grid . user_info [ counter , 2 ] = samp_list [ counter , 2 ]
+					grid . user_info [ counter , 3 ] = samp_list [ counter , 3 ]
+					grid . user_info [ counter , 4 ] = samp_list [ counter , 4 ]
+					grid . user_info [ counter , 5 ] = samp_list [ counter , 5 ]
+				
+					counter = counter + 1
+ 
+				ENDWHILE
+
+				grid . cell_rows = size_of_array ( grid . user_info )
+				grid . rebuild ()
+
+				
+	
+			ELSE
+				
+				flashmessage ("Sample not found", TRUE)
+			
+			ENDIF
+		
+		ENDIF
+
+		
+	RETURN (TRUE)
+
+
+		
+ENDROUTINE { populate_grid }
+
+
+
+
+ROUTINE update_sample ( val_samp_id )
+
+{
+*  Update sample
+*
+*  - Update sample location
+*  
+*******************************************************************************}
+
+    DECLARE record
+                
+	record = SELECT sample.location_id FOR UPDATE WHERE id_numeric = val_samp_id
+
+								              
+		
+			
+	IF (record <> EMPTY) THEN			
+		ASSIGN sample.location_id = val_location
+
+		ASSIGN sample.box_no = val_box_no
+
+		
+		
+				
+			IF NOT transaction_is_write() THEN
+				START WRITE TRANSACTION "Move Sample"			
+				UPDATE sample
+				COMMIT
+			ELSE
+				UPDATE sample
+			ENDIF
+				
+			{flashmessage ("Sample received ", NULL)}
+					
+	ELSE
+
+		{do nothing}
+
+	ENDIF	
+
+	
+ENDROUTINE { update_sample }
+
+
+
+
+
+
+
+ROUTINE display_components ( self ,
+		VALUE cell_column ,
+		VALUE cell_row ,
+		window ,
+		VALUE column ,
+		VALUE row ,
+		VALUE cell_width ,
+		VALUE cell_height )
+ 
+	DISPLAY self . user_info [ cell_row , cell_column ]
+		AT column , row
+		IN WINDOW window
+		TO column + cell_width - 1
+ 
+ENDROUTINE { display_components }
+ 
+ 
+ROUTINE prompt_components ( self ,
+		VALUE cell_column ,
+		VALUE cell_row ,
+		window ,
+		VALUE column ,
+		VALUE row ,
+		VALUE cell_width ,
+		VALUE cell_height )
+
+
+		
+	IF cell_column <> 4 THEN
+		SET DISPLAY TRUE
+	ENDIF
+		
+	PROMPT FOR self . user_info [ cell_row , cell_column ]
+		AT column , row
+		IN WINDOW window
+		TO column + cell_width - 1
+		
+	IF cell_column <> 4 THEN
+		SET DISPLAY FALSE
+	ENDIF
+
+{2.0 PR 23696 "self . active_prompt = 2" is removed }
+
+	
+	 
+ENDROUTINE { prompt_components }
+
+
+
+
+ROUTINE sample_change_location_rmb (rmb_object, 
+                                    object, 
+                                    data)
+
+{
+*  RMB option for changing sample location from view samples_to_transfer.
+*
+*******************************************************************************}
+
+    DECLARE the_record, 
+            no_records, 
+            val_samp_id,
+            the_table,
+			val_location,
+			record
+
+	val_location = display_location_form()
+		
+	IF ( STRIP ( val_location ) <> "" ) THEN
+	
+        the_table = data.table 
+
+        no_records = data . size()
+
+        data . set_first ()
+			
+        WHILE ((data . current_position <= no_records) AND ( data . current_position > 0 )) DO	
+
+		    START WRITE TRANSACTION "Move Sample Location"	
+			
+            the_record = data . get_by_number (data . current_position)
+
+            val_samp_id = SELECT 'the_table' . id_numeric IN OBJECT the_record
+
+			record = SELECT sample.id_numeric FOR UPDATE WHERE id_numeric = val_samp_id
+		
+			IF record <> EMPTY THEN	
+				
+				ASSIGN sample.location = val_location 
+				ASSIGN sample.box_no = val_box_no                    
+				UPDATE sample
+				
+			ENDIF
+			
+			COMMIT			
+            
+			data . set_next()
+    
+        ENDWHILE
+			
+	ENDIF
+    
+ENDROUTINE { sample_change_location_rmb }
+
+
+ROUTINE display_location_form
+
+{
+*  Prompt form for location
+*
+*******************************************************************************}
+    
+    DECLARE form,
+	        location_prompt,
+			the_location
+
+    CREATE OBJECT "std_form", form
+    
+    form . height = 3
+    form . width  = 30
+    form . header = "Move"
+    form . active_prompt = 1
+    form . return_behaviour = FORM_RETURN_STAY
+     
+    PROMPT OBJECT location_prompt
+    BROWSE ON LOCATION
+	on line 1 from 15 TO 30
+		
+    form . add_prompt( location_prompt )
+            
+	form . add_display( "New location id", 1, 1, PROMPT_RENDITION_BOLD )
+    
+    form . start_prompt()
+    form . wait_prompt()
+    form . end_prompt()
+    	  
+    IF form . get_lastkey () = "DO" THEN            
+        the_location = form . prompt_objects[1] . text     
+	ELSE	
+		the_location = ""
+	ENDIF
+
+    RETURN ( the_location )
+    
+ENDROUTINE { display_location_form }
+
+
+

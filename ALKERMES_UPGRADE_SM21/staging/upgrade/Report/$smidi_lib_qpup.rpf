@@ -1,0 +1,3032 @@
+{******************************************************************************
+*
+* Module Name   : $SMIDI_LIB_QPUP
+*
+* Purpose       : Library common to Query, Process, Upload & Points (QPUP)
+*
+* Document Ref. :
+*
+* Specification :
+*
+* Portability   : OVMS, Unix, NT4 and Windows 2000
+*
+* Re-entrant    :
+*
+*
+* Modification History
+* Ref	By          Date        Reason _____________________________________________
+* 1.0   M Flattery  11 Oct 2013  Ref Change Control NO. CC-ATH-2013 TS protocol No 1600028228
+*			         Sm-idi license check commented out
+*
+*******************************************************************************}
+
+ENABLE WINDOWS
+
+SET NOTPROTECTED
+SET COMPILE_OPTION EXP_MESS
+SET COMPILE_OPTION DECLARE
+SET NAME "DISPLAY/"
+
+JOIN STANDARD_LIBRARY STD_SMIDI
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_VGL
+
+JOIN LIBRARY $LIB_UTILS
+
+JOIN LIBRARY $SMIDI_LIB_SAP                     { ALL classes and constants    }
+JOIN LIBRARY $SMIDI_USER                        { start_stop, trg.trgr rfcerr  }
+
+{* LOCAL CONSTANTS ************************************************************}
+{* GLOBAL CONSTANTS ***********************************************************}
+{* GLOBAL VARIABLES ***********************************************************}
+
+DECLARE message                        { general use display string            }
+DECLARE save_query                     { save the current query id for reload  }
+DECLARE array_query_times              { array of query and times last called  }
+DECLARE oldest_time                    { the oldest of all the queries         }
+DECLARE the_beginning_time             { The very first of all times we run    }
+DECLARE curr_repeat                    { Repeat interval of the current query  }
+DECLARE curr_server                    { and its server id                     }
+DECLARE curr_id                        { and the identity of the query         }
+DECLARE first_time                     { the first time do the first query     }
+DECLARE retval                         { general return (store_data)           }
+DECLARE status                         { specific to store_data                }
+DECLARE download                       { the download class                    }
+DECLARE A_base                         { SMIDI BASE object get_item/msg log    }
+DECLARE logged_on                      { T.F if we are logged on to SAP        }
+DECLARE logged_on_server               { Name of smidi server when logged in   }
+DECLARE queue                          { upload queue                          }
+DECLARE smidi_upload_user_trigger      { each upload type has unique trigger   }
+DECLARE smidi_user_upload_initialized  { Library one time setup                }
+
+
+{******************************************************************************}
+{                                                                              }
+{  The main interface to Query, Process, Upload and Inspection Points          }
+{                                                                              }
+{******************************************************************************}
+
+GLOBAL ROUTINE smidi_bg_get_lots ( user_pid_key0 )
+	smidi_lib_qpup_start_thread( SMIDI_GET_LOTS, user_pid_key0 )
+ENDROUTINE
+
+GLOBAL ROUTINE smidi_bg_get_points ( user_pid_key0 )
+	smidi_lib_qpup_start_thread( SMIDI_GET_POINTS, user_pid_key0 )
+ENDROUTINE
+
+GLOBAL ROUTINE smidi_bg_process_lot ( user_pid_key0 )
+	smidi_lib_qpup_start_thread( SMIDI_PROCESS_LOT, user_pid_key0 )
+ENDROUTINE
+
+GLOBAL ROUTINE smidi_bg_process_point ( user_pid_key0 )
+	smidi_lib_qpup_start_thread( SMIDI_PROCESS_POINT, user_pid_key0 )
+ENDROUTINE
+
+GLOBAL ROUTINE smidi_bg_upload_results ( user_pid_key0 )
+	smidi_lib_qpup_start_thread( SMIDI_UPLOAD_RESULT, user_pid_key0 )
+ENDROUTINE
+
+GLOBAL ROUTINE smidi_bg_upload_lotud ( user_pid_key0 )
+	smidi_lib_qpup_start_thread( SMIDI_UPLOAD_UD, user_pid_key0 )
+ENDROUTINE
+
+GLOBAL ROUTINE smidi_bg_upload_ptud ( user_pid_key0 )
+	smidi_lib_qpup_start_thread( SMIDI_UPLOAD_POINT_UD, user_pid_key0 )
+ENDROUTINE
+
+GLOBAL ROUTINE smidi_bg_upload_points ( user_pid_key0 )
+	smidi_lib_qpup_start_thread( SMIDI_UPLOAD_POINT, user_pid_key0 )
+ENDROUTINE
+
+GLOBAL ROUTINE smidi_bg_upload_defects ( user_pid_key0 )
+	smidi_lib_qpup_start_thread( SMIDI_UPLOAD_DEFECT, user_pid_key0 )
+ENDROUTINE
+
+GLOBAL ROUTINE smidi_bg_max_process(the_process)
+	
+	CALL_ROUTINE "max_process_retry" IN LIBRARY SMIDI_UPLOAD_USER_LIB
+				USING the_process
+	
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE smidi_lib_qpup_start_thread ( VALUE calling_report, VALUE user_pid_key0 )
+
+	{ --------------------------------------------------------------- }
+	{ Shutdown and licenses are the main control if we can do stuff   }
+	{ --------------------------------------------------------------- }
+
+	IF ( SELECT CONFIG_HEADER.VALUE WHERE IDENTITY = "SHUTDOWN_ENABLED" ) THEN
+
+		FLASH_MESSAGE ( "SHUTDOWN_ENABLED ":calling_report, TRUE )
+
+	ELSE
+
+		smidi_lib_init ( user_pid_key0 )
+		smidi_lib_SAP_define_base_class ( DEFAULT_QMIDI_OBJECT )
+
+		CREATE OBJECT SMIDI_BASE_CLASS, A_base
+
+		{ ------------------------------------------------------- }
+		{ Check license, the do upload/download/process queue     }
+		{ ------------------------------------------------------- }
+
+		logged_on = FALSE
+
+
+	{1.0}	{IF ( smidi_lib_check_license())  THEN}
+
+			IF ( calling_report = SMIDI_UPLOAD_RESULT   )
+			OR ( calling_report = SMIDI_UPLOAD_UD       )
+			OR ( calling_report = SMIDI_UPLOAD_POINT_UD )
+			OR ( calling_report = SMIDI_UPLOAD_POINT    )
+			OR ( calling_report = SMIDI_UPLOAD_DEFECT   ) THEN
+
+				smidi_upload_user_trigger = "send_":calling_report
+				smidi_upload_main( A_base, calling_report, smidi_upload_user_trigger, logged_on )
+
+			ELSE  
+
+				IF A_base.status_debug_mode <= 0 THEN
+
+					curr_id = "download_or_process_main"
+					smidi_lib_user_start ( A_base, calling_report, curr_id )
+
+				ENDIF
+
+				download_or_process_main( A_base, calling_report )
+
+			ENDIF  { ain't a download, must have been upload }
+
+			{ ------------------------------------------------------------- }
+			{ House cleaning - cleanup the smidi_logfiles and smidi service }
+			{ ------------------------------------------------------------- }
+
+			smidi_lib_user_stop ( A_base, calling_report )
+			A_base.logout()
+
+	{1.0}
+	  {ELSE
+
+			FLASH_MESSAGE ( "*** Invalid license *** ", TRUE )
+
+		ENDIF}  { no valid license to drive sm-idi }
+	{/1.0}
+	ENDIF   { shutdown enabled }
+
+ENDROUTINE  { smidi_lib_qpup_start_thread }
+
+
+{*******************************************************************************
+*
+*
+*
+*    UPLOAD - main controlling program for all uploads
+*
+*
+*
+*******************************************************************************}
+
+ROUTINE smidi_upload_main ( A_base, VALUE caller_type, VALUE smidi_upload_user_trigger, logged_on )
+
+	DECLARE terminate, items, mt
+
+	A_base.status_message ( GET_USER_MESSAGE ( "SMIDI_QUE_START", 1 ):" ":caller_type:" trigger->":smidi_upload_user_trigger, MSG_FULL )
+
+	mt        = NOW
+	terminate = FALSE
+
+	WHILE NOT terminate DO
+
+		ARRAY items
+
+		IF ( smidi_upload_read_queue ( A_base, caller_type, smidi_upload_user_trigger, items, queue ) ) THEN
+
+			IF NOT logged_on THEN
+
+				A_base.status_message ( "Starting login to SAP ":A_base.smidi_server, MSG_LOW )
+
+				logged_on = A_base.login(A_base.smidi_server)
+			
+				IF logged_on THEN
+					A_base.status_mess_decode ( "SMIDI_QUE_LOGOK", MSG_LOW, A_base.smidi_server, EMPTY, EMPTY )
+				ENDIF
+
+			ELSE
+
+				A_base.status_message ( "---> Already logged into SAP---> ":A_base.smidi_server, MSG_LOW )
+
+			ENDIF  { log on only 1 time and load config data specific to each smidi server }
+
+			{ ========================================= }
+	
+			IF logged_on THEN
+
+				queue.upload_n_complete()
+				A_base.work_done = TRUE
+	
+			ELSE
+	
+				A_base.logout()
+				logged_on = FALSE
+				A_base.status_mess_decode ( "SMIDI_QUE_LOGNO", MSG_MED, A_base.smidi_server, EMPTY, EMPTY )
+
+			ENDIF
+
+		ELSE
+
+			A_base.logout()
+			logged_on = FALSE
+
+		ENDIF
+
+		terminate = A_base.continue ( queue, mt, mt, mt, caller_type )
+
+		IF NOT terminate THEN
+
+			smidi_lib_user_stop ( A_base, caller_type )
+			smidi_lib_user_start ( A_base, caller_type, smidi_upload_user_trigger )
+
+			IF ( VARIABLE_IS_ASSIGNED ( queue ) ) AND ( queue <> EMPTY ) THEN
+				queue.status_filename = A_base.status_filename
+			ENDIF
+
+		ENDIF
+
+	ENDWHILE  { continue decides if upload thread is shutdown }
+
+	A_base.status_message ( GET_USER_MESSAGE ( "SMIDI_QUE_FINISH", 1 ):terminate, MSG_MED )
+	A_base.logout()
+	logged_on = FALSE
+	queue     = EMPTY
+
+	smidi_lib_user_stop ( A_base, caller_type )
+
+ENDROUTINE { smidi_upload_main }
+
+{******************************************************************************}
+
+ROUTINE initialize_upload ( A_base, queue, VALUE caller_type, VALUE smidi_upload_user_trigger, VALUE view_name )
+
+	DECLARE servers_same, save_format, smidi_server, qmidi_object
+
+	{ --------------------------------------------------- }
+	{ Do everytime - queue'ed item may change servers.... }
+	{ --------------------------------------------------- }
+
+	save_format  = GLOBAL ( "FORMAT_TEXT" )
+	servers_same = FALSE
+	smidi_server = SELECT 'view_name'.SMIDI_SYSTEM
+	qmidi_object = SELECT 'view_name'.QMIDI_OBJECT
+
+	IF ( smidi_server <> A_base.smidi_server ) THEN
+
+		SET FORMAT "9"
+
+		IF ( qmidi_object = EMPTY ) THEN
+
+			qmidi_object = DEFAULT_QMIDI_OBJECT
+
+		ELSEIF ( INDEX ( SMIDI_QMIDI_OBJECT_LIST, "#":STRIP(qmidi_object):"#" ) = 0 ) THEN
+
+			qmidi_object = DEFAULT_QMIDI_OBJECT
+
+		ENDIF
+
+		SET FORMAT save_format
+
+		A_base.qmidi_object = qmidi_object
+		A_base.smidi_server = smidi_server
+
+		smidi_lib_user_start ( A_base, caller_type, smidi_upload_user_trigger )   { SETS LOGFILE ID }
+
+		A_base.status_message ( "*FIRST_TIME* $smidi_user_upload/initialize_upload change in qmidi_object ":
+				qmidi_object:" ":A_base.qmidi_object:" ":" ":A_base.smidi_server, MSG_FULL )
+
+		define_smidi_queue_class ( A_base.qmidi_object )
+
+		CREATE OBJECT SMIDI_QUEUE_CLASS, queue
+			queue.A1_base             = A_base
+			queue.parent              = A_base
+			queue.A1_base.work_done   = TRUE
+
+	ELSEIF ( qmidi_object <> A_base.qmidi_object ) THEN
+
+		A_base.status_message ( "*OBJECTS* $smidi_user_upload/initialize_upload qmidi_object does not match QUEUE ":
+				qmidi_object:" ":A_base.qmidi_object:" ":" ":A_base.smidi_server, MSG_FULL )
+
+		servers_same = TRUE   { well, what should this mean ? }
+
+	ELSE
+
+
+		A_base.status_message ( "$smidi_user_upload/initialize_upload object/servers are the same ":
+				A_base.qmidi_object:" ":" ":A_base.smidi_server, MSG_LOW )
+
+		servers_same = TRUE
+
+	ENDIF
+
+	{ ----------------------------------------------------------- }
+	{ Issues done very first time, server changes or server same  }
+	{ ----------------------------------------------------------- }
+
+	IF NOT ( VARIABLE_IS_ASSIGNED ( smidi_user_upload_initialized ) ) THEN
+
+		{ ----------------------------------------------------------------------- }
+		{ ------------------  Do 1 time, only very first startup ---------------- }
+		{ ----------------------------------------------------------------------- }
+
+		IF NOT servers_same THEN
+		ENDIF
+
+		queue.maximum_entries = A_base.get_item ( "SMIDI_MAX_UPLOAD_":STRIP(TOUPPER(caller_type) ) )
+		queue.do_unit_convert = A_base.get_item ( "SMIDI_UPLOAD_UNIT_CONVERT" )
+		queue.send_all_values = A_base.get_item ( "SMIDI_UPLOAD_MODE" )
+		queue.mail            = A_base.get_item ( "QM_RUPL_MAIL"      )
+		queue.close           = A_base.get_item ( "QM_UPL_CLOSE"      )
+		queue.commit          = A_base.get_item ( "QM_UPL_COMMIT"     )
+		queue.update          = A_base.get_item ( "QM_UPL_UPDATE"     )
+		queue.valuate         = A_base.get_item ( "QM_UPL_VALUATIONS" )
+
+		smidi_qaise_init ( A_base.qmidi_object )
+		smidi_qaisr_init ( A_base.qmidi_object )
+		smidi_qaimr_init ( A_base.qmidi_object )
+		smidi_qaipp_init ( A_base.qmidi_object ) 
+		smidi_qaive_init ( A_base.qmidi_object ) 
+		smidi_qmife_init ( A_base.qmidi_object ) 
+		smidi_qierr_init ( A_base.qmidi_object )
+
+		smidi_user_upload_initialized = servers_same
+
+	ELSEIF NOT servers_same THEN
+
+		{ ----------------------------------------------------------------------- }
+		{ ---------------  Do each time server changes, multiple SAP's  --------- }
+		{ ----------------------------------------------------------------------- }
+
+		{ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * }
+		{ re-init objects ? - what happens to classes ? disallow error message and exit?  }
+		{ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * }
+
+		queue.maximum_entries = A_base.get_item ( "SMIDI_MAX_UPLOAD_":STRIP(TOUPPER(caller_type) ) )
+		queue.do_unit_convert = A_base.get_item ( "SMIDI_UPLOAD_UNIT_CONVERT" )
+		queue.send_all_values = A_base.get_item ( "SMIDI_UPLOAD_MODE" )
+		queue.mail            = A_base.get_item ( "QM_RUPL_MAIL"      )
+		queue.close           = A_base.get_item ( "QM_UPL_CLOSE"      )
+		queue.commit          = A_base.get_item ( "QM_UPL_COMMIT"     )
+		queue.update          = A_base.get_item ( "QM_UPL_UPDATE"     )
+		queue.valuate         = A_base.get_item ( "QM_UPL_VALUATIONS" )
+
+		queue.status_filename = A_base.status_filename
+
+		A_base.status_message ( "$smidi_user_upload/initialize_upload object/servers NOT same ":
+				A_base.qmidi_object:" ":A_base.smidi_server:
+				queue.maximum_entries   :" ":queue.do_unit_convert   :
+				queue.send_all_values:queue.mail:queue.close:queue.update:queue.valuate, MSG_FULL )
+
+	ELSE
+
+		{ ----------------------------------------------------------------------- }
+		{ ---  Do when servers are the same on subsequent upload queue reads ---- }
+		{ ----------------------------------------------------------------------- }
+
+		queue.status_filename = A_base.status_filename
+		A_base.status_message ( "$smidi_user_upload/initialize_upload object/servers same ", MSG_LOW )
+
+	ENDIF    { first time or servers not the same or servers are the same }
+
+	{ ----------------------------------------------------------------------- }
+	{ Do every cycle that the upload is started                               }
+	{ ----------------------------------------------------------------------- }
+
+	error_context_init ( A_base.qmidi_object )
+
+	ARRAY queue.errors         { errors on any sap conversation}
+	ARRAY queue.items          { collate all data for a upload }
+	ARRAY queue.qaipp          { points and pt ud's            }
+	ARRAY queue.qaive          { lot usage upload              }
+	ARRAY queue.qmife          { defects upload                }
+
+ENDROUTINE  { initialize_upload - all upload send_xxx user_triggers initialize with this }
+
+{******************************************************************************}
+
+ROUTINE smidi_upload_read_queue ( self, VALUE caller_type, smidi_upload_user_trigger, items, queue )
+
+	DECLARE entry, entry_count, view_name
+
+	entry_count = 0
+	view_name   = "SMIDI_UPLOAD_" : STRIP(caller_type) : "_VIEW"
+
+	{ ===================================================================== }
+	{ Depend on caller_type gets its own view - optimize/customize that     }
+	{ ===================================================================== }
+
+	IF ( VGL_VALIDATE_ROUTINE ( SMIDI_UPLOAD_USER_LIB, SELECT_UPLOAD_2_SAP_ROUTINE ) ) THEN
+
+		CALL_ROUTINE SELECT_UPLOAD_2_SAP_ROUTINE IN LIBRARY SMIDI_UPLOAD_USER_LIB
+		USING self, caller_type, smidi_upload_user_trigger, view_name
+		RETURNING entry
+
+	ELSE
+
+		entry = SELECT 'view_name'.job_name WHERE status = SMIDI_WAITING_STATUS ORDER ON date_created ASCENDING
+
+	ENDIF
+
+	{ ------------------------------------------------------------------------------------------------ }
+	{ Regardless of type of upload, build the array of elements to send to SAP base on user trigger ok }
+	{ ------------------------------------------------------------------------------------------------ }
+
+
+	IF entry <> EMPTY THEN
+
+		initialize_upload ( A_base, queue, caller_type, smidi_upload_user_trigger, view_name )  { <- 1rst time know smidi_system }
+
+		WHILE ( entry <> EMPTY ) DO
+
+			IF A_base.?smidi_upload_user_trigger?(view_name) THEN
+
+				IF ( queue.build_items ( caller_type, items, view_name ) ) THEN
+					entry_count = entry_count + 1
+					A_base.status_message ( GET_USER_MESSAGE ( "SMIDI_QUE_GATHER", 1 ):entry:" ":caller_type:" ":entry_count, MSG_LOW )
+				ENDIF
+
+			ENDIF
+
+			NEXT 'view_name'
+			entry = SELECT 'view_name'.job_name
+
+			IF ( entry_count > queue.maximum_entries ) THEN
+				entry = EMPTY
+			ENDIF
+
+		ENDWHILE
+
+	ENDIF  { read from upload queue (entry) is not empty }
+
+	RETURN ( SIZE_OF_ARRAY (items) > 0 )
+
+ENDROUTINE { smidi_upload_read_queue }
+
+{******************************************************************************}
+
+ROUTINE smidi_que2_action_build_items ( self, caller_type, items, VALUE view_name )
+
+	DECLARE item, item_cnt, qaipp, request, cnt, qaive, authorized_by, job_status, qaive_record_type, sel_set
+
+	retval = TRUE
+
+	CREATE OBJECT SMIDI_QUEUE_ITEM_CLASS, item
+		item.type               = caller_type
+		item.job_name           = SELECT 'view_name'.JOB_NAME
+		item.id_numeric         = SELECT 'view_name'.ID_NUMERIC
+		item.test_number        = SELECT 'view_name'.TEST_NUMBER
+		item.name               = SELECT 'view_name'.NAME
+		item.smidi_system       = SELECT 'view_name'.SMIDI_SYSTEM
+		item.date_created       = SELECT 'view_name'.DATE_CREATED
+		item.key0               = item.job_name:item.id_numeric:item.test_number:item.name
+		item.smidi_lot          = SELECT 'view_name'.SMIDI_LOT
+		self.smidi_lot          = item.smidi_lot
+
+	IF item.key0 = EMPTY THEN
+
+		retval             = FALSE
+		self.error_message = "Invalid queued job_name->":self.job_name
+		self.status_message ( self.error_msg, MSG_FULL )
+
+	ELSEIF ( caller_type = SMIDI_UPLOAD_RESULT ) THEN
+
+		item.analysis_id         = SELECT 'view_name'.ANALYSIS_ID
+		item.job_status          = SELECT 'view_name'.JOB_STATUS
+		item.sample_status       = SELECT 'view_name'.SAMPLE_STATUS
+		item.test_status         = SELECT 'view_name'.TEST_STATUS
+		item.result_status       = SELECT 'view_name'.RESULT_STATUS
+		item.result_text         = SELECT 'view_name'.RESULT_TEXT
+		item.result_value        = SELECT 'view_name'.RESULT_VALUE
+		item.send_result         = SELECT 'view_name'.SEND_RESULT
+		item.lims_units          = SELECT 'view_name'.LIMS_UNITS
+		item.lims_out_of_range   = SELECT 'view_name'.LIMS_OUT_OF_RANGE
+
+		item.smidi_operation     = SELECT 'view_name'.SMIDI_OPERATION
+		item.smidi_phys_samp     = SELECT 'view_name'.SMIDI_PHYS_SAMP
+		item.smidi_part_samp     = SELECT 'view_name'.SMIDI_PART_SAMP
+		item.sap_result_conf_no  = SELECT 'view_name'.SAP_RESULT_CONF_NO
+
+		item.sap_start_date      = SELECT 'view_name'.SAP_START_DATE
+		item.sap_entered_by      = SELECT 'view_name'.SAP_ENTERED_BY
+		item.sap_result_origin   = SELECT 'view_name'.SAP_RESULT_ORIGIN
+		item.sap_code_group      = SELECT 'view_name'.SAP_code_group
+		item.sap_code_number     = SELECT 'view_name'.SAP_code_number
+
+		item.sap_documentation   = SELECT 'view_name'.SAP_DOCUMENTATION
+		item.sap_doc_required    = SELECT 'view_name'.SAP_doc_required
+		item.sap_serial_no       = SELECT 'view_name'.SAP_SERIAL_NO
+		item.sap_serial_required = SELECT 'view_name'.SAP_serial_required
+
+		item.sap_specification   = SELECT 'view_name'.SAP_SPECIFICATION
+		item.sap_valuation       = SELECT 'view_name'.SAP_VALUATION
+		item.sap_attribute       = SELECT 'view_name'.SAP_ATTRIBUTE
+
+		item.sap_units           = SELECT 'view_name'.SAP_UNITS
+		item.sap_places          = SELECT 'view_name'.SAP_PLACES
+		item.sap_result_type     = SELECT 'view_name'.SAP_result_type
+
+		item.sap_subsys_valuates = SELECT 'view_name'.SAP_subsys_valuates
+		item.sap_valuate_type    = SELECT 'view_name'.sap_valuate_type
+		item.sap_need_subsamps   = SELECT 'view_name'.SAP_need_subsamps
+		item.sap_subsamp_valtype = SELECT 'view_name'.SAP_subsamp_valtype
+		item.sap_inspect_scope   = SELECT 'view_name'.sap_inspect_scope
+
+		item.sap_defect_class    = SELECT 'view_name'.sap_defect_class
+		item.sap_subsamp_defect  = SELECT 'view_name'.sap_subsamp_defect
+
+		{ ------------------------------------------------------- }
+		{ Result specific error handling when checking SAP errors }
+		{ ------------------------------------------------------- }
+
+		self.sap_result_conf_no = item.sap_result_conf_no
+		self.smidi_op_no        = item.smidi_operation
+		self.smidi_phys_samp    = item.smidi_phys_samp
+
+	ELSEIF ( caller_type = SMIDI_UPLOAD_DEFECT ) THEN
+
+
+	ELSEIF ( caller_type = SMIDI_UPLOAD_POINT ) THEN
+
+		CREATE OBJECT "QAIPP", qaipp
+			qaipp.record_type        = "Q83"              {  < ---  CREATE a POINT }
+			qaipp.operator           = OPERATOR
+			qaipp.parent             = self
+			qaipp.userinfo           = ""
+
+		request = SELECT SMIDI_INSPPOINT.REQUEST_KEY
+				  WHERE  SMIDI_SYSTEM = item.smidi_system	
+				  AND    REQUEST_KEY  = item.job_name
+				  ORDER ON SAMPLE ASCENDING, REQUEST_KEY ASCENDING
+
+		IF request <> EMPTY THEN
+
+			request                 = STRIP       ( request        )
+			qaipp.lot_no            = LEFTSTRING  ( request, 12    )
+			qaipp.op_no             = SUBSTRING   ( request, 13, 4 )
+			qaipp.sample_no         = RIGHTSTRING ( request, 6     ) 
+			qaipp.op_sequence	= "000000"
+
+			qaipp.userc1            = SELECT SMIDI_INSPPOINT.user_c1_value
+			qaipp.userc2            = SELECT SMIDI_INSPPOINT.user_c2_value
+			qaipp.usern1            = SELECT SMIDI_INSPPOINT.user_n1_value
+			qaipp.usern2            = SELECT SMIDI_INSPPOINT.user_n2_value
+			qaipp.userd1            = SELECT SMIDI_INSPPOINT.user_d1_value
+			qaipp.usert1            = SELECT SMIDI_INSPPOINT.user_t1_value
+
+			qaipp.code              = SELECT SMIDI_INSPPOINT.sap_ud_code
+			qaipp.decision_text     = SELECT SMIDI_INSPPOINT.sap_ud_decision_text
+			qaipp.cat_plant         = SELECT SMIDI_INSPPOINT.SAP_UD_CAT_PLANT
+			qaipp.code_group        = SELECT SMIDI_INSPPOINT.SAP_UD_CODE_GROUP
+			qaipp.selected_set      = SELECT SMIDI_INSPPOINT.SAP_UD_SELECTED_SET
+			qaipp.partial_lotno     = SELECT SMIDI_INSPPOINT.SAP_UD_PARTIAL_LOT
+			qaipp.insppoint_amount  = SELECT SMIDI_INSPPOINT.SAP_UD_QUANTITY
+			qaipp.insppoint_units   = SELECT SMIDI_INSPPOINT.SAP_UD_UNITS
+			qaipp.batch_no          = SELECT SMIDI_INSPPOINT.SAP_UD_BATCH
+
+			qaipp.cat_type          = "3"
+
+			qaipp.date_insp_started = convert_vg_date ( NOW )
+			qaipp.time_insp_started = convert_vg_time ( NOW )
+			qaipp.cat_plant         = SELECT JOB_HEADER.SAP_UD_PLANT WHERE SMIDI_LOT = qaipp.lot_no
+
+			{ ----------------------------------------------------------- }
+			{ Fields specific to version 2 of the QAIPP object            }
+
+			IF self.qmidi_object >= 2 THEN
+				qaipp.physical_sample = qaipp.sample_no
+			ENDIF
+
+
+			IF qaipp.cat_plant <> EMPTY THEN
+
+				qaipp.selected_set = SELECT JOB_HEADER.SAP_UD_CODE_GROUP
+				qaipp.material_no  = SELECT JOB_HEADER.SAP_MATNR
+	
+				smidi_before_upload_points ( qaipp, self )
+
+				cnt             = SIZE_OF_ARRAY ( self.qaipp ) + 1
+				self.qaipp[cnt] = smidi_lib_object_to_string  ( qaipp )
+
+			ELSE
+
+				retval             = FALSE
+				self.error_message = "*** smidi_upload_a_point invalid JOB *** ":request
+
+			ENDIF
+
+		ELSE
+
+			retval             = FALSE
+			self.error_message = "***  smidi_upload_a_point invalid record *** ":request
+
+		ENDIF
+
+
+	ELSEIF ( caller_type = SMIDI_UPLOAD_POINT_UD ) THEN
+
+		qaipp = SELECT SMIDI_INSPPOINT.MESSAGE WHERE REQUEST_KEY = item.job_name
+
+		IF ( qaipp <> EMPTY ) THEN
+
+			qaipp = smidi_lib_object_from_string("QAIPP", qaipp, self, self.qmidi_object ) 
+	
+			qaipp.record_type        = "Q84"
+			qaipp.cat_type           = "3"                                     { usage decision      }
+			qaipp.confirmation_type  = " "                                     { sap says 'not used' }
+
+			qaipp.batch_no           = SELECT SMIDI_INSPPOINT.sap_ud_batch
+			qaipp.code               = SELECT SMIDI_INSPPOINT.sap_ud_code
+			qaipp.decision_text      = SELECT SMIDI_INSPPOINT.sap_ud_decision_text
+			qaipp.partial_lot_no     = SELECT SMIDI_INSPPOINT.sap_ud_partial_lot
+			qaipp.insp_point_amount  = SELECT SMIDI_INSPPOINT.sap_ud_quantity
+			qaipp.material_no        = SELECT SMIDI_INSPPOINT.sap_ud_material_no
+			qaipp.scrap_amount       = SELECT SMIDI_INSPPOINT.sap_ud_scrap_amount
+			qaipp.scrap_reason       = SELECT SMIDI_INSPPOINT.sap_ud_scrap_reason
+			qaipp.operator           = SELECT SMIDI_INSPPOINT.sap_ud_operator
+
+			qaipp.userc1             = SELECT SMIDI_INSPPOINT.user_c1_value
+			qaipp.userc2             = SELECT SMIDI_INSPPOINT.user_c2_value
+			qaipp.usern1             = SELECT SMIDI_INSPPOINT.user_n1_value
+			qaipp.usern2             = SELECT SMIDI_INSPPOINT.user_n2_value
+			qaipp.userd1             = SELECT SMIDI_INSPPOINT.user_d1_value
+			qaipp.usert1             = SELECT SMIDI_INSPPOINT.user_t1_value
+
+			qaipp.cat_plant          = SELECT SMIDI_INSPPOINT.SAP_UD_CAT_PLANT
+			qaipp.code_group         = SELECT SMIDI_INSPPOINT.SAP_UD_CODE_GROUP
+			qaipp.selected_set       = SELECT SMIDI_INSPPOINT.SAP_UD_SELECTED_SET
+
+			qaipp.date_insp_started  = convert_vg_date ( NOW )                 { assumes YYYYMZDZ }
+			qaipp.time_insp_started  = convert_vg_time ( NOW )                 { assumes H24MI    }
+
+			{ ---------------------------------------------------- }
+			{ items specific to higher versions of QAIPP           }
+			{ ---------------------------------------------------- }
+
+			IF self.qmidi_object >= 2 THEN
+				qaipp.rework_quantity = SELECT SMIDI_INSPPOINT.sap_ud_rework_quantity
+			ENDIF
+
+			IF qaipp.cat_plant <> EMPTY THEN
+	
+				smidi_before_upload_points_ud ( qaipp, self )
+
+				cnt             = SIZE_OF_ARRAY ( self.qaipp ) + 1
+				self.qaipp[cnt] = smidi_lib_object_to_string  ( qaipp )
+
+
+			ELSE
+
+				retval             = FALSE
+				self.error_message = "*** smidi_upload_point_ud JobHeader fields not defined, failure *** ":retval
+
+			ENDIF   { select job_header cannot be empty }
+	
+
+		ELSE
+
+			retval             = FALSE
+			self.error_message = "Invalid QAIPP in SMIDI_INSPPOINT for ->":item.job_name
+			self.status_message ( self.error_message, MSG_HIGH )
+
+		ENDIF  { qaipp message is empty }
+
+
+	ELSEIF ( caller_type = SMIDI_UPLOAD_UD ) THEN
+
+		authorized_by = SELECT JOB_HEADER.AUTHORISER WHERE JOB_NAME = item.job_name
+	
+		IF ( authorized_by <> EMPTY ) THEN
+	
+			job_status = SELECT JOB_HEADER.STATUS
+
+			IF ( INDEX ( JOB_STATUS_Q88, job_status ) > 0 ) THEN
+
+				qaive_record_type = "Q88"
+
+			ELSEIF ( INDEX ( JOB_STATUS_Q89, job_status ) > 0 ) THEN
+
+				qaive_record_type = "Q89"
+
+			ELSE
+				qaive_record_type = "Q88"
+			ENDIF
+	
+
+			CREATE OBJECT "QAIVE", qaive
+				qaive.record_type   = qaive_record_type
+				qaive.lot_no        = SELECT JOB_HEADER.SMIDI_LOT
+				qaive.cat_plant     = SELECT JOB_HEADER.SAP_UD_plant
+				qaive.code          = SELECT JOB_HEADER.SAP_UD_code
+				qaive.decision_text = SELECT JOB_HEADER.SAP_UD_text
+				sel_set             = STRIP ( SELECT JOB_HEADER.SAP_UD_phrase )
+
+			qaive.selected_set = SELECT SMIDI_PHRASE_TRANSLATE.MAIN_ID
+						WHERE IDENTITY     = sel_set
+						AND   SYSTEM       = STRIP ( item.smidi_system )
+						AND   CATALOG_TYPE = "3"
+
+			qaive.code_group = SELECT SMIDI_PHRASE_SUPP.CODE_GROUP
+					   WHERE SYSTEM      = STRIP ( item.smidi_system )
+					   AND   PHRASE_TYPE = sel_set
+					   AND   PHRASE_ID   = qaive.code
+
+ 			smidi_before_upload_ud ( qaive, self, authorized_by )
+
+			cnt             = SIZE_OF_ARRAY ( self.qaive ) + 1
+			self.qaive[cnt] = smidi_lib_object_to_string  ( qaive )
+
+		ELSE
+
+			retval             = FALSE
+			self.error_message = "Invalid queued job_name->":item.job_name
+			self.status_message ( self.error_msg, MSG_FULL )
+
+		ENDIF  { major error job is not found }
+
+	ENDIF  { details of an upload for results only }
+
+	{ ---------------------------------------------------- }
+	{ Add to <array> do not use collections loses memory   }
+	{ ---------------------------------------------------- }
+
+	item_cnt        = SIZE_OF_ARRAY ( items ) + 1
+	items[item_cnt] = item
+	self.items      = items
+
+	RETURN ( retval )
+
+ENDROUTINE { smidi_v2_action_build_items }
+
+{******************************************************************************}
+
+ROUTINE smidi_que2_action_upload_n_complete ( self )
+
+	DECLARE object, errors, message_no, ok_numbers
+
+	ARRAY errors
+
+	self.status_message ( GET_USER_MESSAGE ( "SMIDI_QUE_UPLOAD", 1 ), MSG_LOW )
+
+	retval = TRUE
+	object = self.items[1]
+
+	IF ( OBJECT.type = SMIDI_UPLOAD_RESULT ) THEN
+
+		retval = self.build_all_se_sr_mr ( object )
+
+	ENDIF
+
+	IF retval THEN
+
+		object.outcome = self.altidi_2_qmidi ( object, errors )
+		self.errors_update_Q ( object, errors )
+
+	ENDIF
+		
+		{ If we have an error and it's not in ERROR_OK_NUMBERS, logout }
+		self.status_message ( self.smidi_server:"/":self.smidi_query: " Query processing return value = " : STRING ( retval ) , MSG_HIGH )
+	
+		IF ( object.outcome <> SMIDI_NORMAL ) THEN
+	
+			{ We get a number, convert to format in ERROR_OK_NUMBERS }
+			message_no = RIGHTSTRING ( "000" : STRIP ( object.outcome ), 3 )
+	
+			ok_numbers   = self.get_item ( "ERROR_OK_NUMBERS"  )
+			IF ( INDEX ( ok_numbers, message_no ) = 0 ) THEN
+	
+				self.status_message ( self.smidi_server:"/":self.smidi_query: "Forcing logout.", MSG_HIGH )
+	
+				self.logout()
+				logged_on        = FALSE
+				logged_on_server = ""
+	
+			ENDIF
+	
+		ENDIF
+
+ENDROUTINE { smidi_que2_action_upload_n_complete }
+
+{******************************************************************************}
+
+ROUTINE smidi_que2_action_build_all_se_sr_mr ( self, object )
+
+	DECLARE a_object, count
+
+	count         = 1
+	retval        = TRUE
+	a_object      = object
+	self.mr_count = 0
+	self.se_count = 0
+	self.sr_count = 0
+
+	ARRAY self.mr_array
+	ARRAY self.se_array
+	ARRAY self.sr_array
+
+	WHILE ( a_object <> EMPTY ) AND ( retval ) DO
+
+		IF ( INDEX ( QMIDI_ALL_TYPES, a_object.sap_result_type ) <> 0 ) THEN
+
+			retval = self.build_a_se_sr_mr ( a_object )
+
+		ELSE
+
+			retval = FALSE
+			self.status_message ( "* ERROR * build_se_sr_mr invalid SAP result type----> ":a_object.key0, MSG_FULL )
+
+		ENDIF
+
+		count    = count + 1
+		a_object = self.items[ count ]
+
+	ENDWHILE   { only collate all from the same lot }
+
+	RETURN ( retval )
+
+ENDROUTINE  { smidi_que2_action_build_all_se_sr_mr }
+
+{******************************************************************************}
+
+ROUTINE smidi_que2_action_build_a_se_sr_mr ( self, object )
+
+	DECLARE retval, date_started, time_started, date_finished, time_finished
+
+	retval         = FALSE
+	date_started   = convert_vg_date ( object.sap_start_date  )
+	time_started   = convert_vg_time ( object.sap_start_date  )
+	date_finished  = convert_vg_date ( object.date_created    )
+	time_finished  = convert_vg_time ( object.date_created    )
+
+	IF ( index( SAP_MR_UPLOAD_TYPES, object.sap_result_type ) <> 0 ) THEN
+
+		retval = self.build_a_mr ( object, date_started, time_started, date_finished, time_finished )
+
+	ELSEIF ( index( SAP_SR_MR_UPLOAD_TYPES, object.sap_result_type ) <> 0 ) THEN
+
+		IF ( self.build_a_sr ( object, date_started, time_started, date_finished, time_finished ) ) THEN
+
+			retval = self.build_a_mr ( object, date_started, time_started, date_finished, time_finished )
+
+		ENDIF
+
+	ELSEIF ( index( SAP_SE_MR_UPLOAD_TYPES, object.sap_result_type ) <> 0 ) THEN
+
+		IF ( self.build_a_se ( object, date_started, time_started ) ) THEN
+
+			retval = self.build_a_mr ( object, date_started, time_started, date_finished, time_finished )
+
+		ENDIF
+
+	ENDIF  { type of result determines mr, sr, se }
+
+
+	RETURN ( retval )          { <- returns false if we cannot do the SAP upload type (constant) }
+
+
+ENDROUTINE  { smidi_que2_action_build_a_se_sr_mr }
+
+{******************************************************************************}
+
+ROUTINE smidi_que2_action_altidi_2_qmidi( self, object, errors )
+
+	DECLARE status, subsys
+
+	status = SMIDI_NORMAL
+	subsys = smidi_lib_get_subsys()
+
+	IF object.type = SMIDI_UPLOAD_RESULT THEN
+
+		IF ( self.se_count + self.sr_count + self.mr_count ) > 0 THEN
+
+			IF ( self.send_all_values = "ALL_VALUES" ) THEN
+
+				status = alt_idi_QIRF_GET_ALL_DATA_VALUES ( self, subsys )
+	
+				IF status <> SMIDI_NORMAL THEN
+	
+					self.rfc_error ( "F", "SENDRES", status )
+
+				ELSE
+					smidi_lib_array_to_object ( "QIERR", self.errors, self )
+					smidi_lib_output_errors   ( self.errors, errors        )
+
+				ENDIF
+
+			ELSE
+
+				{ -------------------------------------------------------------------------- }
+				{ Since we may be sending 1,000´s of chars, save all errors for user trigger }
+				{ -------------------------------------------------------------------------- }
+	
+				IF self.se_count > 0 THEN
+
+					status = alt_idi_upload_results_or_defects (self, subsys, "T_QAISETAB", "QIRF_GET_ORIGINAL_VALUES", self.se_array )
+	
+					IF status <> SMIDI_NORMAL THEN
+
+						self.rfc_error( "F", "SENDRES", status )
+	
+					ELSE
+						
+						{ Need to set the upload flag on the test if we have been successful }
+						IF (self.get_item("QM_UPL_MULTIPLE")) THEN
+							START WRITE TRANSACTION "Update Upload_Count"							
+							
+							DECLARE a_rec
+							a_rec = SELECT TEST.UPLOAD_FLAG FOR UPDATE WHERE TEST_NUMBER = object.test_number
+							ASSIGN TEST.UPLOAD_FLAG = "TRUE" 
+							
+							
+							UPDATE TEST
+							COMMIT
+							
+						ENDIF	
+						
+						smidi_lib_array_to_object ( "QIERR", self.errors, self )
+						smidi_lib_output_errors   ( self.errors, errors        )
+
+					ENDIF
+
+				ENDIF   { se_count > 0 }
+
+				IF (self.sr_count > 0) THEN
+
+ 					status = alt_idi_upload_results_or_defects ( self, subsys, "T_QAISRTAB", "QIRF_GET_SAMPLE_VALUES", self.sr_array )
+
+					IF status <> SMIDI_NORMAL THEN
+
+						self.rfc_error( "F", "SENDRES", status )
+	
+					ELSE
+
+						smidi_lib_array_to_object ( "QIERR", self.errors, self )
+						smidi_lib_output_errors   ( self.errors, errors        )
+
+					ENDIF
+
+
+				ENDIF  { sr_count > 0 }
+
+				IF (self.mr_count > 0) THEN
+
+					status = alt_idi_upload_results_or_defects( self, subsys, "T_QAIMRTAB", "QIRF_GET_FEATURE_VALUES", self.mr_array )
+
+					IF status <> SMIDI_NORMAL THEN
+
+						self.rfc_error( "F", "SENDRES", status )
+
+					ELSE
+
+						smidi_lib_array_to_object ( "QIERR", self.errors, self )
+						smidi_lib_output_errors   ( self.errors, errors        )
+
+					ENDIF
+
+				ENDIF  { mr_count > 0 }
+
+			ENDIF   { smidi-upload-mode is single value }
+
+		ENDIF  { se, sr and mr count add up to > 0 }
+
+	ELSEIF object.type = SMIDI_UPLOAD_UD THEN
+
+		status = alt_idi_QIRF_GET_USAGE_DECISION ( self, subsys )
+
+		smidi_lib_array_to_object ( "QIERR", self.errors, self )
+		smidi_lib_output_errors   ( self.errors, errors        )
+
+		smidi_after_upload_ud ( self, status )
+	
+	ELSEIF object.type = SMIDI_UPLOAD_POINT_UD THEN
+
+		status = alt_idi_points ( self, subsys, "T_QAIPPTAB", "QIRF_GET_INSP_POINT", self.qaipp )
+
+		smidi_lib_array_to_object ( "QIERR", self.errors, self )
+		smidi_lib_output_errors   ( self.errors, errors        )
+
+		smidi_after_upload_points_ud ( self, status )
+
+	ELSEIF object.type = SMIDI_UPLOAD_POINT THEN
+
+		status = alt_idi_points ( self, subsys, "T_QAIPPTAB", "QIRF_GET_INSP_POINT", self.qaipp )
+
+		smidi_lib_array_to_object ( "QIERR", self.errors, self )
+		smidi_lib_output_errors   ( self.errors, errors        )
+
+		smidi_after_upload_points ( self, status )
+
+	ELSEIF object.type = SMIDI_UPLOAD_DEFECT THEN
+
+		status = alt_idi_upload_results_or_defects ( self, subsys, "T_QMIEFTTAB", "QIRF_GET_DEFECT_ITEMS", self.qmife )
+
+		smidi_lib_array_to_object ( "QIERR", self.errors, self )
+		smidi_lib_output_errors   ( self.errors, errors        )
+
+		smidi_after_upload_DEFECTS ( self, status )
+
+	ELSE
+
+	ENDIF
+
+	RETURN ( status )
+
+ENDROUTINE   { smidi_que2_action_altidi_2_qmidi }
+
+{*******************************************************************************
+*
+*
+*
+*    DOWNLOAD - all actions and routines below here are for download
+*
+*
+*
+*******************************************************************************}
+
+ROUTINE download_or_process_main ( A_base, VALUE calling_report )
+
+	{ ==================================================================== }
+	{ The while will continue until the user library returns FALSE         }
+	{ ==================================================================== }
+
+	ARRAY array_query_times
+
+	the_beginning_time = NOW
+	first_time         = TRUE
+	save_query         = load_queries ( A_base, save_query, array_query_times, oldest_time, the_beginning_time, calling_report, first_time )
+
+	WHILE ( save_query <> EMPTY ) DO
+
+		IF first_time THEN
+			first_time = FALSE
+		ELSE
+			smidi_lib_user_start ( A_base, calling_report, STRIP(save_query.smidi_server):"_":save_query.smidi_query )
+		ENDIF
+
+		download.status_filename   = A_base.status_filename
+		save_query.status_filename = A_base.status_filename
+		download.query             = save_query
+		download.A1_base.base_user = ""
+		download.status_message  ( "Starting ":save_query.smidi_server:"/":save_query.smidi_query:download.status_filename, MSG_LOW )
+
+		download.process_a_query ( calling_report )
+
+		IF ( A_base.continue ( save_query, array_query_times, oldest_time, the_beginning_time, calling_report ) ) THEN
+			save_query = EMPTY
+		ELSE
+			smidi_lib_user_stop ( A_base, calling_report )
+			error_context_clear( "ALL" )
+		ENDIF
+
+	ENDWHILE    { we really only load one query, which is the next one that will process }
+
+ENDROUTINE { download_or_process_main - finds which one needs to run }
+
+{******************************************************************************}
+{                                                                              }
+{                                                                              }
+{            QUERY LOAD - get the next query based on interval                 }
+{                                                                              }
+{                                                                              }
+{******************************************************************************}
+
+ROUTINE load_queries ( A_base		, 
+				save_query		, 
+				array_query_times	, 
+				oldest_time		, 
+				the_beginning_time	, 
+				calling_report		, 
+				VALUE first_time 	)
+
+	DECLARE found, active_query
+
+	active_query = ""
+	found        = SELECT 'calling_report'.smidi_query  WHERE SMIDI_SYSTEM <> " " ORDER ON QUERY_REPEAT ASCENDING
+
+	{ ----------------------------------------------------------------- }
+	{ During the fetch of a query return the one that needs to run next }
+	{ ----------------------------------------------------------------- }
+
+	WHILE found <> EMPTY DO
+
+		active_query = find_next_query ( A_base, found, save_query, array_query_times, calling_report, the_beginning_time )
+
+		NEXT 'calling_report'
+		found = SELECT 'calling_report'.identity
+
+		IF ( first_time ) THEN
+			found = EMPTY
+		ENDIF
+
+	ENDWHILE   { found a query }
+
+	{ ================================================================================== }
+	{ If no system/queries do not continue, otherwise get details of this specific query }
+	{ ================================================================================== }
+
+	IF BLANK ( active_query ) THEN
+
+		save_query = EMPTY
+		A_base.status_message ( "No queries are defined " : calling_report : STRIP(found), MSG_HIGH )
+
+	ELSE
+
+		save_query = SELECT 'calling_report'.identity WHERE identity = active_query
+		save_query = set_query_parameters ( A_base, calling_report, first_time )
+
+	ENDIF
+
+	RETURN ( save_query )
+
+ENDROUTINE   { load queries }
+
+{******************************************************************************}
+
+ROUTINE find_next_query ( A_base, found, save_query, array_query_times, VALUE calling_report, the_beginning_time )
+
+	DECLARE time_to_run, time_query_last_ran, retval
+
+	curr_server = STRIP ( SELECT 'calling_report'.SMIDI_SYSTEM )
+	curr_id     = STRIP ( SELECT 'calling_report'.IDENTITY     )
+	curr_repeat = STRIP ( SELECT 'calling_report'.QUERY_REPEAT )
+
+	IF NOT ( IS_INTERVAL (curr_repeat) ) OR ( BLANK ( curr_repeat ) ) THEN
+		curr_repeat = "0 00:01:00"
+	ENDIF
+
+	time_query_last_ran = get_time_query_last_ran ( A_base, curr_id, curr_server, array_query_times, the_beginning_time )
+	time_to_run         = time_query_last_ran + curr_repeat
+
+	{ ==================================================================================== }
+	{ for each query we are really only using the oldest one that needs to run             }
+	{ ==================================================================================== }
+
+	message = STRIP(curr_server):"/":STRIP(curr_id):" time_query_last_ran=":time_query_last_ran:" time_to_run=":time_to_run
+
+	IF NOT ( VARIABLE_IS_ASSIGNED ( oldest_time ) ) THEN
+
+		message     = " FIRST-> ":message
+		oldest_time = NOW
+		retval      = found
+
+		IF time_to_run > oldest_time THEN
+			oldest_time = time_to_run
+		ENDIF
+
+	ELSEIF ( time_to_run < oldest_time ) THEN
+
+		message                = " ACTIVE-> ":message
+		oldest_time            = time_to_run
+		retval                 = found
+		save_query.smidi_query = found
+
+	ELSEIF ( save_query <> EMPTY ) THEN
+
+		message = " SKIP-> ":message
+		retval  = save_query.smidi_query
+
+		IF time_to_run > oldest_time THEN
+			oldest_time = time_to_run
+		ENDIF
+
+	ENDIF   { if this query is earlier than the last one, then rebuild the query to the current values }
+
+	A_base.status_message ( message, MSG_LOW )
+
+	RETURN ( retval )
+
+ENDROUTINE { find_next_query - specific query based upon the next time that is called }
+
+{******************************************************************************}
+
+ROUTINE get_time_query_last_ran ( A_base, curr_id, curr_server, array_query_times, the_beginning_time )
+
+	DECLARE return_time, found
+
+	IF ( NOT VARIABLE_IS_ASSIGNED ( array_query_times ) ) THEN
+
+		ARRAY array_query_times
+		array_query_times[1,1] = curr_id
+		array_query_times[1,2] = the_beginning_time
+
+		return_time = the_beginning_time
+		A_base.status_message ( "Start of all queries ->":return_time:" ->":curr_server:curr_id, MSG_LOW )
+
+	ELSEIF ( smidi_lib_array2_slice ( array_query_times, curr_id, found ) ) THEN
+
+		return_time = array_query_times[found,2]
+		A_base.status_message ( "Time last ran=":return_time:" ->":curr_server:curr_id, MSG_LOW)
+
+	ELSE
+
+		found                      = SIZE_OF_ARRAY ( array_query_times ) + 1
+		array_query_times[found,1] = curr_id
+		array_query_times[found,2] = the_beginning_time
+
+		return_time = the_beginning_time
+		A_base.status_message ( "Time of first run=":return_time:" ->":curr_server:curr_id, MSG_LOW)
+
+	ENDIF
+
+	RETURN ( return_time )
+
+ENDROUTINE { get_time_query_last_ran }
+
+{******************************************************************************}
+
+ROUTINE set_query_parameters ( A_base, calling_report, first_time )
+
+	{ -------------------------------------------------------------------------------- }
+	{ Set the server items for qmidi_version/object/mapping                            }
+	{ -------------------------------------------------------------------------------- }
+
+	A_base.smidi_query     = SELECT 'calling_report'.identity
+	A_base.smidi_server    = SELECT 'calling_report'.smidi_system
+	A_base.qmidi_version   = SELECT 'calling_report'.qmidi_version
+	A_base.qmidi_object    = SELECT 'calling_report'.qmidi_object
+	A_base.mapping_profile = SELECT 'calling_report'.mapping_profile
+
+	{ -------------------------------------------------------------------------------- }
+	{ Make the download object one time, but then reset the key properties by cycle    }
+	{ -------------------------------------------------------------------------------- }
+
+	IF first_time THEN
+
+		smidi_lib_user_start ( A_base, calling_report, STRIP(A_base.smidi_server):"_":STRIP(A_base.smidi_query) )
+
+		smidi_lib_sap_define_download_class( A_base, calling_report )
+
+		CREATE OBJECT SMIDI_DOWNLOAD_CLASS, download
+			download.A1_base       = A_base
+			download.error_context = error_context_get()
+
+			{ ------------------------------------------------------------ }
+			{ Depending upon mode of caller set triggers and views used    }
+			{ ------------------------------------------------------------ }
+
+			{ commit needs diff trigger for point versus lot versus query }
+
+			IF ( calling_report = SMIDI_GET_LOTS )THEN
+
+				download.add_trigger ( "QUERY_CREATE_FAILURE" , SMIDI_GET_LOT_USER_LIB, SML_CREATE_FAILURE_TRIGGER       )
+				download.add_trigger ( "QUERY_VETO_FAILURE"   , SMIDI_GET_LOT_USER_LIB, SML_FAILURE_FILTER_TRIGGER       )
+				download.add_trigger ( "DOWNLOAD_COMMIT"      , SMIDI_GET_LOT_USER_LIB, SML_DOWNLOAD_COMMIT_TRIGGER      )
+				download.add_trigger ( "DOWNLOAD_POST_COMMIT" , SMIDI_GET_LOT_USER_LIB, SML_DOWNLOAD_POST_COMMIT_TRIGGER )
+
+			ELSEIF ( calling_report = SMIDI_GET_POINTS ) THEN
+
+				download.add_trigger ( "DOWNLOAD_COMMIT"      , SMIDI_POINT_USER_LIB, SML_DOWNLOAD_COMMIT_TRIGGER      )
+				download.add_trigger ( "DOWNLOAD_POST_COMMIT" , SMIDI_POINT_USER_LIB, SML_DOWNLOAD_POST_COMMIT_TRIGGER )
+
+			ELSEIF ( calling_report = SMIDI_PROCESS_LOT ) THEN
+
+				download.add_trigger ( "DOWNLOAD_PROCESS_LOOP", SMIDI_PROCESS_USER_LIB, SML_DOWNLOAD_LOOP_TRIGGER        )
+				download.add_trigger ( "PROCESS_COMMIT"       , SMIDI_PROCESS_USER_LIB, SML_PROCESS_COMMIT_TRIGGER       )
+				download.add_trigger ( "PROCESS_POST_COMMIT"  , SMIDI_PROCESS_USER_LIB, SML_PROCESS_POST_COMMIT_TRIGGER  )
+				download.add_trigger ( "PROCESS_ROLLBACK"     , SMIDI_PROCESS_USER_LIB, SML_PROCESS_ROLLBACK_TRIGGER     )
+
+			ELSEIF ( calling_report = SMIDI_PROCESS_POINT ) THEN
+
+				download.add_trigger ( "DOWNLOAD_PROCESS_LOOP", SMIDI_PROCESS_USER_LIB, SML_DOWNLOAD_LOOP_TRIGGER        )
+				download.add_trigger ( "PROCESS_COMMIT"       , SMIDI_PROCESS_USER_LIB, SML_PROCESS_COMMIT_TRIGGER       )
+				download.add_trigger ( "PROCESS_POST_COMMIT"  , SMIDI_PROCESS_USER_LIB, SML_PROCESS_POST_COMMIT_TRIGGER  )
+				download.add_trigger ( "PROCESS_ROLLBACK"     , SMIDI_PROCESS_USER_LIB, SML_PROCESS_ROLLBACK_TRIGGER     )
+
+			ENDIF
+
+	ELSE
+
+		download.smidi_server    = A_base.smidi_server
+		download.smidi_query     = A_base.smidi_query
+		download.mapping_profile = A_base.mapping_profile
+		download.qmidi_version   = A_base.qmidi_version
+		download.qmidi_object    = A_base.qmidi_object
+
+	ENDIF  { first time versus every time }
+
+	{ ----------------------------------------------------------------------- }
+	{ Build the SAP query object for obtaining data by points or lots         }
+	{ ----------------------------------------------------------------------- }
+
+	CREATE OBJECT "QMGET", save_query
+
+	IF calling_report = SMIDI_GET_LOTS THEN
+
+		CREATE OBJECT "QAILS", save_query.qails  { <- select criteria sent to SAP }
+			save_query.qails.record_type     = "Q40"
+			save_query.qails.from_lot_no     = RIGHTSTRING ( "000000000000": STRIP ( SELECT smidi_query_view.from_lot_no ), 12 )
+			save_query.qails.to_lot_no       = RIGHTSTRING ( "999999999999": STRIP ( SELECT smidi_query_view.to_lot_no   ), 12 )
+			save_query.qails.op_sequence     = select smidi_query_view.op_sequence
+			save_query.qails.from_op_no      = select smidi_query_view.from_op_no
+			save_query.qails.to_op_no        = select smidi_query_view.to_op_no
+			save_query.qails.op_plant        = select smidi_query_view.op_plant
+			save_query.qails.work_centre     = select smidi_query_view.work_centre
+			save_query.qails.wc_plant        = select smidi_query_view.wc_plant
+			save_query.qails.material_no     = select smidi_query_view.material_no
+			save_query.qails.insp_status     = select smidi_query_view.insp_status
+			save_query.qails.inspection_type = select smidi_query_view.inspection_type
+			save_query.qails.origin          = select smidi_query_view.origin
+			save_query.qails.batch_no        = select smidi_query_view.batch_no
+			save_query.qails.from_order_no   = select smidi_query_view.from_order_no
+			save_query.qails.to_order_no     = select smidi_query_view.to_order_no
+			save_query.qails.vendor_no       = select smidi_query_view.vendor_no
+			save_query.qails.customer_no     = select smidi_query_view.customer_no
+			save_query.qails.mat_doc_no      = select smidi_query_view.mat_doc_no
+			save_query.qails.max_lots        = convert_vg_number (select smidi_query_view.max_lots,4)
+			save_query.qails.from_date       = convert_vg_date   (select smidi_query_view.from_date)
+			save_query.qails.to_date         = convert_vg_date   (select smidi_query_view.to_date)
+			save_query.qails.subsystem       = PAD ( (select smidi_query_view.subsystem)," ",6 )
+			save_query.smidi_query           = SELECT 'calling_report'.identity
+			save_query.smidi_server          = SELECT 'calling_report'.smidi_system
+			save_query.repeat_interval       = SELECT 'calling_report'.query_repeat
+			save_query.filter_routine        = select smidi_query_view.filter_routine
+			save_query.filter_library        = select smidi_query_view.filter_library
+			save_query.sort_ascending        = set_flag ( select smidi_query_view.sort_ascending    )
+			save_query.sort_descending       = set_flag ( select smidi_query_view.sort_descending   )
+			save_query.allow_corrections     = set_flag ( select smidi_query_view.allow_corrections )
+			save_query.lock_chars            = set_flag ( select smidi_query_view.lock_chars        )
+			save_query.get_required          = set_flag ( select smidi_query_view.get_required      )
+			save_query.get_valuation         = set_flag ( select smidi_query_view.get_valuation     )
+			save_query.get_res_cat           = set_flag ( select smidi_query_view.get_res_cat       )
+			save_query.get_ud_cat            = set_flag ( select smidi_query_view.get_ud_cat        )
+			save_query.get_work_centre       = set_flag ( select smidi_query_view.get_work_centre   )
+			save_query.get_vendor            = set_flag ( select smidi_query_view.get_vendor        )
+			save_query.get_purchasing        = set_flag ( select smidi_query_view.get_purchasing    )
+			save_query.get_sales             = set_flag ( select smidi_query_view.get_sales         )
+			save_query.none_left             = FALSE
+			save_query.fetch_query           = ""
+			save_query.do_2_stage            = select smidi_query_view.do_two_stage
+
+			{ ======================= Reset MAX lots if conditions are improper for support =============== }
+
+			IF ( NOT BLANK (save_query.sort_descending)) & ( NOT BLANK (save_query.get_res_cat)) & ( save_query.qails.max_lots > 1 ) THEN
+				save_query.qails.max_lots = 1
+				A_base.status_message ( "Coercing maximum lots to 1, due to sort order and phrases ":save_query.smidi_query, MSG_HIGH )
+			ELSE
+				A_base.status_message ( "Lot Query ":save_query.smidi_query:" ":save_query.qails.max_lots, MSG_MED )
+			ENDIF 
+
+	ELSEIF calling_report = SMIDI_GET_POINTS THEN
+
+		CREATE OBJECT "QAILS", save_query.qails   { <- select criteria sent to SAP }
+			save_query.qails.from_lot_no     = SELECT 'calling_report'.identity
+			save_query.qails.to_lot_no       = RIGHTSTRING ( "999999999999": STRIP ( SELECT smidi_query_view.to_lot_no   ), 12 )
+			save_query.smidi_query           = save_query.qails.from_lot_no
+			save_query.smidi_server          = SELECT 'calling_report'.SMIDI_SYSTEM
+			save_query.repeat_interval       = SELECT 'calling_report'.query_repeat
+			save_query.smidi_subsystem       = SELECT 'calling_report'.subsystem
+			save_query.from_ip_lot           = save_query.smidi_query
+			save_query.from_ip_op_no         = SELECT 'calling_report'.from_ip_op_no
+			save_query.from_ip_point         = SELECT 'calling_report'.from_ip_point
+			save_query.to_ip_point           = SELECT 'calling_report'.to_ip_point
+			save_query.process_routine       = SELECT 'calling_report'.process_routine
+			save_query.process_library       = SELECT 'calling_report'.process_library
+
+			A_base.status_message ( "Points Query ":save_query.smidi_query:" ":save_query.from_ip_point, MSG_MED )
+
+	ELSEIF calling_report = SMIDI_PROCESS_LOT THEN
+
+		save_query.smidi_query     = SELECT 'calling_report'.smidi_query
+		save_query.smidi_server    = SELECT 'calling_report'.smidi_system
+		save_query.repeat_interval = SELECT 'calling_report'.query_repeat
+		save_query.fetch_query     = save_query.smidi_query
+		save_query.process_routine = SELECT 'calling_report'.process_routine
+		save_query.process_library = SELECT 'calling_report'.process_library
+
+		A_base.status_message ( "Process Lot ":save_query.smidi_query:" ":save_query.smidi_server, MSG_LOW )
+
+	ELSEIF calling_report = SMIDI_PROCESS_POINT THEN
+
+		save_query.smidi_query     = SELECT 'calling_report'.smidi_query
+		save_query.smidi_server    = SELECT 'calling_report'.smidi_system
+		save_query.repeat_interval = SELECT 'calling_report'.query_repeat
+		save_query.fetch_query     = ""
+		save_query.process_routine = SELECT 'calling_report'.process_routine
+		save_query.process_library = SELECT 'calling_report'.process_library
+
+		A_base.status_message ( "Process Point ":save_query.smidi_query:" ":save_query.smidi_server, MSG_LOW )
+
+	ENDIF  { save_query is set by calling_report (if.elseif.elseif...) }
+
+	{ -------------------------------------------------------------------------------- }
+	{ If query signs on to SAP then check to see if it is down, otherwise calc repeat  }
+	{ -------------------------------------------------------------------------------- }
+
+	IF ( calling_report = SMIDI_PROCESS_LOT ) | ( calling_report = SMIDI_PROCESS_POINT ) THEN
+		save_query.next_call = DATE ( NOW + save_query.repeat_interval )
+	ELSE
+		save_query.next_call = DATE ( smidi_lib_reset_start_time ( save_query.smidi_server ) )
+	ENDIF
+
+	IF save_query.next_call = ERROR THEN
+		save_query.next_call = NOW
+		download.status_message ( "Forcing Downtimes, may be error in Server LTE ":save_query.smidi_server, MSG_HIGH )
+	ENDIF
+
+
+	{ --------------------------------------------------------- }
+	{ Based on this server, get the lengths of all SAP objects  }
+	{ --------------------------------------------------------- }
+
+
+	RETURN ( save_query )
+
+ENDROUTINE  { set_query_parameters }
+
+{ *******************************************************************************}
+
+ROUTINE smidi_download_action_TWO_stage ( self, calling_report )
+
+	DECLARE status
+
+	ARRAY self.worklist
+	
+	status = alt_idi_QIRF_SEND_INSP_REQUIRMENTS ( self ) 
+
+	IF status = SMIDI_NORMAL THEN
+
+		status = smidi_lib_array_to_object ( "QIWLR", self.worklist, self )
+
+		IF  ( self.worklist[1] = EMPTY ) THEN
+
+			self.status_message ( "Worklist from SAP is empty ":self.query.smidi_server:"/":self.query.smidi_query, MSG_LOW )
+			self.no_lots_in_SAP()
+
+		ELSEIF ( self.filter_worklist() ) THEN 
+
+				self.status_message ( "Filtered worklist, checking failures ":self.query.smidi_server:"/":self.query.smidi_query, MSG_LOW )
+
+				IF ( self.filter_failures() ) THEN
+
+					self.status_message ( "Starting process of worklist ":self.query.smidi_server:"/":self.query.smidi_query, MSG_LOW )
+					self.process_worklist(calling_report)
+					self.status_message ( "Process worklist completed ":self.query.smidi_server:"/":self.query.smidi_query, MSG_LOW )
+
+				ELSE
+
+					self.status_message ( "Worklist filter removed all records ":self.query.smidi_server:"/":self.query.smidi_query, MSG_LOW )
+					self.no_lots_in_SAP()
+
+				ENDIF  { failures then regular filter }
+
+		ELSE
+
+			self.status_message ( "Worklist filter decided nothing is left ":self.query.smidi_server:"/":self.query.smidi_query, MSG_LOW )
+			self.no_lots_in_SAP()
+
+		ENDIF   { filter worklist/failures returned ok and worklist is not empty }
+
+	ELSEIF status = 17 THEN
+
+		self.status_message ( "Worklist empty from SAP (rfc error 17) ":self.query.smidi_server:"/":self.query.smidi_query, MSG_LOW )
+		self.no_lots_in_SAP()
+
+	ELSE
+
+		self.A1_base.rfc_error ("F", "SELECT_WORKLIST", status )
+
+	ENDIF  { status SMIDI_NORMAL }
+
+	RETURN ( status )
+
+	
+ENDROUTINE { smidi_download_action_TWO_stage }
+
+{ *******************************************************************************}
+
+ROUTINE smidi_download_action_ONE_stage ( self, calling_report )
+
+	DECLARE status
+
+	ARRAY self.worklist
+
+	status = alt_idi_QIRF_SEND_REQUIRMENTS_GET_DATA ( self ) 
+
+	IF status = SMIDI_NORMAL THEN
+
+		self.status_message ( "Starting process of ONE STAGE worklist ":self.query.smidi_server:"/":self.query.smidi_query, MSG_LOW )
+		self.process_worklist(calling_report)
+		self.status_message ( "Process worklist completed ONE STAGE":self.query.smidi_server:"/":self.query.smidi_query, MSG_LOW )
+
+	ELSEIF status = 17 THEN
+
+		self.status_message ( "NO DATA from SAP (rfc error 17) ":self.query.smidi_server:"/":self.query.smidi_query, MSG_LOW )
+		self.no_lots_in_SAP()
+
+	ELSE
+
+		self.A1_base.rfc_error ("F", "SELECT_WORKLIST", status )
+
+	ENDIF  { status SMIDI_NORMAL }
+	
+	RETURN ( status )
+	
+	
+ENDROUTINE { smidi_download_action_ONE_stage }
+
+{******************************************************************************}
+
+ROUTINE smidi_download_filter_callback ( wl_entry )
+
+	DECLARE ret_val, lot
+
+	ret_val = TRUE
+	lot     = SELECT smidi_logfiles.smidi_lot WHERE SMIDI_LOT = wl_entry.lot_no
+
+	IF lot <> EMPTY THEN
+
+		ret_val = A_base.call_trigger ( wl_entry, lot, SML_FAILURE_FILTER_TRIGGER )
+		A_base.status_message ( "$smidi_get_lot/smidi_download_filter_callback found error lot ":wl_entry.lot_no:" Veto->":retval, MSG_HIGH )
+
+	ENDIF
+
+	RETURN ( ret_val )
+
+ENDROUTINE { smidi_download_filter_callback }
+
+{******************************************************************************}
+ 
+ROUTINE smidi_download_action_filter_worklist ( self )
+
+	DECLARE include_entry, count, worklist_out, entries, max_lot
+
+	ARRAY worklist_out
+
+	max_lot   = ""
+	entries   = 0
+	count     = 1
+
+	WHILE self.worklist[count] <> EMPTY DO
+
+		CALL_ROUTINE self.query.filter_routine IN LIBRARY self.query.filter_library
+			USING self.worklist[count] RETURNING include_entry
+
+		IF ( include_entry ) THEN
+
+			entries = entries + 1
+			worklist_out[entries] = self.worklist[count]
+
+		ENDIF
+
+		IF self.worklist[count].lot_no > max_lot THEN
+			max_lot = self.worklist[count].lot_no
+		ENDIF
+
+		count = count + 1
+
+	ENDWHILE
+
+	self.worklist = worklist_out
+
+	IF self.query.filter_routine = FAILURE_FILTER_ROUTINE THEN
+
+		self.status_mess_decode ( "SMIDI_DOWNLOAD_F_FOUND", MSG_LOW, (STRIP(count-1):"\":STRIP(count-entries-1)), EMPTY, EMPTY )
+		self.see_whats_left ( max_lot, count )
+
+	ELSE
+
+		self.status_mess_decode ( "SMIDI_DOWNLOAD_F_AFTER", MSG_LOW, (STRIP(count-1):"\":STRIP(entries)), EMPTY, EMPTY )
+
+	ENDIF
+
+	RETURN ( entries <> 0 )
+
+ENDROUTINE  { filter_worklist }
+
+{******************************************************************************}
+
+ROUTINE smidi_download_action_see_whats_left ( self, VALUE last_lot, VALUE lot_no )
+
+	DECLARE start, old_format
+
+	IF ( self.query.qails.from_lot_no = last_lot ) THEN
+
+		self.query.none_left         = TRUE
+		self.query.qails.from_lot_no = "000000000000"
+
+	ELSE
+
+		self.orig_from = self.query.qails.from_lot_no
+		self.orig_to   = self.query.qails.to_lot_no
+
+		IF NUMTEXT ( last_lot ) THEN
+
+			old_format = GLOBAL ( "FORMAT_TEXT" )
+			SET FORMAT "999999999999"
+			start = RIGHTSTRING ( "000000000000" : STRIP ( last_lot + 1 ), 12 )
+			SET FORMAT old_format
+
+		ELSE
+			start = last_lot
+		ENDIF
+
+		self.query.qails.from_lot_no = start
+		self.query.qails.to_lot_no   = "999999999999"
+
+	ENDIF  { lotno 0, or last lot or maxlots-lotno }
+
+ENDROUTINE { smidi_download_action_see_whats_left }
+
+{******************************************************************************}
+
+ROUTINE smidi_download_action_filter_failures ( self )
+
+	DECLARE original_routine, original_library, ok
+
+	original_routine = self.query.filter_routine 
+	original_library = self.query.filter_library
+
+	self.query.filter_routine = FAILURE_FILTER_ROUTINE
+	self.query.filter_library = GLOBAL ( "CURRENT_LIBRARY" )
+
+	ok = self.filter_worklist()
+
+	self.query.filter_routine = original_routine
+	self.query.filter_library = original_library
+
+	RETURN ( ok )
+
+ENDROUTINE  { filter_failures }
+
+{******************************************************************************}
+{                                                                              }
+{                                                                              }
+{ THREE ways to process query                                                  }
+{                                                                              }
+{ 1)  Process the download queue (for lots or points)                          }
+{ 2)  Login to SAP and do a 2 stage download (lots)                            }
+{ 3)  Login to SAP and do an immediate download (points)                       }
+{                                                                              }
+{                                                                              }
+{******************************************************************************}
+
+ROUTINE smidi_download_action_process_a_query ( self, VALUE calling_report )
+
+
+	DECLARE a_false
+	DECLARE ok_numbers, message_no {  used to check for error to force logout }
+	
+	a_false = FALSE
+	retval  = TRUE
+
+	IF ( calling_report = SMIDI_PROCESS_LOT   )
+	OR ( calling_report = SMIDI_PROCESS_POINT ) THEN 
+
+		IF  ( NOT BLANK ( self.query.process_library ) ) AND ( NOT BLANK ( self.query.process_routine ) ) 
+		AND ( VGL_VALIDATE_ROUTINE ( self.query.process_library, self.query.process_routine ) ) THEN
+
+			self.status_message ( "Start-> ":STRIP(self.query.smidi_server):"/":
+						STRIP(self.query.smidi_query):"->":STRIP(self.query.process_library
+						:"\":STRIP(self.query.process_routine)), MSG_MED )
+
+			self.user_info = ""
+
+			self.status_message ( "Processing -> ":self.query.process_library:"/":self.query.process_routine:" MAP ->":A_base.mapping_profile, MSG_LOW )
+
+			CALL_ROUTINE self.query.process_routine IN LIBRARY self.query.process_library 
+				USING self, calling_report, a_false
+				RETURNING retval
+
+			self.status_message ( "->":self.query.process_library:"/":self.query.process_routine, MSG_LOW )
+			smidi_lib_user_stop ( A_base, self.smidi_query )
+
+		ELSE
+
+			self.status_message ( "Invalid library/routine ":self.query.process_library:"/":self.query.process_routine, MSG_HIGH )
+
+		ENDIF
+
+	ELSE
+
+		self.status_mess_decode ( "SMIDI_DOWNLOAD_P_QUERY", MSG_LOW, self.smidi_query, self.smidi_server, EMPTY )
+
+		IF NOT ( logged_on ) THEN                                       { **  FIRST time **   }
+
+			IF self.login ( self.smidi_server ) THEN
+
+				logged_on        = TRUE
+				logged_on_server = self.smidi_server
+
+			ENDIF
+
+		ELSEIF ( logged_on_server <> self.smidi_server ) THEN            { ** Repeating... **  }
+
+			self.status_message ( "***** NEW LOGIN --> ":logged_on_server:"/":self.smidi_server, MSG_LOW )
+
+			self.logout()
+
+			IF self.login ( self.smidi_server ) THEN
+
+				logged_on_server = self.smidi_server
+				logged_on        = TRUE
+
+			ENDIF
+
+		ELSE
+
+			self.status_message ( "Same login id --> ":logged_on_server, MSG_LOW )
+
+		ENDIF
+
+		{ ============================================================= }
+		{ If the old login is still active, then use it                 }
+		{ ============================================================= }
+
+		IF logged_on THEN
+
+			self.status_mess_decode ( "SMIDI_DOWNLOAD_LOOKING", MSG_MED, self.query.qails.from_lot_no, self.smidi_server:"/":self.smidi_query:"->":self.query.qails.to_lot_no, EMPTY  )
+
+			IF calling_report = SMIDI_GET_LOTS THEN
+
+				IF self.query.do_2_stage THEN
+					retval = self.TWO_stage(calling_report)
+				ELSE
+					retval = self.ONE_stage(calling_report)
+				ENDIF
+
+			ELSE
+
+				retval = self.process_worklist(calling_report)     { must be getting points }
+
+			ENDIF
+
+			{ If we have an error and it's not in ERROR_OK_NUMBERS, logout }
+
+			self.status_message ( self.smidi_server:"/":self.smidi_query: " Query processing return value = " : STRING ( retval ) , MSG_HIGH )
+
+			IF ( retval <> SMIDI_NORMAL ) THEN
+
+				{ We get a number, convert to format in ERROR_OK_NUMBERS }
+			        message_no = RIGHTSTRING ( "000" : STRIP ( retval ), 3 )
+
+        			ok_numbers   = self.get_item ( "ERROR_OK_NUMBERS"  )
+        			IF ( INDEX ( ok_numbers, message_no ) <> 0 ) THEN
+
+					self.status_message ( self.smidi_server:"/":self.smidi_query: "Forcing logout.", MSG_HIGH )
+
+					self.logout()
+					logged_on        = FALSE
+					logged_on_server = ""
+
+				ENDIF
+
+			ENDIF
+
+		ELSE
+
+			self.status_message ( self.smidi_server:"/":self.smidi_query: " unable to signon ", MSG_HIGH )
+			logged_on_server = ""
+
+		ENDIF
+
+	ENDIF
+
+	RETURN ( retval )
+
+ENDROUTINE   { smidi_download_action_process_a_query }
+
+{******************************************************************************}
+{                                                                              }
+{ TWO ways to process the worklist                                             }
+{                                                                              }
+{ 1)  get_lot   - 2 stage fetch using qails and qiwlr to get SAP data          }
+{ 2)  get_point - 2 stage fetch using qaipp to get SAP data                    }
+{                                                                              }
+{******************************************************************************}
+
+ROUTINE smidi_download_action_process_worklist ( self, VALUE calling_report )
+
+	DECLARE status, mess, used_only_by_upload, lot_no, no_data_routine, store_data_routine
+
+	ARRAY used_only_by_upload
+
+	{ ==================================================================== }
+	{ This is the main routine that does all the processing                }
+	{ ==================================================================== }
+
+	status = SMIDI_NORMAL
+	mess   = STRIP ( GET_USER_MESSAGE ( "SMIDI_DOWNLOAD_TRANS_DOWN", 1 ) ) : STRIP ( calling_report )
+
+	START WRITE TRANSACTION mess
+
+	IF calling_report = SMIDI_GET_POINTS THEN
+
+		no_data_routine    = "no_points_in_SAP"
+		store_data_routine = "store_point_data"
+
+		status = alt_idi_qirf_insppoint_getlist ( self )
+
+	ELSEIF calling_report = SMIDI_GET_LOTS THEN
+
+		no_data_routine    = "no_lots_in_SAP"
+		store_data_routine = "store_lot_data"
+
+		IF self.query.do_2_stage THEN
+			status = alt_idi_QIRF_SEND_INSP_DATA_FOR_WL ( self )
+		ELSE
+			status = SMIDI_NORMAL
+		ENDIF
+
+	ELSE
+
+		self.status_message ( "Call stack wrong, should not be here ":calling_report, MSG_HIGH )
+		status = SMIDI_BADSYS
+	
+	ENDIF
+
+	{ ------------------------------------------------------------------ }
+	{ Either way, check errors and lots returned by SAP when a SAP query }
+	{ ------------------------------------------------------------------ }
+
+	IF  ( status = SMIDI_NORMAL ) 
+
+		IF ( SIZE_OF_ARRAY ( self.operations ) > 0 ) THEN
+
+			lot_no = SUBSTRING ( self.operations[1], 4, 12 )
+			mess   = TOUPPER ( VARIABLE_GET_TYPE ( self.operations ) )
+			error_context_add_data( "LOT_NO", lot_no )	
+
+			smidi_lib_array_to_object ( "QIERR", self.errors, download )
+
+			IF NOT smidi_lib_output_errors (  self.errors, used_only_by_upload ) THEN
+
+				status = SMIDI_ABORTED
+				self.status_message ( "Errors on download ":calling_report, MSG_HIGH )
+
+			ELSEIF ( INDEX ( mess, "ARRAY" ) > 0 ) AND ( self.operations[1] <> EMPTY ) THEN
+
+				IF ( self.?store_data_routine? () ) THEN
+
+					status = alt_idi_commit()
+
+					IF ( status = SMIDI_NORMAL) THEN
+
+						IF ( self.call_trigger ( calling_report, status, SML_DOWNLOAD_COMMIT_TRIGGER )  ) THEN
+							COMMIT
+						ENDIF
+
+					ELSE
+
+						self.status_message ( "** alt_idi_commit FAILED ->":calling_report:" ":lot_no:" ":status, MSG_HIGH )
+
+					ENDIF
+				ELSE
+
+					self.status_message ( "** store_data failed -> ":calling_report:" ":lot_no, MSG_HIGH )
+
+				ENDIF   { download had no errors and data stored ok }
+
+			ELSE
+
+				self.status_message ( "Store got no data from SAP ":calling_report, MSG_LOW )
+				self.?no_data_routine?()
+
+			ENDIF   { errors on fetch or store }
+
+		ELSE
+
+			status = SMIDI_NORMAL
+			self.status_message ( "Fetch has no data ":calling_report, MSG_LOW )
+			self.?no_data_routine?()
+
+		ENDIF  { fetch has some data }
+
+	ELSE
+
+		self.A1_base.rfc_error ("F", calling_report, status )
+
+	ENDIF  { status normal from the alt_idi }
+
+	{ ===================================================================================== }
+	{ Any of the above failed then rollback and call trigger                                }
+	{ ===================================================================================== }
+
+	IF status <> SMIDI_NORMAL THEN
+
+		self.download_error(status)
+		ROLLBACK                     
+
+	ELSE
+
+		self.call_trigger ( calling_report, EMPTY, SML_DOWNLOAD_POST_COMMIT_TRIGGER ) 
+
+	ENDIF
+
+	RETURN ( status = SMIDI_NORMAL )
+
+ENDROUTINE { smidi_download_action_process_worklist }
+
+{ **************************************************************************** }
+{                                                                              }
+{                                                                              }
+{                   Storing data - for points, lots                            }
+{                                                                              }
+{                                                                              }
+{ **************************************************************************** }
+
+ROUTINE smidi_download_action_store_lot_data ( download )
+
+	DECLARE count, system_len, object_len, query_len, subsys_len, lot_len, save_charg,
+		id, server, query, insp_status, subsystem, sap_data_type, lot_no, save_lot, op_count, charg, charg_pos
+
+	GET_FIELD_DETAILS SMIDI_DOWNLOAD_QUEUE.SMIDI_SYSTEM, "FIELD_SIZE", system_len
+	GET_FIELD_DETAILS SMIDI_DOWNLOAD_QUEUE.SAP_OBJECT  , "FIELD_SIZE", object_len
+	GET_FIELD_DETAILS SMIDI_DOWNLOAD_QUEUE.SMIDI_QUERY , "FIELD_SIZE", query_len
+	GET_FIELD_DETAILS SMIDI_DOWNLOAD_QUEUE.SUBSYSTEM   , "FIELD_SIZE", subsys_len
+	GET_FIELD_DETAILS SMIDI_DOWNLOAD_QUEUE.SAP_LOT     , "FIELD_SIZE", lot_len
+
+	{ ========================================================================= }
+	{ These variables do not change during a multiple lot download              }
+	{ ========================================================================= }
+
+	IF download.A1_base.qmidi_object = 1 THEN
+		charg_pos = 413
+	ELSE
+		charg_pos = 450
+	ENDIF
+
+	download.A1_base.work_done = TRUE
+	retval                     = TRUE
+	insp_status                = STRIP ( download.query.qails.insp_status                                     )
+	server                     = PAD   ( download.smidi_server                              , " ", system_len )
+	query                      = PAD   ( download.smidi_query                               , " ", query_len  )
+	subsystem                  = PAD   ( download.query.qails.subsystem                     , " ", subsys_len )
+	lot_no                     = PAD   ( MIDSTRING ( download.operations[1], 4        , 12 ), " ", lot_len    )
+	charg                      = PAD   ( MIDSTRING ( download.operations[1], charg_pos, 10 ), " ", 10         )
+
+	{ ========================================================================= }
+	{ Regardless of insp_status update the QIWL/QAICA for mapping purposes      }
+	{ ========================================================================= }
+
+	update_qiwl    ( download, server, query, insp_status, subsystem, lot_len )
+	update_phrases ( download, lot_no, server, query, insp_status, subsystem, charg )
+
+	{ ========================================================================= }
+	{ New and corrected downloads update ops/chars, others just ops             }
+	{ ========================================================================= }
+
+	sap_data_type = "SAP_OPS   "
+	count         = 1
+
+	WHILE ( download.operations[count] <> EMPTY ) AND ( retval ) DO
+
+		lot_no = PAD ( MIDSTRING ( download.operations[count], 4        , 12 ), " ", lot_len )
+		charg  = PAD ( MIDSTRING ( download.operations[count], charg_pos, 10 ), " ", 10      )
+
+		{ ==================================================================== }
+		{ Save the lot, see if it has changed, if so, save previous lots chars }
+		{ ==================================================================== }
+
+		IF NOT VARIABLE_IS_ASSIGNED ( save_lot ) THEN     { very first time       }
+
+			save_lot   = lot_no
+			save_charg = charg
+			op_count   = 1
+
+		ELSEIF ( save_lot <> lot_no ) THEN                { nuther lot            }
+
+			IF ( INDEX ( INSP_STATUS_STORES_CHARS, insp_status ) > 0 ) THEN
+
+				retval = update_chars ( download, save_lot, server, query, insp_status, subsystem, lot_len, save_charg )
+
+			ENDIF
+
+			save_lot   = lot_no
+			save_charg = charg
+			op_count   = 1
+
+		ELSE                                              { nuther op on same lot }
+
+			op_count = op_count + 1
+
+		ENDIF
+
+		{ ====================================================================== }
+		{ If save of prev lots chars worked ok, then continue storing next lot   }
+		{ ====================================================================== }
+
+		IF retval THEN
+
+			id     = server:query:lot_no:sap_data_type:PACKED_DECIMAL(op_count)
+
+			status = SELECT SMIDI_DOWNLOAD_QUEUE.SAP_LOT FOR UPDATE
+				 WHERE  SMIDI_SYSTEM = server
+				 AND    SMIDI_QUERY  = query
+				 AND    SAP_LOT      = lot_no
+				 AND    SAP_OBJECT   = sap_data_type
+				 AND    ORDER_NUMBER = PACKED_DECIMAL(op_count)
+
+			IF ( status = EMPTY ) THEN
+
+				RESERVE ENTRY SMIDI_DOWNLOAD_QUEUE, id, status
+
+				IF ( status = EMPTY ) THEN
+
+					ASSIGN SMIDI_DOWNLOAD_QUEUE.MESSAGE      = download.operations[count]
+					ASSIGN SMIDI_DOWNLOAD_QUEUE.SAP_STATUS   = insp_status
+					ASSIGN SMIDI_DOWNLOAD_QUEUE.SUBSYSTEM    = subsystem	
+					ASSIGN SMIDI_DOWNLOAD_QUEUE.SAP_BATCH    = charg	
+					ASSIGN SMIDI_DOWNLOAD_QUEUE.QMIDI_OBJECT = download.qmidi_object
+
+				ELSE
+
+					retval = FALSE
+					download.status_message ( "$smidi_lib_qpup/store_data-> reserve entry error--> ":count:" ":sap_data_type:" ":id:" ":status, MSG_HIGH )
+
+				ENDIF
+
+			ELSEIF ( status <> EMPTY ) THEN
+
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.PROCESSED    = FALSE
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.ERROR_MSG    = ""
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.RETRY_COUNT  = 0
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.LOG_DATE     = NOW
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.SAP_STATUS   = insp_status
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.SUBSYSTEM    = subsystem
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.MESSAGE      = download.operations[count]
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.QMIDI_OBJECT = download.qmidi_object
+
+			ELSE
+
+				retval = FALSE
+				download.status_message ( "$smidi_lib_qpup/store_data-> UPDATE error--> ":count:" ":sap_data_type:" ":id:" ":status, MSG_HIGH )
+
+			ENDIF
+
+			{ ================================================== }
+			{ Update this modification/new record, check status  }
+			{ ================================================== }
+
+			IF retval THEN 
+
+				UPDATE SMIDI_DOWNLOAD_QUEUE, status
+
+				IF ( status <> EMPTY ) THEN
+					retval = FALSE	
+					download.status_message ( "$smidi_lib_qpup/store_data ERROR ":id:"->":status, MSG_FULL )
+				ELSE
+					download.status_message ( "$smidi_lib_qpup/store_data ":id, MSG_LOW )
+				ENDIF
+
+			ENDIF
+
+			{ ==================================================== }
+			{ Next operation, if no more then save last lots chars }
+			{ ==================================================== }
+
+			count = count + 1
+
+			IF ( download.operations[count] = EMPTY ) & ( retval) & ( INDEX ( INSP_STATUS_STORES_CHARS, insp_status ) > 0 ) THEN
+
+				retval = update_chars ( download, save_lot, server, query, insp_status, subsystem, lot_len, charg )
+
+			ENDIF
+
+		ENDIF  { retval from chars for op when a new lot was ok (or retval default) }
+
+	ENDWHILE  { download.operations[count] is not empty }
+
+	RETURN ( retval )
+
+ENDROUTINE  { store_lot_data }
+
+{******************************************************************************}
+
+ROUTINE update_chars ( download, save_lot, server, query, insp_status, subsystem, lot_len, charg )
+
+	DECLARE count, sap_data_type, char_count, id, this_lot, byte_start
+
+	retval        = TRUE
+	char_count    = 0
+	count         = 1
+	sap_data_type = "SAP_CHARS "
+
+	IF ( download.A1_base.qmidi_object = 1 ) THEN
+		byte_start = 30
+	ELSE
+		byte_start = 32
+	ENDIF
+
+	WHILE ( download.chars[count] <> EMPTY ) AND ( retval ) DO
+
+		this_lot = MIDSTRING ( download.chars[count], byte_start, 12 )
+
+		IF ( this_lot = save_lot ) THEN
+
+			char_count = char_count + 1
+			id         = server:query:PAD(save_lot," ",lot_len):sap_data_type:PACKED_DECIMAL(char_count)
+
+			status = SELECT SMIDI_DOWNLOAD_QUEUE.SAP_LOT FOR UPDATE
+				 WHERE  SMIDI_SYSTEM = server
+				 AND    SMIDI_QUERY  = query
+				 AND    SAP_LOT      = save_lot
+				 AND    SAP_OBJECT   = sap_data_type
+				 AND    ORDER_NUMBER = PACKED_DECIMAL(char_count)
+
+			IF ( status = EMPTY ) THEN
+
+				RESERVE ENTRY SMIDI_DOWNLOAD_QUEUE, id, status
+
+				IF ( status = EMPTY ) THEN
+
+					ASSIGN SMIDI_DOWNLOAD_QUEUE.MESSAGE      = download.chars[count]
+					ASSIGN SMIDI_DOWNLOAD_QUEUE.SAP_STATUS   = insp_status
+					ASSIGN SMIDI_DOWNLOAD_QUEUE.SUBSYSTEM    = subsystem
+					ASSIGN SMIDI_DOWNLOAD_QUEUE.SAP_BATCH    = charg	
+					ASSIGN SMIDI_DOWNLOAD_QUEUE.QMIDI_OBJECT = download.qmidi_object
+
+				ELSE
+
+					retval = FALSE
+					download.status_message ( "$smidi_lib_qpup/store_data-> reserve entry error--> ":count:" ":char_count:" ":sap_data_type:" ":id:" ":status, MSG_HIGH )
+
+				ENDIF
+
+			ELSEIF ( status <> EMPTY ) THEN
+
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.PROCESSED    = FALSE
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.ERROR_MSG    = ""
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.RETRY_COUNT  = 0
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.LOG_DATE     = NOW
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.SAP_STATUS   = insp_status
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.SUBSYSTEM    = subsystem
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.MESSAGE      = download.chars[count]
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.SAP_BATCH    = charg	
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.QMIDI_OBJECT = download.qmidi_object
+
+			ELSE
+
+				retval = FALSE
+				download.status_message ( "$smidi_lib_qpup/store_data-> UPDATE error--> ":count:" ":char_count:" ":sap_data_type:" ":id:" ":status, MSG_HIGH )
+
+			ENDIF
+
+			{ ================================================== }
+			{ Update this modification/new record, check status  }
+			{ ================================================== }
+
+			IF retval THEN 
+
+				UPDATE SMIDI_DOWNLOAD_QUEUE, status
+
+				IF ( status <> EMPTY ) THEN
+					retval = FALSE	
+					download.status_message ( "$smidi_lib_qpup/store_data ERROR ":id:"->":status, MSG_FULL )
+				ELSE
+					download.status_message ( "$smidi_lib_qpup/store_data ":id, MSG_LOW )
+				ENDIF
+
+			ENDIF
+
+		ENDIF  { save_lot is this chars lot }
+
+		count = count + 1
+
+	ENDWHILE  { download.chars[count] is not empty }
+
+	RETURN ( retval )
+
+ENDROUTINE  { update_chars }
+
+{******************************************************************************}
+
+ROUTINE update_phrases ( download, lot_no, server, query, insp_status, subsystem, charg )
+
+	DECLARE count, sap_data_type, id, retval
+
+	retval        = TRUE
+	count         = 1
+	sap_data_type = "SAP_PHRASE"
+
+	WHILE ( download.phrases[count] <> EMPTY ) AND ( retval ) DO
+
+		id     = server:query:lot_no:sap_data_type:PACKED_DECIMAL(count)
+
+		status = SELECT SMIDI_DOWNLOAD_QUEUE.SAP_LOT FOR UPDATE
+			 WHERE  SMIDI_SYSTEM = server
+			 AND    SMIDI_QUERY  = query
+			 AND    SAP_LOT      = lot_no
+			 AND    SAP_OBJECT   = sap_data_type
+			 AND    ORDER_NUMBER = PACKED_DECIMAL(count)
+
+		IF ( status = EMPTY ) THEN
+
+			RESERVE ENTRY SMIDI_DOWNLOAD_QUEUE, id, status
+
+			IF ( status = EMPTY ) THEN
+
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.MESSAGE      = download.phrases[count]
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.SAP_STATUS   = insp_status
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.SUBSYSTEM    = subsystem
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.SAP_BATCH    = charg	
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.QMIDI_OBJECT = download.qmidi_object
+
+			ELSE
+
+				retval = FALSE
+				download.status_message ( "$smidi_lib_qpup/store_data-> reserve entry error--> ":count:" ":sap_data_type:" ":id:" ":status, MSG_HIGH )
+
+			ENDIF
+
+		ELSEIF ( status <> EMPTY ) THEN
+
+			ASSIGN SMIDI_DOWNLOAD_QUEUE.PROCESSED    = FALSE
+			ASSIGN SMIDI_DOWNLOAD_QUEUE.ERROR_MSG    = ""
+			ASSIGN SMIDI_DOWNLOAD_QUEUE.RETRY_COUNT  = 0
+			ASSIGN SMIDI_DOWNLOAD_QUEUE.LOG_DATE     = NOW
+			ASSIGN SMIDI_DOWNLOAD_QUEUE.SAP_STATUS   = insp_status
+			ASSIGN SMIDI_DOWNLOAD_QUEUE.SUBSYSTEM    = subsystem
+			ASSIGN SMIDI_DOWNLOAD_QUEUE.MESSAGE      = download.phrases[count]
+			ASSIGN SMIDI_DOWNLOAD_QUEUE.SAP_BATCH    = charg	
+			ASSIGN SMIDI_DOWNLOAD_QUEUE.QMIDI_OBJECT = download.qmidi_object
+
+		ELSE
+
+			retval = FALSE
+			download.status_message ( "$smidi_lib_qpup/store_data-> UPDATE error--> ":count:" ":sap_data_type:" ":id:" ":status, MSG_HIGH )
+
+		ENDIF
+
+		{ ================================================== }
+		{ Update this modification/new record, check status  }
+		{ ================================================== }
+
+		IF retval THEN 
+
+			UPDATE SMIDI_DOWNLOAD_QUEUE, status
+
+			IF ( status <> EMPTY ) THEN
+				retval = FALSE	
+				download.status_message ( "$smidi_lib_qpup/store_data ERROR ":id:"->":status, MSG_FULL )
+			ELSE
+				download.status_message ( "$smidi_lib_qpup/store_data ":id, MSG_LOW )
+			ENDIF
+
+		ENDIF
+
+		count = count + 1
+
+	ENDWHILE  { download.operations[count] is not empty }
+
+	RETURN ( retval )
+
+ENDROUTINE  { update_phrases }
+
+{******************************************************************************}
+
+ROUTINE update_qiwl ( download, server, query, insp_status, subsystem, lot_len )
+
+	DECLARE count, sap_data_type, id, retval, lot_no, save_lot, count_2, charg
+
+	retval        = TRUE
+	count         = 1
+	count_2       = 0
+	sap_data_type = "SAP_QIWL  "
+
+	WHILE ( download.worklist[count] <> EMPTY ) AND ( retval ) DO
+
+		lot_no = PAD ( MIDSTRING ( download.worklist[count], 10 , 12 ), " ", lot_len )
+		charg  = PAD ( MIDSTRING ( download.worklist[count], 142, 10 ), " ", 10      )
+
+		IF NOT VARIABLE_IS_ASSIGNED ( save_lot ) THEN
+			save_lot = lot_no
+			count_2  = 1
+		ELSEIF ( save_lot <> lot_no ) THEN
+			count_2  = 1
+			save_lot = lot_no
+		ELSE
+			count_2 = count_2 + 1
+		ENDIF
+
+		id     = server:query:lot_no:sap_data_type:PACKED_DECIMAL(count_2)
+
+		status = SELECT SMIDI_DOWNLOAD_QUEUE.SAP_LOT FOR UPDATE
+			 WHERE  SMIDI_SYSTEM = server
+			 AND    SMIDI_QUERY  = query
+			 AND    SAP_LOT      = lot_no
+			 AND    SAP_OBJECT   = sap_data_type
+			 AND    ORDER_NUMBER = PACKED_DECIMAL(count_2)
+
+		IF ( status = EMPTY ) THEN
+
+			RESERVE ENTRY SMIDI_DOWNLOAD_QUEUE, id, status
+
+			IF ( status = EMPTY ) THEN
+
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.MESSAGE      = download.worklist[count]
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.SAP_STATUS   = insp_status
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.SUBSYSTEM    = subsystem
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.SAP_BATCH    = charg	
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.QMIDI_OBJECT = download.qmidi_object
+
+			ELSE
+
+				retval = FALSE
+				download.status_message ( "$smidi_lib_qpup/store_data QIWL-> reserve entry error--> ":count:" ":sap_data_type:" ":id:" ":status, MSG_HIGH )
+
+			ENDIF
+
+		ELSEIF ( status <> EMPTY ) THEN
+
+			ASSIGN SMIDI_DOWNLOAD_QUEUE.PROCESSED    = FALSE
+			ASSIGN SMIDI_DOWNLOAD_QUEUE.ERROR_MSG    = ""
+			ASSIGN SMIDI_DOWNLOAD_QUEUE.RETRY_COUNT  = 0
+			ASSIGN SMIDI_DOWNLOAD_QUEUE.LOG_DATE     = NOW
+			ASSIGN SMIDI_DOWNLOAD_QUEUE.SAP_STATUS   = insp_status
+			ASSIGN SMIDI_DOWNLOAD_QUEUE.SUBSYSTEM    = subsystem
+			ASSIGN SMIDI_DOWNLOAD_QUEUE.MESSAGE      = download.worklist[count]
+			ASSIGN SMIDI_DOWNLOAD_QUEUE.SAP_BATCH    = charg	
+			ASSIGN SMIDI_DOWNLOAD_QUEUE.QMIDI_OBJECT = download.qmidi_object
+
+		ELSE
+
+			retval = FALSE
+			download.status_message ( "$smidi_lib_qpup/store_data-> UPDATE QIWL error--> ":count:" ":sap_data_type:" ":id:" ":status, MSG_HIGH )
+
+		ENDIF
+
+		{ ================================================== }
+		{ Update this modification/new record, check status  }
+		{ ================================================== }
+
+		IF retval THEN 
+
+			UPDATE SMIDI_DOWNLOAD_QUEUE, status
+
+			IF ( status <> EMPTY ) THEN
+				retval = FALSE	
+				download.status_message ( "$smidi_lib_qpup/store_data QIWL ERROR ":id:"->":status, MSG_FULL )
+			ELSE
+				download.status_message ( "$smidi_lib_qpup/store_data QIWL ":id, MSG_LOW )
+			ENDIF
+
+		ENDIF
+
+		count = count + 1
+
+	ENDWHILE  { download.worklist[count] is not empty }
+
+	RETURN ( retval )
+
+ENDROUTINE  { update_qiwl }
+
+{ **************************************************************************** }
+
+ROUTINE smidi_download_action_store_point_data ( download )
+
+	DECLARE server, count, system_len, object_len, query_len, id, status,
+		last_point, save_format, subsystem, sap_object, save_lot, query
+
+	retval    = TRUE
+	server    = download.query.smidi_server
+	subsystem = download.query.smidi_subsystem
+	save_lot  = download.query.from_ip_lot : download.query.from_ip_op_no
+
+	GET_FIELD_DETAILS SMIDI_DOWNLOAD_QUEUE.SMIDI_SYSTEM , "FIELD_SIZE", system_len
+	GET_FIELD_DETAILS SMIDI_DOWNLOAD_QUEUE.SMIDI_QUERY  , "FIELD_SIZE", query_len
+	GET_FIELD_DETAILS SMIDI_DOWNLOAD_QUEUE.SAP_OBJECT   , "FIELD_SIZE", object_len
+
+	server     = PAD ( server      , " ", system_len )
+	query      = PAD ( "POINT"     , " ", query_len  )
+	sap_object = PAD ( "SAP_POINTS", " ", object_len )
+
+	count      = 1
+
+	WHILE ( count <= SIZE_OF_ARRAY ( download.operations ) ) AND ( retval ) DO
+
+		last_point = SUBSTRING ( download.operations[count], 26, 6 )
+		id         = server:query:save_lot:last_point:sap_object:PACKED_DECIMAL(NUMERIC(last_point))
+
+		RESERVE ENTRY SMIDI_DOWNLOAD_QUEUE, id, status
+
+		IF ( status = EMPTY ) THEN
+
+			ASSIGN SMIDI_DOWNLOAD_QUEUE.SAP_OP_NO    = download.query.from_ip_op_no
+			ASSIGN SMIDI_DOWNLOAD_QUEUE.SUBSYSTEM    = subsystem
+			ASSIGN SMIDI_DOWNLOAD_QUEUE.MESSAGE      = download.operations[count]
+			ASSIGN SMIDI_DOWNLOAD_QUEUE.QMIDI_OBJECT = download.qmidi_object
+
+			UPDATE SMIDI_DOWNLOAD_QUEUE, status
+
+			IF status <> EMPTY THEN
+				download.status_message ( "$smidi_lib_qpup/store_data-> UPDATE error--> ":count:" ":id:" ":status, MSG_HIGH )
+				retval = FALSE
+			ENDIF
+
+		ELSE
+
+			{ ================================================================ }
+			{ This point has been "re"downloaded, we will have to reprocess it }
+			{ ================================================================ }
+
+			id = LOCKED
+
+			WHILE ( id = LOCKED ) DO
+
+				id = SELECT SMIDI_DOWNLOAD_QUEUE.SAP_LOT FOR UPDATE
+					WHERE SMIDI_SYSTEM = server
+					AND   SAP_LOT      = save_lot:last_point
+					AND   SAP_OBJECT   = sap_object
+					AND   ORDER_NUMBER = PACKED_DECIMAL(NUMERIC(last_point))
+
+				IF ( id = LOCKED ) THEN
+
+					SLEEP FOR "0 00:00:02"
+					download.status_message ( "$smidi_lib_qpup/store_data-> SLEEP LOCK-> ":save_lot:last_point, MSG_HIGH )
+	
+				ENDIF
+
+			ENDWHILE
+
+			{ =============================================================== }
+			{ Got the record, it ain't locked, now update with new SAP values }
+			{ =============================================================== }
+
+			IF id <> EMPTY THEN
+
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.SAP_OP_NO    = download.query.from_ip_op_no
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.SUBSYSTEM    = subsystem
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.MESSAGE      = download.operations[count]
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.PROCESSED    = FALSE
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.RETRY_COUNT  = 0
+				ASSIGN SMIDI_DOWNLOAD_QUEUE.QMIDI_OBJECT = download.qmidi_object
+
+				UPDATE SMIDI_DOWNLOAD_QUEUE, status
+
+				IF status <> EMPTY THEN
+					retval = FALSE
+					download.status_message ( "$smidi_lib_qpup/store_data-> UPDATE error--> ":count:" ":id:" ":status, MSG_HIGH )
+				ELSE
+					download.status_message ( "$smidi_lib_qpup/store_data-> UPDATED FOR REPROCESSING --> ":count:" ":id, MSG_HIGH )
+				ENDIF
+
+			ELSE
+
+				download.status_message ( "$smidi_lib_qpup/store_data-> reserve error--> ":count:" ":id:" ":status, MSG_HIGH )
+
+			ENDIF
+
+		ENDIF
+
+		download.status_message ( "$smidi_lib_qpup/store_data ":id, MSG_LOW )
+		count = count + 1
+
+	ENDWHILE
+
+	{ ====================================================================================================== }
+	{ Got the last data point in the queue, thus we should only query SAP for any points later than this one }
+	{ ====================================================================================================== }
+
+	save_format = GLOBAL ( "FORMAT_TEXT" )
+	SET FORMAT "9999999999"
+	last_point  = last_point + 1
+	last_point  = RIGHTSTRING ( "000000" : STRIP ( last_point ), 6 )
+	SET FORMAT save_format
+
+	id = SELECT SMIDI_POINTS_QUERY.FROM_IP_LOT FOR UPDATE
+		WHERE FROM_IP_LOT   = download.query.from_ip_lot
+			AND   FROM_IP_OP_NO = download.query.from_ip_op_no
+
+	WHILE ( id = LOCKED ) DO
+
+		download.status_message ( "*** DANGER LOCKED SMIDI_QUERY --> ":download.query.from_lot_no:" ":download.query.from_ip_op_no, MSG_FULL )
+		SLEEP FOR "0 00:00:05"
+
+		id = SELECT SMIDI_POINTS_QUERY.FROM_IP_LOT FOR UPDATE
+			WHERE FROM_IP_LOT   = download.query.from_ip_lot
+			AND   FROM_IP_OP_NO = download.query.from_ip_op_no
+
+	ENDWHILE
+
+	{ =================================================================== }
+	{ Stay on the query until we can update it - may mean endless loop    }
+	{ =================================================================== }
+
+	IF ( id <> EMPTY ) THEN
+
+		ASSIGN SMIDI_POINTS_QUERY.FROM_IP_POINT = last_point
+
+		IF ( download.get_item ( "SMIDI_POINTS_1_AT_A_TIME" ) ) THEN
+			ASSIGN SMIDI_POINTS_QUERY.TO_IP_POINT = last_point
+		ENDIF
+
+		UPDATE SMIDI_POINTS_QUERY, status
+
+	ELSE
+
+		download.status_message ( "Warning, unabled to locate smidi_points_query ":download.query.from_lot_no:" ":download.query.from_ip_op_no, MSG_HIGH )
+
+	ENDIF   { update the query to the last point done }
+
+	RETURN ( retval )
+
+ENDROUTINE  { store_point_data }
+
+{ **************************************************************************** }
+{                                                                              }
+{       New (A), Corrected (B), Cancelled (C) and Discarded (D) status of SAP. }
+{                                                                              }
+{ **************************************************************************** }
+
+ROUTINE process_download_queue ( download, VALUE calling_report, VALUE post_query_trigger )
+
+	DECLARE continue	, 
+		this_lot	, 
+		save_lot	, 
+		data_type	, 
+		message	, 
+		system	, 
+		subsystem	, 
+		count		,
+		save_status	, 
+		retry_max	, 
+		num_retries	, 
+		op_no		, 
+		sql_command	, 
+		login_request
+
+	ARRAY download.operations
+	ARRAY download.chars
+	ARRAY download.phrases
+	ARRAY download.qiwl
+
+	message = "PROCESS_" : STRIP (download.smidi_server) : "_" : STRIP(download.smidi_query)
+	START WRITE TRANSACTION message
+
+	{ ====================================================================================== }
+	{ get the ops, chars and phrases from LIMs tables - but only for VERY FIRST time entries }
+	{ ====================================================================================== }
+
+	IF ( calling_report = SMIDI_PROCESS_LOT ) THEN
+
+		download.query.fetch_query = STRIP ( download.query.fetch_query )
+
+		this_lot = SELECT SMIDI_DOWNLOAD_QUEUE.SAP_LOT FOR UPDATE
+				WHERE PROCESSED   = FALSE
+					AND   SMIDI_QUERY = download.query.fetch_query
+					AND   RETRY_COUNT = 0
+					ORDER ON SAP_LOT ASCENDING, SAP_OBJECT ASCENDING, ORDER_NUMBER ASCENDING
+	
+	ELSE
+
+		this_lot = SELECT SMIDI_DOWNLOAD_QUEUE.SAP_LOT FOR UPDATE
+				WHERE PROCESSED   = FALSE
+				AND   SMIDI_QUERY = "POINT"
+				AND   RETRY_COUNT = 0
+				ORDER ON SAP_LOT ASCENDING, SAP_OBJECT ASCENDING, ORDER_NUMBER ASCENDING
+	ENDIF
+
+	{ =========================================================== }
+	{ None found that are first time process, see if any retries  }
+	{ =========================================================== }
+
+	retry_max = download.get_item ( "PROCESS_RETRY_MAX" ) + 1
+
+	IF this_lot = EMPTY THEN
+
+		IF ( calling_report = SMIDI_PROCESS_LOT ) THEN
+
+			download.query.fetch_query = STRIP ( download.query.fetch_query )
+
+			this_lot = SELECT SMIDI_DOWNLOAD_QUEUE.SAP_LOT FOR UPDATE
+					WHERE PROCESSED   = FALSE
+					AND   SMIDI_QUERY = download.query.fetch_query
+					AND   RETRY_COUNT <= retry_max
+				ORDER ON SAP_LOT ASCENDING, SAP_OBJECT ASCENDING, ORDER_NUMBER ASCENDING
+
+		ELSE
+
+			this_lot = SELECT SMIDI_DOWNLOAD_QUEUE.SAP_LOT FOR UPDATE
+					WHERE PROCESSED   = FALSE
+					AND   SMIDI_QUERY = "POINT"
+					AND   RETRY_COUNT <= retry_max
+				ORDER ON SAP_LOT ASCENDING, SAP_OBJECT ASCENDING, ORDER_NUMBER ASCENDING
+
+		ENDIF
+
+	ENDIF  { this_lot empty when all retry_max is 0, so see if any retry downloads need to be done }
+
+	{ ======================================================== }
+	{ One time fetches, then loop for all others               }
+	{ ======================================================== }
+
+	IF ( this_lot <> EMPTY ) & ( this_lot <> LOCKED ) THEN
+
+		system      = SELECT SMIDI_DOWNLOAD_QUEUE.SMIDI_SYSTEM
+		subsystem   = SELECT SMIDI_DOWNLOAD_QUEUE.SUBSYSTEM
+		op_no       = SELECT SMIDI_DOWNLOAD_QUEUE.SAP_OP_NO
+		num_retries = SELECT SMIDI_DOWNLOAD_QUEUE.RETRY_COUNT + 1
+
+	ELSEIF this_lot = LOCKED THEN
+
+		download.status_message ( "**** smidi_download_queue LOCKED **** ", MSG_FULL )
+		this_lot = EMPTY
+
+	ENDIF
+
+	{ ======================================================== }
+	{ Get the ops, chars, phrases                              }
+	{ ======================================================== }
+
+	WHILE ( this_lot <> EMPTY )  DO
+
+		IF ( num_retries < retry_max ) THEN
+
+			data_type   = SELECT SMIDI_DOWNLOAD_QUEUE.SAP_OBJECT
+			message     = SELECT SMIDI_DOWNLOAD_QUEUE.MESSAGE
+			count       = SELECT SMIDI_DOWNLOAD_QUEUE.ORDER_NUMBER
+
+			ASSIGN SMIDI_DOWNLOAD_QUEUE.RETRY_COUNT = num_retries
+			UPDATE SMIDI_DOWNLOAD_QUEUE, status
+
+			IF status <> EMPTY THEN
+				download.status_message ( "Process_download_queue ":system:" ":data_type:" ":count:" ":subsystem:" ":message:" update status -> ":status, MSG_HIGH )
+			ELSE
+				download.status_message ( "Process_download_queue ":system:" ":data_type:" ":count:" ":subsystem:" ":message, MSG_LOW )
+			ENDIF
+
+			IF ( data_type = "SAP_OPS" ) THEN
+
+				download.operations[count] = message
+
+			ELSEIF ( data_type = "SAP_CHARS" ) THEN
+
+				download.chars[count] = message
+
+			ELSEIF ( data_type = "SAP_PHRASE" ) THEN
+
+				download.phrases[count] = message
+
+			ELSEIF ( data_type = "SAP_POINTS" ) THEN
+
+				{ ===================================================================== }
+				{                                                                       }
+				{ The beginning of issues, we have a QAIPP and some old QAIVC's and the }
+				{ QAIMV that can come from the smidi_request_header/_record(s) but we   }
+				{ really need to deduce the new ones from the QAIPP.  object.fromstring }
+				{                                                                       }
+				{ ===================================================================== }
+
+				IF NOT ( get_chars_from_points ( download, system, this_lot, op_no, message ) ) THEN
+					this_lot = EMPTY
+				ENDIF
+
+			ELSEIF ( data_type = "SAP_QIWL" ) THEN
+
+				download.qiwl[count] = message
+
+			ELSE
+
+				download.status_message ( "Process local invalid message ":this_lot:data_type:" ":count, MSG_HIGH )
+
+			ENDIF
+
+		ELSE
+
+			ASSIGN SMIDI_DOWNLOAD_QUEUE.PROCESSED = TRUE
+			UPDATE SMIDI_DOWNLOAD_QUEUE, status
+
+			download.status_message ( "Exceeded retry maximum ":this_lot:" ":status, MSG_HIGH )
+
+		ENDIF { max_retries exceeded }
+
+		{ ---------------------------------------------------- }
+		{ Save this lot so we can get outta while loop         }
+		{ ---------------------------------------------------- }
+
+		IF NOT VARIABLE_IS_ASSIGNED ( save_lot ) THEN
+			save_lot    = this_lot
+			save_status = SELECT SMIDI_DOWNLOAD_QUEUE.SAP_STATUS
+		ENDIF
+
+		NEXT SMIDI_DOWNLOAD_QUEUE
+		this_lot = SELECT SMIDI_DOWNLOAD_QUEUE.SAP_LOT
+
+		IF this_lot <> save_lot THEN
+			this_lot = EMPTY       { the last of save_lot, go process }
+		ENDIF
+
+	ENDWHILE   { got all the ops chars phrase for this lot }
+
+	{ ======================================================================= }
+	{ Now that we read the huge messages, convert to objects and process them }
+	{ ======================================================================= }
+
+	COMMIT                 { this saves the download_queue with retry_count incremented   }
+	continue = FALSE       { this sets new transaction to rollback unless we do something }
+
+	IF VARIABLE_IS_ASSIGNED ( save_lot ) THEN
+
+		IF ( SIZE_OF_ARRAY ( download.operations ) > 0 ) THEN
+
+			CALL_ROUTINE "smidi_lib_SET_r3sys" IN LIBRARY SMIDI_LIB_SAP USING system RETURNING continue
+
+			IF continue THEN
+
+				ARRAY download.errors
+				continue = download.qaica_qaivc_qaimv() 
+
+				{ ==================================================================== }
+				{ Now, go and do the LIMS stuff to these objects                       }
+				{ ==================================================================== }
+
+				IF continue = SMIDI_NORMAL THEN
+
+					{ -------------------------------------------------------------------- }
+					{ Above set system and query to new values, now read in map profile    }
+					{ -------------------------------------------------------------------- }
+
+					download.A1_base.work_done = TRUE
+
+					message = STRIP (download.smidi_server):"_":STRIP(download.smidi_query):"_":STRIP(save_status)
+					START WRITE TRANSACTION message
+
+					{ -------------------------------------------------------------------- }
+					{ Depending upon criteria of query (ABCD) we process in LIMS different }
+					{ -------------------------------------------------------------------- }
+
+					IF ( save_status = "A" ) | ( save_status = "B" ) THEN
+
+						IF ( download.get_item ( "SMIDI_ORACLE_TRACE" ) )  THEN
+							sql_command = "ALTER SESSION SET SQL_TRACE=TRUE"
+							execute_sql(sql_command)                          { STD_DATABASE }
+						ENDIF
+
+						smidi_login_initialise(download.A1_base.qmidi_object)
+
+						CREATE OBJECT "SMIDI_LOGIN", login_request
+							login_request.operations = download.operations
+							login_request.chars      = download.chars
+							login_request.phrases    = download.phrases
+							login_request.qiwl       = download.qiwl
+							login_request.config     = download.config
+							login_request.parent     = download.parent
+							login_request.download   = download
+							login_request.A1_base    = download.A1_base
+							smidi_lib_initialise_mapping ( login_request, A_base )
+
+						{ ==================================================================== }
+						{ If we are an inspection point then assign to QAIVC this QAIPP        }
+						{ ==================================================================== }
+
+						IF VARIABLE_IS_ASSIGNED ( download.inspection_point ) THEN
+							download.operations[1].qaipp = download.inspection_point
+							login_request.point_mode     = TRUE
+						ENDIF
+
+						continue = login_request.process()
+
+						IF ( download.get_item ( "SMIDI_ORACLE_TRACE" ) )  THEN
+							sql_command = "ALTER SESSION SET SQL_TRACE=FALSE"
+							execute_sql(sql_command)
+						ENDIF
+
+					ELSEIF ( save_status = "C" ) | ( save_status = "D" ) THEN
+
+						CALL_ROUTINE "zap_job_records" USING download RETURNING continue 
+							IN LIBRARY SMIDI_LIB_CLEAN
+
+						zap_job_complete ( download, continue )
+
+					ELSE
+
+						download.status_message ( "Process local does not know this process ":save_lot:" ":save_status, MSG_HIGH )
+						continue = TRUE
+	
+					ENDIF  { type of inspection sets type of processing }
+
+					{ ===================================================== }
+					{ this is the only place that download.user_info is set }
+					{ ===================================================== }
+
+					IF NOT continue THEN
+						download.user_info = "Reset the smidi_download_queue to not processed"
+					ELSE
+						download.user_info = ""
+					ENDIF
+
+				ELSE
+
+					continue = FALSE
+					download.status_message ( "process_download_queue error from process_download ", MSG_HIGH )
+
+				ENDIF   { qaica/vc/mv failed }
+
+			ELSE
+
+				continue = FALSE
+				download.status_message ( "process_download_queue invalid system ":system:" ":save_lot, MSG_HIGH )
+
+			ENDIF   { SAP system is invalid }
+
+		ELSE
+
+			download.status_message ( "process_download_queue no operations ", MSG_HIGH )
+
+		ENDIF  { size of operations }
+
+	ELSE
+
+		download.status_message ( "process_download_queue no records found ", MSG_LOW )
+
+	ENDIF  { continue set if we had an error making the objects }
+
+	{ ======================================================= }
+	{ ALL transactions are handled within this routine....    }
+	{ ======================================================= }
+
+	IF continue THEN
+
+		IF ( download.call_trigger ( save_lot, EMPTY, SML_PROCESS_COMMIT_TRIGGER ) ) THEN
+			COMMIT
+			download.call_trigger ( save_lot, EMPTY, SML_PROCESS_POST_COMMIT_TRIGGER )
+		ENDIF
+
+	ELSE
+
+		ROLLBACK
+
+		IF NOT BLANK ( download.user_info ) THEN
+
+			download.status_message ( "Error processing download queue ":download.user_info, MSG_FULL )
+			download.call_trigger ( save_lot, EMPTY, SML_PROCESS_ROLLBACK_TRIGGER )
+
+		ENDIF
+
+	ENDIF
+
+	RETURN ( continue )
+
+ENDROUTINE  { process only }
+
+{******************************************************************************}
+
+ROUTINE zap_job_complete ( download, continue )
+
+	DECLARE job_change, this_sample, count, status
+
+	count      = 1
+	job_change = download.get_item ( "SMIDI_JOB_CANCEL_MODE" )
+
+	IF ( job_change <> "CHANGE" ) THEN
+
+		WHILE ( download.operations[ count ] <> EMPTY ) DO
+
+			this_sample = SELECT SAMPLE.ID_TEXT FOR UPDATE
+						WHERE SMIDI_LOT = download.operations[count].lot_no
+
+			WHILE ( this_sample <> EMPTY ) DO
+
+				ASSIGN SAMPLE.JOB_NAME = ""
+				UPDATE SAMPLE, status
+
+				NEXT SAMPLE
+				this_sample = SELECT SAMPLE.ID_TEXT
+
+			ENDWHILE
+
+			count = count + 1
+
+		ENDWHILE
+
+	ENDIF  { when mode is not CHANGE then clear out all the job_name in the samples }
+
+ENDROUTINE   { zap_job_complete }
+
+{ **************************************************************************** }
+{                                                                              }
+{                                                                              }
+{                             Reading lot data                                 }
+{                                                                              }
+{                                                                              }
+{ **************************************************************************** }
+
+ROUTINE smidi_download_action_qaica_qaivc_qaimv ( self )
+
+	DECLARE status
+
+	status = smidi_lib_array_to_object ( "QAICA", self.phrases, self )
+
+	IF status = SMIDI_NORMAL THEN
+
+		status = smidi_lib_array_to_object( "QIWLR", self.qiwl, self )
+
+	ENDIF
+
+	IF status = SMIDI_NORMAL THEN
+
+		status = smidi_lib_array_to_object ( "QAIVC", self.operations, self )
+
+		IF ( SIZE_OF_ARRAY ( self.operations ) < 1 ) THEN
+
+			status = SMIDI_ABORTED
+			self.status_message ( "No operations found ", MSG_HIGH )
+
+		ENDIF  { operations array has something }
+
+	ENDIF  { status normal }
+
+	IF ( status = SMIDI_NORMAL ) AND ( SIZE_OF_ARRAY ( self.operations ) >= 1 ) THEN
+
+		status = smidi_lib_array_to_object ( "QAIMV", self.chars, self )
+
+		IF status = SMIDI_NORMAL THEN
+
+			IF ( SIZE_OF_ARRAY ( self.chars ) < 1 )  THEN
+				status = SMIDI_ABORTED
+				self.status_message ( "SAP Download has no charactertistics ", MSG_HIGH )
+			ENDIF
+
+		ENDIF
+
+	ENDIF  { QAIVC was ok and has some values }
+
+	RETURN ( status )
+
+ENDROUTINE { smidi_DOWNLOAD_action_qaica_qaivc_qaimv }
+
+{ **************************************************************************** }
+{                                                                              }
+{                                                                              }
+{                             Reading point data                               }
+{                                                                              }
+{                                                                              }
+{ **************************************************************************** }
+
+ROUTINE get_chars_from_points ( download, system, this_lot, op_no, message )
+
+	DECLARE this_id, search_id
+
+	retval      = FALSE
+	search_id   = SUBSTRING ( this_lot, 1, 16 )
+	this_id     = "QAIPP"
+
+	download.inspection_point = smidi_lib_object_from_string ( this_id, message, download, 1 )
+
+	download.status_message ( "get_chars_from_points ":system:" ":search_id:" ":search_id, MSG_LOW )
+
+	{ ========================================================== }
+	{ We must assign the QAIPP to this QAIVC for later mapping   }
+	{ ========================================================== }
+
+	this_id   = SELECT SMIDI_REQUEST_HEADER.MESSAGE
+			WHERE SMIDI_SYSTEM = system
+			AND   request_key  = search_id
+
+	IF this_id <> EMPTY THEN
+
+		download.status_message ( "calling->get_the_points ":search_id:"->":this_id, MSG_MED )
+
+		download.operations[1] = this_id
+		download.qiwl[1]       = SELECT SMIDI_REQUEST_HEADER.QIWLR
+		retval                 = get_the_points ( download, this_id, system, search_id )
+
+	ELSE
+
+		download.status_message ( "get_chars_from_points NO request_header->":search_id, MSG_HIGH )
+
+	ENDIF
+
+	RETURN ( retval )
+
+ENDROUTINE  { get_chars_from_points }
+
+{ **************************************************************************** }
+
+ROUTINE get_the_points ( download, this_id, system, search_id )
+
+	DECLARE count
+
+	count   = 0
+	this_id = SELECT SMIDI_REQUEST_RECORD.MESSAGE
+			WHERE SMIDI_SYSTEM = system
+			AND   REQUEST_KEY  = search_id
+
+	WHILE this_id <> EMPTY DO
+
+		count                 = count + 1
+		download.chars[count] = this_id
+		download.status_message ( "get_the_points ":count:" ":search_id:"->":this_id, MSG_MED )
+
+		NEXT SMIDI_REQUEST_RECORD
+		this_id = SELECT SMIDI_REQUEST_RECORD.MESSAGE
+
+	ENDWHILE
+
+	IF count >= 1 THEN
+		retval = TRUE
+	ENDIF
+
+	RETURN ( retval )
+
+ENDROUTINE {get_the_points}
+
+{ $smidi_lib_qpup }

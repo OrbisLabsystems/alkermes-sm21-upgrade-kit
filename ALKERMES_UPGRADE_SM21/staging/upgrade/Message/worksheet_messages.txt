@@ -1,0 +1,326 @@
+MESSAGE GROUP "WSHEET_LIB_"
+
+MESSAGE        = "FIRST_PRINTING"
+TEXT           = "First Printing"
+
+MESSAGE        = "TEMPLATE"
+TEXT           = "Worksheet Template"
+
+MESSAGE        = "NO_TEMPLATE"
+TEXT           = "No Associated Infomaker Temaplate"
+
+MESSAGE        = "UNKNOWN"
+TEXT           = "Unknown Error - Operation Aborted"
+
+MESSAGE        = "REPRINT_REASON"
+TEXT           = "Reason for Reprint"
+
+MESSAGE GROUP "WSHEET_"
+
+MESSAGE        = "LTE_FIELDS_IDENTITY"
+TEXT           = "Identity"
+
+MESSAGE        = "LTE_FIELDS_DESCRIPTION"
+TEXT           = "Description"
+
+MESSAGE        = "LTE_FIELDS_PROMPT"
+TEXT           = "Prompt Description" 
+
+MESSAGE        = "LTE_FIELDS_TYPE"
+TEXT           = "Type"
+
+MESSAGE        = "LTE_FIELDS_MANDATORY"
+TEXT           = "Mandatory"
+
+MESSAGE        = "LTE_DISP_FOOTER"
+TEXT           = "Press EXIT to Quit."
+
+MESSAGE        = "LTE_INFO_LIB"
+TEXT           = "Infomaker Library"
+
+MESSAGE        = "LTE_USER_LIB"
+TEXT           = "User Library"
+
+MESSAGE        = "LTE_PRINT_PREV"
+TEXT           = "Print Preview"
+
+MESSAGE        = "LTE_MODIFIABLE"
+TEXT           = "Modifiable"
+
+MESSAGE        = "LTE_ENTER_REP"
+TEXT           = "Enter Report Identity:"
+
+MESSAGE        = "LTE_INFO_FIELDS"
+TEXT           = "Fields"
+
+MESSAGE        = "LTE_INFO_OPTIONS"
+TEXT           = "Infomaker Options"
+
+MESSAGE        = "LTE_DISP_NAME"
+TEXT           = "Management Report"
+
+MESSAGE        = "LTE_COPIES"
+TEXT           = "Copies"
+
+MESSAGE        = "LTE_VALID_ROUTINE"
+TEXT           = "Validation Routine"
+
+MESSAGE        = "LTE_INFO_REPORT"
+TEXT           = "Infomaker Report"
+
+MESSAGE        = "LTE_DESC"
+TEXT           = "Description"
+
+MESSAGE        = "LTE_FOOTER"
+TEXT           = "Press Do to Save / Exit to Quit"
+
+MESSAGE        = "LTE_INFO_REPORTS"
+TEXT           = "Infomaker Reports"
+
+MESSAGE        = "LTE_PRIM_TABLE"
+TEXT           = "Primary Table"
+
+MESSAGE        = "LTE_2_DESCRIPTION"
+TEXT           = "Description"
+
+MESSAGE        = "LTE_2_TYPE"
+TEXT           = "Type"
+
+MESSAGE        = "LTE_2_PROMPT2"
+TEXT           = "Prompt 2"
+
+MESSAGE        = "LTE_2_TYPE_CHECKER"
+TEXT           = "Checker"
+
+MESSAGE        = "LTE_2_TYPE_ANALYST"
+TEXT           = "Analyst"
+
+MESSAGE        = "LTE_2_SECTION"
+TEXT           = "Section"
+
+MESSAGE        = "LTE_2_MANDATORY"
+TEXT           = "Mandatory"
+
+MESSAGE        = "LTE_2_PROMPT1"
+TEXT           = "Prompt 1"
+
+MESSAGE        = "LTE_2_DEFAULT"
+TEXT           = "Default"
+
+MESSAGE        = "LTE_2_IDENTITY"
+TEXT           = "Identity"
+
+MESSAGE        = "LTE_2_HEADER"
+TEXT           = "Infomaker Report Parameters"
+
+MESSAGE        = "LTE_2_POPULATE_BUTTON"
+TEXT           = "Populate arguments"
+
+MESSAGE        = "LTE_2_ARG_PREFIX"
+TEXT           = "ARG_"
+
+MESSAGE        = "LTE_2_DESC_PREFIX"
+TEXT           = "Enter "
+
+MESSAGE        = "LTE_INFO_FATAL_ERROR"
+TEXT           = "This report cannot be run directly"
+
+MESSAGE        = "REQ_FIELDS"
+TEXT           = "You Must fill in all the required fields."
+
+MESSAGE        = "REP_TO_RUN"
+TEXT           = "Report To Run"
+
+MESSAGE        = "ERROR_INVALID_REPORT"
+TEXT           = "Invalid library or report"
+
+MESSAGE        = "ERROR_NO_PARAMETERS"
+TEXT           = "No parameters for selected report."
+
+MESSAGE        = "ERROR_NO_DATA"
+TEXT           = "No data selected."
+
+MESSAGE        = "ERROR_BROWSE_SMW"
+TEXT           = "Browse only available from SMW"
+
+MESSAGE        = "SELECT_PBL"
+TEXT           = "Select pbl:"
+
+MESSAGE        = "HEADER_PBL"
+TEXT           = "Create Infomaker records"
+
+MESSAGE        = "CREATE_MENU_HEADER"
+TEXT           = "Create master menu"
+
+MESSAGE        = "MENU_NUM_PROMPT"
+TEXT           = "Menu number"
+
+MESSAGE        = "MENU_RMB"
+TEXT           = "Reports"
+
+MESSAGE        = "REPORT_REMOVED"
+TEXT           = "Report does not exist in database or has been removed."
+
+MESSAGE        = "INFOMAKER_RECORDS"
+TEXT           = " Infomaker Link records have been created."
+
+MESSAGE        = "USER_LIB_NOT_DEFINED"
+TEXT           = "User Library not defined, on Infomaker Link."
+
+MESSAGE        = "LINKRECORD_FOUND"
+TEXT           = "Infomaker Link Record Found! Overwrite Report:"
+
+MESSAGE        = "TYPE_BROWSE"
+TEXT           = "Browse"
+
+MESSAGE        = "TYPE_PHRASE"
+TEXT           = "Phrase"
+
+MESSAGE        = "TYPE_FORMAT"
+TEXT           = "Format"
+
+MESSAGE        = "TYPE_ROUTINE"
+TEXT           = "Custom"
+
+MESSAGE        = "TYPE_DEFAULT"
+TEXT           = "Default Value"
+
+MESSAGE        = "PROMPT_TABLE"
+TEXT           = "Table"
+
+MESSAGE        = "PROMPT_FIELD"
+TEXT           = "Field"
+
+MESSAGE        = "PROMPT_LENGTH"
+TEXT           = "Length"
+
+MESSAGE        = "PROMPT_VGL"
+TEXT           = "Vgl Library"
+
+MESSAGE        = "PROMPT_PHRASE"
+TEXT           = "Phrase Id"
+
+MESSAGE        = "PROMPT_ROUTINE"
+TEXT           = "Routine"
+
+MESSAGE        = "PROMPT_DESCRIPTION"
+TEXT           = "Prompt Description"
+
+MESSAGE        = "HEADER_BUILD_PROMPT"
+TEXT           = "Define Prompt"
+
+
+MESSAGE        = "FOOTER_BUILD_PROMPT"
+TEXT           = "Select the prompt type, then its behaviour."
+
+MESSAGE        = "PROMPT_TEXT"
+TEXT           = "Define prompt, press F2 or double click..."
+TEXT           = "Prompt using "
+TEXT           = "Prompt for "
+
+MESSAGE        = "WSHEET"
+TEXT           = "Worksheet"
+
+MESSAGE        = "WSHEET_ID"
+TEXT           = "Worksheet ID"
+
+MESSAGE        = "GROUP_ID"
+TEXT           = "Group ID"
+
+MESSAGE        = "DESCRIPTION"
+TEXT           = "Description"
+
+MESSAGE        = "MODIFIABLE"
+TEXT           = "Modifiable"
+
+MESSAGE        = "HEADER"
+TEXT           = "Worksheet Template"
+
+MESSAGE        = "FIELDS"
+TEXT           = "Fields"
+
+MESSAGE        = "TYPE"
+TEXT           = "Type"
+
+MESSAGE        = "TMPL_FIELDS"
+TEXT           = "Worksheet Template Fields"
+
+MESSAGE        = "NA"
+TEXT           = "N/A"
+
+MESSAGE        = "ERR_PRINTOUT"
+TEXT           = "Could Not Create Printout Record"
+
+MESSAGE        = "CHOOSE_TEMPLATE"
+TEXT           = "Choose Template"
+
+MESSAGE        = "TEMPLATE"
+TEXT           = "W/Sheet Template"
+
+MESSAGE        = "COMPLETE_INFO"
+TEXT           = "Enter Mandatory Worksheet Header Information before Completing the Worksheet"
+
+MESSAGE        = "ERR_HISTORY"
+TEXT           = "Could Not Create Worksheet History Record"
+
+MESSAGE        = "INFO"
+TEXT           = "Worksheet Information"
+
+MESSAGE        = "PRESS_DO"
+TEXT           = "Press <do> to save / <exit> to quit"
+
+MESSAGE        = "PRESS_OK"
+TEXT           = "OK"
+
+MESSAGE        = "PRESS_CANCEL"
+TEXT           = "Cancel"
+
+MESSAGE        = "ENTER_DETAILS"
+TEXT           = "Enter Worksheet Details"
+
+MESSAGE        = "ITEM"
+TEXT           = "Item"
+
+MESSAGE        = "DETAILS"
+TEXT           = "Details"
+
+MESSAGE        = "VERSION"
+TEXT           = "Version"
+
+MESSAGE        = "STANDARD_EXPIRED"
+TEXT           = "NOTE: Reagent/Standard "
+TEXT           = " Expired On "
+
+MESSAGE        = "ENTER_DATA"
+TEXT           = "Worksheet Data"
+
+MESSAGE        = "MAN_FIELDS_MISSING"
+TEXT           = "Not all worksheet mandatory fields have been entered"
+
+MESSAGE        = "HEADER_DETAILS"
+TEXT           = "Worksheet Header Details - "
+
+MESSAGE        = "BUTTON_OK"
+TEXT           = "OK"
+
+MESSAGE        = "BUTTON_CANCEL"
+TEXT           = "Cancel"
+
+MESSAGE        = "BUTTON_APPLY_ALL"
+TEXT           = "Apply to All"
+
+MESSAGE        = "NO_FIELDS"
+TEXT           = "No fields to Enter"
+
+
+
+
+
+
+
+
+
+
+
+
+

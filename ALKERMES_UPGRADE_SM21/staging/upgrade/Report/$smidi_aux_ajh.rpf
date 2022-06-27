@@ -1,0 +1,293 @@
+{******************************************************************************
+*
+* Module Name   : $SMIDI_AUX_AJH
+*
+* Purpose       : Template created using $AUXSETUP -> Authorise Job/UD's
+*
+* Document Ref. : SE/T/TVGL-WORK-REPORTS/1/3
+*
+* Specification :
+*
+* Portability   : Not Checked
+*
+* Re-entrant    :
+*
+*******************************************************************************}
+
+ENABLE WINDOWS
+SET NAME "DISPLAY/"
+SET NOTPROTECTED
+SET COMPILE_OPTION DECLARE
+
+JOIN STANDARD_LIBRARY STD_DATABASE          { push_pop_file_descriptor  }
+JOIN STANDARD_LIBRARY STD_GENERAL           { variable_is_assigned      }
+JOIN STANDARD_LIBRARY STD_WINDOW            { window_set_status         }
+
+JOIN LIBRARY $AUX_LIB
+JOIN LIBRARY $LIB_UTILS
+
+CONSTANT SMIDI_QUEUE_UD_ROUTINE    = "smidi_queue_ud"
+CONSTANT SMIDI_QUEUE_UD_LIBRARY    = "$SMIDI_LIB_UPLOAD"
+
+{***********************************************************************}
+
+DECLARE prompt_text, table_names, display_details, prompt_details,
+	header_txt, footer_txt, success_txt, abort_txt, mess_area_one, mess_area_two,
+	samp_stat_allowed, job_stat_allowed, test_stat_allowed, change_stat, ud, ud_text
+	
+	Array prompt_text
+	Array table_names
+	Array change_stat     ARRAY_SIZE (3) = " "
+	Array display_details ARRAY_SIZE ( 0 , 6 )
+	Array prompt_details  ARRAY_SIZE ( 0 , 6 )
+
+	header_txt  = GET_USER_MESSAGE("AUX_AJH_HEAD_1" ,1)
+	footer_txt  = GET_USER_MESSAGE("AUX_AJH_FOOT_1" ,1)
+	success_txt = GET_USER_MESSAGE("AUX_AJH_SUCC_1" ,1)
+	abort_txt   = GET_USER_MESSAGE("AUX_AJH_ABORT" ,1)
+
+	mess_area_one     = ""
+	mess_area_two     = ""
+	samp_stat_allowed = "ACHUVWSX"
+	job_stat_allowed  = "C"
+	test_stat_allowed = "ACXSUPWV"
+	change_stat[1]    = "A"
+
+	table_names [ 1 ] = "JOB_HEADER"
+	prompt_text [ 1 ] = GET_USER_MESSAGE("AUX_AJH_PROM" ,1)
+
+	display_details [ 1, MESSAGE_POSITION    ]  = GET_USER_MESSAGE("AUX_AJH_DISPLAY_1" ,1)
+	display_details [ 1, TYPE_POSITION       ]  = "DISPLAY"
+	display_details [ 1, TABLE_NAME_POSITION ]  = "JOB_HEADER"
+	display_details [ 1, FIELD_NAME_POSITION ]  = "JOB_STATUS"
+
+	prompt_details [ 1 , MESSAGE_POSITION    ]  = GET_USER_MESSAGE ("AUX_AJH_DISPLAY_2", 1 )
+	prompt_details [ 1 , TYPE_POSITION       ]  = "FORMAT"
+	prompt_details [ 1 , TABLE_NAME_POSITION ]  = "JOB_HEADER"
+	prompt_details [ 1 , FIELD_NAME_POSITION ]  = "AUTHORISATION_NOTES"
+
+	prompt_details [ 2 , MESSAGE_POSITION    ]  = GET_USER_MESSAGE ("SMIDI_UPL_UD", 1 )
+	prompt_details [ 2 , FIELD_NAME_POSITION ]  = "SAP_UD_CODE"
+	prompt_details [ 2 , TYPE_POSITION       ]  = "ROUTINE"
+	prompt_details [ 2 , LIBRARY_POSITION    ]  = GLOBAL ( "CURRENT_LIBRARY" )
+	prompt_details [ 2 , ROUTINE_POSITION    ]  = "SAP_USAGE_DECISION"
+
+	prompt_details [ 3 , MESSAGE_POSITION    ]  = GET_USER_MESSAGE ("SMIDI_UPL_UD", 2 )
+	prompt_details [ 3 , FIELD_NAME_POSITION ]  = "SAP_UD_TEXT"
+	prompt_details [ 3 , TYPE_POSITION       ]  = "ROUTINE"
+	prompt_details [ 3 , LIBRARY_POSITION    ]  = GLOBAL ( "CURRENT_LIBRARY" )
+	prompt_details [ 3 , ROUTINE_POSITION    ]  = "SAP_UD_Text"
+
+
+{*************************************************}
+{             END  OF  USER  INPUT                }
+{*************************************************}
+
+aux_generator (  header_txt ,
+                 footer_txt ,
+                 mess_area_one ,
+                 mess_area_two  ,
+                 samp_stat_allowed ,
+                 job_stat_allowed ,
+                 test_stat_allowed ,
+                 prompt_text       ,
+                 table_names       ,
+                 change_stat                  ,
+                 global ( "current_library" ) ,
+                 Success_txt ,
+                 Abort_txt   ,
+                 TRUE      ,
+                 display_details ,
+                 prompt_details  ,
+                 "Read Transaction"  ,
+                 "Write Transaction")
+
+{**************************************************************************}
+
+ROUTINE action ( VALUE first_id , VALUE second_id )
+{
+	After DO is pressed
+
+	Return FALSE - rollback
+	Return TRUE  - commit and status changes
+	Return EMPTY - nothing, you could set LABTABLE_MODE = FALSE and the form will remain
+}
+
+	SET GLOBAL "SAMPAUTHNOTE" TO ( SELECT sample . authorisation_notes )
+	
+
+	DECLARE retval, subsys_decides, subsys, push_files
+
+	SET GLOBAL "JOBAUTHNOTE" TO ( SELECT job_header.authorisation_notes )
+
+	retval         = FALSE
+	subsys_decides = SELECT JOB_HEADER.SAP_UD_ENABLED
+	subsys         = SELECT JOB_HEADER.SMIDI_REQUESTER
+
+	{ ======================================================= }
+	{ IF this is not an SAP job then UD is ok                 }
+	{ IF it is, then UD must queue ok when values are entered }
+	{           or maybe the user just ain't makin no ud      }
+	{ ======================================================= }
+
+
+	IF ( subsys_decides <> "X" ) THEN
+
+		retval = TRUE
+
+	ELSEIF ( NOT VARIABLE_IS_ASSIGNED ( ud ) ) THEN
+
+		retval = EMPTY
+
+	ELSEIF ( ud = EMPTY ) | ( BLANK ( ud ) ) THEN
+
+		retval = confirm_with_text ( "Are you sure you want to authorize the job without making a UD ?" )
+
+		IF NOT retval THEN
+
+			retval = EMPTY
+			SET GLOBAL "LABTABLE_MODE" TO FALSE
+			SET GLOBAL "LASTKEY"       TO "CONTINUE"
+
+		ENDIF
+
+	ELSE
+
+		push_file_descriptor ( "JOB_HEADER", push_files )
+
+		CALL_ROUTINE SMIDI_QUEUE_UD_ROUTINE IN LIBRARY SMIDI_QUEUE_UD_LIBRARY
+			USING first_id, subsys RETURNING retval
+
+
+		pop_file_descriptor ( push_files )
+
+	ENDIF
+
+	RETURN ( retval )
+
+ENDROUTINE {action}
+
+{**************************************************************************}
+ROUTINE validation ( display_id )
+
+	DECLARE retval
+	retval = TRUE
+	RETURN ( retval )
+
+ENDROUTINE
+
+{**************************************************************************}
+
+ROUTINE SAP_USAGE_DECISION ( self, parent_prompt, VALUE column, VALUE row, VALUE wid, window, VALUE is_display )
+
+	DECLARE job_ud_phrase, subsys_decides, old_val
+
+	old_val = SELECT JOB_HEADER.SAP_UD_CODE
+
+	IF old_val = EMPTY THEN
+		old_val = ""
+	ENDIF
+
+	SET GLOBAL "LASTKEY" TO "UP"
+
+	{ ========================================================== }
+	{ Display versus prompt                                      }
+	{ ========================================================== }
+
+	IF is_display THEN
+
+		DISPLAY old_val ON LINE row FROM column IN WINDOW window
+
+	ELSE
+
+		job_ud_phrase  = SELECT JOB_HEADER.SAP_UD_PHRASE
+		subsys_decides = SELECT JOB_HEADER.SAP_UD_ENABLED
+
+		IF ( subsys_decides <> EMPTY ) AND ( subsys_decides = "X" ) THEN
+
+			IF ( job_ud_phrase <> EMPTY ) & ( NOT BLANK ( job_ud_phrase ) ) THEN
+
+				PROMPT FOR ud ON LINE row FROM column BROWSE ON VALID_PHRASE_ID.'job_ud_phrase' IN WINDOW window
+
+				IF old_val <> ud THEN
+
+					ASSIGN JOB_HEADER.SAP_UD_CODE = ud
+					DISPLAY ud ON LINE row FROM column IN WINDOW window
+					old_val = ud
+
+				ENDIF
+
+			ELSE
+				window_set_status ( "Usage Decision disabled for this job, no phrase-> ":job_ud_phrase )
+				SLEEP FOR "0 00:00:05"
+				SET GLOBAL "LASTKEY" TO "UP"
+
+			ENDIF  { lims_phrase not empty }
+		ELSE
+
+			window_set_status ( "Usage Decision disabled for this job " )
+			SLEEP FOR "0 00:00:05"
+
+		ENDIF  { subsys decides }
+
+	ENDIF  { is display }
+
+ENDROUTINE  { SAP_USAGE_DECISION }
+
+{**************************************************************************}
+
+ROUTINE SAP_UD_Text ( self, parent_prompt, VALUE column, VALUE row, VALUE wid, window, VALUE is_display )
+
+	DECLARE subsys_decides, old
+
+	old   = SELECT JOB_HEADER.SAP_UD_TEXT
+
+	IF old = EMPTY THEN
+		old = ""
+	ENDIF
+
+	SET GLOBAL "LASTKEY" TO "CONTINUE"
+
+	{ ========================================================== }
+	{ Display versus prompt                                      }
+	{ ========================================================== }
+
+	IF is_display THEN
+
+		DISPLAY old ON LINE row FROM column IN WINDOW window
+
+	ELSE
+
+		subsys_decides = SELECT JOB_HEADER.SAP_UD_ENABLED
+
+		IF  ( subsys_decides <> EMPTY ) AND ( subsys_decides = "X" ) THEN
+
+			IF ( NOT BLANK ( ud ) ) AND ( ud <> EMPTY ) THEN
+
+				PROMPT FOR udtext ON LINE row FROM column IN WINDOW window
+
+				IF old <> udtext THEN
+
+					ASSIGN JOB_HEADER.SAP_UD_TEXT = udtext
+					DISPLAY udtext ON LINE row FROM column IN WINDOW window
+					old = udtext
+
+				ENDIF
+
+			ELSE
+
+				window_set_status ( "Usage Decision text cannot be completed until the UD is entered " )
+				SLEEP FOR "0 00:00:02"
+				PROMPT FOR udtext ON LINE row FROM column IN WINDOW window WITH ( display_only = TRUE )
+
+			ENDIF  { ud enabled or not }
+
+		ELSE
+			window_set_status ( "Usage Decision disabled for this job " )
+
+		ENDIF  { lims_phrase not empty }
+
+	ENDIF  { is display }
+
+ENDROUTINE  { SAP_UD_TEXT }
+{ end $smid2_aux_ajh }

@@ -1,0 +1,431 @@
+{******************************************************************************
+*
+* Module Name   : $SMIDI_LIB_CLEAN
+*
+* Purpose       : Cleanup the smidi tables using either watchdog timer or trigger.
+*
+* Document Ref. :
+*
+* Specification :
+*
+* Portability   : OVMS, Unix, NT4 and Windows 2000
+*
+* Re-entrant    :
+*
+*
+* Modification History
+* By        Date        Reason _____________________________________________
+*
+*******************************************************************************}
+
+ENABLE WINDOWS
+
+SET NOTPROTECTED
+SET NAME "DISPLAY/"
+SET COMPILE_OPTION DECLARE
+SET COMPILE_OPTION EXP_MESS
+
+JOIN STANDARD_LIBRARY STD_ARRAY                { size_of_array                }
+JOIN STANDARD_LIBRARY STD_WINDOW               { window_set_status            }
+
+JOIN LIBRARY $LIB_UTILS                        { flash_message                }
+
+{* GLOBAL CONSTANTS ********************************************************* }
+{* GLOBAL VARIABLES ********************************************************* }
+{* LOCAL CONSTANTS ********************************************************** }
+
+CONSTANT JOB_WAIT_INTERVAL = "7 00:00:00"      { how long to wait until blast }
+CONSTANT MSG_HIGH          = 10                { for status messages          }
+
+{* CODE **********************************************************************}
+
+IF NOT ( GLOBAL ( "SHUTDOWN_ENABLED" ) ) THEN
+	cleanup_smidi_main()
+ENDIF
+
+EXIT
+
+{*****************************************************************************}
+
+ROUTINE cleanup_smidi_main
+
+	DECLARE old_record, lot_array, count, older_than
+
+	older_than = NOW - JOB_WAIT_INTERVAL
+	count      = 0
+	ARRAY lot_array
+
+	old_record = SELECT JOB_HEADER.SMIDI_LOT
+			WHERE ( JOB_STATUS =  "A" ) | ( JOB_STATUS = "X" )
+			AND   SMIDI_LOT       <> ""
+			AND   DATE_CREATED <= older_than
+
+	WHILE old_record <> EMPTY DO
+
+		count              = count + 1
+		lot_array[count,1] = STRIP(old_record)
+		lot_array[count,2] = STRIP(SELECT JOB_HEADER.JOB_NAME)
+
+		IF ( GLOBAL ( "MODE" ) = "INTERACTIVE" ) THEN
+			window_set_status ( STRIP(count):" Job-> ":lot_array[count,2]:" SAPLot-> ":lot_array[count,1] )
+		ELSE
+			FLASH_MESSAGE ( STRIP(count):" Job-> ":lot_array[count,2]:" SAPLot-> ":lot_array[count,1], FALSE )
+		ENDIF
+
+		NEXT JOB_HEADER
+		old_record = SELECT JOB_HEADER.SMIDI_LOT
+
+	ENDWHILE
+
+	{ ========================================== }
+	{ Got a list to do, now delete all the stuff }
+	{ ========================================== }
+
+	IF count > 0 THEN
+
+		START WRITE TRANSACTION "Cleanup SMIDI"
+
+		IF ( do_the_cleanup ( lot_array ) ) THEN
+			COMMIT
+		ELSE
+			ROLLBACK
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE   { cleanup smidi_main }
+
+{******************************************************************************}
+
+ROUTINE zap_job_records( download )
+
+{
+*
+*       This routine identifies the mapped job if it exists. This job
+*       will be cancelled if it has not already been cancelled or authorised.
+*       The process user library $smidi_process_user, calls this when D or C query finds data
+*
+*******************************************************************************}
+
+	DECLARE ok, found, count, status, found_job, job_statuses, job_array, job_change
+
+	ARRAY job_array
+        count        = 1
+  	ok           = TRUE
+	job_statuses = download.get_item ( "SMIDI_JOB_CANCEL_STATUS" )
+	job_change   = download.get_item ( "SMIDI_JOB_CANCEL_MODE" )
+
+	WHILE ( download.operations[ count ] <> EMPTY ) AND ok DO
+
+		found_job = SELECT JOB_HEADER.JOB_NAME WHERE SMIDI_LOT = download.operations[count].lot_no
+		 
+		IF ( found_job <> EMPTY ) THEN
+
+			found = SELECT job_header.status FOR UPDATE WHERE job_name = found_job
+
+			IF ( found <> locked ) & ( INDEX ( job_statuses, found ) > 0 ) THEN
+			
+				IF ( INDEX ( job_change, "CHANGE" ) > 0 ) THEN
+
+					CHANGE JOB STATUS TO "X", status
+
+				ELSE
+
+					ASSIGN JOB_HEADER.JOB_STATUS = "X"
+					status                       = EMPTY
+
+				ENDIF
+
+				{ ================================================================= }
+				{ Regardless of job_change mode, update the job header if ok        }
+				{ ================================================================= }
+
+				IF status <> EMPTY THEN
+
+					download.status_message ( "Error cancelling job ":found_job:"->":found:" ":status, MSG_HIGH )
+					ok = FALSE
+
+				ELSE
+
+		                        UPDATE JOB_HEADER, status
+
+					IF status <> EMPTY THEN
+
+						download.status_message ( "Error cancel UPDATE job ":found_job:"->":found:" ":status, MSG_HIGH )
+						ok = FALSE
+
+					ELSE
+
+						download.status_message ( "Job/Lot ":found_job, MSG_HIGH )
+					
+						job_array[1,1] = download.operations[count].lot_no
+						job_array[1,2] = found
+						ok = do_the_cleanup ( job_array )
+
+					ENDIF
+
+				ENDIF
+
+			ELSE
+
+				download.status_message ( "Job/Lot already cancelled / invalid status ":found_job:" ":found, MSG_HIGH )
+
+	                ENDIF
+
+		ENDIF  { find job from ops from SAP }
+
+                count = count + 1
+
+        ENDWHILE
+
+        return( ok )
+
+ENDROUTINE   { zap_job_records( download ) }
+
+{******************************************************************************}
+
+ROUTINE do_the_cleanup ( lot_array )
+
+	DECLARE delete_record, count, status, smidi_server
+
+	{ ================================================================== }
+	{                                                                    }
+	{ For all the smidi_lots found from the authorized jobs, clean house }
+	{                                                                    }
+	{ ================================================================== }
+
+	count = 1
+
+	WHILE ( count <= SIZE_OF_ARRAY ( lot_array ) ) DO
+
+		{ ==================================================== }
+		{ Clear out the smidi_download_queue - include points  }
+		{ ==================================================== }
+
+		delete_record = SELECT SMIDI_DOWNLOAD_QUEUE.SAP_OBJECT FOR UPDATE
+				WHERE SAP_LOT LIKE ( STRIP(lot_array[count,1]):"%")
+
+		smidi_server  = SELECT SMIDI_DOWNLOAD_QUEUE.SMIDI_SYSTEM
+
+		WHILE delete_record <> EMPTY DO
+
+			IF ( GLOBAL ( "MODE") = "INTERACTIVE" ) THEN
+				window_set_status ( STRIP(count):"-> ":lot_array[count,1]:" ":smidi_server:" ":delete_record )
+			ELSE
+				FLASH_MESSAGE ( STRIP(count):"-> ":lot_array[count,1]:" ":smidi_server:" ":delete_record, FALSE )
+			ENDIF
+
+			DELETE SMIDI_DOWNLOAD_QUEUE, status
+			UPDATE SMIDI_DOWNLOAD_QUEUE
+		
+			NEXT SMIDI_DOWNLOAD_QUEUE
+			delete_record = SELECT SMIDI_DOWNLOAD_QUEUE.SAP_OBJECT
+
+		ENDWHILE    { delete all the records }
+
+		{ ================================================================== }
+		{ Clear out the smidi tables for this smidi inspection lot           }
+		{ ================================================================== }
+
+		IF smidi_server <> EMPTY THEN
+
+			clear_smidi ( lot_array[count,1], "SMIDI_REQUEST_HEADER", smidi_server )
+			clear_smidi ( lot_array[count,1], "SMIDI_INSPPOINT"     , smidi_server )	
+			clear_smidi ( lot_array[count,1], "SMIDI_REQUEST_RECORD", smidi_server )
+			clear_smidi ( lot_array[count,1], "SMIDI_POINTS_QUERY"  , smidi_server )
+
+			clear_smidi_process  ( lot_array[count,1] )                 { uses lot }
+			clear_smidi_upload   ( lot_array[count,2], smidi_server )   { uses job }
+
+		ENDIF
+
+		count = count + 1
+
+	ENDWHILE    { loop for all of the lots that must be cleaned up }
+
+	RETURN ( TRUE )
+
+ENDROUTINE   { do_the_cleanup }
+
+{******************************************************************************}
+
+ROUTINE clear_smidi ( clear, VALUE table, VALUE smidi_server )
+
+	DECLARE found, status, field
+
+	IF table = "SMIDI_POINTS_QUERY" THEN
+
+		field = "from_ip_lot"
+
+		found = SELECT 'table'.'field' FOR UPDATE
+			WHERE ( smidi_system = smidi_server       )
+			AND   ( FROM_IP_LOT LIKE STRIP(clear):"%" )
+
+	ELSE
+
+		field = "request_key"
+
+		found = SELECT 'table'.'field' FOR UPDATE
+			WHERE ( smidi_system = smidi_server       )
+			AND   ( REQUEST_KEY LIKE STRIP(clear):"%" )
+
+	ENDIF
+
+
+	WHILE ( found <> empty ) DO
+
+		DELETE 'table', status
+
+		NEXT 'table'
+		found = SELECT 'table'.'field'
+
+	ENDWHILE
+
+ENDROUTINE   { clear_smidi }
+
+{******************************************************************************}
+
+ROUTINE clear_smidi_process ( clear )
+
+	DECLARE found, status
+
+	found = SELECT SMIDI_LOGFILES.SMIDI_LOGFILE FOR UPDATE
+		WHERE ( SMIDI_LOT = clear )
+
+	WHILE ( found <> empty ) DO
+
+		DELETE SMIDI_LOGFILES, status
+
+		NEXT SMIDI_LOGFILES
+		found = SELECT SMIDI_LOGFILES.SMIDI_LOT
+
+	ENDWHILE
+
+ENDROUTINE   { clear_smidi_process  }
+
+
+{******************************************************************************}
+
+ROUTINE clear_smidi_upload ( clear, system )
+
+	DECLARE found, status
+
+	found = SELECT SMIDI_UPLOAD_QUEUE.JOB_NAME FOR UPDATE
+		WHERE JOB_NAME = clear AND SMIDI_SYSTEM = system
+
+	WHILE ( found <> empty ) DO
+
+		DELETE SMIDI_UPLOAD_QUEUE, status
+
+		NEXT SMIDI_UPLOAD_QUEUE
+		found = SELECT SMIDI_UPLOAD_QUEUE.JOB_NAME
+
+	ENDWHILE
+
+ENDROUTINE   { clear_smidi_upload  }
+
+{******************************************************************************}
+
+ROUTINE qaimv_action_remove_record(self, system)
+
+	DECLARE found, ok, rq_key, rslt_key
+
+	ok       = TRUE
+	rq_key   = self.lot_no : self.op_no
+	rslt_key = self.result_number
+
+	found = select smidi_request_record.request_key for update
+			where ( smidi_system = system   )
+			and   ( request_key  = rq_key   )
+			and   ( result_key   = rslt_key )
+
+	IF ( found <> empty ) THEN
+
+		IF ( found <> locked ) THEN
+
+			delete smidi_request_record
+
+		ELSE
+
+			ok = FALSE
+
+		ENDIF
+
+	ENDIF
+
+	return( ok )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE qaivc_action_remove_record(self, system)
+
+	DECLARE found, ok, rq_key
+
+	ok      = TRUE
+	rq_key  = self.lot_no : self.op_no
+
+	found = select smidi_request_header.request_key for update
+                        where ( smidi_system = system )
+                        and   ( request_key  = rq_key )
+
+	IF ( found <> empty ) THEN
+		IF ( found <> locked ) THEN
+			delete smidi_request_header
+			ok = self.remove_ips( system )
+		ELSE
+			ok = FALSE
+		ENDIF
+	ENDIF
+
+	return( ok )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE qaivc_action_remove_ips( self, system )
+
+	DECLARE found, ok, rq_key
+
+	ok      = TRUE
+	rq_key  = self.lot_no : self.op_no
+
+	found = select smidi_insppoint.request_key for update
+                        where ( smidi_system = system  )
+                        and   ( request_key  >= rq_key )
+
+	IF found <> empty THEN
+		IF substring( found, 1, length( rq_key ) ) <> rq_key THEN
+			found = empty
+		ENDIF
+	ENDIF
+
+	WHILE ( found <> empty ) AND ok DO
+
+		IF ( found <> locked ) THEN
+			delete smidi_insppoint
+		ELSE
+			ok = FALSE
+		ENDIF
+
+		found = select smidi_insppoint.request_key for update
+                                where (smidi_system = system  )
+                                and   (request_key  >= rq_key )
+
+		IF found <> empty THEN
+			IF substring( found, 1, length( rq_key ) ) <> rq_key THEN
+				found = empty
+			ENDIF
+		ENDIF
+
+	ENDWHILE
+
+	return( ok )
+
+ENDROUTINE   { remove_ips }
+
+{ ======================== }
+{ end $smidi_lib_clean     }
+{ ======================== }

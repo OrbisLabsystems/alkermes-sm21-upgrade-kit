@@ -1,0 +1,718 @@
+{******************************************************************************
+*
+* Module Name	:  BALANCE_LIB
+*
+* Purpose	: Balance integration routines
+*
+* Version	: 1.0
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By             Description
+* -------   -----------  ----------     ---------------------------------------
+* 1.0       11-Jul-2013  Orbis          Release Version 
+* 1.1       21-Feb-2014  Orbis          Enhancements
+* 
+*******************************************************************************}
+
+SET NAME "DEFER/"
+ENABLE WINDOWS
+SET NOTPROTECTED
+SET COMPILE_OPTION DECLARE
+
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_WINDOW
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_CLIENT
+JOIN LIBRARY $LIB_STAN
+JOIN LIBRARY $lib_utils
+JOIN LIBRARY $CRITERIA_SAVED
+JOIN LIBRARY $CRITERIA_CACHE
+JOIN LIBRARY $CRITERIA_LIB
+JOIN LIBRARY $instrument_comm
+
+CONSTANT INST_TEST_MODE = FALSE  { Set=TRUE to test without an instrument connected }
+CONSTANT INST_TEST_MODE_VALUE = 19.2345
+CONSTANT AUX_CRITERIA_CONFIG_ITEM = "ORBIS_BALANCE_CRITERIA"
+
+DECLARE g_instrument_used
+
+or_read_com_port_result ( "INST1" ) 
+EXIT
+
+{=====================================================================================}
+{  Routines to call from browse implementations etc }
+{=====================================================================================}
+
+
+GLOBAL
+ROUTINE or_balance_browse1 (self)
+
+	login_tmpl_browse (self)
+
+	RETURN (g_instrument_used)
+
+ENDROUTINE
+
+
+GLOBAL 
+ROUTINE or_read_inst_from_template ( VALUE column_num ,  VALUE line_num,           
+                                     window, VALUE is_display ,
+                                     VALUE tabl_name, VALUE fld_name, VALUE fld_name_inst,
+						 VALUE text_format_string, VALUE criteria_name)
+{
+*
+*  Read instrument from template.  
+*  Call this from a standard login template callback 
+******************************************************************************}
+
+    DECLARE val, params
+
+    g_instrument_used = ERROR
+
+    val = SELECT 'tabl_name'.'fld_name'
+
+    IF is_display THEN
+
+        DISPLAY val
+            IN WINDOW window
+            ON LINE   line_num
+            FROM   column_num
+
+    ELSE
+
+        { Display only so can never type }
+        ARRAY params  ARRAYSIZE(0)
+        params[1] = text_format_string
+        params[2] = criteria_name
+        params[3] = GLOBAL("ORBIS_BALANCE_UOM_SAMPLE")
+
+        PROMPT FOR val
+            IN WINDOW window
+            ON LINE   line_num
+            FROM   column_num
+            WITH ( display_only = GLOBAL("ORBIS_ST_READ_ONLY_BALANCE"),
+			browse_routine="login_tmpl_browse",
+                  user_info = params)
+	 
+
+        IF NUMTEXT(val) THEN
+
+            ASSIGN 'tabl_name'.'fld_name' = val
+
+		IF (STRIP(fld_name_inst)<> "") AND (g_instrument_used <> ERROR) THEN
+
+	            ASSIGN 'tabl_name'.'fld_name_inst' = g_instrument_used
+		ENDIF
+
+        ENDIF
+
+    ENDIF
+
+ENDROUTINE    { or_read_inst_from_template }
+
+{*****************************************************************************}
+GLOBAL 
+ROUTINE or_read_inst_from_aux_lib ( callback, VALUE column_num,  VALUE line_num,           
+                                     window, VALUE is_display ,
+                                     VALUE tabl_name, VALUE fld_name, VALUE fld_name_inst,
+						 VALUE text_format_string, VALUE criteria_name)
+{
+*
+*  Call this from a vgl aux report.
+*
+******************************************************************************}
+
+    DECLARE val, params
+
+    g_instrument_used = ERROR
+
+    val = SELECT 'tabl_name'.'fld_name'
+
+    IF is_display THEN
+
+        RETURN ( val )
+
+    ELSE
+
+        { Display only so can never type }
+        ARRAY params  ARRAYSIZE(0)
+        params[1] = text_format_string
+        params[2] = criteria_name
+        params[3] =  GLOBAL("ORBIS_BALANCE_UOM_SAMPLE")
+
+
+        PROMPT FOR val
+            IN WINDOW window
+            ON LINE   line_num
+            FROM   column_num  
+            WITH ( display_only = TRUE,
+			browse_routine="login_tmpl_browse",
+                  user_info = params)	 
+
+        IF NUMTEXT(val) THEN
+
+            ASSIGN 'tabl_name'.'fld_name' = val
+
+		IF (STRIP(fld_name_inst)<> "") AND (g_instrument_used <> ERROR) THEN
+
+	            ASSIGN 'tabl_name'.'fld_name_inst' = g_instrument_used
+		ENDIF
+
+        ENDIF
+
+    ENDIF
+
+        RETURN (val)
+
+ENDROUTINE    { or_read_inst_from_aux_lib }
+
+{*****************************************************************************}
+GLOBAL 
+ROUTINE or_read_inst_from_retain ( VALUE column , VALUE row, Value cell_width,          
+                                     window, VALUE is_display ,
+                                     VALUE tabl_name, VALUE fld_name, VALUE fld_name_inst,
+						 VALUE text_format_string, VALUE criteria_name)
+{
+* 
+*  Call this from retain_lib_balance
+******************************************************************************}
+
+    DECLARE val, params
+
+    g_instrument_used = ERROR
+
+    val = SELECT 'tabl_name'.'fld_name'
+
+    IF is_display THEN
+
+        DISPLAY val
+            IN WINDOW window
+            ON LINE   row
+            FROM   column
+
+    ELSE
+
+        { Display only so can never type }
+        ARRAY params  ARRAYSIZE(0)
+        params[1] = text_format_string
+        params[2] = criteria_name
+        params[3] = SELECT 'tabl_name'.retain_units
+
+
+        PROMPT FOR val
+            IN WINDOW window
+            ON LINE   row
+            FROM   column
+            TO   column + cell_width - 1
+            WITH ( display_only = GLOBAL("ORBIS_RETAIN_READ_ONLY_BALANCE"),
+			browse_routine="login_tmpl_browse",
+                  user_info = params)
+	
+
+        IF NUMTEXT(val) THEN
+
+            ASSIGN 'tabl_name'.'fld_name' = val
+
+		IF (STRIP(fld_name_inst)<> "") AND (g_instrument_used <> ERROR) THEN
+
+	            ASSIGN 'tabl_name'.'fld_name_inst' = g_instrument_used
+		ENDIF
+
+        ENDIF
+
+    ENDIF
+
+ENDROUTINE    { or_read_inst_from_retain  }
+
+
+{*****************************************************************************}
+GLOBAL
+ROUTINE or_aux_field_inst_read ( prompt_object ,
+				   prompt_value , 
+				VALUE prompt_id ,
+				VALUE text_format_string )
+{
+*
+*  Called from explorer aux
+*
+******************************************************************************}
+
+	PROMPT OBJECT prompt_object 
+		BROWSE ON TEXT
+		WITH (display_only=TRUE, 
+			always_validate=TRUE,
+			browse_routine="aux_browse",
+			validation_routine="aux_val")
+
+	prompt_object . prompt_id = prompt_id
+	prompt_value  = ""
+
+ENDROUTINE    { or_aux_field_inst_read }
+
+{*****************************************************************************}
+ROUTINE login_tmpl_browse (self)
+
+	{ This (if instrument read) writes the used instrument ID into variable }
+	{ in global scope: g_instrument_used }
+
+	DECLARE val, params, inst_used, did_nothing, tmpval
+
+	did_nothing = FALSE
+	inst_used = ""
+	g_instrument_used = ""
+	val = self.value
+	params = self.user_info	
+
+	IF ( confirm_with_text ("Read Instrument?") ) THEN
+
+		tmpval = internal_read_com_result ( STRIP(params[2]) , inst_used,
+								TRUE, STRIP(params[3])   ) 
+
+		IF (tmpval = EMPTY) OR (tmpval = ERROR) THEN
+
+			did_nothing = TRUE  { wont set instrument }
+
+		ELSE
+
+			val = tmpval
+
+		ENDIF
+
+
+		IF (STRIP(params[1]) <> "") AND (NUMTEXT(val)) THEN
+
+			val = STRIP ( NUMBER_TO_TEXT (val, STRIP(params[1])) )
+
+		ENDIF
+
+	ELSEIF ( confirm_with_text ("Manual entry?") ) THEN
+
+		{ did_nothing set if cancelled }
+		tmpval = val
+		did_nothing = NOT manual_prompt (tmpval)
+
+		IF (NOT did_nothing) THEN
+
+			val = tmpval
+		ENDIF
+
+	ELSE
+
+		did_nothing = TRUE
+
+	ENDIF
+
+	IF (did_nothing) THEN
+
+		g_instrument_used = ERROR  { dont set it }
+	ELSE
+		g_instrument_used = inst_used  
+
+	ENDIF
+
+	self.text = STRIP(val)
+	self.value = val
+	self.repaste ()
+
+ENDROUTINE    { login_tmpl_browse }
+
+{*****************************************************************************}
+ROUTINE aux_browse (self)
+
+	DECLARE inst_criteria, val 
+
+	inst_criteria = GLOBAL(AUX_CRITERIA_CONFIG_ITEM)
+	val = or_read_com_port_result (inst_criteria)
+
+	IF (val=EMPTY) THEN
+
+		val = ""
+
+	ELSEIF (NUMTEXT(val)) THEN
+
+		val = STRIP ( NUMBER_TO_TEXT (val, "999.9999" ) )
+	ENDIF
+
+	self.value = val
+	self.text  = val
+
+	self.repaste()
+
+ENDROUTINE    { aux_browse }
+
+{*****************************************************************************}
+ROUTINE aux_val (self)
+	
+	RETURN (TRUE)
+
+ENDROUTINE    { aux_val }
+
+{=====================================================================================}
+{  Implementation of instrument reads }
+{=====================================================================================}
+GLOBAL
+ROUTINE or_read_com_port_result (VALUE inst_criteria)
+
+	DECLARE inst, res
+
+	inst = "" { wont be used here }
+	res = internal_read_com_result (inst_criteria, inst, FALSE, "")
+
+	RETURN (res)
+
+ENDROUTINE    { or_read_com_port_result }
+
+GLOBAL
+ROUTINE or_read_com_port_result_ex (VALUE inst_criteria, inst, 
+						VALUE do_uom_check, VALUE required_uom )
+	
+	DECLARE res
+
+	res = internal_read_com_result (inst_criteria, inst, 
+				do_uom_check, required_uom)
+
+	RETURN (res)
+
+ENDROUTINE    { or_read_com_port_result }
+
+ROUTINE internal_read_com_result (VALUE inst_criteria, inst, 
+						VALUE do_uom_check, VALUE required_uom )
+
+
+	{ inst is output, the instrument used }
+
+	DECLARE instrument_result, user_override_lod
+
+	instrument_result = EMPTY
+	user_override_lod=FALSE
+	inst = ""
+	inst_prompt (inst, inst_criteria)
+
+	IF (NOT BLANK(inst)) THEN
+
+		{ Read the instrument }
+		instrument_result = or_read_inst_com_port_result (inst, required_uom,
+						user_override_lod)
+
+	ELSE
+
+		flashmessage ("No instrument selected, no instrument read!", TRUE)
+	ENDIF
+
+	RETURN (instrument_result)
+
+ENDROUTINE    { internal_read_com_result }
+
+{*****************************************************************************}
+GLOBAL
+ROUTINE or_read_inst_com_port_result (VALUE inst_id, VALUE required_uom, user_override_lod)
+
+	{ user_override_lod is OUTPUT boolean (true if override LOD) }
+
+	DECLARE instrument_result , inst_comm, ok 
+
+	user_override_lod = FALSE
+	instrument_result = EMPTY
+
+	instrument_comm_setup_initialisation( )
+
+	ok = TRUE
+
+	CREATE OBJECT INSTRUMENT_COMM_CLASS, inst_comm
+
+	inst_comm . check_calibration = TRUE
+
+	ok = ok AND inst_comm . setup_from_id_only ( inst_id )
+	
+	IF ok THEN
+
+		IF inst_comm . is_setup( ) THEN
+
+			{ INST_TEST_MODE allows some testing without a connected instrument }
+
+			IF (NOT INST_TEST_MODE) THEN
+
+				instrument_result = inst_comm . read_result( )
+			ELSE
+
+				instrument_result = INST_TEST_MODE_VALUE
+			ENDIF
+
+			IF ( instrument_result <> ERROR ) THEN
+
+				IF (NOT inst_comm.orbis_inst_value_check (instrument_result,
+					required_uom, TRUE, user_override_lod,
+					FALSE))
+
+					user_override_lod = user_override_lod  { not used }
+
+					{ Message already displayed }
+					{ Set result=ERROR so it doesnt get entered anywhere  }
+
+					instrument_result = ERROR
+				ENDIF
+
+			ELSE
+
+				flashmessage ("No result read!", TRUE)
+			ENDIF
+
+		ELSE
+			client_message_box( GET_USER_MESSAGE( "RE_INST_ERR_NO_LOCAL", 1 ) ,
+			                    GET_USER_MESSAGE( "RE_INST_H_READ", 1 )       ,
+			                    MB_OK + MB_ICONHAND                           )
+		ENDIF
+
+	ENDIF
+
+	RETURN (instrument_result)
+
+ENDROUTINE    { or_read_inst_com_port_result }
+
+{*****************************************************************************}
+ROUTINE inst_prompt (inst, criteria_name)
+		
+
+    DECLARE form,  can_leave, criteria_table, select_array
+
+    inst = ""
+    criteria_table = "INSTRUMENT"
+
+    inst_make_criteria (criteria_name, criteria_table, select_array)
+
+    inst_create_main_form ( form, select_array )
+
+    form . start_prompt ()
+
+    REPEAT
+
+        form . wait_prompt  ()
+
+
+        can_leave = TRUE
+
+
+        IF form.get_lastkey() <> "EXIT" THEN
+
+                 inst = TOUPPER (form . prompt_objects [1] . value)
+
+        ENDIF
+
+    UNTIL  (can_leave) OR (form . get_lastkey () = "EXIT" ) 
+ 
+
+    form . end_prompt ()
+
+
+    RETURN (form . user_info)   { next/previous/exit }
+
+
+ENDROUTINE    { inst_prompt }
+
+{*****************************************************************************}
+
+ROUTINE inst_create_main_form ( form, select_array )
+
+    DECLARE  pr, start_line, start_col,
+          the_header, form_height
+
+    the_header  = "Select Instrument."
+    form_height = 1
+
+
+    PROMPT OBJECT form
+        CLASS PROMPT_CLASS_FORM
+        WITH ( width  = 35                                  ,
+               row    = 5                                   ,
+               column = 10                                  ,
+               height = form_height                          ,
+               header = the_header                          ,
+               footer = "<DO> to Continue, <EXIT> to Cancel",
+               proportional = TRUE                          ,
+               return_behaviour = FORM_RETURN_LEAVE     ,
+			help_context=EMPTY,
+		   button_style=FORM_BUTTON_OK_CANCEL ,
+               user_info = ""  )
+
+    start_line = 1
+    start_col  = 1
+
+    form . add_display ( "Instrument:", 
+                          start_col, start_line,
+                          PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+
+    PROMPT OBJECT pr
+            BROWSE ON instrument
+	    ON LINE start_line from start_col + 10
+            WITH (mandatory_array = select_array)
+
+
+    form.add_prompt ( pr )           { Prompt 1  }
+
+
+ENDROUTINE    { inst_create_main_form }
+
+ROUTINE manual_prompt (data)
+		
+
+    DECLARE form,  can_leave , clicked_ok
+
+    clicked_ok = FALSE
+    data = ""
+
+    manual_create_main_form ( form )
+
+    form . start_prompt ()
+
+    REPEAT
+
+        form . wait_prompt  ()
+
+
+        can_leave = TRUE
+
+
+        IF form.get_lastkey() = "DO" THEN
+
+		clicked_ok = TRUE
+		data = TOUPPER (form . prompt_objects [1] . value)
+
+        ENDIF
+
+    UNTIL  (can_leave) OR (form . get_lastkey () = "EXIT" ) 
+ 
+
+    form . end_prompt ()
+
+
+    RETURN (clicked_ok)
+
+ 
+ENDROUTINE    { manual_prompt }
+
+{*****************************************************************************}
+
+ROUTINE manual_create_main_form ( form )
+
+    DECLARE  pr, start_line, start_col,
+          the_header, form_height
+
+    the_header  = "Manual entry."
+    form_height = 1
+
+
+    PROMPT OBJECT form
+        CLASS PROMPT_CLASS_FORM
+        WITH ( width  = 35                                  ,
+               row    = 5                                   ,
+               column = 10                                  ,
+               height = form_height                          ,
+               header = the_header                          ,
+               footer = "<DO> to Continue, <EXIT> to Cancel",
+               proportional = TRUE                          ,
+               return_behaviour = FORM_RETURN_LEAVE     ,
+			help_context=EMPTY,
+		   button_style=FORM_BUTTON_OK_CANCEL ,
+               user_info = ""  )
+
+    start_line = 1
+    start_col  = 1
+
+    form . add_display ( "", 
+                          start_col, start_line,
+                          PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+
+    PROMPT OBJECT pr
+            BROWSE ON REAL
+	    ON LINE start_line from start_col + 2
+
+
+    form.add_prompt ( pr )           { Prompt 1  }
+
+
+ENDROUTINE    { manual_create_main_form }
+
+
+{*****************************************************************************}
+GLOBAL
+ROUTINE inst_make_criteria (VALUE criteria_name, VALUE criteria_table, select_array)
+
+    DECLARE criteria, status
+
+    ARRAY select_array
+
+    criteria = SELECT CRITERIA_SAVED . identity
+                WHERE table_name = STRIP(criteria_table)
+                  AND identity = STRIP(criteria_name)
+
+    IF ( criteria <> EMPTY ) THEN
+	    
+        status = criteria_saved_load_squirrel ( criteria_table,
+	                                        criteria      ,
+                                                select_array )
+
+        IF status = EMPTY THEN
+
+            { no need to add anything else  }
+
+        ELSE
+
+            flashmessage ("Error loading criteria - ":status, TRUE)
+
+        ENDIF
+
+    ELSE
+
+
+        flashmessage ("Configured criteria is invalid: ":criteria_name, TRUE)
+
+    ENDIF
+
+
+ENDROUTINE    { inst_make_criteria }
+
+{*****************************************************************************}
+
+
+GLOBAL
+ROUTINE or_auto_handle_result_change
+
+	{ Called from $reslstat }
+
+	DECLARE raw, instRes, isAuto, resType
+
+	isAuto  = SELECT result . result_inst_auto
+	raw     = SELECT result . raw_result
+	instRes = SELECT result . result_from_inst
+	resType = SELECT result . result_type
+
+	IF (isAuto) THEN
+
+		{ If result in raw_result different to result_from_inst }
+		{ then its not auto, so change it }
+	
+		{ Only these 2 types, N,T, are direct from instrument }
+
+		IF (res_type="N") OR (res_type="T") THEN
+
+			{ Both text fields in database, so STRIP() is safe }
+
+			IF (STRIP(raw) <> STRIP(instRes)) THEN
+
+				ASSIGN result . result_inst_auto = FALSE
+				ASSIGN result . instrument_used = ""
+
+			ENDIF
+
+		ENDIF
+		
+	ENDIF
+
+ENDROUTINE
+

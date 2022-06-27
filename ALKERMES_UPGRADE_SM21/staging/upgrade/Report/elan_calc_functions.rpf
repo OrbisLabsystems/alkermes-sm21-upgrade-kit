@@ -1,0 +1,1532 @@
+{*******************************************************************************
+*
+* Module Name  : ELAN_CALC_FUNCTIONS
+*
+* Purpose      : Elan Calculation Functions
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By                Description
+* -------   -----------  ----------        --------------------------------
+* 1.0       21-May-2008  Aidan Finnerty     Initial version
+* 1.1       16-Apr-2009  MF                 CC No. 2100013022
+*******************************************************************************}
+
+SET COMPILE_OPTION DECLARE
+SET NAME "DEFER/"
+ENABLE WINDOWS
+SET NOTPROTECTED
+
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN STANDARD_LIBRARY STD_GENERAL
+JOIN STANDARD_LIBRARY STD_STRUCTURE
+JOIN STANDARD_LIBRARY STD_PROMPT
+
+JOIN LIBRARY $LIB_RE_FORMULA
+JOIN LIBRARY $CRITERIA_SAVED
+JOIN LIBRARY $LIB_UTILS
+
+
+CONSTANT I_NAME   = 1
+CONSTANT I_RESULT = 2
+CONSTANT I_VALID  = 3
+
+{**********************************************************
+Configuration
+Define whether to use result TEXT or VALUE in calculations
+***********************************************************}
+CONSTANT RESULT_FIELD = "TEXT"
+
+{**********************************************************
+Configuration
+If TRUE a result will only be returned once all results
+required have been entered.
+If FALSE a result will be return3ed when there is 1 or more
+results
+***********************************************************}
+CONSTANT ALLOW_MISSING_RESULTS = TRUE
+
+
+
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+{ Internal specific routines }
+{ ----------------------------------------------------------------------------------------------- }
+
+
+ROUTINE get_general
+    (
+            expression,
+            messages,
+    VALUE   search_text,
+    VALUE   calculation_routine
+    )
+
+    {
+    Description :
+
+    }
+
+{flash_message( expression.context.mode, TRUE )}
+
+    DECLARE components      ARRAY components    ARRAY_SIZE(0,3)
+    DECLARE missing_results
+
+    IF ( expression.context.mode = FORMULA_MODE_BIND )
+    OR ( expression.context.mode = FORMULA_MODE_CALCULATE )
+    OR ( expression.context.mode = FORMULA_MODE_PRINT )
+
+        get_matching_components( expression, messages, search_text, components )
+
+        IF ( expression.context.mode = FORMULA_MODE_BIND )
+
+            bind_components( expression, messages, components )
+
+        ELSEIF ( expression.context.mode = FORMULA_MODE_CALCULATE )
+        OR     ( expression.context.mode = FORMULA_MODE_PRINT )
+
+            get_results( expression, messages, components, missing_results )
+
+            IF  ( NOT missing_results )
+            OR  ( ALLOW_MISSING_RESULTS )
+
+                CALL_ROUTINE calculation_routine
+                        IN LIBRARY GLOBAL( "current_library" )
+                        USING   expression,
+                                messages,
+                                components
+
+            ELSE
+
+                expression.context.error = TRUE
+                expression.context.error_message = "Unable to calculate because one or more required results have not been entered"
+
+            ENDIF
+
+        ENDIF
+
+    ELSEIF ( expression.context.mode = FORMULA_MODE_VALIDATE )
+    OR ( expression.context.mode = FORMULA_MODE_TEST_PHASE1 )
+
+        { For this function there is nothing that can be validated or tested }
+
+    ENDIF
+
+    IF ( expression.context.mode = FORMULA_MODE_PRINT )
+
+        print_messages( messages )
+
+    ENDIF
+
+    RETURN
+
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE get_matching_components
+    (
+            expression,
+            messages,
+    VALUE   search_text,
+            components
+    )
+
+    {
+    Description :
+
+    Search through current test looking for matching numeric or calculated components,
+    excluding the current component which is what we are calculating.
+
+    It is assumed that any source data of type K will return a numeric result.
+    This formala will give an error if it finds a calculated result that is not a numeric value
+
+    }
+
+    DECLARE position
+    DECLARE result_object
+
+    IF ( expression.context.error = FALSE )
+
+        search_text = STRIP( search_text )
+        add_message( messages, "Searching for components like", search_text )
+
+        result_object = expression.context.result_context.get_result_first( expression.context.test_number, "", position )
+
+        WHILE ( result_object <> EMPTY )
+
+            {**********************************************************
+            * Ignore component where name same as search text.
+            * Include other components where first part of name
+            *   matches search text
+            * Include N & K types
+            ***********************************************************}
+
+            add_message( messages, "K1", result_object.name )
+            add_message( messages, "K2", LEFTSTRING( result_object.name, LENGTH( search_text ) ))
+            add_message( messages, "K3", object_get_class_name( result_object ) )
+
+            IF  ( result_object.name <> search_text )
+            AND ( LEFTSTRING( result_object.name, LENGTH( search_text ) ) = search_text )
+            AND (  ( object_get_class_name( result_object ) = "LIBRERESULTN" )
+                OR ( object_get_class_name( result_object ) = "LIBRERESULTK" )
+                )
+
+                components[ ( size_of_array(components) + 1 ),I_NAME] = result_object.name
+                add_message( messages, "Found Component", result_object.name )
+
+            ENDIF
+
+            result_object = expression.context.result_context.get_result_next( expression.context.test_number, "", position )
+
+        ENDWHILE
+
+        IF ( size_of_array( components ) = 0 )
+
+            expression.context.error = TRUE
+            expression.context.error_message = "No matching components found"
+
+        ENDIF
+
+    ENDIF
+
+    RETURN
+
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE bind_components
+    (
+            expression,
+            messages,
+            components
+    )
+
+    {
+    Description :
+
+    }
+
+    DECLARE i
+    DECLARE result_object
+
+    IF ( expression.context.error = FALSE )
+
+        i = 1
+        WHILE ( i <= size_of_array( components ) )
+        AND   ( expression.context.error = FALSE )
+
+            result_object = expression.context.result_context.get_result( expression.context.test_number, components[i,I_NAME] )
+
+            IF ( result_object <> EMPTY )
+
+                result_object.used_in_formula( expression.context.result_object )
+
+            ENDIF
+
+            i = i + 1
+
+        ENDWHILE
+
+    ENDIF
+
+    RETURN
+
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE get_results
+    (
+            expression,
+            messages,
+            components,
+            missing_results
+    )
+
+    {
+    Description :
+
+    Any result prefix such as < or > is ignored
+
+    Result at staus R or X are not used in the calculation
+    Could be tricky getting a result if ALLOW_MISSING_RESULTS = FALSE and you reject one of the results.
+
+
+    }
+
+    DECLARE i
+    DECLARE result_object
+    DECLARE result
+    DECLARE result_text
+    DECLARE status
+
+    missing_results = FALSE
+
+    IF ( expression.context.error = FALSE )
+
+        add_message( messages, "Searching for results", EMPTY )
+
+        i = 1
+        WHILE ( i <= size_of_array( components ) )
+        AND   ( expression.context.error = FALSE )
+
+            result_object = expression.context.result_context.get_result( expression.context.test_number, components[i,I_NAME] )
+
+            IF ( result_object <> EMPTY )
+
+                status = SELECT result.status IN OBJECT result_object
+
+            ELSE
+
+                status = SELECT result.status
+                         WHERE  ( test_number = expression.context.test_number )
+                         AND    ( name = components[i,I_NAME] )
+
+            ENDIF
+
+            IF ( status = "E" )
+            OR ( status = "M" )
+            OR ( status = "A" )
+
+                IF ( result_object <> EMPTY )
+
+                     result      = SELECT result.'RESULT_FIELD' IN OBJECT result_object
+                     result_text = SELECT result.text IN OBJECT result_object
+
+                ELSE
+
+                     result      = SELECT result.'RESULT_FIELD'
+                     result_text = SELECT result.text
+
+                ENDIF
+
+                IF ( NOT blank( result_text ) )
+
+                    IF ( lib_re_formula_value_is_numeric( result ) )
+
+                        components[i,I_RESULT] = result
+                        components[i,I_VALID] = TRUE
+
+                    ELSE
+
+                        expression.context.error = TRUE
+                        expression.context.error_message = "Source data contains non-numeric value"
+
+                    ENDIF
+
+                ELSE
+
+                    { I don't think you can have a blank result at status E, M or A so may never get here }
+                    missing_results = TRUE
+                    components[i,I_RESULT] = "No Result"
+
+                ENDIF
+
+            ELSEIF ( status = "U" )
+            OR     ( status = EMPTY )
+
+                missing_results = TRUE
+                components[i,I_RESULT] = "No Result"
+
+            ELSE { X R or any other unsupported status }
+
+                missing_results = TRUE
+
+                IF ( ALLOW_MISSING_RESULTS )
+
+                    components[i,I_RESULT] = "Result at status " : status : " is not used in calculation."
+
+                ELSE
+
+                    components[i,I_RESULT] = "Result is at status " : status : " which is invalid."
+                    expression.context.error = TRUE
+                    expression.context.error_message = "Source data status means calculation can never return a value"
+
+                ENDIF
+
+            ENDIF
+
+            add_message( messages, components[i,I_NAME], components[i,I_RESULT] )
+
+            i = i + 1
+
+        ENDWHILE
+
+    ENDIF
+
+    RETURN
+
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+{ Internal calculation routines }
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE calculate_average
+    (
+            expression,
+            messages,
+            components
+    )
+
+    {
+    Description :
+    }
+
+    DECLARE i
+    DECLARE total
+    DECLARE count
+    DECLARE average
+
+    IF ( expression.context.error = FALSE )
+
+        i = 1
+        count = 0
+        total = 0
+
+        WHILE( i <= size_of_array( components ) )
+
+            IF ( components[i,I_VALID] = TRUE )
+
+                count = count + 1
+                total = total + components[i,I_RESULT]
+
+            ENDIF
+
+            i = i + 1
+
+        ENDWHILE
+
+        IF ( count > 0 )
+
+            average = total / count
+
+            expression.value = average
+            expression.units = SELECT result.units IN OBJECT expression.context.result_object
+
+        ELSE
+
+            expression.context.error = TRUE
+            expression.context.error_message = "No source data entered"
+
+        ENDIF
+
+    ENDIF
+
+    RETURN
+
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE calculate_sum
+    (
+            expression,
+            messages,
+            components
+    )
+
+    {
+    Description :
+    }
+
+    DECLARE i
+    DECLARE total
+    DECLARE count
+
+    IF ( expression.context.error = FALSE )
+
+        i = 1
+        count = 0
+        total = 0
+
+        WHILE( i <= size_of_array( components ) )
+
+            IF ( components[i,I_VALID] = TRUE )
+
+                count = count + 1
+                total = total + components[i,I_RESULT]
+
+            ENDIF
+
+            i = i + 1
+
+        ENDWHILE
+
+        IF ( count > 0 )
+
+            expression.value = total
+            expression.units = SELECT result.units IN OBJECT expression.context.result_object
+
+        ELSE
+
+            expression.context.error = TRUE
+            expression.context.error_message = "No source data entered"
+
+        ENDIF
+
+    ENDIF
+
+    RETURN
+
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+{ Internal general purpose routines }
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE add_message
+    (
+            messages,
+    VALUE   text1,
+    VALUE   text2
+    )
+
+    {
+    Description :
+    }
+
+    DECLARE i
+
+    convert_number_to_string( text1 )
+    convert_number_to_string( text2 )
+
+    i = size_of_array( messages ) + 1
+
+    IF ( text2 = EMPTY )
+
+        messages[i] = text1
+
+    ELSE
+
+        messages[i] = LEFTSTRING( text1, 40 )
+                    : " = "
+                    : text2
+
+    ENDIF
+
+    RETURN
+
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE print_messages
+    (
+            messages
+    )
+
+    {
+    Description :
+    }
+
+    DECLARE i
+
+    i = 1
+
+    WHILE ( i <= size_of_array( messages ) )
+
+        lib_re_formula_write_to_print_file( messages[i] )
+        i = i + 1
+
+    ENDWHILE
+
+    RETURN
+
+ENDROUTINE
+
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE convert_number_to_string
+    (
+            text
+    )
+
+    {
+    Description :
+    }
+
+    DECLARE variable_type
+    DECLARE exponent
+
+    variable_type = TOUPPER( variable_get_type( text ) )
+
+    IF ( variable_type = "REAL" )
+
+        exponent = NUMERIC( RIGHTSTRING( NUMBER_TO_TEXT( text, "9.9999999999999999E999" ), 3 ) )
+
+        IF ( exponent >= 10 )
+        OR ( exponent < -8 )
+
+            text = NUMBER_TO_TEXT( text, "9.9999999999999999E999" )
+            exponent = RIGHTSTRING( text, 4 )
+            text = text # exponent
+            remove_trailing_zeros( text )
+            text = text : exponent
+
+        ELSE
+
+            text = NUMBER_TO_TEXT( text, "9999999999.999999999999999999999999" )
+            text = STRIP( text )
+            remove_trailing_zeros( text )
+
+        ENDIF
+
+    ELSEIF ( variable_type = "INTEGER" )
+    OR     ( variable_type = "PACKED_DECIMAL" )
+
+        text = STRIP( NUMBER_TO_TEXT( text, "9999999999" ) )
+
+    ENDIF
+
+    RETURN
+
+ENDROUTINE
+
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE remove_trailing_zeros
+    (
+            text
+    )
+
+    {
+    Description :
+    }
+
+
+    WHILE ( RIGHTSTRING( text,1 ) = "0" )
+
+        text = LEFTSTRING( text, ( LENGTH( text ) - 1 ) )
+
+    ENDWHILE
+
+    IF ( RIGHTSTRING( text,1 ) = "." )
+
+        text = LEFTSTRING( text, ( LENGTH( text ) - 1 ) )
+
+    ENDIF
+
+
+    RETURN
+
+ENDROUTINE
+
+{---------------------------------------------------------------------------------------------------}
+ROUTINE print_data_set ( obj_db )
+
+{
+*
+* This routine prints the values in the data set
+*
+*******************************************************************************}
+
+DECLARE rec_num ,
+        num_recs ,
+        result_obj ,
+        result_text
+
+	lib_re_formula_write_to_print_file ( "" )
+	lib_re_formula_write_to_print_file ( "Number of Result values : " : STRIP ( obj_db.size ( )))
+	lib_re_formula_write_to_print_file ( "" )
+	lib_re_formula_write_to_print_file ( "----------------------" )
+	lib_re_formula_write_to_print_file ( "Result value           ")
+	lib_re_formula_write_to_print_file ( "----------------------" )
+
+	num_recs = obj_db.size ( )
+
+	rec_num = 1
+
+	WHILE rec_num <= num_recs DO
+
+		result_obj = obj_db . get_by_number( rec_num )
+
+		IF ( result_obj <> EMPTY ) THEN
+			result_text = SELECT result . text
+			                IN OBJECT result_obj
+		ELSE
+			result_text = ""
+		ENDIF
+
+		lib_re_formula_write_to_print_file ( result_text )
+
+		rec_num = rec_num + 1
+
+	ENDWHILE
+
+	lib_re_formula_write_to_print_file ( "----------------------" )
+	lib_re_formula_write_to_print_file ( "" )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+
+
+{******************************************************************************}
+
+ROUTINE count_set ( expression )
+
+{
+*
+* This routine will return the number of results in a result set
+*
+*******************************************************************************}
+
+DECLARE result_set, count
+
+	result_set = expression . get_parameter_result_set()
+
+	IF ( expression . context . mode = FORMULA_MODE_PRINT ) THEN
+		print_data_set ( result_set )
+	ENDIF
+
+	IF ( expression . context . mode = FORMULA_MODE_CALCULATE   ) OR
+	   ( expression . context . mode = FORMULA_MODE_PRINT       ) OR
+	   ( expression . context . mode = FORMULA_MODE_TEST_PHASE1 ) THEN
+
+		count = result_set . size()
+
+		expression . return_value ( count )
+
+        ENDIF
+
+
+ENDROUTINE{ count_set }
+
+
+{******************************************************************************
+*
+*   ADD PREFIXES TO RESULTS
+*
+*******************************************************************************}
+
+ROUTINE prefix_lt ( expression )
+
+{
+*
+* Prefixes the result with Less Than (<) symbol
+*
+*******************************************************************************}
+
+DECLARE the_result
+
+ 	the_result = expression . get_parameter_numeric()
+
+	IF ( expression . context . mode = FORMULA_MODE_CALCULATE   ) OR
+	   ( expression . context . mode = FORMULA_MODE_PRINT       ) OR
+	   ( expression . context . mode = FORMULA_MODE_TEST_PHASE1 ) THEN
+
+		expression . return_value ( the_result )
+		expression . return_text  ( the_result )
+		expression . return_inequality(FORMULA_LT)
+
+        ENDIF
+
+
+ENDROUTINE { prefix_lt }
+
+
+ROUTINE prefix_gt ( expression )
+
+{
+*
+* Prefixes the result with Greater Than (>) symbol
+*
+*******************************************************************************}
+
+DECLARE the_result
+
+	the_result = expression . get_parameter_numeric()
+
+	IF ( expression . context . mode = FORMULA_MODE_CALCULATE   ) OR
+	   ( expression . context . mode = FORMULA_MODE_PRINT       ) OR
+	   ( expression . context . mode = FORMULA_MODE_TEST_PHASE1 ) THEN
+
+		expression . return_value ( the_result )
+		expression . return_text  ( the_result )
+		expression . return_inequality( FORMULA_GT )
+
+        ENDIF
+
+
+ENDROUTINE { prefix_gt }
+
+
+ROUTINE prefix_le ( expression )
+
+{
+*
+* Prefixes the result with Less Than or Equal To (<=) symbol
+*
+*******************************************************************************}
+
+DECLARE the_result
+
+	the_result = expression . get_parameter_numeric()
+
+	IF ( expression . context . mode = FORMULA_MODE_CALCULATE   ) OR
+	   ( expression . context . mode = FORMULA_MODE_PRINT       ) OR
+	   ( expression . context . mode = FORMULA_MODE_TEST_PHASE1 ) THEN
+
+		expression . return_value ( the_result )
+		expression . return_text  ( the_result )
+		expression . return_inequality( FORMULA_LE )
+
+        ENDIF
+
+
+ENDROUTINE { prefix_le }
+
+ROUTINE prefix_ge ( expression )
+
+{
+*
+* Prefixes the result with Greater Than or Equal To (>=) symbol
+*
+*******************************************************************************}
+
+DECLARE the_result
+
+	the_result = expression . get_parameter_numeric()
+
+	IF ( expression . context . mode = FORMULA_MODE_CALCULATE   ) OR
+	   ( expression . context . mode = FORMULA_MODE_PRINT       ) OR
+	   ( expression . context . mode = FORMULA_MODE_TEST_PHASE1 ) THEN
+
+		expression . return_value ( the_result )
+		expression . return_text  ( the_result )
+		expression . return_inequality( FORMULA_GE )
+
+        ENDIF
+
+
+ENDROUTINE { prefix_ge }
+
+
+ROUTINE simple_prompt_value (VALUE compname)
+
+{
+*
+* Ask the user for a value for the specified test / component.
+*
+********************************************************************************}
+
+	DECLARE screen_height, screen_width, form, value_prompt, ret
+
+	ret = ""
+
+	screen_width  = GLOBAL ( "GUI_WIDTH"  )
+	screen_height = GLOBAL ( "GUI_HEIGHT" )
+
+	PROMPT OBJECT form CLASS "STD_FORM"
+	form . header           = "Result Value Prompt" {GET_USER_MESSAGE("SETUP_MENU" ,1)}
+	form . row              = ( screen_height / 2 )
+	form . column           = (( screen_width - 56 ) / 2 )
+	form . height           = 3
+	form . width            = 56
+
+
+	form . add_display ( "Component" , 2, 1, PROMPT_RENDITION_NORMAL )
+	form . add_display ( compname, 16, 1, PROMPT_RENDITION_LOWERED )
+
+{
+	form . add_display ( "Result Name" , 2, 2, PROMPT_RENDITION_NORMAL )
+	form . add_display ( "",  16, 2, PROMPT_RENDITION_LOWERED )
+}
+
+
+
+	form . add_display ( "Result Value" , 2, 3, PROMPT_RENDITION_NORMAL )
+
+	PROMPT OBJECT value_prompt
+
+	value_prompt . column             = 16
+	value_prompt . row                = 3
+	value_prompt . width              = 20
+	value_prompt . always_validate    = TRUE
+	value_prompt . user_info          = FORMULA_EQ
+
+	form . add_prompt ( value_prompt )
+
+	form . add_frame ( "", 1, 1, 3, 56 )
+
+	form . start_prompt ( )
+	form . wait_prompt ( )
+	form . end_prompt ( )
+
+	IF ( form . get_lastkey ( ) <> "EXIT" )  THEN
+		ret        = value_prompt . value
+	ENDIF
+
+	RETURN (ret)
+
+ENDROUTINE
+
+{*****************************************************************************
+*
+*   CUSTOM FUNCTIONS
+*
+*******************************************************************************}
+{******************************************************************************}
+
+ROUTINE el_wgt( expression )
+
+{
+*
+* This routine strips off the balance name from elan weight filed (textual)
+*
+*******************************************************************************}
+
+	DECLARE full_str, wt, ro, the_result , run_it, is_test
+
+	the_result = expression . get_parameter_text()
+
+	run_it  = TRUE
+	is_test = FALSE
+
+	IF ( expression . context . mode = FORMULA_MODE_TEST_PHASE1 ) THEN
+
+		run_it = TRUE
+		is_test = TRUE
+
+	ELSEIF ( expression . context . mode = FORMULA_MODE_CALCULATE   ) OR
+	   ( expression . context . mode = FORMULA_MODE_PRINT       )  THEN
+
+		run_it = TRUE
+
+	ELSEIF ( expression.context.mode = FORMULA_MODE_VALIDATE )
+
+		run_it = FALSE
+	ENDIF
+
+	IF (run_it) THEN
+
+		IF (is_test) THEN
+
+			full_str = simple_prompt_value (the_result)
+
+		ELSE
+			ro = expression.context.result_context.get_result( 
+			expression.context.test_number, the_result )
+			IF ( ro <> EMPTY )
+        		    full_str = SELECT result . text IN OBJECT ro
+        		ELSE
+			    full_str = ""
+			ENDIF
+		ENDIF
+
+		wt = wt_to_num (full_str)
+
+		IF STRING(wt) <> ""THEN
+
+			expression . return_value( wt )
+
+		ELSE
+
+              	  	expression.context.error = TRUE
+                	expression.context.error_message = "Invalid format for weight field"
+
+		ENDIF
+
+	ELSE
+
+	ENDIF
+
+ENDROUTINE{ el_wgt }
+
+
+ROUTINE el_avg_wgt( expression )
+
+{
+*
+* This routine will return the arithmetic mean of a set of data in 
+* an object database. The selection criteria for this object database
+* should be in the parameter text passed into this routine.
+* 
+*******************************************************************************}
+
+DECLARE result_set, mean_val, min_num_comps, no_of_records
+
+	result_set = expression . get_parameter_result_set()
+	min_num_comps = expression . get_parameter_numeric()
+
+	IF ( expression . context . mode = FORMULA_MODE_PRINT ) THEN
+		print_data_set ( result_set )
+	ENDIF
+
+	IF ( expression . context . mode = FORMULA_MODE_CALCULATE   ) OR
+	   ( expression . context . mode = FORMULA_MODE_PRINT       ) OR
+	   ( expression . context . mode = FORMULA_MODE_TEST_PHASE1 ) THEN
+
+		no_of_records  = result_set.size()
+		mean_val       = mean_wgt ( result_set )
+
+		IF mean_val = EMPTY THEN
+
+			expression . flag_function_error_with_message( "EMPTY_DATA_SET" )
+
+		ELSEIF (min_num_comps > no_of_records)
+
+              	  	expression.context.error = TRUE
+                	expression.context.error_message = "Only ":STRIP(no_of_records):" records"
+		ELSE
+
+			expression . return_value( mean_val )
+
+		ENDIF
+		
+	ELSE
+
+		{ expression . return_value ( 1.0 ) }
+
+	ENDIF
+
+ENDROUTINE{ el_avg_wgt }
+
+ROUTINE el_min_wgt( expression )
+
+{
+*
+* This routine will return the arithmetic min of a set of data in 
+* an object database. The selection criteria for this object database
+* should be in the parameter text passed into this routine.
+* 
+*******************************************************************************}
+
+DECLARE result_set, min_val, min_num_comps, no_of_records
+
+	result_set = expression . get_parameter_result_set()
+	min_num_comps = expression . get_parameter_numeric()
+
+	IF ( expression . context . mode = FORMULA_MODE_PRINT ) THEN
+		print_data_set ( result_set )
+	ENDIF
+
+	IF ( expression . context . mode = FORMULA_MODE_CALCULATE   ) OR
+	   ( expression . context . mode = FORMULA_MODE_PRINT       ) OR
+	   ( expression . context . mode = FORMULA_MODE_TEST_PHASE1 ) THEN
+
+		no_of_records  = result_set.size()
+		min_val       = min_wgt ( result_set )
+
+		IF min_val = EMPTY THEN
+
+			expression . flag_function_error_with_message( "EMPTY_DATA_SET" )
+
+		ELSEIF (min_num_comps > no_of_records)
+
+              	  	expression.context.error = TRUE
+                	expression.context.error_message = "Only ":STRIP(no_of_records):" records"
+		ELSE
+
+			expression . return_value( min_val )
+
+		ENDIF
+		
+	ELSE
+
+		{ expression . return_value ( 1.0 ) }
+
+	ENDIF
+
+ENDROUTINE{ el_min_wgt }
+
+ROUTINE el_max_wgt( expression )
+
+{
+*
+* This routine will return the arithmetic max of a set of data in 
+* an object database. The selection criteria for this object database
+* should be in the parameter text passed into this routine.
+* 
+*******************************************************************************}
+
+DECLARE result_set, max_val, min_num_comps, no_of_records
+
+	result_set = expression . get_parameter_result_set()
+	min_num_comps = expression . get_parameter_numeric()
+
+	IF ( expression . context . mode = FORMULA_MODE_PRINT ) THEN
+		print_data_set ( result_set )
+	ENDIF
+
+	IF ( expression . context . mode = FORMULA_MODE_CALCULATE   ) OR
+	   ( expression . context . mode = FORMULA_MODE_PRINT       ) OR
+	   ( expression . context . mode = FORMULA_MODE_TEST_PHASE1 ) THEN
+
+		no_of_records  = result_set.size()
+		max_val       = max_wgt ( result_set )
+
+		IF max_val = EMPTY THEN
+
+			expression . flag_function_error_with_message( "EMPTY_DATA_SET" )
+
+		ELSEIF (min_num_comps > no_of_records)
+
+              	  	expression.context.error = TRUE
+                	expression.context.error_message = "Only ":STRIP(no_of_records):" records"
+		ELSE
+
+			expression . return_value( max_val )
+
+		ENDIF
+		
+	ELSE
+
+		{ expression . return_value ( 1.0 ) }
+
+	ENDIF
+
+ENDROUTINE{ el_max_wgt }
+
+ROUTINE el_stdev_wgt( expression )
+
+{
+*
+* This routine will return the arithmetic max of a set of data in 
+* an object database. The selection criteria for this object database
+* should be in the parameter text passed into this routine.
+* 
+*******************************************************************************}
+
+DECLARE result_set, stdev_val, min_num_comps, no_of_records
+
+	result_set = expression . get_parameter_result_set()
+	min_num_comps = expression . get_parameter_numeric()
+
+	IF ( expression . context . mode = FORMULA_MODE_PRINT ) THEN
+		print_data_set ( result_set )
+	ENDIF
+
+	IF ( expression . context . mode = FORMULA_MODE_CALCULATE   ) OR
+	   ( expression . context . mode = FORMULA_MODE_PRINT       ) OR
+	   ( expression . context . mode = FORMULA_MODE_TEST_PHASE1 ) THEN
+
+		no_of_records  = result_set.size()
+		stdev_val       = stdev_wgt ( result_set )
+
+		IF stdev_val = EMPTY THEN
+
+			expression . flag_function_error_with_message( "EMPTY_DATA_SET" )
+
+		ELSEIF (min_num_comps > no_of_records)
+
+              	  	expression.context.error = TRUE
+                	expression.context.error_message = "Only ":STRIP(no_of_records):" records"
+		ELSE
+
+			expression . return_value( stdev_val )
+
+		ENDIF
+		
+	ELSE
+
+		{ expression . return_value ( 1.0 ) }
+
+	ENDIF
+
+ENDROUTINE{ el_stdev_wgt }
+
+
+
+{**********************************************************
+
+Internal custom functions not called directly
+************************************************************
+}
+
+
+ROUTINE max_wgt ( object_db )
+
+{
+*
+* This routine returns the maximum result value in the passed object 
+* database. Indeterminate results are filtered out using the 
+* result_ok routine.
+*
+*******************************************************************************}
+
+DECLARE result_object, result_val, no_of_records, result_count,
+        max_val, first_set, res_text, got_invalid_wt
+
+	got_invalid_wt = FALSE
+	no_of_records = object_db.size()
+	
+	result_count = 1
+	
+	first_set = FALSE
+	
+	max_val = 0 
+	
+	WHILE ( (result_count <= no_of_records ) AND ( NOT first_set ) ) DO
+	
+		result_object = object_db.get_by_number( result_count )
+
+{		IF ( result_ok ( result_object )) THEN
+}
+		IF ( TRUE ) THEN
+		
+			res_text = SELECT result.text 
+			               IN OBJECT result_object
+			   
+			result_val = wt_to_num (res_text)
+
+                        IF (STRING (result_val) = "") THEN
+
+				got_invalid_wt = TRUE
+
+			ENDIF 
+
+			max_val = result_val
+			               
+			first_set = TRUE
+			
+		ENDIF
+
+		result_count = result_count + 1
+		
+	ENDWHILE
+		
+	WHILE ( result_count <= no_of_records ) DO	
+	
+		result_object = object_db.get_by_number( result_count )
+
+{		IF ( result_ok ( result_object )) THEN
+}
+		IF ( TRUE ) THEN
+		
+			res_text = SELECT result.text 
+			               IN OBJECT result_object
+			   
+			result_val = wt_to_num (res_text)
+
+                        IF (STRING (result_val) = "") THEN
+
+				got_invalid_wt = TRUE
+
+			ELSEIF ( result_val > max_val ) THEN
+			
+				max_val = result_val
+				
+			ENDIF
+			
+		ENDIF
+		
+		result_count = result_count + 1
+		
+	ENDWHILE
+	
+	IF NOT first_set THEN
+	
+		max_val = EMPTY
+		
+	ENDIF
+	
+	{ Means invalid weights }
+
+	IF (got_invalid_wt = TRUE) THEN
+
+		max_val = EMPTY 
+
+	ENDIF
+
+	RETURN( max_val )
+	
+ENDROUTINE{ max_wgt }
+
+{******************************************************************************}
+
+ROUTINE min_wgt ( object_db )
+
+{
+*
+* This routine returns the minimum result value in the passed object 
+* database. Indeterminate results are filtered out using the 
+* result_ok routine.
+*
+*******************************************************************************}
+
+DECLARE result_object, result_val, no_of_records, result_count,
+        min_val, first_set, res_text, got_invalid_wt
+
+	got_invalid_wt = FALSE
+	no_of_records = object_db.size()
+	
+	result_count = 1
+	
+	first_set = FALSE
+	
+	min_val = 0 
+	
+	WHILE ( (result_count <= no_of_records ) AND ( NOT first_set ) ) DO
+	
+		result_object = object_db.get_by_number( result_count )
+
+{		IF ( result_ok ( result_object )) THEN
+}
+		IF ( TRUE ) THEN
+		
+			res_text = SELECT result.text 
+			               IN OBJECT result_object
+			   
+			result_val = wt_to_num (res_text)
+
+                        IF (STRING (result_val) = "") THEN
+
+				got_invalid_wt = TRUE
+
+			ENDIF 
+
+			min_val = result_val
+			               
+			first_set = TRUE
+			
+		ENDIF
+
+		result_count = result_count + 1
+		
+	ENDWHILE
+		
+	WHILE ( result_count <= no_of_records ) DO	
+	
+		result_object = object_db.get_by_number( result_count )
+
+{		IF ( result_ok ( result_object )) THEN
+}
+		IF ( TRUE ) THEN
+
+			res_text = SELECT result.text 
+			               IN OBJECT result_object
+			   
+			result_val = wt_to_num (res_text)
+
+                        IF (STRING (result_val) = "") THEN
+
+				got_invalid_wt = TRUE
+
+			ELSEIF ( result_val < min_val ) THEN
+			
+				min_val = result_val
+				
+			ENDIF
+			
+		ENDIF
+		
+		result_count = result_count + 1
+		
+	ENDWHILE
+	
+	IF NOT first_set THEN
+	
+		min_val = EMPTY
+		
+	ENDIF
+	
+	{ Means invalid weights }
+
+	IF (got_invalid_wt = TRUE) THEN
+
+		min_val = EMPTY 
+
+	ENDIF
+
+	RETURN( min_val )
+	
+ENDROUTINE{ min_wgt }
+
+ROUTINE mean_wgt ( object_db )
+
+{
+*
+* This routine returns the arithmetic mean of the resuls in the passed 
+* object database. Indeterminate results are filtered out using the
+* result_ok routine.
+*
+*******************************************************************************}
+
+DECLARE result_object, result_val, no_of_records, result_count,
+        sum_total, num_results, res_text 
+
+	no_of_records = object_db.size()
+	
+	sum_total = 0
+	
+	result_count = 1
+	
+	num_results = 0
+	
+	WHILE ( result_count <= no_of_records ) DO	
+	
+		result_object = object_db.get_by_number( result_count )
+	
+{		IF ( result_ok ( result_object )) THEN
+}
+		IF ( TRUE ) THEN
+		
+			res_text = SELECT result.text 
+			               IN OBJECT result_object
+			   
+			result_val = wt_to_num (res_text)
+
+                        IF (STRING (result_val) <> "") THEN
+	
+				sum_total = sum_total + result_val			
+				num_results = num_results + 1
+
+			ENDIF
+
+			
+		ENDIF
+		
+		result_count = result_count + 1
+		
+	ENDWHILE
+	
+	IF num_results > 0 THEN
+	
+		sum_total = sum_total/ num_results
+		
+	ELSE
+	
+		sum_total = EMPTY 
+		
+	ENDIF
+	
+	{ Means invalid weights }
+
+	IF ((result_count-1) <> no_of_records) THEN
+
+		sum_total = EMPTY 
+
+	ENDIF
+
+	RETURN( sum_total )
+	
+ENDROUTINE{ mean_wgt }
+
+
+{ Returns the weight or "" if error  }
+ROUTINE wt_to_num (VALUE full_str)
+
+    DECLARE wt, i
+
+	{ Look for a blank, then left of it is the numeric result }
+                wt = ""
+
+		full_str = STRIP (full_str)
+
+		IF full_str <> "" THEN
+
+			full_str = full_str:" "   { This allows it work if no balance name }
+			i = INDEX (full_str, " ")
+			IF (i > 1) THEN
+				full_str = SUBSTRING (full_str , 1, i-1)
+
+				IF (NUM_TEXT(full_str)) THEN
+					wt = NUMERIC (full_str)
+				ENDIF
+			ENDIF
+		ENDIF
+
+    RETURN (wt)
+
+ENDROUTINE    {  wt_to_num  }
+
+{******************************************************************************}
+
+ROUTINE stdev_wgt ( obj_db )
+
+{
+*
+* This routine calculates the standard deviation of the results in the
+* object database passed in. The standard deviation is calculated using
+* the unbiased "n-1" method.
+*
+*******************************************************************************}
+
+DECLARE sum_x, sum_x_sq, no_of_records, rec_num, result_count, result_object, 
+	result_val, st_dev_x, res_text
+        
+        no_of_records = obj_db.size()
+        
+        IF no_of_records > 1 THEN
+        
+		sum_x = 0
+		sum_x_sq = 0
+		
+        	result_count = 0
+        	
+        	rec_num = 1
+        	
+        	WHILE ( rec_num <= no_of_records ) DO
+        	
+        		result_object = obj_db.get_by_number( rec_num )
+        		
+        					
+
+			 IF ( TRUE ) THEN
+		
+			     res_text = SELECT result.text 
+			               IN OBJECT result_object
+			   
+			     result_val = wt_to_num (res_text)
+
+                           IF (STRING (result_val) <> "") THEN
+
+        			sum_x = sum_x + result_val
+        			
+        			sum_x_sq = sum_x_sq + result_val*result_val
+        			
+	        		result_count = result_count + 1
+			   ENDIF
+			  
+        		
+        		ENDIF
+        		
+        		rec_num = rec_num + 1
+        		
+        	ENDWHILE
+
+        	IF result_count > 1 THEN
+
+			st_dev_x = SQRT( (result_count*sum_x_sq - sum_x*sum_x   )/
+				       (result_count*(result_count - 1) ) )
+				       
+		ELSE
+		
+			st_dev_x = EMPTY 
+			
+		ENDIF
+        	            	
+	ELSE
+	
+		st_dev_x = EMPTY
+		
+        ENDIF
+	
+	RETURN( st_dev_x )
+	
+ENDROUTINE{ stdev_wgt }
+
+

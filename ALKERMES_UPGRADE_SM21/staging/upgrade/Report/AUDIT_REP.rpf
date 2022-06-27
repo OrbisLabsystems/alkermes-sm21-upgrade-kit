@@ -1,0 +1,2304 @@
+{******************************************************************************
+*
+* Module Name   : $AUDIT_REP.RPF
+*
+* Purpose       : Auditing Reports.
+*
+* Document Ref. : SE/T/TVGL-WORK-REPORTS/1/3
+*
+* Specification :
+*
+* Portability   : Not Checked
+*
+* Re-entrant    :
+*
+*******************************************************************************}
+{                                                                              }
+{  Modification History                                                        }
+{                                                                              }
+{  Ver.     Date        By          Description                                }
+{  ----     ----        --          -----------                                }
+{  1.01     30/10/96    MR         Word wrap included for value before,        }
+{                                  value after and audit reason.               }
+{                                                                              }
+{******************************************************************************}
+
+SET NAME "DEFER/"
+
+ENABLE WINDOWS
+
+SET COMPILE_OPTION DECLARE
+
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN LIBRARY $LIB_UTILS
+
+DECLARE menu_options
+
+DECLARE tab_1, tab_2, tab_3, tab_4, tab_6, tab_7, tab_19
+
+tab_1  = GET_USER_MESSAGE ( "AUDIT_REP_TAB_1", 1 )
+tab_2  = GET_USER_MESSAGE ( "AUDIT_REP_TAB_2", 1 )
+tab_3  = GET_USER_MESSAGE ( "AUDIT_REP_TAB_3", 1 )
+tab_4  = GET_USER_MESSAGE ( "AUDIT_REP_TAB_4", 1 )
+tab_6  = GET_USER_MESSAGE ( "AUDIT_REP_TAB_6", 1 )
+tab_7  = GET_USER_MESSAGE ( "AUDIT_REP_TAB_7", 1 )
+tab_19 = GET_USER_MESSAGE ( "AUDIT_REP_TAB_19", 1 )
+
+DECLARE new_page_the_table_name ,
+	new_page_record_key0    ,
+	new_page_event_action   ,
+	new_page_event_reason   ,
+	new_page_idtext         ,
+	np_samp
+
+set_up_menu ( menu_options )
+
+CALL_MENU OUTOF menu_options ON LINE 10 FROM 22
+
+EXIT
+
+{------------------------------------------------------------------------------}
+
+ROUTINE set_up_menu ( menu_options )
+
+	{ Build the menu_options array for the choose outof stuff }
+
+	DECLARE current_library
+
+	ARRAY menu_options ARRAY_SIZE ( 6,4 )
+
+	current_library = GLOBAL ( "CURRENT_LIBRARY" )
+
+	menu_options [ 1,1 ] = "*"
+	menu_options [ 1,2 ] = GET_USER_MESSAGE ( "AUDIT_REP_MENU_1", 1 )
+        menu_options [ 1,3 ] = "$AUDIT_REP_MENU"
+
+	menu_options [ 2,1 ] = "T"
+	menu_options [ 2,2 ] = GET_USER_MESSAGE ( "AUDIT_REP_MENU_3", 1 )
+	menu_options [ 2,3 ] = current_library
+	menu_options [ 2,4 ] = "transaction_auditing"
+
+	menu_options [ 3,1 ] = "S"
+	menu_options [ 3,2 ] = GET_USER_MESSAGE ( "AUDIT_REP_MENU_7", 1 )
+	menu_options [ 3,3 ] = current_library
+	menu_options [ 3,4 ] = "sample_auditing"
+
+	menu_options [ 4,1 ] = "O"
+	menu_options [ 4,2 ] = GET_USER_MESSAGE ( "AUDIT_REP_MENU_11", 1 )
+	menu_options [ 4,3 ] = current_library
+	menu_options [ 4,4 ] = "user_auditing"
+
+	menu_options [ 5,1 ] = "P"
+	menu_options [ 5,2 ] = GET_USER_MESSAGE ( "AUDIT_REP_MENU_15", 1 )
+	menu_options [ 5,3 ] = current_library
+	menu_options [ 5,4 ] = "print_all_for_sample"
+
+	menu_options [ 6,1 ] = "A"
+	menu_options [ 6,2 ] = GET_USER_MESSAGE ( "AUDIT_REP_MENU_19", 1 )
+	menu_options [ 6,3 ] = current_library
+	menu_options [ 6,4 ] = "print_all_for_operator"
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE define_constants
+
+	CONSTANT TRANSACTIONS_AUDIT = 1
+	CONSTANT OPERATOR_AUDIT     = 2
+	CONSTANT SAMPLE_AUDIT       = 3
+
+	CONSTANT AUDIT_TYPE_FLD       = 1
+	CONSTANT IDENTITY_FLD         = 2
+	CONSTANT KEYPRESS_ROUTINE_FLD = 3
+	CONSTANT CORNER_OFFSET_FLD    = 4
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE create_transaction_form ( form,
+				  VALUE audit_type,
+			    	  VALUE identity,
+			    	  VALUE corner )
+
+	DECLARE display_msg, display_width, display_row,
+		button_msg, button_key, num
+
+	ARRAY display_msg   ARRAYSIZE ( 0 )
+	ARRAY display_row   ARRAYSIZE ( 0 )
+	ARRAY display_width ARRAYSIZE ( 0 )
+	ARRAY button_msg    ARRAYSIZE ( 0 )
+	ARRAY button_key    ARRAYSIZE ( 0 )
+
+	CONSTANT TRA_TRANSACTION_FLD = 1
+	CONSTANT TRA_SYSTEM_PID_FLD  = 2
+	CONSTANT TRA_USER_ID_FLD     = 3
+	CONSTANT TRA_NAME_FLD        = 4
+	CONSTANT TRA_DATE_FLD        = 5
+
+	display_msg [ TRA_TRANSACTION_FLD ] = "AUDIT_REP_DISP_1"
+	display_msg [ TRA_SYSTEM_PID_FLD  ] = "AUDIT_REP_DISP_2"
+	display_msg [ TRA_USER_ID_FLD     ] = "AUDIT_REP_DISP_3"
+	display_msg [ TRA_NAME_FLD        ] = "AUDIT_REP_DISP_4"
+	display_msg [ TRA_DATE_FLD        ] = "AUDIT_REP_DISP_5"
+
+	display_row [ TRA_TRANSACTION_FLD ] = 1
+	display_row [ TRA_SYSTEM_PID_FLD  ] = 2
+	display_row [ TRA_USER_ID_FLD     ] = 3
+	display_row [ TRA_NAME_FLD        ] = 4
+	display_row [ TRA_DATE_FLD        ] = 5
+
+	display_width [ TRA_TRANSACTION_FLD ] = 10
+	display_width [ TRA_SYSTEM_PID_FLD  ] = 10
+	display_width [ TRA_USER_ID_FLD     ] = 10
+	display_width [ TRA_NAME_FLD        ] = 40
+	display_width [ TRA_DATE_FLD        ] = 23
+
+	num = 1
+	button_msg [ num ] = "AUDIT_REP_TRA_SELECT_BUTTON"
+	button_key [ num ] = "SELECT"
+
+	num = num + 1
+	button_msg [ num ] = "AUDIT_REP_PREV_BUTTON"
+	button_key [ num ] = "PREVIOUS SCREEN"
+
+	num = num + 1
+	button_msg [ num ] = "AUDIT_REP_NEXT_BUTTON"
+	button_key [ num ] = "NEXT SCREEN"
+
+	num = num + 1
+	button_msg [ num ] = "AUDIT_REP_DO_BUTTON"
+	button_key [ num ] = "DO"
+
+	create_form ( form,
+		      audit_type,
+		      "AUDIT_REP_HEAD_1",
+		      "AUDIT_REP_TRAN_2",
+		      5,
+		      70,
+		      corner,
+		      "$AUDIT_REP_TRANSACTION",
+		      display_msg,
+		      display_row,
+		      display_width,
+		      5,
+		      button_msg,
+		      button_key,
+		      4 )
+
+	form . user_info [ IDENTITY_FLD ] = identity
+	form . user_info [ KEYPRESS_ROUTINE_FLD ] = "PROCESS_TRA_KEY"
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE create_event_form ( form,
+		    	    VALUE audit_type,
+			    VALUE identity,
+			    VALUE corner )
+
+	DECLARE display_msg, display_width, display_row,
+		button_msg, button_key, num, footer_msg
+
+	ARRAY display_msg   ARRAYSIZE ( 0 )
+	ARRAY display_row   ARRAYSIZE ( 0 )
+	ARRAY display_width ARRAYSIZE ( 0 )
+	ARRAY button_msg    ARRAYSIZE ( 0 )
+	ARRAY button_key    ARRAYSIZE ( 0 )
+
+	CONSTANT EVT_EVENT_FLD       = 1
+	CONSTANT EVT_TRANSACTION_FLD = 2
+	CONSTANT EVT_TABLE_FLD       = 3
+	CONSTANT EVT_RECORD_KEY0_FLD = 4
+	CONSTANT EVT_ACTION_FLD      = 5
+	CONSTANT EVT_REASON_FLD      = 6
+
+	display_msg [ EVT_EVENT_FLD       ] = "AUDIT_REP_DISP_6"
+	display_msg [ EVT_TRANSACTION_FLD ] = "AUDIT_REP_DISP_1"
+	display_msg [ EVT_TABLE_FLD       ] = "AUDIT_REP_DISP_8"
+	display_msg [ EVT_RECORD_KEY0_FLD ] = "AUDIT_REP_DISP_9"
+	display_msg [ EVT_ACTION_FLD      ] = "AUDIT_REP_DISP_10"
+	display_msg [ EVT_REASON_FLD      ] = "AUDIT_REP_DISP_11"
+
+	display_row [ EVT_EVENT_FLD       ] = 1
+	display_row [ EVT_TRANSACTION_FLD ] = 2
+	display_row [ EVT_TABLE_FLD       ] = 3
+	display_row [ EVT_RECORD_KEY0_FLD ] = 4
+	display_row [ EVT_ACTION_FLD      ] = 5
+	display_row [ EVT_REASON_FLD      ] = 6
+
+	display_width [ EVT_EVENT_FLD       ] = 10
+	display_width [ EVT_TRANSACTION_FLD ] = 10
+	display_width [ EVT_TABLE_FLD       ] = 20
+	display_width [ EVT_RECORD_KEY0_FLD ] = 40
+	display_width [ EVT_ACTION_FLD      ] = 20
+	display_width [ EVT_REASON_FLD      ] = 40
+
+	num = 1
+	button_msg [ num ] = "AUDIT_REP_EVT_SELECT_BUTTON"
+	button_key [ num ] = "SELECT"
+
+	IF ( audit_type = SAMPLE_AUDIT ) THEN
+		num = num + 1
+		button_msg [ num ] = "AUDIT_REP_EVT_FIND_BUTTON"
+		button_key [ num ] = "FIND"
+	ENDIF
+
+	num = num + 1
+	button_msg [ num ] = "AUDIT_REP_PREV_BUTTON"
+	button_key [ num ] = "PREVIOUS SCREEN"
+
+	num = num + 1
+	button_msg [ num ] = "AUDIT_REP_NEXT_BUTTON"
+	button_key [ num ] = "NEXT SCREEN"
+
+	num = num + 1
+	button_msg [ num ] = "AUDIT_REP_DO_BUTTON"
+	button_key [ num ] = "DO"
+
+	IF ( audit_type = SAMPLE_AUDIT ) THEN
+		footer_msg = "AUDIT_REP_EV_FOOT_2"
+	ELSE
+		footer_msg = "AUDIT_REP_EV_FOOT_1"
+	ENDIF
+
+	create_form ( form,
+		      audit_type,
+		      "AUDIT_REP_HEAD_3",
+		      footer_msg,
+		      6,
+		      70,
+		      corner,
+		      "$AUDIT_REP_EVENT",
+		      display_msg,
+		      display_row,
+		      display_width,
+		      6,
+		      button_msg,
+		      button_key,
+		      num )
+
+	form . user_info [ IDENTITY_FLD ] = identity
+	form . user_info [ KEYPRESS_ROUTINE_FLD ] = "PROCESS_EVT_KEY"
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE create_data_form ( form,
+		    	   VALUE audit_type,
+			   VALUE identity,
+			   VALUE corner )
+
+	DECLARE display_msg, display_width, display_row,
+		button_msg, button_key, num
+
+	ARRAY display_msg   ARRAYSIZE ( 0 )
+	ARRAY display_row   ARRAYSIZE ( 0 )
+	ARRAY display_width ARRAYSIZE ( 0 )
+	ARRAY button_msg    ARRAYSIZE ( 0 )
+	ARRAY button_key    ARRAYSIZE ( 0 )
+
+	CONSTANT DTA_DATA_FLD   = 1
+	CONSTANT DTA_EVENT_FLD  = 2
+	CONSTANT DTA_FIELD_FLD  = 3
+	CONSTANT DTA_REASON_FLD = 4
+	CONSTANT DTA_BEFORE_FLD = 5
+	CONSTANT DTA_AFTER_FLD  = 6
+
+	display_msg [ DTA_DATA_FLD   ] = "AUDIT_REP_DISP_12"
+	display_msg [ DTA_EVENT_FLD  ] = "AUDIT_REP_DISP_13"
+	display_msg [ DTA_FIELD_FLD  ] = "AUDIT_REP_DISP_14"
+	display_msg [ DTA_REASON_FLD ] = "AUDIT_REP_DISP_15"
+	display_msg [ DTA_BEFORE_FLD ] = "AUDIT_REP_DISP_16"
+	display_msg [ DTA_AFTER_FLD  ] = "AUDIT_REP_DISP_17"
+
+	display_row [ DTA_DATA_FLD   ] = 1
+	display_row [ DTA_EVENT_FLD  ] = 2
+	display_row [ DTA_FIELD_FLD  ] = 3
+	display_row [ DTA_REASON_FLD ] = 4
+	display_row [ DTA_BEFORE_FLD ] = 5
+	display_row [ DTA_AFTER_FLD  ] = 6
+
+	display_width [ DTA_DATA_FLD   ] = 10
+	display_width [ DTA_EVENT_FLD  ] = 10
+	display_width [ DTA_FIELD_FLD  ] = 20
+	display_width [ DTA_REASON_FLD ] = 40
+	display_width [ DTA_BEFORE_FLD ] = 30
+	display_width [ DTA_AFTER_FLD  ] = 30
+
+	num = 1
+	button_msg [ num ] = "AUDIT_REP_PREV_BUTTON"
+	button_key [ num ] = "PREVIOUS SCREEN"
+
+	num = num + 1
+	button_msg [ num ] = "AUDIT_REP_NEXT_BUTTON"
+	button_key [ num ] = "NEXT SCREEN"
+
+	num = num + 1
+	button_msg [ num ] = "AUDIT_REP_DO_BUTTON"
+	button_key [ num ] = "DO"
+
+	create_form ( form,
+		      audit_type,
+		      "AUDIT_REP_HEAD_2",
+		      "AUDIT_REP_DAT_FOOT",
+		      6,
+		      70,
+		      corner,
+		      "$AUDIT_REP_DATA",
+		      display_msg,
+		      display_row,
+		      display_width,
+		      6,
+		      button_msg,
+		      button_key,
+		      3 )
+
+	form . user_info [ IDENTITY_FLD ] = identity
+	form . user_info [ KEYPRESS_ROUTINE_FLD ] = "PROCESS_DTA_KEY"
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE create_form ( form,
+		      VALUE audit_type,
+		      VALUE header_msg,
+		      VALUE footer_msg,
+		      VALUE form_height,
+		      VALUE form_width,
+		      VALUE corner_offset,
+		      VALUE help_context,
+		      	    display_msg,
+		      	    display_row,
+		            display_width,
+		      VALUE num_flds,
+		            button_msg,
+		            button_key,
+		      VALUE num_buttons )
+
+	DECLARE num, fld, txt, display_prompt, display_txt,
+		display_start_col, display_col, separator, display_len,
+		button_row, col, caption, button_prompt, total_num_buttons,
+		form_row, form_column
+
+	{ Work out the form row and height from the corner index }
+
+	CONSTANT WINDOW_CORNER_START = 7
+
+	form_row = WINDOW_CORNER_START + corner_offset
+
+	{ The form is slightly bigger on GUI so the buttons can be fitted }
+
+        IF ( GLOBAL ( "TERMTYPE" ) = "GUI" ) THEN
+		form_height = form_height + 3
+		form_width  = form_width - 5
+		form_column = WINDOW_CORNER_START + ( corner_offset * 3 )
+		display_start_col = 2
+		separator = ""
+	ELSE
+		display_start_col = 1
+		form_column = WINDOW_CORNER_START + corner_offset - 2
+		separator = " :"
+	ENDIF
+
+	header_msg = GET_USER_MESSAGE ( header_msg, 1 )
+	footer_msg = GET_USER_MESSAGE ( footer_msg, 1 )
+
+	{ Check that the header and footer will fit on the window.
+	  If they don't then extend the window }
+
+	form_width = find_max_number ( form_width, LENGTH ( header_msg ) )
+
+        IF ( GLOBAL ( "TERMTYPE" ) <> "GUI" ) THEN
+
+		{ The GUI doesn't use footers do only come here for
+		  character cell stuff }
+
+		form_width = find_max_number ( form_width,
+				               LENGTH ( footer_msg ) )
+	ENDIF
+
+	{ but dont go over the screen }
+
+	form_width = find_min_number ( form_width, GLOBAL ( "SCREEN_WIDTH" ) )
+
+	{ Now create the actual form object }
+
+	PROMPT OBJECT form
+		CLASS PROMPT_CLASS_FORM
+		WITH  ( column       = form_column,
+			row          = form_row,
+			height       = form_height,
+			width        = form_width,
+			border       = TRUE,
+			proportional = TRUE,
+			button_style = FORM_BUTTON_NONE,
+			vgl_library  = GLOBAL ( "CURRENT_LIBRARY" ),
+                	help_context = help_context,
+			header 	     = header_msg,
+			footer 	     = footer_msg )
+
+	{ Set up the user info }
+
+	ARRAY form . user_info ARRAYSIZE ( 0 )
+
+	form . user_info [ AUDIT_TYPE_FLD    ] = audit_type
+	form . user_info [ CORNER_OFFSET_FLD ] = corner_offset
+
+	{ Get all the display messages. }
+
+	ARRAY display_txt ARRAYSIZE ( num_flds )
+
+	fld = 1
+	display_len = 0
+
+	WHILE ( fld <= num_flds ) DO
+
+		display_txt [ fld ] = GET_USER_MESSAGE ( display_msg[ fld ],1 )
+
+		display_len = find_max_number ( display_len,
+					  STRINGLENGTH ( display_txt [ fld ] ) )
+
+		fld = fld + 1
+
+	ENDWHILE
+
+	{ Now put the display fields on the screen }
+
+	display_col = display_start_col + display_len +
+					        STRINGLENGTH ( separator ) + 1
+
+	fld = 1
+
+	WHILE ( fld <= num_flds ) DO
+
+		txt = PAD ( display_txt [ fld ], " ", display_len ) : separator
+
+		form . add_display ( txt,
+				     display_start_col,
+				     display_row [ fld ],
+			     	     PROMPT_RENDITION_RAISED +
+							PROMPT_RENDITION_BOLD )
+		PROMPT OBJECT display_prompt
+			FORMAT TEXT
+			ON LINE display_row [ fld ]
+			FROM display_col
+			TO display_col + display_width [ fld ]
+			WITH ( lowered = TRUE )
+
+		form . add_display ( display_prompt )
+
+		fld = fld + 1
+
+	ENDWHILE
+
+        IF ( GLOBAL ( "TERMTYPE" ) = "GUI" ) THEN
+
+		{ Create frames round the display stuff }
+
+		form . add_frame ( "", 1, 1,
+				   display_row [ num_flds ],
+				   form_width )
+
+		{ Put the buttons on the form }
+
+		button_row = form . height - 1
+		CONSTANT BUTTON_WIDTH   = 7
+		CONSTANT BUTTON_SPACING = 2
+
+		total_num_buttons = num_buttons + 2
+
+		col = ( form . width -
+			( BUTTON_WIDTH * total_num_buttons ) -
+			( BUTTON_SPACING * ( total_num_buttons - 1 ) ) ) DIV 2
+
+		num = 1
+
+		WHILE ( num <= num_buttons ) DO
+
+			caption = GET_USER_MESSAGE ( button_msg [ num ], 1 )
+
+			PROMPT OBJECT button_prompt
+				CLASS "STD_PROMPT_BUTTON"
+				ON LINE BUTTON_ROW
+				FROM col TO col + BUTTON_WIDTH
+				WITH ( caption   = caption,
+				       user_info = button_key [ num ],
+		               	       mouse_click_routine
+						 = "BUTTON_PRESS_ROUTINE" )
+
+			form . add_prompt ( button_prompt )
+
+			num = num + 1
+
+			col = col + BUTTON_WIDTH + BUTTON_SPACING
+
+		ENDWHILE
+
+		{ Now add the help and close buttons that are always on }
+
+		caption = GET_USER_MESSAGE ( "AUDIT_REP_HELP_BUTTON", 1 )
+
+		PROMPT OBJECT button_prompt
+			CLASS "STD_PROMPT_BUTTON"
+			ON LINE BUTTON_ROW
+			FROM col TO col + BUTTON_WIDTH
+			WITH ( caption   = caption,
+		       	       send_lastkey = "HELP" )
+
+		form . add_prompt ( button_prompt )
+
+		caption = GET_USER_MESSAGE ( "AUDIT_REP_EXIT_BUTTON", 1 )
+
+		col = col + BUTTON_WIDTH + BUTTON_SPACING
+
+		PROMPT OBJECT button_prompt
+			CLASS "STD_PROMPT_BUTTON"
+			ON LINE BUTTON_ROW
+			FROM col TO col + BUTTON_WIDTH
+			WITH ( caption      = caption,
+		       	       send_lastkey = "EXIT" )
+
+		form . add_prompt ( button_prompt )
+
+	ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE form_wait_prompt ( form )
+
+	DECLARE key, process_key_routine
+
+	IF ( GLOBAL ( "TERMTYPE" ) = "GUI" ) THEN
+
+		form . wait_prompt ()
+
+	ELSE
+		{ Get a keypress from the form }
+
+		process_key_routine = form . user_info [ KEYPRESS_ROUTINE_FLD ]
+
+		REPEAT
+			PROMPT FOR_KEY key
+
+			CALL_ROUTINE process_key_routine
+				USING form,
+				      key
+
+		UNTIL ( key = "EXIT" )
+	ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE button_press_routine ( button )
+
+	DECLARE form, process_key_routine, key
+
+	{ A button has been pressed.  Convert it into a key and process it }
+
+	form = button . parent_prompt
+	key = button . user_info
+
+	process_key_routine = form . user_info [ KEYPRESS_ROUTINE_FLD ]
+
+	CALL_ROUTINE process_key_routine
+		USING form,
+		      key
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE process_tra_key (       tra_form,
+			  VALUE tra_key )
+
+	DECLARE audit_type, transaction, identity, do_header,
+		new_transaction
+
+	audit_type  = tra_form . user_info [ AUDIT_TYPE_FLD ]
+	identity    = tra_form . user_info [ IDENTITY_FLD ]
+
+	transaction = tra_form . display_objects [ TRA_TRANSACTION_FLD ] . text
+
+	IF ( tra_key = "SELECT" ) THEN
+
+		do_evt_form ( audit_type,
+	        	      identity,
+			      transaction,
+			      tra_form . user_info [ CORNER_OFFSET_FLD ] + 1 )
+
+	ELSEIF ( tra_key = "NEXT SCREEN" ) THEN
+
+		next_transaction ( audit_type,
+				   transaction,
+				   identity,
+				   new_transaction )
+
+            	IF ( new_transaction = EMPTY ) THEN
+
+			flash_message ( "AUDIT_REP_NO_MORE_TRA", TRUE )
+
+			first_transaction ( audit_type,
+				   	    identity,
+					    new_transaction )
+             	ENDIF
+
+        	show_transaction ( tra_form, new_transaction )
+
+	ELSEIF ( tra_key = "PREVIOUS SCREEN" ) THEN
+
+		prev_transaction ( audit_type,
+				   transaction,
+				   identity,
+				   new_transaction )
+
+             	IF ( new_transaction = EMPTY ) THEN
+
+			flash_message ( "AUDIT_REP_NO_PREV_TRA", TRUE )
+
+			last_transaction ( audit_type,
+				   	   identity,
+					   new_transaction )
+             	ENDIF
+
+        	show_transaction ( tra_form, new_transaction )
+
+	ELSEIF ( tra_key = "DO" ) THEN
+
+		do_header = TRUE
+
+		print_full_transaction ( audit_type,
+					 do_header,
+					 transaction,
+					 identity )
+		FLUSH_LITERAL
+	ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE process_evt_key ( evt_form, VALUE evt_key )
+
+	{ A key has been pressed on the form }
+
+	DECLARE audit_type, cur_event, new_event, identity, do_header,
+		cur_transaction
+
+	audit_type  = evt_form . user_info [ AUDIT_TYPE_FLD ]
+	identity    = evt_form . user_info [ IDENTITY_FLD ]
+
+	cur_transaction = evt_form . display_objects [ EVT_TRANSACTION_FLD ] . text
+
+	cur_event = evt_form . display_objects [ EVT_EVENT_FLD ] . text
+
+	IF ( evt_key = "SELECT" ) THEN
+
+		do_dta_form ( audit_type,
+			      identity,
+	       		      cur_event,
+			      evt_form . user_info [ CORNER_OFFSET_FLD ] + 1 )
+
+	ELSEIF ( ( audit_type = SAMPLE_AUDIT ) AND
+		 ( evt_key = "FIND" ) ) THEN
+
+		do_tra_form ( TRANSACTIONS_AUDIT,
+			      cur_transaction,
+			      evt_form . user_info [ CORNER_OFFSET_FLD ] + 1 )
+
+	ELSEIF ( evt_key = "NEXT SCREEN" ) THEN
+
+		next_event ( audit_type,
+			     identity,
+			     cur_transaction,
+			     cur_event,
+			     new_event )
+
+             	IF ( new_event = EMPTY ) THEN
+
+                	flash_message ( "AUDIT_REP_NO_MORE_EVT", TRUE )
+
+			first_event ( audit_type,
+				      identity,
+				      cur_transaction,
+				      new_event )
+             	ENDIF
+
+        	show_event ( evt_form, new_event )
+
+	ELSEIF ( evt_key = "PREVIOUS SCREEN" ) THEN
+
+		prev_event ( audit_type,
+			     identity,
+			     cur_transaction,
+			     cur_event,
+			     new_event )
+
+             	IF ( new_event = EMPTY ) THEN
+
+              		flash_message ( "AUDIT_REP_NO_PREV_EVT", TRUE )
+
+			last_event ( audit_type,
+				     identity,
+				     cur_transaction,
+				     new_event )
+             	ENDIF
+
+        	show_event ( evt_form, new_event )
+
+	ELSEIF ( evt_key = "DO" ) THEN
+
+		do_header = TRUE
+
+		print_full_event ( audit_type,
+				  do_header,
+				  identity,
+				  cur_transaction,
+				  cur_event )
+
+		FLUSH_LITERAL
+
+	ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE process_dta_key (       dta_form,
+			  VALUE dta_key )
+
+	{ A key has been pressed on the data display form }
+
+	DECLARE cur_event, cur_data, new_data, audit_type, identity,
+		transaction, do_header
+
+	audit_type  = dta_form . user_info [ AUDIT_TYPE_FLD ]
+	identity    = dta_form . user_info [ IDENTITY_FLD ]
+
+	cur_event   = dta_form . display_objects [ DTA_EVENT_FLD ] . text
+	cur_data    = dta_form . display_objects [ DTA_DATA_FLD ] . text
+
+	IF ( dta_key = "NEXT SCREEN" ) THEN
+
+		new_data = SELECT audit_data . data
+				WHERE ( ( event = cur_event ) AND
+					( data > cur_data ) )
+             	IF ( new_data = EMPTY ) THEN
+
+			flash_message ( "AUDIT_REP_NO_MORE_DTA", TRUE )
+
+              		new_data = SELECT audit_data . data
+				   WHERE event = cur_event
+             	ENDIF
+
+        	show_data ( dta_form, new_data )
+
+	ELSEIF ( dta_key = "PREVIOUS SCREEN" ) THEN
+
+		new_data = SELECT MAX audit_data . data
+			   WHERE ( ( event = cur_event ) AND
+			  	   ( data < cur_data ) )
+
+             	IF ( new_data = EMPTY ) THEN
+
+			flash_message ( "AUDIT_REP_NO_PREV_DTA", TRUE )
+
+               		new_data = SELECT MAX audit_data . data
+				   WHERE event = cur_event
+             	ENDIF
+
+        	show_data ( dta_form, new_data )
+
+	ELSEIF ( dta_key = "DO" ) THEN
+
+		do_header = TRUE
+
+		transaction = SELECT audit_event . transaction
+				WHERE event = cur_event
+
+		print_full_data ( do_header,
+		  		  audit_type,
+		  		  identity,
+		  		  transaction )
+		FLUSH_LITERAL
+
+	ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE do_evt_form ( VALUE audit_type,
+		      VALUE identity,
+		      VALUE transaction,
+		      VALUE corner_offset )
+
+	DECLARE evt_form, event
+
+	first_event ( audit_type,
+		      identity,
+		      transaction,
+		      event )
+
+  	IF ( event <> EMPTY ) THEN
+
+		create_event_form ( evt_form,
+				    audit_type,
+				    identity,
+				    corner_offset )
+
+		show_event ( evt_form, event )
+
+		evt_form . start_prompt ()
+
+		form_wait_prompt ( evt_form )
+
+		evt_form . end_prompt ()
+
+  	ELSE
+    		flash_message ( "AUDIT_REP_NO_MORE_EVT", TRUE )
+	ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE do_dta_form ( VALUE audit_type,
+		      VALUE identity,
+		      VALUE event,
+		      VALUE corner_offset )
+
+	DECLARE data, dta_form
+
+  	data = SELECT audit_data . data
+         	WHERE event = event
+
+  	IF ( data <> EMPTY ) THEN
+
+		create_data_form ( dta_form,
+				   audit_type,
+				   identity,
+				   corner_offset )
+
+		show_data ( dta_form, data )
+
+		dta_form . start_prompt ()
+
+		form_wait_prompt ( dta_form )
+
+		dta_form . end_prompt ()
+
+  	ELSE
+    		flash_message ( "AUDIT_REP_NO_DATA", TRUE )
+	ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE show_transaction ( form, VALUE transaction )
+
+	DECLARE system_pid, user_id, name, tra_date
+
+	system_pid = SELECT audit_transaction . system_pid
+			WHERE transaction = transaction
+	user_id    = SELECT audit_transaction . user_id
+	name       = SELECT audit_transaction . transaction_name
+	tra_date   = SELECT audit_transaction . transaction_date
+
+	form . display_objects [ TRA_TRANSACTION_FLD ] . set_text ( transaction)
+	form . display_objects [ TRA_SYSTEM_PID_FLD  ] . set_text ( system_pid )
+	form . display_objects [ TRA_USER_ID_FLD     ] . set_text ( user_id )
+	form . display_objects [ TRA_NAME_FLD        ] . set_text ( name )
+	form . display_objects [ TRA_DATE_FLD        ] . set_text ( tra_date )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE show_event ( form, VALUE event )
+
+	DECLARE trans, table, key0, action, reason
+
+	trans  = SELECT audit_event . transaction
+			WHERE event = event
+	table  = SELECT audit_event . table_name
+	key0   = SELECT audit_event . record_key0
+	action = SELECT audit_event . event_action
+	reason = SELECT audit_event . event_reason
+
+	form . display_objects [ EVT_EVENT_FLD       ] . set_text ( event )
+	form . display_objects [ EVT_TRANSACTION_FLD ] . set_text ( trans )
+	form . display_objects [ EVT_TABLE_FLD       ] . set_text ( table )
+	form . display_objects [ EVT_RECORD_KEY0_FLD ] . set_text ( key0 )
+	form . display_objects [ EVT_ACTION_FLD      ] . set_text ( action )
+	form . display_objects [ EVT_REASON_FLD      ] . set_text ( reason )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE show_data ( form, VALUE data )
+
+	DECLARE event, field, reason, before, after
+
+	event  = SELECT audit_data . event
+			WHERE data = data
+	field  = SELECT audit_data . field
+	reason = SELECT audit_data . data_reason
+	before = SELECT audit_data . value_before
+	after  = SELECT audit_data . value_after
+
+	form . display_objects [ DTA_DATA_FLD   ] . set_text ( data )
+	form . display_objects [ DTA_EVENT_FLD  ] . set_text ( event )
+	form . display_objects [ DTA_FIELD_FLD  ] . set_text ( field )
+	form . display_objects [ DTA_REASON_FLD ] . set_text ( reason )
+	form . display_objects [ DTA_BEFORE_FLD ] . set_text ( before )
+	form . display_objects [ DTA_AFTER_FLD  ] . set_text ( after )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE set_non_samp_lits ( VALUE the_table_name,
+			    VALUE record_key0,
+			    VALUE event_reason,
+			    VALUE event_action )
+
+	new_page_the_table_name = the_table_name
+	new_page_record_key0    = record_key0
+	new_page_event_action   = event_action
+	new_page_event_reason   = event_reason
+
+TEST PAGE 14
+
+LITERAL
+  _____________________________________________________________________________
+ |                                                                             |
+ |      $tab_1_______: $new_page_the_table_name____________________            |
+ |      $tab_2_______: $new_page_record_key0_______________________            |
+ |      $tab_3_______: $new_page_event_action______________________            |
+ |      $tab_4_______: $new_page_event_reason______________________            |
+ |_____________________________________________________________________________|
+ |                                                                             |
+ | $tab_19_____________________________________________________________________|
+ | _________                                                                   |
+ |                                                                             |
+$ENDLITERAL
+
+ON NEW PAGE
+
+LITERAL
+
+  _____________________________________________________________________________
+ |                                                                             |
+ |      $tab_1_______: $new_page_the_table_name____________________            |
+ |      $tab_2_______: $new_page_record_key0_______________________            |
+ |      $tab_3_______: $new_page_event_action______________________            |
+ |      $tab_4_______: $new_page_event_reason______________________            |
+ |_____________________________________________________________________________|
+ |                                                                             |
+ | $tab_19_____________________________________________________________________|
+ | _________                                                                   |
+ |                                                                             |
+$ENDLITERAL
+
+ENDON
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE set_samp_lits ( VALUE the_table_name,
+			VALUE sample_id,
+			VALUE id_text,
+			VALUE record_key0,
+			VALUE event_action,
+			VALUE event_reason )
+
+	new_page_the_table_name = the_table_name
+	new_page_idtext         = idtext
+	new_page_record_key0    = record_key0
+	new_page_event_action   = event_action
+	new_page_event_reason   = event_reason
+
+	np_samp = sampleid
+
+TEST PAGE 16
+
+LITERAL
+  _____________________________________________________________________________
+ |                                                                             |
+ |      $tab_1_______: $new_page_the_table_name_____________________           |
+ |      $tab_6_______: $np_samp__                                              |
+ |      $tab_7_______: $new_page_idtext______________                          |
+ |      $tab_2_______: $new_page_record_key0____________________               |
+ |      $tab_3_______: $new_page_event_action___________________               |
+ |      $tab_4_______: $new_page_event_reason___________________               |
+ |_____________________________________________________________________________|
+ |                                                                             |
+ | $tab_19_____________________________________________________________________|
+ | _________                                                                   |
+ |                                                                             |
+$ENDLITERAL
+
+ON NEW PAGE
+
+LITERAL
+
+  _____________________________________________________________________________
+ |                                                                             |
+ |      $tab_1_______: $new_page_the_table_name_____________________           |
+ |      $tab_6_______: $np_samp__                                              |
+ |      $tab_7_______: $new_page_idtext______________                          |
+ |      $tab_2_______: $new_page_record_key0____________________               |
+ |      $tab_3_______: $new_page_event_action___________________               |
+ |      $tab_4_______: $new_page_event_reason___________________               |
+ |_____________________________________________________________________________|
+ |                                                                             |
+ | $tab_19_____________________________________________________________________|
+ | _________                                                                   |
+ |                                                                             |
+$ENDLITERAL
+
+ENDON
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE print_a_transaction
+
+	DECLARE transaction, user_id, transaction_name,
+		transaction_date
+	DECLARE tab_8, tab_9, tab_10, tab_11
+
+	transaction      = SELECT audit_transaction . transaction
+	user_id          = SELECT audit_transaction . user_id
+	transaction_name = SELECT audit_transaction . transaction_name
+	transaction_date = SELECT audit_transaction . transaction_date
+
+	ON NEW PAGE
+	ENDON
+
+	TEST PAGE 10
+
+	tab_8 = GET_USER_MESSAGE ( "AUDIT_REP_TAB_8", 1 )
+      	tab_9 = GET_USER_MESSAGE ( "AUDIT_REP_TAB_9", 1 )
+      	tab_10 = GET_USER_MESSAGE ( "AUDIT_REP_TAB_10", 1 )
+      	tab_11 = GET_USER_MESSAGE ( "AUDIT_REP_TAB_11", 1 )
+
+LITERAL
+
+        $tab_8___________________$transaction________________________________
+
+        $tab_9_______: $user_id______________________________________________
+        $tab_10______: $transaction_name_____________________________________
+        $tab_11______: $transaction_date_____________________________________
+
+================================================================================
+
+$ENDLITERAL
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE print_sample ( VALUE sample_id )
+
+	DECLARE tab_12, tab_13
+
+	SET HEADER GET_USER_MESSAGE ( "AUDIT_REP_HEAD_4", 1 ) :" ":
+		 	STRIP ( sample_id ) : " " :
+           		GET_USER_MESSAGE ( "AUDIT_REP_HEAD_5", 1 ) : " " :
+			LEFTSTRING ( NOW, 11 ) : " " :
+           		GET_USER_MESSAGE ( "AUDIT_REP_HEAD_6", 1 )
+
+      tab_12 = GET_USER_MESSAGE ( "AUDIT_REP_TAB_12", 1 )
+      tab_13 = GET_USER_MESSAGE ( "AUDIT_REP_TAB_13", 1 ) : " " : sample_id
+
+LITERAL
+
+                          $tab_12____________
+			  ___________________
+
+        $tab_13____________________________________________________
+$ENDLITERAL
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE print_operator ( VALUE user_id )
+
+	DECLARE tab_14, tab_18
+
+	SET HEADER GET_USER_MESSAGE ( "AUDIT_REP_HEAD_7", 1 ) : " " :
+			STRIP ( user_id ) : " " :
+           		GET_USER_MESSAGE ( "AUDIT_REP_HEAD_5", 1 ) : " " :
+			LEFTSTRING ( NOW, 11 ) : " " :
+           		GET_USER_MESSAGE ( "AUDIT_REP_HEAD_6", 1 )
+
+      	tab_18 = GET_USER_MESSAGE ( "AUDIT_REP_TAB_18", 1 )
+      	tab_14 = GET_USER_MESSAGE ( "AUDIT_REP_TAB_14", 1 ):" ":user_id
+
+TEST PAGE 16
+LITERAL
+
+                           $tab_18_______________________________________
+			   _________________
+
+        $tab_14___________________________________________________________
+
+$ENDLITERAL
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE print_lit_samp ( VALUE the_table_name,
+			 VALUE sample_id,
+			 VALUE is_committed,
+			 VALUE record_key0,
+			 VALUE event_action,
+			 VALUE event_reason )
+
+	DECLARE id_text, temp_table
+
+   	IF ( sample_id <> EMPTY ) THEN
+		id_text    = EMPTY
+		temp_table = "SAMPLE"
+		WHILE ( id_text = EMPTY ) AND ( temp_table <> "" ) DO
+        		id_text = SELECT 'temp_table'.id_text
+                   		  WHERE id_numeric = sample_id
+			GET_TABLE_DETAILS 'temp_table' ,
+					  "CHILD"      ,
+					  temp_table
+		ENDWHILE
+	     	set_samp_lits ( the_table_name,
+				sample_id,
+				id_text,
+				record_key0,
+				event_action,
+				event_reason )
+   	ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE print_event
+
+	DECLARE test_num, the_table_name, record_key0, event_reason,
+		event_action, is_committed, sample_id
+
+	DECLARE parent_table , temp_table
+
+	the_table_name = SELECT audit_event . table_name
+	record_key0    = SELECT audit_event . record_key0
+	event_reason   = SELECT audit_event . event_reason
+	event_action   = SELECT audit_event . event_action
+
+	GET_TABLE_DETAILS 'the_table_name' , "PARENT" , parent_table
+	IF parent_table = "" THEN
+		parent_table = the_table_name
+	ELSE
+		WHILE parent_table <> "" DO
+			GET_TABLE_DETAILS 'the_table_name' ,
+					  "PARENT"         ,
+					  temp_table
+			IF temp_table <> "" THEN
+				parent_table = temp_table
+			ENDIF
+		ENDWHILE
+	ENDIF
+
+	is_committed = ( parent_table <> the_table_name )
+	IF parent_table = "TEST" THEN
+   		sample_id = SELECT 'the_table_name' . sample
+				WHERE test_number = record_key0
+		print_lit_samp ( the_table_name,
+			 	 sample_id,
+			 	 is_committed,
+			 	 record_key0,
+ 			 	 event_action,
+			 	 event_reason )
+	ELSEIF parent_table = "RESULT" THEN
+   		test_num   = LEFTSTRING ( record_key0, 10 )
+		temp_table = "TEST"
+		sample_id  = EMPTY
+		WHILE ( temp_table <> ""  ) AND
+		      ( sample_id = EMPTY ) DO
+	      		sample_id = SELECT 'temp_table'.sample
+     		  		    WHERE test_number = test_num
+			IF sample_id = EMPTY THEN
+				GET_TABLE_DETAILS 'temp_table' ,
+						  "CHILD"      ,
+						  temp_table
+			ENDIF
+		ENDWHILE
+		print_lit_samp ( the_table_name,
+			 	 sample_id,
+			 	 is_committed,
+			 	 record_key0,
+ 			 	 event_action,
+			 	 event_reason )
+	ELSEIF parent_table = "SAMPLE" THEN
+   		sample_id = record_key0
+		print_lit_samp ( the_table_name,
+			 	 sample_id,
+			 	 is_committed,
+			 	 record_key0,
+ 			 	 event_action,
+			 	 event_reason )
+
+	ELSE
+		set_non_samp_lits ( the_table_name,
+			    	    record_key0,
+			    	    event_reason,
+			    	    event_action )
+	ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE print_data
+
+	DECLARE field, value_before, value_after, data_reason,
+		tab_20, tab_21, tab_22, dr1, dr2, dr3, dr4,
+                data_reason_remainder, length_data_reason,
+		vb1, vb2, vb3, vb4, value_before_remainder,
+                va1, va2, va3, va4,value_after_remainder,
+                length_value_before, length_value_after
+
+
+        dr1 =""
+        dr2 =""
+        dr3 =""
+        dr4 =""
+        data_reason_remainder = ""
+        length_data_reason = 0
+
+        va1 =""
+        va2 =""
+        va3 =""
+        va4 =""
+        value_after_remainder = ""
+        length_value_after = 0
+
+
+        vb1 =""
+        vb2 =""
+        vb3 =""
+        vb4 =""
+        value_before_remainder = ""
+        length_value_before = 0
+
+	field        = SELECT audit_data . field
+
+	value_before = SELECT audit_data . value_before
+
+
+                                       {=====================}
+                                       {  MR 1/11/96         }
+                                       {  value_before wrap  }
+                                       {=====================}
+
+	value_before =STRIP (value_before)
+        
+        length_value_before= LENGTH (value_before)
+
+        vb1 = LEFTSTRING(value_before,60)
+
+
+        IF length_value_before >60
+
+           value_before_remainder = RIGHTSTRING(value_before,
+					(length_value_before- 60))
+
+           vb2 = LEFTSTRING(value_before_remainder,60)
+
+        ENDIF
+
+
+        IF length_value_before >120
+
+           value_before_remainder = RIGHTSTRING(value_before,
+					(length_value_before- 120))
+
+           vb3 = LEFTSTRING(value_before_remainder,60)
+
+        ENDIF
+
+        IF length_value_before >180
+
+           value_before_remainder = RIGHTSTRING(value_before,
+					(length_value_before- 180))
+
+           vb4 = LEFTSTRING(value_before_remainder,60)
+
+        ENDIF
+
+
+
+
+	value_after  = SELECT audit_data . value_after
+
+
+                                       {====================}
+                                       {  MR 1/11/96        }
+                                       {  value_after wrap  }
+                                       {====================}
+        value_after =STRIP (value_after)
+        
+
+        length_value_after= LENGTH (value_after)
+
+        va1 = LEFTSTRING(value_after,60)
+
+
+        IF length_value_after >60
+
+           value_after_remainder = RIGHTSTRING(value_after,
+					(length_value_after- 60))
+
+           va2 = LEFTSTRING(value_after_remainder,60)
+
+        ENDIF
+
+
+        IF length_value_after >120
+
+           value_after_remainder = RIGHTSTRING(value_after,
+					(length_value_after- 120))
+
+           va3 = LEFTSTRING(value_after_remainder,60)
+
+        ENDIF
+
+        IF length_value_after >180
+
+           value_after_remainder = RIGHTSTRING(value_after,
+					(length_value_after- 180))
+
+           va4 = LEFTSTRING(value_after_remainder,60)
+
+        ENDIF
+
+
+
+
+
+	data_reason  = SELECT audit_data . data_reason
+
+                                       {====================}
+                                       {  MR 1/11/96        }
+                                       {  data_reason wrap  }
+                                       {====================}
+
+        data_reason = STRIP (data_reason)
+                                        
+        length_data_reason = LENGTH (data_reason)
+        dr1 = LEFTSTRING(data_reason,60)
+
+
+        IF length_data_reason >60
+
+           data_reason_remainder = RIGHTSTRING(data_reason,
+					(length_data_reason- 60))
+
+           dr2 = LEFTSTRING(data_reason_remainder,60)
+
+        ENDIF
+
+
+        IF length_data_reason >120
+
+           data_reason_remainder = RIGHTSTRING(data_reason,
+					(length_data_reason- 120))
+
+           dr3 = LEFTSTRING(data_reason_remainder,60)
+
+        ENDIF
+
+        IF length_data_reason >180
+
+           data_reason_remainder = RIGHTSTRING(data_reason,
+					(length_data_reason- 180))
+
+           dr4 = LEFTSTRING(data_reason_remainder,60)
+
+        ENDIF
+
+
+
+      	tab_20 = GET_USER_MESSAGE ( "AUDIT_REP_TAB_20", 1 )
+      	tab_21 = GET_USER_MESSAGE ( "AUDIT_REP_TAB_21", 1 )
+      	tab_22 = GET_USER_MESSAGE ( "AUDIT_REP_TAB_22", 1 )
+	IF ( LINESLEFT = 1 ) THEN
+
+LITERAL
+ |_____________________________________________________________________________|
+$ENDLITERAL
+
+	ENDIF
+
+{ MG 31/10/96
+
+LITERAL
+ | $field________________                                                      |
+ | $tab_20_____ : $value_before_______________________________________________ |
+ | $tab_21_____ : $value_after________________________________________________ |
+$ENDLITERAL
+
+
+
+	IF data_reason <> "" THEN
+LITERAL
+ | $tab_22_____ : $data_reason_______________________________________________ |
+$ENDLITERAL
+	ENDIF
+}
+
+
+
+
+LITERAL
+ | $field________________                                                      |
+ | $tab_20_____ : $vb1________________________________________________________ |
+$ENDLITERAL
+
+
+	IF vb2 <> "" THEN
+LITERAL
+ |                $vb2________________________________________________________ |
+$ENDLITERAL
+        ENDIF
+
+	IF vb3 <> "" THEN
+LITERAL
+ |                $vb3________________________________________________________ |
+$ENDLITERAL
+        ENDIF
+
+
+	IF vb4 <> "" THEN
+LITERAL
+ |                $vb4________________________________________________________ |
+$ENDLITERAL
+        ENDIF
+
+
+
+LITERAL
+ | $tab_21_____ : $va1________________________________________________________ |
+$ENDLITERAL
+
+	IF va2 <> "" THEN
+LITERAL
+ |                $va2________________________________________________________ |
+$ENDLITERAL
+        ENDIF
+
+
+	IF va3 <> "" THEN
+LITERAL
+ |                $va3________________________________________________________ |
+$ENDLITERAL
+        ENDIF
+
+	IF va4 <> "" THEN
+LITERAL
+ |                $va4________________________________________________________ |
+$ENDLITERAL
+        ENDIF
+
+
+
+
+	IF dr1 <> "" THEN
+LITERAL
+ | $tab_22_____ : $dr1________________________________________________________ |
+$ENDLITERAL
+	ENDIF
+
+	IF dr2 <> "" THEN
+LITERAL
+ |              : $dr2________________________________________________________ |
+$ENDLITERAL
+	ENDIF
+
+
+	IF dr3 <> "" THEN
+LITERAL
+ |              : $dr3________________________________________________________ |
+$ENDLITERAL
+	ENDIF
+
+	IF dr4 <> "" THEN
+LITERAL
+ |              : $dr4________________________________________________________ |
+$ENDLITERAL
+	ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE set_transaction_header ( VALUE transaction )
+
+	DECLARE tab_16
+
+	SET HEADER GET_USER_MESSAGE ( "AUDIT_REP_HEAD_7", 1 ) : " " :
+		   STRIP ( transaction ) : " " :
+        	   GET_USER_MESSAGE ( "AUDIT_REP_HEAD_5", 1 ) :" " :
+		   LEFTSTRING ( NOW, 11 ) : " " :
+        	   GET_USER_MESSAGE ( "AUDIT_REP_HEAD_6", 1 )
+
+      	tab_16 = GET_USER_MESSAGE ( "AUDIT_REP_TAB_16", 1 )
+
+LITERAL
+
+                        $tab_16_________________________________________
+			________________________
+
+$ENDLITERAL
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE print_full_transaction ( VALUE audit_type,
+				 VALUE do_header,
+				 VALUE transaction,
+				 VALUE identity )
+
+	DECLARE {transaction, }transaction_name, transaction_date, event,
+		tab_10, tab_11, tab_15
+
+	transaction      = SELECT audit_transaction . transaction
+	transaction_name = SELECT audit_transaction . transaction_name
+	transaction_date = SELECT audit_transaction . transaction_date
+
+      	tab_15 = GET_USER_MESSAGE ( "AUDIT_REP_TAB_15", 1 )
+      	tab_10 = GET_USER_MESSAGE ( "AUDIT_REP_TAB_10", 1 )
+      	tab_11 = GET_USER_MESSAGE ( "AUDIT_REP_TAB_11", 1 )
+
+	IF ( audit_type = OPERATOR_AUDIT ) THEN
+
+        	IF do_header THEN
+           		print_operator ( identity )
+			do_header = FALSE
+        	ENDIF
+	ENDIF
+
+	TEST PAGE 9
+LITERAL
+
+*********************************************************************************
+
+     $tab_15_____________: $transaction________________________________
+     $tab_10_____________: $transaction_name________________________________
+     $tab_11_____________: $transaction_date________________________________
+
+=================================================================================
+
+$ENDLITERAL
+
+	IF do_header THEN
+           	set_transaction_header ( transaction )
+		do_header = FALSE
+           	print_a_transaction()
+        ENDIF
+
+	event = SELECT audit_event . event
+		 WHERE transaction = transaction
+		 ORDER ON event
+
+	WHILE ( event <> EMPTY ) DO
+
+		print_full_event ( audit_type,
+				  do_header,
+				  identity,
+				  transaction,
+				  event )
+              	NEXT audit_event
+
+     	      	event = SELECT audit_event . event
+
+        ENDWHILE
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE print_full_event ( VALUE audit_type,
+			   VALUE do_header,
+			   VALUE identity,
+			   VALUE transaction,
+			   VALUE event )
+
+	IF ( audit_type = TRANSACTIONS_AUDIT ) THEN
+
+		print_full_transaction_event ( do_header,
+			  	       	       transaction,
+					       event )
+
+	ELSEIF ( audit_type = SAMPLE_AUDIT ) THEN
+
+		print_full_sample_event ( do_header,
+					  identity,
+			  	       	  transaction,
+					  event )
+
+	ELSEIF ( audit_type = OPERATOR_AUDIT ) THEN
+
+		print_full_operator_event ( do_header,
+					    identity,
+			  	            transaction,
+					    event )
+	ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE print_full_transaction_event ( VALUE do_header,
+			  	       VALUE transaction,
+				       VALUE event )
+	DECLARE data
+
+        IF do_header THEN
+           	set_transaction_header ( transaction )
+           	print_a_transaction ()
+        ENDIF
+
+        print_event()
+
+    	data = SELECT audit_data . data
+	        WHERE event = event
+		ORDER ON data
+
+  	WHILE ( data <> EMPTY ) DO
+
+              print_data()
+              NEXT audit_data
+
+              data = SELECT  audit_data . data
+
+        ENDWHILE
+
+ON NEW PAGE
+ENDON
+
+LITERAL
+ |_____________________________________________________________________________|
+$ENDLITERAL
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE print_full_data ( VALUE do_header,
+			  VALUE audit_type,
+			  VALUE identity,
+			  VALUE transaction )
+
+	IF ( audit_type = OPERATOR_AUDIT ) THEN
+
+		IF ( do_header ) THEN
+
+           		print_operator ( identity )
+			do_header = FALSE
+
+		ENDIF
+
+	ELSEIF ( audit_type = SAMPLE_AUDIT ) THEN
+
+		IF ( do_header ) THEN
+
+          		print_sample ( identity )
+
+        	ENDIF
+TEST PAGE 3
+
+LITERAL
+
+*********************************************************************************
+
+$ENDLITERAL
+		transaction = SELECT audit_event . transaction
+
+        	transaction = SELECT audit_transaction . transaction
+                       		WHERE transaction = transaction
+
+        	IF ( transaction <> EMPTY ) THEN
+          		print_a_transaction()
+        	ENDIF
+
+		do_header = FALSE
+
+	ENDIF
+
+        IF do_header THEN
+           	set_transaction_header ( transaction )
+           	print_a_transaction()
+        ENDIF
+
+	print_event()
+        print_data()
+
+ON NEW PAGE
+ENDON
+
+LITERAL
+ |_____________________________________________________________________________|
+$ENDLITERAL
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE print_full_sample_event ( VALUE do_header,
+				  VALUE sample_id,
+ 				  VALUE transaction,
+				  VALUE event )
+
+	IF do_header THEN
+          	print_sample ( sample_id )
+        ENDIF
+
+TEST PAGE 3
+LITERAL
+
+*********************************************************************************
+
+$ENDLITERAL
+
+
+	transaction = SELECT audit_event . transaction
+
+        transaction = SELECT audit_transaction.transaction
+                      WHERE transaction = transaction
+
+        IF ( transaction <> EMPTY ) THEN
+
+          	print_a_transaction()
+          	print_full_transaction_event ( FALSE,
+				  	       transaction,
+				  	       event )
+        ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE print_full_operator_event ( VALUE do_header,
+				    operator_id,
+				    transaction,
+				    event )
+
+        IF do_header THEN
+           	print_operator ( operator_id )
+        ENDIF
+
+	print_full_transaction_event ( FALSE,
+			               transaction,
+			               event )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE start_transaction ( VALUE audit_type,
+	  	 	    VALUE identity,
+			    new_transaction )
+
+	IF ( ( audit_type = TRANSACTIONS_AUDIT ) OR
+	     ( audit_type = SAMPLE_AUDIT       ) ) THEN
+
+ 		new_transaction = SELECT audit_transaction . transaction
+					WHERE transaction = identity
+	ELSE
+ 		new_transaction = SELECT audit_transaction . transaction
+					WHERE user_id = identity
+	ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE first_transaction ( VALUE audit_type,
+	  	 	    VALUE identity,
+			    new_transaction )
+
+	IF ( ( audit_type = TRANSACTIONS_AUDIT ) OR
+	     ( audit_type = SAMPLE_AUDIT       ) ) THEN
+
+ 		new_transaction = SELECT audit_transaction . transaction
+					WHERE transaction > 0
+	ELSE
+ 		new_transaction = SELECT audit_transaction . transaction
+					WHERE user_id = identity
+	ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE last_transaction ( VALUE audit_type,
+	  	 	   VALUE identity,
+			   new_transaction )
+
+	IF ( ( audit_type = TRANSACTIONS_AUDIT ) OR
+	     ( audit_type = SAMPLE_AUDIT       ) ) THEN
+
+ 		new_transaction = SELECT MAX audit_transaction . transaction
+					WHERE transaction > 0
+	ELSE
+ 		new_transaction = SELECT MAX audit_transaction . transaction
+					WHERE user_id = identity
+	ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE next_transaction ( VALUE audit_type,
+			   VALUE cur_transaction,
+			   VALUE identity,
+			   new_transaction )
+
+	IF ( ( audit_type = TRANSACTIONS_AUDIT ) OR
+	     ( audit_type = SAMPLE_AUDIT       ) ) THEN
+
+		new_transaction = SELECT audit_transaction . transaction
+				   WHERE transaction > cur_transaction
+	ELSE
+ 		new_transaction = SELECT audit_transaction . transaction
+					WHERE ( user_id = identity ) AND
+					      ( transaction > cur_transaction )
+	ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE prev_transaction ( VALUE audit_type,
+			   VALUE cur_transaction,
+	  	 	   VALUE identity,
+			         new_transaction )
+
+	IF ( ( audit_type = TRANSACTIONS_AUDIT ) OR
+	     ( audit_type = SAMPLE_AUDIT       ) ) THEN
+
+ 		new_transaction = SELECT MAX audit_transaction . transaction
+				   WHERE ( transaction < cur_transaction )
+	ELSE
+ 		new_transaction = SELECT MAX audit_transaction . transaction
+				  WHERE ( ( transaction < cur_transaction ) AND
+				  	  ( user_id = identity ) )
+	ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE first_event ( VALUE audit_type,
+	  	      VALUE identity,
+	  	      VALUE cur_transaction,
+			    new_event )
+
+	IF ( audit_type = SAMPLE_AUDIT ) THEN
+
+		new_event = SELECT audit_event . event
+	   		 	WHERE ( record_key0 = identity ) AND
+	               	       	      ( table_name = "SAMPLE" )
+	ELSE
+		new_event = SELECT audit_event . event
+				WHERE transaction = cur_transaction
+	ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE last_event ( VALUE audit_type,
+	  	     VALUE identity,
+	  	     VALUE cur_transaction,
+		           new_event )
+
+	IF ( audit_type = SAMPLE_AUDIT ) THEN
+
+		new_event = SELECT MAX audit_event . event
+	   		 	WHERE ( record_key0 = identity ) AND
+	               	       	      ( table_name = "SAMPLE" )
+	ELSE
+		new_event = SELECT MAX audit_event . event
+				WHERE transaction = cur_transaction
+	ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE next_event ( VALUE audit_type,
+	  	     VALUE identity,
+	  	     VALUE cur_transaction,
+	  	     VALUE cur_event,
+		           new_event )
+
+	IF ( audit_type = SAMPLE_AUDIT ) THEN
+
+		new_event = SELECT audit_event . event
+	   		 	WHERE ( record_key0 = identity ) AND
+	               	       	      ( table_name = "SAMPLE" ) AND
+				      ( event > cur_event )
+	ELSE
+		new_event = SELECT audit_event . event
+				WHERE ( ( transaction = cur_transaction ) AND
+					( event > cur_event ) )
+	ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE prev_event ( VALUE audit_type,
+	  	     VALUE identity,
+	  	     VALUE cur_transaction,
+	  	     VALUE cur_event,
+		           new_event )
+
+	IF ( audit_type = SAMPLE_AUDIT ) THEN
+
+		new_event = SELECT MAX audit_event . event
+	   		 	WHERE ( record_key0 = identity ) AND
+	               	       	      ( table_name = "SAMPLE" ) AND
+				      ( event < cur_event )
+	ELSE
+		new_event = SELECT MAX audit_event . event
+				WHERE ( ( transaction = cur_transaction ) AND
+					( event < cur_event ) )
+	ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE do_tra_form ( VALUE audit_type,
+		      VALUE identity,
+		      VALUE corner_offset )
+
+	DECLARE tra_form, transaction
+
+	create_transaction_form ( tra_form,
+				  audit_type,
+				  identity,
+				  corner_offset )
+
+	start_transaction ( audit_type,
+			    identity,
+			    transaction )
+
+    	IF ( transaction <> EMPTY ) THEN
+
+	        show_transaction ( tra_form, transaction )
+
+		tra_form . start_prompt ()
+
+		form_wait_prompt ( tra_form )
+
+		tra_form . end_prompt ()
+
+	ELSE
+       		flash_message ( "AUDIT_REP_NO_TRANS", TRUE )
+    	ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE print_test_header ( VALUE analysis, VALUE rep )
+
+	DECLARE test_id, tab_17
+
+      	test_id = STRIP ( analysis ) : "/" : STRIP ( rep )
+
+      	tab_17 = centre_text ( GET_USER_MESSAGE ( "AUDIT_REP_TAB_17", 1 )
+			   	: " " : test_id, 80 )
+      	TEST PAGE 7
+
+LITERAL
+
+*********************************************************************************
+
+$tab_17_________________________________________________________________________
+$ENDLITERAL
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE find_all_sample_audits ( VALUE audit_type,
+				 VALUE sample_id )
+
+	DECLARE context, audits_found, done_header, analysis, rep, event,
+		reco, find_test, transaction
+
+  	audits_found = FALSE
+  	done_header = FALSE
+
+  	find_test = SELECT test.test_number
+	              WHERE sample = sample_id
+
+  	WHILE ( find_test <> EMPTY ) DO
+
+		analysis = SELECT test.analysis
+        	rep      = SELECT test.test_count
+
+		push_file_descriptor ( "TEST", context )
+
+	        event = SELECT audit_event .event
+	                WHERE ( table_name = "TEST" ) AND
+	                      ( record_key0 = find_test )
+                	ORDER ON event
+
+	        WHILE ( event <> EMPTY ) DO
+
+	           	IF NOT done_header THEN
+	              		print_test_header ( analysis, rep )
+	              		done_header = TRUE
+	           	ENDIF
+
+			transaction  = SELECT audit_event . transaction
+
+	           	print_full_sample_event ( FALSE,
+						 sample_id,
+						 transaction,
+						 event )
+
+	           	NEXT audit_event
+	           	event = SELECT audit_event .event
+
+	           	audits_found = TRUE
+
+	        ENDWHILE
+
+	        reco = SELECT audit_event .record_key0
+	                 WHERE ( table_name = "RESULT" ) AND
+	                       ( record_key0 > find_test ) AND
+	                       ( record_key0 < find_test + 1 )
+			 ORDER ON event
+
+	        WHILE ( LEFTSTRING(reco,10) = find_test ) DO
+
+            		IF NOT done_header THEN
+               			print_test_header ( analysis, rep )
+               			done_header = TRUE
+            		ENDIF
+
+            		event = SELECT audit_event . event
+            		transaction = SELECT audit_event . transaction
+
+            		print_full_sample_event ( FALSE,
+						 sample_id,
+						 transaction,
+						 event )
+
+            		NEXT audit_event
+            		reco = SELECT audit_event .record_key0
+
+           		audits_found = TRUE
+
+        	ENDWHILE
+
+		pop_file_descriptor ( context )
+
+        	NEXT test
+        	find_test = SELECT test.test_number
+
+        	done_header = FALSE
+
+	ENDWHILE
+
+  	RETURN ( audits_found )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+GLOBAL ROUTINE transaction_auditing ( option )
+
+	DECLARE transaction
+
+	IF prompt_in_window ( "AUDIT_TRANSACTION" ,
+			      GET_USER_MESSAGE ( "AUDIT_REP_PROM_2", 1 ) ,
+			      GET_USER_MESSAGE ( "AUDIT_REP_PROM_3", 1 )  ,
+			      EMPTY               ,
+			      transaction         ) THEN
+
+		do_tra_form ( TRANSACTIONS_AUDIT,
+			      transaction,
+			      1 )
+	ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+GLOBAL ROUTINE sample_auditing ( option )
+
+	DECLARE sample_id
+
+	IF prompt_in_window ( "SAMPLE",
+			      GET_USER_MESSAGE ( "AUDIT_REP_PROM_5", 1 ) ,
+			      GET_USER_MESSAGE ( "AUDIT_REP_HEAD_4", 1 )  ,
+			      EMPTY               ,
+			      sample_id          ) THEN
+
+		do_evt_form ( SAMPLE_AUDIT,
+			      sample_id,
+			      0,
+			      1 )
+
+	ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+GLOBAL ROUTINE user_auditing ( option )
+
+	DECLARE operator_id
+
+	IF prompt_in_window ( "PERSONNEL",
+			      GET_USER_MESSAGE ( "AUDIT_REP_PROM_7", 1 ) ,
+			      GET_USER_MESSAGE ( "AUDIT_REP_PROM_8", 1 )  ,
+			      EMPTY               ,
+			      operator_id          ) THEN
+
+		do_tra_form ( OPERATOR_AUDIT,
+			      operator_id,
+			      1	)
+	ENDIF
+
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+GLOBAL ROUTINE print_all_for_sample ( option )
+
+	DECLARE audits_found, do_header, sample_id, event, audit_type,
+		transaction
+
+	IF prompt_in_window ( "SAMPLE",
+			      GET_USER_MESSAGE ( "AUDIT_REP_PROM_5", 1 ) ,
+	                      GET_USER_MESSAGE ( "AUDIT_REP_HEAD_4", 1 )  ,
+			       EMPTY               ,
+			       sample_id          ) THEN
+
+		audit_type = SAMPLE_AUDIT
+
+		event = SELECT audit_event . event
+ 	     		WHERE ( record_key0 = sample_id ) AND
+	     		      ( table_name = "SAMPLE" )
+
+		transaction = SELECT audit_event . transaction
+
+     		do_header = TRUE
+
+     		audits_found = FALSE
+
+     		WHILE ( event <> EMPTY ) DO
+
+        		print_full_sample_event ( do_header,
+						 sample_id,
+						 transaction,
+						 event )
+
+        		do_header = FALSE
+        		audits_found = TRUE
+
+        		NEXT audit_event
+        		event = SELECT audit_event . event
+
+     		ENDWHILE
+
+     		IF find_all_sample_audits ( audit_type,
+					    sample_id ) THEN
+
+        		IF NOT audits_found THEN
+
+           			audits_found = TRUE
+
+        		ENDIF
+
+	     	ENDIF
+
+     		IF audits_found THEN
+
+        		FLUSH_LITERAL
+
+     		ELSE
+
+        		flash_message ( "AUDIT_REP_NOSAMPAUDITS", TRUE )
+
+     		ENDIF
+
+	ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+GLOBAL ROUTINE print_all_for_operator ( option )
+
+	DECLARE operator_id, transaction, do_header
+
+	IF prompt_in_window ( "PERSONNEL",
+			      GET_USER_MESSAGE ( "AUDIT_REP_PROM_7", 1 ) ,
+			      GET_USER_MESSAGE ( "AUDIT_REP_PROM_8", 1 )  ,
+			      EMPTY               ,
+			      operator_id          ) THEN
+
+     		transaction = SELECT audit_transaction . transaction
+	           		WHERE user_id = operator_id
+				ORDER ON transaction
+
+     		IF ( transaction <> EMPTY ) THEN
+
+	        	do_header = TRUE
+
+	        	WHILE ( transaction <> EMPTY ) DO
+	              		print_full_transaction ( OPERATOR_AUDIT,
+							 do_header,
+							 transaction,
+							 operator_id )
+	              		do_header = FALSE
+
+	              		NEXT audit_transaction
+	              		transaction = SELECT audit_transaction. transaction
+
+	        	ENDWHILE
+
+	        	FLUSH_LITERAL
+
+	     	ELSE
+	        	flash_message ( "AUDIT_REP_TRAN_1", TRUE )
+	     	ENDIF
+
+	ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}

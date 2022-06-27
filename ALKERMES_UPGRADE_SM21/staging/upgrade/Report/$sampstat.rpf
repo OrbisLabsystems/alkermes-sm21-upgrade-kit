@@ -1,0 +1,429 @@
+ {------------------------------------------------------------------------------}
+ {                                                                              }
+ { Module Name   : $SAMPSTAT.RPF                                                }
+ {                                                                              }
+ { Purpose       : Full Audit Trail is required for Cancelling Samples          }
+ {                 and re-activating samples.                                   }
+ {                                                                              }
+ { Document Ref. : P97684 Action Item 3 ( AI3 )                                 }
+ {                                                                              }
+ { Description   : routines set_status_c and set_status_v have been modified    }
+ {                 to audit these specific audit routines ( and not standard    }
+ {                 sample lifecycle audit changes )                             }
+ {==============================================================================}
+ {                                                                              }
+ {  Modification History                                                        }
+ {                                                                              }
+ {  Ver.     Date        By          Description                                }
+ {  ----     ----        --          -----------                                }
+ { 1.00      25/09/97    JOD         Release Version                            }
+ {                                                                              }
+ {  1.6     11-03-09     MA          Fix so that samples that are not in SAP -  }
+ {                          no smidi_lot are not uploaded to SAP                }
+ { =============================================================================}
+ { 1.7       06/10/16    F. Piccirillo    Changes made to get the reviewed_audit}
+ {                                        set FALSE when reactivated            }
+ { =============================================================================}
+
+{******************************************************************************
+*
+* Module Name   : $SAMPSTAT
+*
+* Purpose       : SMP report for user defined code which is called when a
+*                 sample changes status
+*
+* Document Ref. : SE/T/TVGL-WORK-REPORTS/1/3
+*
+* Specification :
+*
+* Portability   : NTsp6, Windows 2000, Unix, VMS using SMP 4.1, 4.2, 2000, 2001, 2002
+*
+* Re-entrant    : No
+*
+* Modification History
+* By           Date         Reason ___________________________________________
+* 
+*******************************************************************************}
+
+join library $lib_utils
+
+SET COMPILE_OPTION DECLARE
+SET NAME "/DEFER"
+SET NOTPROTECTED
+
+JOIN STANDARD_LIBRARY STD_UTILS    { 1.00 }
+
+JOIN LIBRARY $LIB_UTILS			{ flash_message                     }
+
+CONSTANT UPLOAD_LIB         = "$SMIDI_LIB_UPLOAD"
+CONSTANT UPLOAD_ROUTINE = "smidi_queue_sample"
+
+
+
+{ ============================================================================== }
+ROUTINE set_status_a
+
+	DECLARE sap_sample
+		sap_sample = SELECT sample.smidi_lot
+
+	IF ((sap_sample <> EMPTY) AND (sap_sample <> NULL)AND (sap_sample <> "")) THEN
+
+		send_to_SAP()
+
+	
+	ENDIF
+
+ENDROUTINE
+
+ROUTINE set_status_i
+
+
+ENDROUTINE
+
+{ =========================================================================== }
+{ =========================================================================== }
+{ ROUTINE set_status_c                                                        }
+{                                                                             }
+{ Description  : Does auditing on sample reactivation. SAMPLE_TRIGGER_ENABLE  }
+{                must be set so that CHANGE SAMPLE STATUS "C" triggers this   }
+{                routine                                                      }
+{ Author       : JOD                                                          }
+{ Date Created : 22/09/1997                                                   }
+{ =========================================================================== }
+ 
+ROUTINE set_status_c
+ 
+                                       { JOD, reactivate a sample }
+ 
+     DECLARE old_status, new_status, unique_id, table, trans_name, the_header
+     DECLARE the_reason
+ 
+     old_status = SELECT sample . old_status
+     unique_id  = SELECT sample . id_numeric
+
+     IF old_status = "A"
+ 
+         table = "SAMPLE"
+         new_status = "C"
+         trans_name = "Write transaction Reactivate Sample"
+         the_header = "Audit on Sample Reactivation"
+         the_reason = ""
+ 
+         REPEAT
+             get_the_reason ( the_reason, the_header, old_status, new_status )
+ 
+         UNTIL ( the_reason <> "" ) AND NOT ( BLANK ( the_reason ) )
+ 
+ 
+         write_audit ( new_status,
+                       old_status,
+                       the_reason,
+                       table     ,
+                       unique_id ,
+                       trans_name)
+{1.7}
+        ASSIGN sample.audits_reviewed = FALSE
+        UPDATE SAMPLE
+{/1.7}
+
+     ENDIF
+
+{1.7}
+    IF (SELECT sample.old_status = "X") THEN
+        ASSIGN sample.audits_reviewed = FALSE
+        UPDATE SAMPLE
+    ENDIF
+{/1.7}
+
+ENDROUTINE
+
+ROUTINE set_status_h
+
+
+ENDROUTINE
+
+ROUTINE set_status_r
+
+ENDROUTINE
+
+ROUTINE set_status_s
+
+
+ENDROUTINE
+
+ROUTINE set_status_u
+
+
+ENDROUTINE
+
+ROUTINE set_status_v
+
+{1.7}
+    IF (SELECT sample.old_status = "A") OR (SELECT sample.old_status = "X") THEN
+        ASSIGN sample.audits_reviewed = FALSE
+        UPDATE SAMPLE
+    ENDIF
+{/1.7}
+
+ENDROUTINE
+
+ROUTINE set_status_w
+ENDROUTINE
+
+{ ============================================================================== }
+{=========================================================================== }
+ { ROUTINE set_status_x                                                        }
+ {                                                                             }
+ { Description  : Does auditing on sample cancellation. SAMPLE_TRIGGER_ENABLE  }
+ {                must be set so that CHANGE SAMPLE STATUS "X" triggers this   }
+ {                routine                                                      }
+ { Author       : JOD                                                          }
+ { Date Created : 22/09/1997                                                   }
+ { =========================================================================== }
+ 
+ROUTINE set_status_x
+    
+     DECLARE old_status, new_status, unique_id, table, trans_name, the_header
+     DECLARE the_reason
+ 
+     old_status = SELECT sample . old_status
+     unique_id  = SELECT sample . id_numeric
+ 
+     table = "SAMPLE"
+     new_status = "X"
+     trans_name = "Write transaction Cancel Sample"
+     the_header = "Audit on Sample Cancellation"
+     the_reason = ""
+ 
+     REPEAT
+         get_the_reason ( the_reason, the_header, old_status, new_status )
+ 
+     UNTIL ( the_reason <> "" ) AND NOT ( BLANK ( the_reason ) )
+ 
+ 
+     write_audit ( new_status,
+                   old_status,
+                   the_reason,
+                   table     ,
+                   unique_id ,
+                   trans_name)
+    
+ENDROUTINE
+
+
+{ ============================================================================== }
+{                                                                                }
+{ OPTION 1->  IMMEDIATE SEND OF DATA TO SAP QUEUE, RECORD MUST EXIST             }
+{                                                                                }
+{ ============================================================================== }
+
+ROUTINE send_to_SAP
+
+	DECLARE sample, retval
+
+	sample = SELECT SAMPLE.ID_NUMERIC
+	CALL_ROUTINE UPLOAD_ROUTINE IN LIBRARY UPLOAD_LIB USING sample RETURNING retval
+	
+ENDROUTINE  { end send_to_SAP }
+{ end  $SAMP_STAT } 
+
+
+
+
+ENDROUTINE
+
+{ Elan custom routines }
+
+
+ENDROUTINE
+
+{ Elan custom routines }
+
+{ =========================================================================== }
+ { ROUTINE get_the_reason                                                      }
+ {                                                                             }
+ { Description  : Screen handling for audit reason                             }
+ { Author       : JOD                                                          }
+ { Date Created : 22/09/1997                                                   }
+ { =========================================================================== }
+ 
+ ROUTINE get_the_reason ( the_reason,
+                          VALUE the_header,
+                          VALUE old_status,
+                          VALUE new_status )
+ 
+     DECLARE reason, form
+ 
+     CREATE OBJECT PROMPT_CLASS_FORM , form
+ 
+     form . height = 3
+     form . width  = 70
+     form . border = TRUE
+     form . header = the_header
+     form . footer = " "
+     form . proportional = TRUE
+     form . return_behaviour = FORM_RETURN_LEAVE
+ 
+     IF ( GLOBAL ( "TERMTYPE" ) = "GUI" ) THEN
+         form . row    = 11
+         form . column = ROUND ( ( GLOBAL ( "SCREEN_WIDTH" ) - 20  ) / 2 )
+     ELSE
+         form . row    = 8
+         form . column = ROUND ( ( GLOBAL ( "SCREEN_WIDTH" ) - 70  ) / 2 )
+     ENDIF
+ 
+     form . add_display ( PAD ( "Old Value", "", 10 ), 3, 1,
+                 PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+ 
+     form . add_display ( PAD ( old_status, "", 3 ), 14, 1,
+                          PROMPT_RENDITION_NORMAL )
+ 
+     form . add_display ( PAD ( "New Value", "", 10 ), 3, 2,
+                 PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+ 
+     form . add_display ( PAD ( new_status, "", 3 ), 14, 2,
+                          PROMPT_RENDITION_NORMAL )
+ 
+     PROMPT OBJECT reason
+         AT 14 , 3
+         WITH (  zap_on_first         = TRUE,
+                 always_validate      = TRUE,
+                 validation_routine   = "validate_reason" )
+ 
+     form . add_prompt( reason )
+     form . add_display ( PAD ( "Reason", "", 10 ), 3, 3,
+                 PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+ 
+     form . start_prompt ( )
+     form . wait_prompt ( )
+     form . end_prompt ( )
+ 
+     the_reason = form . prompt_objects [ 1 ] . text
+ 
+ ENDROUTINE
+ 
+ 
+ {===========================================================================}
+ { ROUTINE validate_reason                                                   }
+ {                                                                           }
+ { Description: Callback validation routine which forces the user to input a }
+ {              reason                                                       }
+ {                                                                           }
+ {===========================================================================}
+ { Parameters    Passed by       Description                                 }
+ { ----------    ---------       -----------                                 }
+ { self          REFERENCE       Prompt Object                               }
+ {===========================================================================}
+ 
+ ROUTINE validate_reason ( self )
+ 
+     DECLARE status
+ 
+     IF ( BLANK ( self . text )) OR ( self . text = EMPTY ) THEN
+ 
+         flash_message ( "A reason must be entered", TRUE )
+         self . repaste ()
+         status = FALSE
+ 
+     ELSE
+ 
+        status = TRUE
+ 
+     ENDIF
+ 
+     RETURN ( status )
+ 
+ ENDROUTINE
+ 
+ 
+ { =========================================================================== }
+ { ROUTINE write_audit                                                         }
+ {                                                                             }
+ { Description  : Writes audit information to the tables                       }
+ { Author       : JOD                                                          }
+ { Date Created : 22/09/1997                                                   }
+ {                                                                             }
+ { =========================================================================== }
+ { Parameters    Passed by       Description                                   }
+ { ----------    ---------       -----------                                   }
+ { new_status    value           New Status                                    }
+ { old_status    value           Old Status                                    }
+ { the_reason    value           Audit reason from the form                    }
+ { table         value           The table name (SAMPLE or TEST)               }
+ { unique_id     value           ID_NUMERIC or TEST_NUMBER                     }
+ { trans_name    value           Transaction name                              }
+ { =========================================================================== }
+ 
+ ROUTINE write_audit ( VALUE new_status,
+                       VALUE old_status,
+                       VALUE the_reason,
+                       VALUE table     ,
+                       VALUE unique_id ,
+                       VALUE trans_name)
+ 
+     DECLARE check_empty, aud_data_inc, aud_evnt_inc, aud_tran_inc
+ 
+ {commented out RB 10-04-03}
+ 
+  {  aud_data_inc = get_increment("AUDITOR", "DATA")  + 1
+     aud_evnt_inc = get_increment("AUDITOR", "EVENT") + 1
+     aud_tran_inc = get_increment("AUDITOR", "TRANSACTION") + 1}
+ 
+ {VB mod 10-04-03}
+     aud_data_inc = increment("AUDITOR", "DATA")  
+     aud_evnt_inc = increment("AUDITOR", "EVENT") 
+     aud_tran_inc = increment("AUDITOR", "TRANSACTION") 
+ {ENDOFMODS}
+     
+ RESERVE ENTRY AUDIT_TRANSACTION, aud_tran_inc, check_empty
+ 
+     IF check_empty = EMPTY THEN
+ 
+         ASSIGN audit_transaction . system_pid = GLOBAL ( "PROCESS_ID" )
+         ASSIGN audit_transaction . user_id = GLOBAL ( "OPERATOR" )
+         ASSIGN audit_transaction . transaction_name = trans_name
+         ASSIGN audit_transaction . transaction_date = NOW
+ 
+     ENDIF
+ 
+ 
+     RESERVE ENTRY AUDIT_EVENT, aud_evnt_inc, check_empty
+ 
+     IF check_empty = EMPTY THEN
+ 
+         ASSIGN audit_event . transaction = aud_tran_inc
+         ASSIGN audit_event . table_name = table
+         ASSIGN audit_event . record_key0 = unique_id
+         ASSIGN audit_event . event_action = "MODIFY"
+         ASSIGN audit_event . event_reason = ""
+ 
+     ENDIF
+ 
+     RESERVE ENTRY AUDIT_DATA, aud_data_inc, check_empty
+ 
+     IF check_empty = EMPTY THEN
+ 
+         ASSIGN audit_data . event = aud_evnt_inc
+         ASSIGN audit_data . data_reason = the_reason
+ 
+         ASSIGN audit_data . field = "STATUS"
+         ASSIGN audit_data . value_before = old_status
+         ASSIGN audit_data . value_after = new_status
+ 
+     ENDIF
+ 
+ {  Remember to re-set increments on table before finishing ***** }
+ {commented out vb 10-04-03}
+ {    set_increment ("AUDITOR", "TRANSACTION", aud_tran_inc )
+      set_increment ("AUDITOR", "EVENT", aud_evnt_inc )
+      set_increment ("AUDITOR", "DATA", aud_data_inc )}
+ 
+     UPDATE AUDIT_TRANSACTION
+     UPDATE AUDIT_EVENT
+     UPDATE AUDIT_DATA
+ 
+ ENDROUTINE
+ 
+ 
+    
+

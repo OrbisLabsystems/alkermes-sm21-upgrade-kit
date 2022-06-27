@@ -1,0 +1,557 @@
+{******************************************************************************
+*
+* Module Name   : $RESL_USER.RPF
+*
+* Purpose       : Routines for Result Information
+*
+* Document Ref. : SE/T/TVGL-WORK-REPORTS/1/3
+*
+* Specification : 
+*
+* Portability   : Not Checked
+*
+* Re-entrant    : 
+*
+********************************************************************************
+*
+*  Ref   Date        Name             Comment
+*  ===== ==========  ===============  =========================================
+*  1.1   05-Mar-07   V. Molloy        SM-Millennium
+*
+*  1.2   13-Mar-14   L. Dawson        Balance integration
+*******************************************************************************}
+
+ENABLE WINDOWS
+SET NAME "DEFER/"
+SET NOTPROTECTED
+SET COMPILE_OPTION DECLARE
+
+JOIN LIBRARY $LIB_COMP
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $LIB_RE_CONTEXT
+
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_GENERAL
+JOIN STANDARD_LIBRARY STD_ARRAY   { 1.2 }
+
+CONSTANT OR_ADDITIONAL_FIELDS=2    { 1.2 }
+
+{******************************************************************************}
+
+DECLARE ri_form
+
+{******************************************************************************}
+{                                                                              }
+{ Routine Name     :  result_info_setup                                        }
+{                                                                              }
+{ Description      :  This routine is called to initialise result information. }
+{                     If result information is enabled then result_info_setup  }
+{                     will be called when entering the results screen.         }
+{                                                                              }
+{ Parameters       :  result_info_mode - one of "MODIFY"                       }
+{                                               "DISPLAY"                      }
+{                                               "AUTHORISE"                    }
+{                                                                              }
+{ Return Value     :  None.                                                    }
+{                                                                              }
+{ Globals Modified :  None.                                                    }
+{                                                                              }
+{******************************************************************************}
+
+ROUTINE result_info_setup( VALUE result_info_mode, result_context )
+
+	DECLARE title_str
+
+	IF ( result_info_mode = "MODIFY" ) THEN
+		title_str = GET_USER_MESSAGE("RESL_USER_TITLE_1" ,1) 
+	ELSEIF ( result_info_mode = "DISPLAY" ) THEN
+		title_str = GET_USER_MESSAGE("RESL_USER_TITLE_2" ,1) 
+	ELSEIF ( result_info_mode = "AUTHORISE" ) THEN
+		title_str = GET_USER_MESSAGE("RESL_USER_TITLE_3" ,1) 
+	ENDIF
+
+	PROMPT OBJECT ri_form
+	       CLASS PROMPT_CLASS_FORM
+	       WITH ( height = 8 + OR_ADDITIONAL_FIELDS, {1.2} {1.1 DK 20/08/02 - Changed from 4 to 8 for SM-Millennium }      
+                    width  = 38                     ,
+                    row    = 16 ,
+                    column = GLOBAL ( "GUI_WIDTH" ) - 38 - 2  ,
+	              header = title_str              ,
+	              button_style = FORM_BUTTON_NONE ,
+	              prompt_id = "$RESL_USER_MAIN")
+
+	IF global ( "TERMTYPE" ) = "GUI" THEN
+
+		ri_form . add_frame ( ""               ,
+		                      1                ,
+		                      1                ,
+		                      ri_form . height ,
+		                      ri_form . width  )
+		ri_form . height = ri_form . height + 1
+
+	ENDIF
+
+	ri_form . parent_prompt = result_context . parent_prompt
+
+	ri_form . start_prompt ( )
+
+	DISPLAY GET_USER_MESSAGE("RESL_USER_DISPLAY_1" ,1) 
+	        ON LINE 1 FROM 2 
+	        IN WINDOW ri_form . window
+	        WITH ( width  = 12   ,
+	               bold   = TRUE , 
+	               raised = TRUE )
+
+	DISPLAY GET_USER_MESSAGE("RESL_USER_DISPLAY_2" ,1)
+	        ON LINE 3 FROM 2 
+	        IN WINDOW ri_form . window
+	        WITH ( width  = 12   ,
+	               bold   = TRUE , 
+	               raised = TRUE )
+
+	DISPLAY GET_USER_MESSAGE("RESL_USER_DISPLAY_3" ,1)
+	        ON LINE 4 FROM 2 
+	        IN WINDOW ri_form . window
+	        WITH ( width  = 12   ,
+	               bold   = TRUE , 
+	               raised = TRUE )
+
+   {1.1 DK 20/08/02 Added this to show SM-Millennium information =============================== }
+   {           Note: Ser config item RES_INFO_BOX_ON to TRUE to get best benefit from this   }
+
+	DISPLAY "SM-Millennium Information....."
+	        ON LINE 5 FROM 2 
+	        IN WINDOW ri_form . window
+	        WITH ( width  = 25   ,
+	               bold   = FALSE , 
+	               raised = FALSE )
+
+	DISPLAY "Mill' User"
+	        ON LINE 6 FROM 2 
+	        IN WINDOW ri_form . window
+	        WITH ( width  = 12   ,
+	               bold   = TRUE , 
+	               raised = TRUE )
+
+	DISPLAY "GC/Instrument"
+	        ON LINE 7 FROM 2 
+	        IN WINDOW ri_form . window
+	        WITH ( width  = 12   ,
+	               bold   = TRUE , 
+	               raised = TRUE )
+
+	DISPLAY "Mill' Timestamp"
+	        ON LINE 8 FROM 2 
+	        IN WINDOW ri_form . window
+	        WITH ( width  = 12   ,
+	               bold   = TRUE , 
+	               raised = TRUE )
+
+   {/1.1 =====================DK 20/08/02 End of DK modifications =============================== }
+
+{ 1.2 }
+	DECLARE i, array_new
+
+	{ copy this to result_info_main also }
+	ARRAY array_new
+	i = 1
+	array_new [i, 1] = "instrument_used"
+	array_new [i, 2] = "Instrument:"
+	i = i + 1
+	array_new [i, 1] = "result_below_lod"
+	array_new [i, 2] = "Below LOD:"
+
+	i = 0
+	WHILE (i < sizeofarray(array_new)) DO
+
+		i = i + 1
+		DISPLAY array_new [i, 2]
+	        ON LINE i+8 FROM 2 
+	        IN WINDOW ri_form . window
+	        WITH ( width  = 12   ,
+	               bold   = TRUE , 
+	               raised = TRUE )
+
+	ENDWHILE
+
+{ /1.2 }
+	SET FORMAT "9999999999"
+
+ENDROUTINE
+
+{******************************************************************************}
+{                                                                              }
+{ Routine Name     :  result_info_exit                                         }
+{                                                                              }
+{ Description      :  This routine is called when leaving result information.  }
+{                     If result information is enabled then result_info_exit   }
+{                     will be called when exiting the results screen.          }
+{                                                                              }
+{ Parameters       :  result_info_mode - one of "MODIFY"                       }
+{                                               "DISPLAY"                      }
+{                                               "AUTHORISE"                    }
+{                                                                              }
+{ Return Value     :  None.                                                    }
+{                                                                              }
+{ Globals Modified :  None.                                                    }
+{                                                                              }
+{******************************************************************************}
+
+ROUTINE result_info_exit( VALUE result_info_mode )
+
+	IF ( ri_form . started ) THEN
+
+		ri_form . end_prompt ( )
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+{                                                                              }
+{ Routine Name     :  result_info_main                                         }
+{                                                                              }
+{ Description      :  The main routine for result information.                 }
+{                     The display option is called on entry to every field in  }
+{                     the results entry screen.                                }
+{                     The add option is called just before a new result is     }
+{                     created.                                                 }
+{                     The modify option is called just before a result is      }
+{                     updated.                                                 }
+{                     The authorise option is called as a result is authorised }
+{                                                                              }
+{ Parameters       :  result_info_mode - one of "ADD"                          }
+{                                               "MODIFY"                       }
+{                                               "DISPLAY"                      }
+{                                               "AUTHORISE"                    }
+{                                                                              }
+{                     x_coordinate - current cursor position                   }
+{                     y_coordinate - current cursor position                   }
+{                                                                              }
+{ Return Value     :  None.                                                    }
+{                                                                              }
+{ Globals Modified :  None.                                                    }
+{                                                                              }
+{******************************************************************************}
+
+ROUTINE result_info_main( VALUE result_info_mode,
+                          VALUE x_coordinate,
+                          VALUE y_coordinate )
+
+  DECLARE test_num, ent_on, ent_by
+
+  test_num = SELECT result.test_number
+  ent_on   = SELECT result.entered_on
+  ent_by   = SELECT result.entered_by
+
+  DISPLAY JUSTIFY( test_num, GET_USER_MESSAGE("RESL_USER_DISPLAY_4" ,1) ) 
+    ON LINE 1 FROM 16 TO ri_form . width - 2  
+    IN WINDOW ri_form . window
+    WITH ( lowered = TRUE )
+
+  DISPLAY PAD( ent_on, " ", 20 ) 
+    ON LINE 3 FROM 16 TO ri_form . width - 2   
+    IN WINDOW ri_form . window
+    WITH ( lowered = TRUE )
+
+  DISPLAY ent_by    
+    ON LINE 4 FROM 16 TO ri_form . width - 2   
+    IN WINDOW ri_form . window
+    WITH ( lowered = TRUE )
+
+
+    {1.1 DK 20/08/02 Added this to show SM-Millennium information =============================== }
+    {           Note: Set config item RES_INFO_BOX_ON to TRUE to get best benefit from this   }
+
+    DECLARE mill_user, mill_inst, mill_time
+
+    mill_user = SELECT result . mill_acquired_by
+    mill_inst = SELECT result . mill_instrument_no
+    mill_time = SELECT result . mill_timestamp
+
+    DISPLAY mill_user
+    ON LINE 6 FROM 16 TO ri_form . width - 2  
+    IN WINDOW ri_form . window
+    WITH ( lowered = TRUE )
+
+    DISPLAY mill_inst
+    ON LINE 7 FROM 16 TO ri_form . width - 2   
+    IN WINDOW ri_form . window
+    WITH ( lowered = TRUE )
+
+    DISPLAY mill_time    
+    ON LINE 8 FROM 16 TO ri_form . width - 2   
+    IN WINDOW ri_form . window
+    WITH ( lowered = TRUE )
+
+    {/1.1 ======================DK 28/5/02 End of DK modifications =============================== }
+
+
+{ 1.2 }
+	DECLARE i, array_new, val
+
+	ARRAY array_new
+	i = 1
+	array_new [i, 1] = "instrument_used"
+	array_new [i, 2] = "Instrument"
+	array_new [i, 3] = "T"
+	i = i + 1
+	array_new [i, 1] = "result_below_lod"
+	array_new [i, 2] = "Below LOD"
+	array_new [i, 3] = "B"
+
+	i = 0
+	WHILE (i < sizeofarray(array_new)) DO
+
+		i = i + 1
+		val = SELECT result . 'array_new [i, 1]'
+		IF (	array_new [i, 3] = "B") AND (val=TRUE) THEN
+			val = "Yes"
+		ELSEIF (	array_new [i, 3] = "B") AND (val=FALSE) THEN
+
+			val = "No"
+		ENDIF
+		IF (TOLOWER(array_new[i,1])="instrument_used") THEN
+			IF (NOT SELECT result.result_inst_auto) THEN
+				val = ""
+			ENDIF
+		ENDIF
+		IF (TOLOWER(array_new[i,1])="result_below_lod") THEN
+			IF (NOT SELECT result.result_inst_auto) THEN
+				val = ""
+			ENDIF
+		ENDIF
+
+		val = "   ":val
+		DISPLAY val
+	        ON LINE i+8 FROM 16
+	        IN WINDOW ri_form . window
+	        WITH ( lowered = TRUE )
+
+	ENDWHILE
+
+{ /1.2 }
+
+ENDROUTINE
+
+{******************************************************************************}
+{                                                                              }
+{ Routine Name     : result_user_create                                        }
+{                                                                              }
+{ Description      : Called when creating a result in a result list.           }
+{                                                                              }
+{                    Controlled by the global                                  }
+{                    RESULT_USER_ASSIGN_ENABLE                                 }
+{                                                                              }
+{ Parameters       : None.                                                     }
+{                                                                              }
+{                    Currently selected result row is the new row              }
+{                    Currently selected versioned_component row is the         }
+{		     component.                                                }
+{                                                                              }
+{ Return Value     : None.                                                     }
+{                                                                              }
+{ Globals Modified : None.                                                     }
+{                                                                              }
+{******************************************************************************}
+
+GLOBAL ROUTINE result_user_create 
+
+        DECLARE name      ,
+                replicate
+
+	IF SELECT result . result_type = "F" THEN
+        
+		{ When creating a result thats a file name where the 
+		  componentname is TEXT_NOTE create the file name }
+
+                name       = lib_comp_get_name ( SELECT result . name )
+                replicate  = lib_comp_get_replicate ( SELECT result . name )
+
+		IF strip ( to_upper ( name )) = "TEXT_NOTE" THEN
+                
+                        name = "text_note_" :
+                               strip ( number_to_text ( replicate , "999" ))  
+                        
+			IF global ( "PLATFORM" ) = "UNIX" THEN
+
+				ASSIGN result . text = 
+				   "$smp_textfiles/"                     :
+				   strip ( SELECT result . test_number ) :
+				   "_"                                   :
+				   name                                  :
+				   ".rnf"
+
+			ELSE
+
+				ASSIGN result . text = 
+				   "SMP$TEXTFILES:"                      :
+				   strip ( SELECT result . test_number ) :
+				   "_"                                   :
+				   name                                  :
+				   ".rnf"
+
+			ENDIF
+
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE
+
+
+{*****************************************************************************}
+
+ROUTINE result_user_alias_prompt (       self        ,
+				         grid        ,
+			           VALUE cell_column ,
+			           VALUE cell_row    ,
+			           VALUE column      ,
+			           VALUE row         ,
+			           VALUE cell_width  ,
+				         window      ,
+			           VALUE is_display  )
+
+
+{
+*	Example routine for MRL customisation. Will allow the alteration of
+*	the component_alias field in the result.
+*
+*
+******************************************************************************}
+
+	DECLARE prompt_object
+
+	prompt_object = EMPTY
+
+	self . field_prompt ( grid               ,
+			      cell_column        ,
+			      cell_row           ,
+			      column             ,
+			      row                ,
+			      cell_width         ,
+		              window             ,
+			      is_display         ,
+		             "COMPONENT_ALIAS"   ,
+			      prompt_object      )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE result_user_rep_control_prompt (       self        ,
+				               grid        ,
+			                 VALUE cell_column ,
+			                 VALUE cell_row    ,
+			                 VALUE column      ,
+			                 VALUE row         ,
+			                 VALUE cell_width  ,
+				               window      ,
+			                 VALUE is_display  )
+
+
+{
+*	Example routine for MRL customisation. Will allow the alteration of
+*	the rep_control field in the result.
+*
+*
+******************************************************************************}
+
+	DECLARE prompt_object
+
+	prompt_object = EMPTY
+
+	self . field_prompt ( grid           ,
+			      cell_column    ,
+			      cell_row       ,
+			      column         ,
+			      row            ,
+			      cell_width     ,
+		              window         ,
+			      is_display     ,
+		             "REP_CONTROL"   ,
+			      prompt_object  )
+
+ENDROUTINE
+
+{******************************************************************************}
+{                                                                              }
+{ Routine Name     : result_user_mrl                                           }
+{                                                                              }
+{ Description      : Allow configuration of the prompts on the Modify Result   }
+{                    List Screen                                               }
+{                                                                              }
+{                                                                              }
+{ Parameters       :  Prompt_Details                                           }
+{                                                                              }
+{                     Prompt_details is a standard list editor definition      }
+{                     array.                                                   }
+{                                                                              }
+{ Return Value     :  None.                                                    }
+{                                                                              }
+{ Globals Modified :  None.                                                    }
+{                                                                              }
+{******************************************************************************}
+
+GLOBAL ROUTINE result_user_mrl ( prompt_details )
+
+{	Example code to place allow the modification of the re_control and
+	component_alias fields in the result.
+
+	array_insert_slice ( prompt_details ,
+			     1              ,
+			     5              )
+
+	array_insert_slice ( prompt_details ,
+			     1              ,
+			     6              )
+
+     
+	prompt_details [ 5 , 2 ] = "ROUTINE"
+	prompt_details [ 5 , 3 ] =  global ( "Current_Library" )
+	prompt_details [ 5 , 4 ] = "result_user_rep_control_prompt"
+	prompt_details [ 5 , 5 ] = "Rep"
+	prompt_details [ 5 , 6 ] =  4
+
+	prompt_details [ 6 , 2 ] = "ROUTINE"
+	prompt_details [ 6 , 3 ] =  global ( "Current_Library" )
+	prompt_details [ 6 , 4 ] = "result_user_alias_prompt"
+	prompt_details [ 6 , 5 ] = "Alias"
+	prompt_details [ 6 , 6 ] =  20
+
+}
+
+ENDROUTINE
+
+
+{******************************************************************************}
+{                                                                              }
+{ Routine Name     : result_user_mrl_copy_replicate                            }
+{                                                                              }
+{ Description      : When copying results using Modify Result List Screen      }
+{                    pass the user the source and destination result           }
+{                    objects to allow copying on other data                    }
+{                                                                              }
+{ Parameters       :  Destination result object                                }
+{                                                                              }
+{                     Source result object                                     }
+{                                                                              }
+{ Return Value     :  None.                                                    }
+{                                                                              }
+{ Globals Modified :  None.                                                    }
+{                                                                              }
+{******************************************************************************}
+
+GLOBAL ROUTINE result_user_mrl_copy_replicate ( destination ,
+                                                source      )
+
+{	Example code to place to copy the component_alias
+
+	ASSIGN result . component_alias IN OBJECT destination =
+		SELECT result . component_alias IN OBJECT source
+
+}
+
+ENDROUTINE
+
+

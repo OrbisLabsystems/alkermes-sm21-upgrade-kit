@@ -1,0 +1,548 @@
+{******************************************************************************
+*
+* Module Name   : $SMIDI_MAPPING_IN
+*
+* Purpose       : This Library is responsible for mapping Millennium Custom
+*                 field data with SMP Sample Data.
+*
+* Document Ref. :
+*
+* Specification :
+*
+* Portability   : Not Checked
+*
+* Re-entrant    :
+*
+*******************************************************************************}
+
+SET NOTPROTECTED
+SET COMPILE_OPTION DECLARE
+SET NAME "DEFER/"
+
+JOIN STANDARD_LIBRARY STD_STRUCTURE    { Structure Modifications.             }
+JOIN STANDARD_LIBRARY STD_MESSAGE      { Message Support                      }
+JOIN STANDARD_LIBRARY STD_UTILS        { Standard Utilities.                  }
+JOIN STANDARD_LIBRARY STD_VGL          { VGL Find Routines...                 }
+
+JOIN LIBRARY $LABTABLIB                { Lab Table Functionality              }
+JOIN LIBRARY $LIST_EDITOR              { The List Editor.                     }
+JOIN LIBRARY $LIB_UTILS                { flash_messages                       }
+JOIN LIBRARY $LIB_GRID                 { Grid Functionality.                  }
+
+ENABLE WINDOWS
+
+JOIN LIBRARY $SMMILL_DYNAMIC_SQL
+
+{*******************************************************************************
+*                           M A I N   C O D E 
+*******************************************************************************}
+
+DECLARE the_list_editor
+
+{*******************************************************************************
+*                            R O U T I N E S
+*******************************************************************************}
+
+ROUTINE lte_entry_point ( VALUE identity        , 
+                          VALUE copied_identity ,
+                          VALUE operation       )
+
+{ The LTE Entry Point.
+*
+* Parameters   : Identity        - The Identity.
+*                Copied_Identity - The Copied Identity.
+*                Operation       - The Current LTE Operation Mode.
+* Return Value : N/a
+*
+*******************************************************************************}
+
+	DECLARE answer
+
+	IF operation = "PRINT" THEN
+
+		print_option ( identity )
+
+	ELSE
+
+		answer = other_option ( identity, copied_identity, operation )
+		RETURN ( answer )
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE print_option ( VALUE identity ) 
+
+{ Routine to call when printing the LTE.
+*
+* Parameters   : Identity        - The Identity.
+* Return Value : N/a
+*
+*******************************************************************************}
+
+	DECLARE field_details
+	ARRAY field_details ARRAY_SIZE ( 0 , 2 )
+
+	field_details [ 1, 1 ] = "TABLE_NAME"
+	field_details [ 1, 2 ] = "SampleManager Table" 
+	field_details [ 2, 1 ] = "FIELD_NAME"
+	field_details [ 2, 2 ] = "Field Name"
+	field_details [ 3, 1 ] = "MILL_CUSTOM_FIELD"
+	field_details [ 3, 2 ] = "Mill. Custom Field" 
+
+
+	print_fields (  "MILL_CUSTOM_DATA_IN",
+	                identity        ,
+	                ""              ,
+	                ""              ,
+	                2               ,
+	                28              ,
+	                field_details   )
+
+ENDROUTINE { print_option }
+
+{******************************************************************************}
+
+ROUTINE other_option ( VALUE identity        , 
+                       VALUE copied_identity ,
+                       VALUE operation       )
+{ Handle the Data.
+*
+* Parameters   : Identity        - The Identity.
+*                Copied_Identity - The Copied Identity.
+*                Operation       - The Current LTE Operation Mode.
+* Return Value : N/a
+*
+*******************************************************************************}
+    
+	DECLARE prompt_details, answer, heading
+
+	smmill_mapping_initialise_map ( prompt_details, heading )
+
+	list_editor_create_object ( the_list_editor )
+
+	the_list_editor . table         = "MILL_CUSTOM_DATA_IN"
+	the_list_editor . header        = "Mapping Custom Fields"
+	the_list_editor . footer        = ""
+	the_list_editor . pre_insert    = "MAP_INSERT_ROUTINE"
+{	the_list_editor . post_insert   = "CHECK_CUSTOM_FIELD"}
+	the_list_editor . delete        = "MAP_DELETE_ROUTINE"
+	the_list_editor . select        = EMPTY 
+	the_list_editor . library       = GLOBAL ( "CURRENT_LIBRARY" )
+	the_list_editor . compatability = PROMPT_DETAILS_310
+
+
+
+        smmill_mapping_valid_structures ( the_list_editor ) 
+
+	the_list_editor . setup_prompt_details ( prompt_details,
+	                                         heading       )
+
+	answer = the_list_editor . operation ( identity       ,
+	                                       copied_identity,
+	                                       operation      )
+
+	IF ( the_list_editor <> EMPTY                    ) AND
+	   ( the_list_editor . collection . size ( ) = 0 ) AND
+	   ( operation = "MODIFY"                        ) THEN
+
+		the_list_editor . data_read = FALSE
+		the_list_editor . get_data ( TRUE )
+
+	ENDIF
+
+    RETURN ( answer ) 
+
+ENDROUTINE { other_option }
+
+{******************************************************************************}
+
+ROUTINE map_delete_routine ( self )
+
+{
+*	Called when Delete is Pressed.
+*
+*
+*******************************************************************************}
+
+	DECLARE retval
+	retval = TRUE
+
+
+	RETURN ( retval )
+
+ENDROUTINE { map_delete_routine }
+
+{******************************************************************************}
+
+ROUTINE map_insert_routine ( self        ,
+                             grid        ,
+                             cell_column ,
+                             cell_row    ,
+                             window      ,
+                             column      ,
+                             row         ,
+                             cell_width  ,
+                             cell_height ,
+                             new_value   )
+
+{ Routine to insert a row. 
+*
+* Parameters   : Self        - List Editor Object
+*                Grid        - A Grid Object.
+*                Cell_Column - An Integer holding the Current Grid Column.
+*                Cell_Row    - An Integer holding the Current Grid Row.
+*                Window      - The Current Window
+*                Column      - An Integer holding the Window Column for Display
+*                Row         - An Integer holding the Window Row for Display.
+*                Cell_Width  - An Integer representing the cell width.
+*                Cell_Height - An Integer representing the cell height.
+*                New_Value   - The New Value.
+* Return Value : N/a
+*
+*******************************************************************************}
+
+	DECLARE form, blank_array, wid, message
+	ARRAY blank_array
+
+	blank_array [ 1, 1 ] = ""
+	blank_array [ 1, 1 ] = ""
+
+	CREATE OBJECT "STD_FORM", form
+
+	form . header = "New Custom Field Map" 
+	form . footer = ""
+
+	form . width  = 42 
+	form . height = 2
+	form . column = 1 + ( GLOBAL ( "SCREEN_WIDTH"  ) - form . width  ) / 2
+	form . row    = 8
+
+	form . confirm_required = FALSE
+	form . vgl_library      = GLOBAL ( "CURRENT_LIBRARY" )
+
+	PROMPT OBJECT form . prompt_objects [ 1 ]
+	    AT 19, 1
+	    CHOOSE OUTOF self . user_info
+	    WITH  ( validation_routine   = "not_blank_validation_routine",
+	            always_validate      = TRUE                          ,
+	            vgl_library          = GLOBAL ( "CURRENT_LIBRARY" )  ,
+                    leave_prompt_routine = "leave_table_routine"         ,
+	            lowered              = TRUE                          ,
+                    value                = ""                      )
+
+	PROMPT OBJECT form . prompt_objects [ 2 ]
+	    AT 19, 2
+	    CHOOSE OUTOF blank_array
+	    WITH  ( vgl_library          = GLOBAL ( "CURRENT_LIBRARY" ),
+	            width                = 21                          ,  
+	            lowered              = TRUE                        ,
+                    enter_prompt_routine = "leave_table_routine"      )
+       
+	message = "SMP Table"
+	form . add_display ( PAD ( message , " ", 15 ),
+	                     2, 1, PROMPT_RENDITION_RAISED )
+	message = "SMP Field Name"
+	form . add_display ( PAD ( message , " ", 15 ),
+	                     2, 2, PROMPT_RENDITION_RAISED )
+
+	form . add_frame ( "", 1, 1, form . height, form . width )
+
+	form . start_prompt ( ) 
+	form . wait_prompt  ( ) 
+	form . end_prompt   ( ) 
+
+	IF ( form . get_lastkey ( ) <> "EXIT"                  ) AND 
+	   ( NOT BLANK ( form . prompt_objects [ 1 ] . value ) ) THEN 
+
+		GET_FIELD_DETAILS mill_custom_data_in . table_name, "FIELD_SIZE", wid
+
+		new_value = PAD ( form . prompt_objects [ 1 ] . value, " ", wid ) : 
+		            form . prompt_objects [ 2 ] . text
+
+		SET GLOBAL "LASTKEY" TO "CONTINUE"
+
+	ELSE
+
+		IF ( cell_row = grid . cell_rows ) THEN
+
+			IF cell_row = 1 THEN
+				SET GLOBAL "LASTKEY" TO "DO"
+			ELSE
+				SET GLOBAL "LASTKEY" TO "UP"
+			ENDIF
+
+		ELSE
+
+			SET GLOBAL "LASTKEY" TO "REMOVE"
+
+		ENDIF
+
+		new_value = ""
+
+	ENDIF
+
+ENDROUTINE { map_insert_routine }
+
+
+
+{******************************************************************************}
+
+GLOBAL
+ROUTINE smmill_mapping_initialise_map ( prompt_details  ,
+                                        heading         )
+
+{ Initialise the Field List.
+*
+* Parameters   : Prompt_Details - The Details Array
+*                Heading        - The Heading Line.
+* Return Value : N/a
+*
+*******************************************************************************}
+
+	DECLARE count
+	ARRAY prompt_details ARRAY_SIZE ( 0 , 6 )
+
+	count = 1
+
+	prompt_details [ count , 1 ] = "SMP Table Name" 
+	prompt_details [ count , 2 ] = "DISPLAY"
+	prompt_details [ count , 3 ] = "MILL_CUSTOM_DATA_IN"
+	prompt_details [ count , 4 ] = "TABLE_NAME"
+	prompt_details [ count , 5 ] = 0
+	prompt_details [ count , 6 ] = 22
+
+	count = count + 1
+
+	prompt_details [ count , 1 ] = "SMP Field Name" 
+	prompt_details [ count , 2 ] = "DISPLAY"
+	prompt_details [ count , 3 ] = "MILL_CUSTOM_DATA_IN"
+	prompt_details [ count , 4 ] = "FIELD_NAME"
+	prompt_details [ count , 5 ] = 0
+	prompt_details [ count , 6 ] = 22
+
+	count = count + 1
+
+	prompt_details [ count , 1 ] = "Mill. Custom Field" 
+	prompt_details [ count , 2 ] = "ROUTINE"
+	prompt_details [ count , 3 ] = GLOBAL("CURRENT_LIBRARY")
+	prompt_details [ count , 4 ] = "GET_CUSTOM_FIELDS"
+	prompt_details [ count , 5 ] = 0
+	prompt_details [ count , 6 ] = 22
+
+
+	heading = build_heading ( prompt_details )
+
+ENDROUTINE { initialise_map }
+
+
+{******************************************************************************}
+
+GLOBAL 
+ROUTINE smmill_mapping_valid_structures ( object )
+
+{
+*
+*	 Build up a the Valid Mapping Structures
+*
+*
+*******************************************************************************}
+
+	DECLARE count
+
+	ARRAY object . user_info
+
+        count = 1
+
+	object . user_info [ count, 1 ] = ""
+	object . user_info [ count, 2 ] = ""
+
+        count = count + 1
+
+	object . user_info [ count, 1 ] = "SAMPLE "
+	object . user_info [ count, 2 ] = "SAMPLE "
+
+        count = count + 1
+
+	object . user_info [ count, 1 ] = "RESULT"
+	object . user_info [ count, 2 ] = "RESULT"
+
+ENDROUTINE { smmill_mapping_valid_structures }
+
+{******************************************************************************}
+
+ROUTINE leave_table_routine ( self )
+
+{ Leave Table Routine
+*
+* Parameters   : Self - The Prompt
+* Return Value : N/a
+*
+*******************************************************************************}
+
+	DECLARE details, field_prompt
+	ARRAY details
+
+        self.value = self . parent_prompt . prompt_objects[1] . text
+
+        IF STRIP( self . parent_prompt . prompt_objects[1] . text) <> "" THEN
+ 
+            get_field_names ( self . value, details )
+
+	    field_prompt = self . parent_prompt . prompt_objects [ 2 ]
+	    field_prompt . choose_array = details
+	    field_prompt . set_text ( "" )
+
+        ENDIF
+
+ENDROUTINE { leave_table_routine }
+
+
+{******************************************************************************}
+
+ROUTINE build_heading ( prompt_details )
+
+{ Build up a Headings Line
+*
+* Parameters   : Prompt_Details - Details Array
+* Return Value : String         - The Headings.
+*
+*******************************************************************************}
+
+	DECLARE count, heading, col_head
+
+	count   = 1
+	heading = ""
+
+	WHILE count <= SIZE_OF_ARRAY ( prompt_details ) DO
+
+		col_head = PAD ( prompt_details [ count, 1 ], " ",
+		prompt_details [ count, 6 ]       )
+
+		heading = heading : col_head : " "
+		count   = count + 1 
+
+	ENDWHILE
+
+	RETURN ( heading )
+
+ENDROUTINE { build_heading }
+
+{******************************************************************************}
+
+ROUTINE not_blank_validation_routine ( self )
+
+{ This validation callback ensures that no one can leave the prompt until
+* they have filled it in. Stops them moving around willy nilly.
+*
+* Parameters   : Self 
+* Return Value : Boolean - NOT Blank
+*
+*******************************************************************************}
+
+	RETURN ( NOT BLANK ( self . text ) )
+
+ENDROUTINE { not_blank_validation_routine }
+
+{******************************************************************************}
+
+
+ROUTINE get_custom_fields (      self        ,
+			    	 grid        ,
+			   VALUE cell_column ,
+			   VALUE cell_row    ,				
+		           VALUE column      ,
+			   VALUE line        ,
+			   VALUE width_1     ,
+			      	 display_id  ,
+			   VALUE is_display  )
+
+    DECLARE the_proj, the_schema, the_field, the_table, browse_array,
+            curr_val
+
+    ARRAY browse_array
+
+    curr_val = SELECT MILL_CUSTOM_DATA_IN . mill_custom_field
+
+    the_proj = SELECT MILL_CUSTOM_MAP_IN . project
+    the_schema = STRIP(the_proj):"_1"
+
+    the_field  = "name"
+    the_table = the_schema:".FIELDCUSTOM"
+
+    select_millennium_fieldcustom_data ( browse_array
+                                         the_schema,
+                                         the_field,
+                                         the_table )
+
+    IF is_display THEN
+		
+	DISPLAY curr_val 
+            ON LINE line 
+            FROM column
+	    TO column + width_1 - 1
+	    IN WINDOW display_id
+
+    ELSE
+
+
+        PROMPT FOR curr_val
+            CHOOSE OUTOF browse_array 
+            ON LINE line 
+            FROM column
+	    TO column + width_1 - 1
+            IN WINDOW display_id
+            WITH ( validation_routine   = "validate_field",
+                   parent_prompt = self)
+
+
+    ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE validate_field ( self )
+
+    DECLARE entered_field, can_leave, the_proj, already_exists, context
+
+
+    can_leave = FALSE
+
+    entered_field = STRIP(self . text)
+
+    the_proj = SELECT MILL_CUSTOM_MAP_IN . project
+
+    push_file_descriptor ("MILL_CUSTOM_DATA_IN", context)
+
+    already_exists = SELECT MILL_CUSTOM_DATA_IN . mill_custom_field
+                      WHERE project = the_proj AND
+                            mill_custom_field = entered_field
+
+    IF already_exists = EMPTY THEN
+
+        can_leave = TRUE
+
+        pop_file_descriptor(context)
+
+        ASSIGN MILL_CUSTOM_DATA_IN . mill_custom_field = entered_field
+
+    ELSE
+
+        can_leave = FALSE
+
+        flashmessage(entered_field:" custom field has already been mapped for this Project!", TRUE)
+
+    ENDIF
+
+    RETURN(can_leave)
+
+ENDROUTINE
+
+
+
+
+
+

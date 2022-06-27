@@ -1,0 +1,211 @@
+{******************************************************************************
+*
+* Module Name          : INST_LIST_REP.RPF
+*
+* Purpose              : Generates Instrument Listing InfoMaker Report
+*
+* Portability          : Not Checked
+*
+* Author               : Anne-Marie Fanning
+*
+* Date created         : 07-APR-2004
+*
+* Version              : 1.0
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By             Description
+* -------   -----------  ----------     ---------------------------------------
+* 1.0       08-JUN-2004  Elaine Henry   Release Version CC2004-080
+* 1.1       16-APR-2007  A. Finnerty    SM9 upgrade
+*
+*******************************************************************************}
+
+SET NOTPROTECTED
+SET NAME "DEFER/"
+SET COMPILEOPTION DECLARE
+ENABLE WINDOWS
+
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_ARRAY
+
+JOIN LIBRARY $prompt_imprint
+
+CONSTANT CON_PBL   = "elan_custom.pbl"     { 1.1 }
+
+
+prompt_group_id() 
+
+ROUTINE prompt_group_id 
+
+{
+*    
+*   Prompts for the group identiy - if blank generate listing report 
+*   for all groups
+*******************************************************************************}
+    
+    DECLARE form
+
+    create_form(form)
+    prompt_form(form)
+    
+   
+ENDROUTINE
+
+
+ROUTINE create_form (form)
+
+{
+*    Create the Prompt form object
+*
+*******************************************************************************}
+
+
+ DECLARE prompt_1,all_groups  
+
+ CREATE OBJECT PROMPT_CLASS_FORM, form
+    form. header = GET_USER_MESSAGE("INST_CALIB_REPORTS_LISTING_FORM_HEADER", 1)
+    form. footer = GET_USER_MESSAGE("INST_CALIB_REPORTS_LISTING_FORM_FOOTER", 1)
+    form. width  = 50
+    form. height = 1
+    form. column = 4
+    form. row    = 6
+    form. return_behaviour = FORM_RETURN_WRAP
+
+    form . add_display ( GET_USER_MESSAGE("INST_CALIB_REPORTS_LISTING_FORM_GROUP_ID", 1), 
+                         1, 
+                         1, 
+                         PROMPT_RENDITION_NORMAL + PROMPT_RENDITION_RAISED )
+
+    PROMPT OBJECT prompt_1 
+           BROWSE ON group_header . identity AT 17,1
+           WITH (  width = 40, lowered= True)
+
+    form . add_prompt (prompt_1)
+
+
+    PROMPT OBJECT all_groups
+        CLASS "STD_PROMPT_TEXT_BOOLEAN"
+        AT 17 , 2
+        WITH ( is_check = TRUE                                 ,
+               vgl_library = GLOBAL("CURRENT_LIBRARY")       ,
+               toggled_routine = "toggle"                       )
+
+    form . add_prompt ( all_groups )
+
+        form . add_display ( GET_USER_MESSAGE("INST_CALIB_REPORTS_LISTING_FORM_ALL_GROUPS", 1), 
+                         1, 
+                         2, 
+                         PROMPT_RENDITION_NORMAL + PROMPT_RENDITION_RAISED )
+
+
+ENDROUTINE
+
+ROUTINE prompt_form (form)
+
+{
+*    Prompt User for Group ID
+*
+*******************************************************************************}
+{Need to ensure Group id is not empty}
+    form . start_prompt()
+    form . wait_prompt()
+    form . end_prompt()
+
+    IF (form. get_lastkey() = "DO") 
+       imprint_print (form.prompt_objects[1].value,form.prompt_objects[2].value )
+
+    ELSE
+
+       EXIT
+
+    ENDIF
+
+ENDROUTINE
+
+ROUTINE imprint_print (VALUE group_id, VALUE report_all)
+
+{
+*    Generates Reprot
+*
+*******************************************************************************}
+
+   DECLARE imprint_report,infomaker_template
+   DECLARE path           { 1.1 }
+
+    { 1.1 }
+    path = LOGICAL ("smp$imprint")
+
+    IF ( INDEX (path , ";") > 0)  THEN
+
+            path = LEFTSTRING (path, INDEX(path, ";") - 1 )
+
+    ENDIF
+
+
+{ Define the class, then create an instance }
+   infomaker_template = "instrument_list"
+   define_imprint_class ( )
+
+   CREATE OBJECT IMPRINT, imprint_report
+	
+{ Generate a report }
+
+   imprint_report . create_ole_object( )
+
+   imprint_report . reset_ole_object( )
+ 
+    imprint_report . library  = path : "\" : CON_PBL        { 1.1 }
+
+   IF(report_all) THEN
+      group_id = "ALL"  
+      imprint_report . add_parameter ( group_id )
+      imprint_report . add_parameter ( STRIP (GLOBAL ("OPERATOR")))     
+                    
+   ELSE
+      imprint_report . add_parameter ( STRIP(group_id) )
+      imprint_report . add_parameter ( STRIP (GLOBAL ("OPERATOR")))
+      
+   ENDIF
+
+
+   imprint_report . report  = infomaker_template
+
+   imprint_report . generate ( )
+
+   imprint_report . ole_object = EMPTY 
+
+ENDROUTINE
+
+ROUTINE toggle (self)
+
+{
+*    Sets the active prompts on the form 
+*  
+*    SELF = ALL GROUP PROMPT
+*******************************************************************************}
+
+   DECLARE form
+   form = self. parent_prompt
+   
+   IF(form . prompt_objects[2] . value)
+      form . prompt_objects[1] . set_visible (FALSE)
+
+   ELSE
+      form . prompt_objects[1] . set_visible (TRUE)
+
+   ENDIF
+   
+   form . repaste()
+
+ENDROUTINE
+
+
+
+
+
+
+
+

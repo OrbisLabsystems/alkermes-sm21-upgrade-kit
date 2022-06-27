@@ -1,0 +1,461 @@
+{******************************************************************************
+*
+* Module Name   : $SMIDI_LTE_CONFIG
+*
+* Purpose       : SMP report (built from $LTE_TEM) to provide configuration LTE
+*
+* Document Ref. : SE/T/TVGL-WORK-REPORTS/1/3
+*
+* Specification :
+*
+* Portability   : OVMS, Unix, NT 4 and Windows 2000
+*
+* Re-entrant    :
+*
+*
+* Modification History
+* By        Date        Reason _____________________________________________
+*
+*******************************************************************************}
+{ --------------------------------------------------------------------------- }
+
+ENABLE WINDOWS
+SET NAME "DISPLAY/"
+SET COMPILE_OPTION DECLARE
+
+JOIN STANDARD_LIBRARY STD_UTILS     { confirm - must act like SMP for remove  }
+
+JOIN STANDARD_LIBRARY STD_GENERAL   { VARIABLE IS ASSIGNED                    }
+JOIN STANDARD_LIBRARY STD_ARRAY     { size of array                           }
+
+JOIN LIBRARY $LABTABLIB
+JOIN LIBRARY $LIB_UTILS         { get identity                                }
+
+JOIN LIBRARY $SMIDI_LIB_SAP     { initialize qm-idi objects, sse & constants  }
+
+DECLARE save_level              { what was the level id set to before changes }
+DECLARE save_identity           { what was the id for add/modify              }
+DECLARE save_default            { for update of config items                  }
+
+
+DECLARE name_of_table,help_context,directory,extn,default_value,input_mess,header_mess,
+	footer_mess,display_footer_mess,displayed_name_of_table,prompt_details,fields_to_output,
+	special_actions_report,labtable_messages, retval
+
+{ --------------------------------------------------------------------------- }
+{ -------------------------- Table Setup Routine ---------------------------- }
+
+ROUTINE table_setup
+
+	name_of_table           = "SMIDI_CONFIG_HEADER"
+	help_context            = "$LTE_CONFI_EDIT"
+	header_mess             = GET_USER_MESSAGE ( "SMIDI_CONFIG_LTE_HEADER", 1 ) 
+	footer_mess             = GET_USER_MESSAGE ( "SMIDI_CONFIG_LTE_MFOOT", 1 )
+	display_footer_mess     = GET_USER_MESSAGE ( "SMIDI_CONFIG_LTE_DFOOT", 1 ) 
+	displayed_name_of_table = GET_USER_MESSAGE ( "SMIDI_CONFIG_LTE_NAME", 1 ) 
+	input_mess              = GET_USER_MESSAGE ( "SMIDI_CONFIG_LTE_ID", 1 ) 
+	default_value           = EMPTY
+	directory               = EMPTY
+	extn                    = EMPTY
+
+	ARRAY prompt_details	ARRAY_SIZE ( 0 , 6 ) 
+		prompt_details [ 1 , MESSAGE_POSITION    ] = GET_USER_MESSAGE ( "SMIDI_CONFIG_LTE_DESC", 1 ) 
+		prompt_details [ 1 , FIELD_NAME_POSITION ] = "DESCRIPTION"
+		prompt_details [ 2 , MESSAGE_POSITION    ] = GET_USER_MESSAGE ( "SMIDI_CONFIG_LTE_TYPE", 1 ) 
+        	prompt_details [ 2 , FIELD_NAME_POSITION ] = "DATA_TYPE"
+		prompt_details [ 3 , MESSAGE_POSITION    ] = GET_USER_MESSAGE ( "SMIDI_CONFIG_LTE_PLIB", 1 ) 
+		prompt_details [ 3 , FIELD_NAME_POSITION ] = "LIBRARY"
+		prompt_details [ 4 , MESSAGE_POSITION    ] = GET_USER_MESSAGE ( "SMIDI_CONFIG_LTE_PROUT", 1 ) 
+		prompt_details [ 4 , FIELD_NAME_POSITION ] = "ROUTINE"
+		prompt_details [ 5 , MESSAGE_POSITION    ] = GET_USER_MESSAGE ( "SMIDI_CONFIG_LTE_VALUE", 1 ) 
+		prompt_details [ 5 , FIELD_NAME_POSITION ] = "VALUE"
+		prompt_details [ 6 , MESSAGE_POSITION    ] = GET_USER_MESSAGE ( "SMIDI_CONFIG_LTE_OPMOD", 1 ) 
+		prompt_details [ 6 , FIELD_NAME_POSITION ] = "USER_MODIFIABLE"
+		prompt_details [ 7 , MESSAGE_POSITION    ] = GET_USER_MESSAGE ( "SMIDI_CONFIG_LTE_APPLIC", 1 ) 
+		prompt_details [ 7 , FIELD_NAME_POSITION ] = "LEVEL_ID"
+		prompt_details [ 8 , MESSAGE_POSITION    ] = GET_USER_MESSAGE ( "SMIDI_CONFIG_LTE_VGLLIB", 1 ) 
+		prompt_details [ 8 , FIELD_NAME_POSITION ] = "VGL_LIBRARIES"
+
+	ARRAY fields_to_output  ARRAY_SIZE ( 0 )
+		fields_to_output [ 1 ]  = 1
+		fields_to_output [ 2 ]  = 2
+		fields_to_output [ 3 ]  = 3
+		fields_to_output [ 4 ]  = 4
+
+	ARRAY 	special_actions_report 	ARRAY_SIZE ( 0 , 4 )
+	ARRAY 	labtable_messages 	ARRAY_SIZE ( 0 )
+        labtable_messages [ IDENTITY_MESSAGE ] = GET MESSAGE ( 2545 , 1 )   { "Identity" }
+        labtable_messages [ MOD_ON_MESSAGE   ] = GET MESSAGE ( 2546 , 1 )   { "Modified On" }
+        labtable_messages [ MOD_BY_MESSAGE   ] = GET MESSAGE ( 2547 , 1 )   { "Modified By" }
+        labtable_messages [ READ_MESSAGE     ] = GET MESSAGE ( 2566 , 1 )   { "Labtable Read Transaction" }
+        labtable_messages [ WRITE_MESSAGE    ] = GET MESSAGE ( 2567 , 1 )   { "Labtable Write Transaction" }
+
+ENDROUTINE  { table setup }
+
+{ --------------------------------------------------------------------------- }
+ROUTINE do_the_work  ( VALUE operation )
+
+	table_setup ()
+	smp_lte_perform_option  ( name_of_table            ,
+					displayed_name_of_table    ,
+					prompt_details             , 
+					labtable_messages          ,
+					default_value              ,
+					input_mess                 ,    
+					header_mess                ,
+					footer_mess                ,
+					display_footer_mess        ,
+					directory                  ,
+					extn                       ,	
+					help_context               ,
+					GLOBAL ("CURRENT_LIBRARY") ,
+					fields_to_output           ,
+					special_actions_report     , 
+					operation                  )
+
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE validation_routine
+
+	retval = TRUE
+	RETURN ( retval )
+
+ENDROUTINE  { validation routine }
+
+{ --------------------------------------------------------------------------- }
+ROUTINE prompt_object_routine ( prompt_object, VALUE key0_count, VALUE operation )
+ 
+	{ Called during the creation of the identity prompts              }
+	{                                                                 }
+	{ prompt_object is the prompt object from the specified prompt    }
+	{ key0_count    is the current key0 segment number                }
+	{               eg this would be 2 for the version_number         }
+	{ operation     the current LTE operation eg ADD, MODIFY, DISPLAY }
+	{                                                                 }
+	{ No return value is required                                     }
+           
+
+	IF ( operation != "MODIFY"  ) AND ( operation != "DISPLAY" ) THEN
+
+		prompt_object.display_only = FALSE
+
+	ELSEIF ( key0_count = 1 ) THEN
+	ENDIF
+
+ENDROUTINE  { prompt object routine }
+
+{ --------------------------------------------------------------------------- }
+ROUTINE create_id_routine
+
+	{ Called before starting the identity prompts of an LTE for the   }
+	{ ADD and COPY options.                                           }
+	{                                                                 }
+	{ The return value is used as the identity of the new record      }
+	{ instead of starting the identity prompts.                       }
+	{ Returning EMPTY causes the identity prompt to be started.       }
+             
+	RETURN ( EMPTY )
+
+ENDROUTINE  { create id routine }
+
+{ --------------------------------------------------------------------------- }
+ROUTINE update_routine ( labtable )
+
+	{ Called on pressing the DO key to save LTE screen.               }
+	{ Called after the LTE write transaction has been started.        }
+	{                                                                 }
+	{ labtable is the labtable object.                                }
+	{                                                                 }
+	{ The return value is TRUE  if updates have been performed        }
+	{                     FALSE if updates have NOT been performed    }
+	{                     EMPTY - the systems checks for updates      }
+
+
+	DECLARE level_id
+
+	level_id     = SELECT SMIDI_CONFIG_HEADER.LEVEL_ID
+	save_default = SELECT SMIDI_CONFIG_HEADER.VALUE
+
+	IF ( VARIABLE_IS_ASSIGNED ( save_level ) ) THEN         { operation modify/add in read_data_routine }
+
+		IF save_level <> level_id THEN
+			IF save_level <> "SYSTEM" THEN
+				remove_items ( save_identity, save_level )   { remove old ones  }  
+			ENDIF
+		ENDIF
+		save_level = level_id                                 { so update can write new ones  }
+	ENDIF
+
+	RETURN ( EMPTY )
+
+ENDROUTINE  { update routine }
+
+{ --------------------------------------------------------------------------- }
+ROUTINE read_data_routine ( labtable, VALUE operation )
+                                
+	{ Called after the record has been selected / reserved but before }
+	{ the editor screen has been built.                               }
+	{                                                                 }
+	{ labtable      the labtable object.                              }
+	{ operation     the current LTE operation eg ADD, MODIFY, DISPLAY }
+	{                                                                 }
+	{ No return value is required                                     }
+
+	IF ( operation = "MODIFY" ) OR ( operation = "ADD" ) OR ( operation = "COPY" ) THEN
+
+		save_level    = SELECT SMIDI_CONFIG_HEADER.LEVEL_ID
+		save_identity = SELECT SMIDI_CONFIG_HEADER.IDENTITY
+		save_default  = SELECT SMIDI_CONFIG_HEADER.VALUE
+
+	ENDIF
+                                                    
+ENDROUTINE  { read data routine }
+{ --------------------------------------------------------------------------- }
+ROUTINE add_option ( option )
+
+	do_the_work ( "add_ident" )
+
+	IF VARIABLE_IS_ASSIGNED ( save_identity ) THEN
+		do_the_add_config_items ( save_identity, save_level, save_default )
+	ENDIF
+
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE copy_option ( option )
+
+	do_the_work ( "copy_ident" )
+
+	IF VARIABLE_IS_ASSIGNED ( save_identity ) THEN
+		do_the_add_config_items ( save_identity, save_level, save_default )
+	ENDIF
+
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE modify_option ( option )
+
+	do_the_work ( "modify_ident" )
+
+	IF VARIABLE_IS_ASSIGNED ( save_identity ) THEN
+		do_the_add_config_items ( save_identity, save_level, save_default )
+	ENDIF
+
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE display_option ( option )
+	do_the_work ( "display_ident" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE remove_option ( option )
+
+	DECLARE identity, id_mess, top_line
+
+	id_mess  = get_user_message ( "SMIDI_CONFIG_LTE_ID", 1 )
+	top_line = get_user_message ( "SMIDI_CONFIG_LTE_NAME", 1 )
+
+	IF ( get_identity ( identity, id_mess, top_line, "SMIDI_CONFIG_HEADER", "" ) ) THEN
+
+		IF confirm() THEN  { act like the rest of SampleManager }
+
+			START WRITE TRANSACTION id_mess:top_line
+
+			remove_items ( identity, "SERVER" )
+			remove_items ( identity, "QUERY"  )
+		
+			identity = SELECT SMIDI_CONFIG_HEADER.IDENTITY FOR UPDATE WHERE IDENTITY = identity
+
+			IF identity <> EMPTY THEN
+
+				ASSIGN SMIDI_CONFIG_HEADER.REMOVEFLAG = TRUE
+				UPDATE SMIDI_CONFIG_HEADER
+				COMMIT
+
+			ENDIF
+
+			id_mess  = "REMOVE"
+			top_line = TRUE
+			CALL_ROUTINE "show_final_mess" IN LIBRARY "$LABTABLIB" USING id_mess, top_line
+
+		ELSE
+
+			id_mess  = "REMOVE"
+			top_line = FALSE
+			CALL_ROUTINE "show_final_mess" IN LIBRARY "$LABTABLIB" USING id_mess, top_line
+
+		ENDIF
+
+	ENDIF  { user actually entered identity to remove }
+	
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE restore_option ( option )
+	do_the_work ( "restore_ident" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE list_option ( option )
+	do_the_work ( "list_idents" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE print_option ( option )
+	do_the_work ( "print_ident" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE spreadsheet_header ( option )
+
+	DECLARE key_search_field, the_table
+
+	the_table        = "SMIDI_CONFIG_HEADER"
+	key_search_field = "IDENTITY"
+	CALL_ROUTINE "LTE_spreadsheet" USING the_table, key_search_field IN LIBRARY SMIDI_LIB_SAP
+
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE spreadsheet_items ( option )
+
+	DECLARE key_search_field, the_table
+
+	the_table        = "SMIDI_CONFIG_ITEM"
+	key_search_field = "IDENTITY"
+	CALL_ROUTINE "LTE_spreadsheet" USING the_table, key_search_field IN LIBRARY SMIDI_LIB_SAP
+
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE smp_lte_initialise
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+ROUTINE do_the_add_config_items ( VALUE save_identity, VALUE level_id, VALUE save_default )
+
+	DECLARE key, status, upd_aray, cnt, this_table, idlen, srvlen, qrylen
+
+	IF save_level <> "SYSTEM" THEN
+
+		GET_FIELD_DETAILS smidi_config_item.identity, "FIELD_SIZE", idlen
+		GET_FIELD_DETAILS smidi_config_item.server  , "FIELD_SIZE", srvlen
+		GET_FIELD_DETAILS smidi_config_item.query   , "FIELD_SIZE", qrylen
+
+		ARRAY upd_aray
+
+		{ ========================================================== }
+		{ get all the servers and queries                            }
+		{ ========================================================== }
+
+		IF level_id = "SERVER" THEN
+			this_table = "SMIDI_SYSTEM"
+		ELSE
+			this_table = "SMIDI_QUERY"
+		ENDIF
+
+		cnt = 0
+		key = SELECT 'this_table'.IDENTITY WHERE IDENTITY <> " "  { do removes in case restore }
+
+		WHILE key <> EMPTY DO
+
+			cnt           = cnt + 1
+			upd_aray[cnt] = key
+
+			NEXT 'this_table'
+			key = SELECT 'this_table'.IDENTITY
+
+		ENDWHILE
+
+
+		{ ========================================================== }
+		{ If we have any servers/queries to update then make records }
+		{ ========================================================== }
+
+		IF ( size_of_array ( upd_aray ) > 0 ) THEN
+
+			START WRITE TRANSACTION this_table : level_id
+
+			cnt = 1
+
+			WHILE ( upd_aray[cnt] <> EMPTY ) DO
+
+				IF level_id = "SERVER" THEN
+					key = PAD(save_identity," ",idlen):PAD(upd_aray[cnt]," ",srvlen):PAD(" "," ",qrylen )
+				ELSE
+					key = PAD(save_identity," ",idlen):PAD(" "," ",srvlen)          :PAD(upd_aray[cnt]," ",qrylen )
+				ENDIF
+
+				RESERVE ENTRY smidi_config_item, key, status
+
+				IF status = EMPTY THEN
+					ASSIGN smidi_config_item.value = save_default
+					UPDATE smidi_config_item, status
+				ENDIF
+
+				cnt = cnt + 1
+		
+			ENDWHILE
+
+			COMMIT
+
+		ENDIF  { size of server/queries arrays is > 0 }
+	
+		{ ---------------------------------------------------------------------------------- }
+	ELSE    { remove any config items that were set as server.query as they do not apply anymore }
+		{ The removal when level identifier changes is in the update routine                 }
+		{ ---------------------------------------------------------------------------------- }
+
+	ENDIF  { save level = SYSTEM do above, otherwise do nothing }
+
+
+ENDROUTINE  { do_add_config_items }
+
+{ --------------------------------------------------------------------------- }
+ROUTINE remove_items ( VALUE identity, VALUE level_id )
+
+
+	DECLARE key, status, update_array, count, this_table
+
+	ARRAY update_array
+
+
+	{ ========================================================== }
+	{ get all the servers and queries                            }
+	{ ========================================================== }
+
+	IF level_id = "SERVER" THEN
+		this_table = "SMIDI_SYSTEM"
+	ELSE
+		this_table = "SMIDI_QUERY"
+	ENDIF
+
+	count = 0
+	key   = SELECT 'this_table'.IDENTITY WHERE IDENTITY <> " "
+
+	WHILE key <> EMPTY DO
+
+		count = count + 1
+		update_array[count] = key
+
+		NEXT 'this_table'
+		key = SELECT 'this_table'.IDENTITY
+
+	ENDWHILE
+
+
+	{ ========================================================== }
+	{ If we have any servers/queries to update then make records }
+	{ ========================================================== }
+
+	IF ( size_of_array ( update_array ) > 0 ) THEN
+
+		count = 1
+
+		WHILE ( update_array[count] <> EMPTY ) DO
+
+			key = SELECT smidi_config_item.identity FOR UPDATE
+				WHERE 'level_id' = update_array[count]
+				AND   identity   = identity
+
+			DELETE smidi_config_item, status
+			UPDATE smidi_config_item, status
+			count = count + 1
+		
+		ENDWHILE
+
+	ENDIF  { size of server/queries arrays is > 0 }
+
+ENDROUTINE  { remove items }
+{ end $smidi_lte_config }

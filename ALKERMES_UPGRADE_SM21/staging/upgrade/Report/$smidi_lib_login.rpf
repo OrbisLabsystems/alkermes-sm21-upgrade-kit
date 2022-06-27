@@ -1,0 +1,3529 @@
+{******************************************************************************
+*
+* Module Name   : $SMIDI_LIB_LOGIN
+*
+* Purpose       : Processes new requests from QM-IDI
+*
+* Document Ref. :
+*
+* Specification :
+*
+* Portability   : OVMS, Unix, NT4 and Windows 2000
+*
+* Re-entrant    :
+*
+*
+* Modification History
+* Ref     By        Date        Reason _____________________________________________
+* 1.1     AF        3-APR-2007   Elan reduced lot testing
+* 1.2     AF        7-APR-2008   Allow job name only include lot name, not smidi system
+* 1.3     AF        25-SEP-2008  Dont shorten lot id in job name unless greater than size
+*                                of jobname field, add additional check for error
+*                                flag before doing rlt 
+*******************************************************************************}
+
+SET NAME "DISPLAY/"
+SET NOTPROTECTED
+SET COMPILE_OPTION DECLARE
+SET COMPILE_OPTION EXP_MESS
+
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_LOGIN
+JOIN STANDARD_LIBRARY STD_GENERAL
+JOIN STANDARD_LIBRARY STD_MESSAGE
+JOIN STANDARD_LIBRARY STD_SMIDI
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_VGL
+
+JOIN LIBRARY $LIB_JOB
+JOIN LIBRARY $LIB_TEST
+JOIN LIBRARY $LIB_TEMP
+JOIN LIBRARY $LIB_UNIT
+JOIN LIBRARY $LIB_UTILS
+
+JOIN LIBRARY $SAMP_JOB
+JOIN LIBRARY $SAMP_USER
+JOIN LIBRARY $SP_LOGIN
+JOIN LIBRARY $LOT_LOGIN
+JOIN LIBRARY $TEST_ASSN
+
+JOIN LIBRARY $SMIDI_LIB_PHRASE
+JOIN LIBRARY $SMIDI_LIB_SAP
+
+{* GLOBAL CONSTANTS ***********************************************************}
+{* LOCAL CONSTANTS ************************************************************}
+
+CONSTANT POINTS_USER_CREATE       = "user_create_points"
+CONSTANT POINT_CREATED            = "smidi_insppoint_created"
+CONSTANT PROCESS_USER_TABLES      = "smidi_process_user_tables"
+CONSTANT UPDATE_TEMPLATE_FIELDS   = "update_template_fields"
+CONSTANT UPDATE_TEST_SCHEDULE     = "update_test_sched"
+CONSTANT USER_CHECK_KEYWORDS      = "user_check_keywords"
+
+{* VARIABLES ******************************************************************}
+
+DECLARE save_order                       {  keep track of added order numbers  }
+DECLARE table_contexts                   { push/pop when template is created   }
+
+
+{******************************************************************************}
+
+ROUTINE gbi_login_action_login_job( self )
+
+	DECLARE retval
+
+	retval      = error
+	self.is_job = TRUE
+
+	IF self.build_template ( ) THEN
+
+		CREATE OBJECT SAMP_JOB_JOB_LOGIN_CLASS, self.destination
+		self.populate()
+
+		IF self.low_level_job_login() THEN
+
+			retval = self.job_identity
+
+		ENDIF
+
+	ENDIF
+
+	self.fields_added = 0
+
+	RETURN ( retval )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE gbi_login_action_low_level_job_login ( self )
+
+	DECLARE job, count, field, val, status, key, job_has_syntax
+
+	job                         = self.destination
+	job.use_current_transaction = TRUE
+
+	initialise_job_login ( job.job_template     ,
+	                       job.template_details ,
+	                       job.template_fields  ,
+                               job.sample_syntax    ,
+	                       job.sample_template  ,
+	                       job.repeat_count     )
+
+
+	IF ( ( self.job_syntax = EMPTY ) | ( BLANK (self.job_syntax) ) ) THEN
+
+		status         = job_reserve ( self.job_identity )
+		job_has_syntax = FALSE
+
+	ELSE
+
+		status            = EMPTY
+		job_has_syntax    = TRUE
+		job.job_identity  = ""
+
+	ENDIF
+
+
+	IF status = EMPTY THEN
+
+		copy_default_values ( "B", "JOB_HEADER", job.template_fields )
+
+		count = 1
+
+		WHILE count <= SIZE_OF_ARRAY ( job.field_values ) DO
+
+			field = job.field_values [ count, 1 ]
+			val   = job.field_values [ count, 2 ]
+
+			GET_FIELD_DETAILS JOB_HEADER.'field' "KEY0_FIELD", key
+		
+			IF NOT key THEN
+				ASSIGN job_header.'field' = val
+				self.status_message ( "gbi_login_action_low_level_job_login ":field:" ":val, MSG_0 )
+			ENDIF
+
+			count = count + 1
+
+		ENDWHILE
+
+		job_login_pre_prompt  ( job.template_fields, job.template_details )
+		job_login_post_prompt ( job.template_fields, job.template_details )
+		login_job ( job.job_identity, job_has_syntax, job.template_details, job.template_fields, job.use_current_transaction )
+
+		IF job_has_syntax THEN
+			self.job_identity = job.job_identity
+		ENDIF
+
+	ENDIF
+
+	RETURN ( status = EMPTY )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE gbi_login_action_login_sample( self )
+
+	DECLARE retval
+
+	retval      = error
+	self.is_job = FALSE
+
+	IF self.build_template() THEN
+
+		CREATE OBJECT SAMP_JOB_SAMPLE_LOGIN_CLASS, self.destination
+		self.populate()
+		self.destination.use_current_transaction = TRUE
+		retval = self.destination.login_a_sample()
+
+	ENDIF
+
+	self.fields_added = 0
+
+	return(retval)
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE gbi_login_action_build_template( self )
+
+	declare login_type, ok
+
+	IF self.is_job THEN
+
+		login_type = "JOB_HEADER"
+		{  ok = read_in_job_template_header( self.template_id, version, self.template_header ) }
+		ok = read_in_job_template_header( self.template_id, self.template_header )
+
+	ELSE
+
+		login_type = "SAMPLE"
+		{ ok = read_in_sample_template_header( self.template_id, version, self.template_header ) }
+		ok = read_in_sample_template_header( self.template_id, self.template_header )
+
+	ENDIF
+
+	IF ok THEN
+
+		{ read_in_template_fields ( self.template_id, version, login_type, self.template_fields, FALSE, FALSE ) }
+		read_in_template_fields ( self.template_id, login_type, self.template_fields, FALSE, FALSE )
+
+	ENDIF
+
+	return( ok )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE gbi_login_action_populate( self )
+
+	DECLARE table
+
+	IF self.is_job THEN
+
+		table = "JOB_HEADER"
+		self.destination.job_identity = self.job_identity
+		self.destination.job_template = self.template_id
+		self.destination.dont_confirm = TRUE
+
+	ELSE
+
+		table = "SAMPLE"
+		self.destination.template_id  = self.template_id
+		self.destination.job_name     = self.job_identity
+		self.destination.syntax       = self.sample_syntax
+
+	ENDIF
+
+	self.map_fields ( table )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE gbi_login_action_store_value( self, field_name, field_value )
+
+
+	IF field_value <> empty THEN
+
+		self.fields_added                                  = self.fields_added + 1
+		self.destination.field_values[self.fields_added,1] = field_name
+		self.destination.field_values[self.fields_added,2] = field_value
+		self.status_message ( field_name : field_value, MSG_0 )
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE gbi_sample_login_action_insert_test( self, test_info )
+
+	self.test_details_count                      = self.test_details_count + 1
+	self.test_details[ self.test_details_count ] = test_info
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE smidi_rqst_action_insert_operation( self, operation, chars )
+
+	DECLARE char_no, ok
+
+	ok = TRUE
+
+	self.ops_count = self.ops_count + 1
+	self.operations[ self.ops_count ] = operation
+	error_context_add_data( "OP_NO", operation.op_no )
+	array operation.sample.test_details
+	operation.sample.test_details_count = 0
+
+	char_no = 1
+	WHILE (chars[ char_no ] <> empty) AND ok DO
+
+		ok      = self.process_test ( chars[char_no], operation )
+		char_no = char_no + 1
+
+	ENDWHILE
+
+	return( ok )
+
+ENDROUTINE  { insert operation }
+
+{******************************************************************************}
+
+ROUTINE smidi_rqst_action_process_test ( self, char, op )
+
+	DECLARE ok
+
+	ok = TRUE
+
+	IF ( char.lot_no      = op.lot_no      ) AND
+           ( char.op_sequence = op.op_sequence ) AND
+           ( char.op_no       = op.op_no       ) THEN
+
+		IF self.get_test_details ( char, op ) THEN
+
+			IF INDEX ( LIMS_OPTIONAL_TYPES, char.result_type ) <> 0 THEN
+
+				char.phrase_type = char.get_phrase()
+
+				IF char.phrase_type = EMPTY THEN
+					ok = FALSE
+					op.error_status ( "F", "GETPHR", SMIDI_ILLPHRASE )
+				ENDIF
+
+			ENDIF
+
+			op.sample.insert_test ( char )
+
+		ELSE
+
+			ok = FALSE
+
+		ENDIF
+
+	ENDIF
+
+	RETURN ( ok )
+
+ENDROUTINE { smidi_rqst_action_process_test }
+
+{******************************************************************************}
+
+ROUTINE smidi_rqst_action_get_test_details ( self, char, op )
+
+	DECLARE ret_val
+
+	char.analysis_id = smidi_lib_get_mapping ( self.mapping_profile, "VERSIONED_ANALYSIS", "IDENTITY", char, op )
+ 	self.call_trigger ( char, EMPTY, SML_AFTER_MAP_ANALYSIS_TRIGGER  )
+
+	char.component_name = smidi_lib_get_mapping ( self.mapping_profile, "VERSIONED_COMPONENT", "NAME", char, op )
+	self.call_trigger ( char, EMPTY, SML_AFTER_MAP_COMPONENT_TRIGGER )
+
+	error_context_add_data ( "CHARACTERISTIC_NO", char.characteristic_no )
+	error_context_add_data ( "ANALYSIS"         , char.analysis_id       )
+	error_context_add_data ( "COMPONENT"        , char.component_name    )
+
+	ret_val = FALSE
+
+	IF self.format_analysis ( char.analysis_id ) THEN
+
+		IF self.format_component ( char.component_name ) THEN
+			ret_val = TRUE
+		ELSE
+			op.error_status ( "F", "LOGIN", SMIDI_BADCOMP )
+		ENDIF
+
+	ELSE
+
+		op.error_status ( "F", "LOGIN", SMIDI_BADANAL )
+
+	ENDIF
+
+
+	RETURN ( ret_val )
+
+ENDROUTINE { smidi_rqst_action_get_test_details }
+
+{******************************************************************************}
+
+ROUTINE smidi_rqst_action_format_analysis ( self, analysis )
+
+	DECLARE len
+
+	GET_FIELD_DETAILS analysis.identity, "FIELD_SIZE", len
+	analysis = LEFTSTRING ( PAD ( analysis, " ", len ), len )
+
+	RETURN ( NOT BLANK ( analysis ) )
+
+ENDROUTINE { smidi_rqst_action_format_analysis }
+
+{******************************************************************************}
+
+ROUTINE smidi_rqst_action_format_component ( self, component )
+
+	DECLARE len
+
+	GET_FIELD_DETAILS component.name, "FIELD_SIZE", len
+	component = LEFTSTRING ( PAD ( component, " ", len ), len )
+
+	RETURN ( NOT BLANK ( component ) )
+
+ENDROUTINE { smidi_rqst_action_format_component }
+
+{******************************************************************************}
+
+ROUTINE smidi_rqst_action_insert_material ( self, operation )
+
+
+	DECLARE char_no, count, looking, create, limit
+
+	looking = TRUE
+	create  = FALSE
+	count   = 1
+	WHILE looking DO
+
+		IF self.materials[ count ] = empty THEN
+			looking = FALSE
+			create  = TRUE
+		ELSEIF self.materials[count].product_id =  operation.product_object.product_id THEN
+			looking = FALSE
+		ENDIF
+
+		IF looking THEN count = count + 1 ENDIF
+
+	ENDWHILE
+
+	IF create THEN
+
+		self.materials[count] = operation
+		array self.materials[count].product_object.limit_details
+		self.materials[count].product_object.limit_details_count = 0
+
+	ENDIF
+
+	char_no = 1
+	WHILE operation.sample.test_details[char_no] <> empty DO
+
+		limit = operation.sample.test_details[char_no]
+		limit.get_mlp_component()
+		limit.get_level_info()
+		self.materials[count].product_object.insert_limits( limit )
+		char_no = char_no + 1
+
+	ENDWHILE
+
+	return
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE smidi_rqst_action_build_sample_list( self )
+
+	DECLARE ok, op_count, char_count, op, char
+
+	ok       = TRUE
+	op_count = 1
+
+	WHILE ( self.operations[op_count] <> empty ) AND ok DO
+
+		op         = self.operations[ op_count ]
+		char_count = 1
+
+		error_context_add_data( "OP_NO", op.op_no )
+
+		WHILE ( op.sample.test_details[ char_count ] <> empty ) AND ok DO
+
+			char = op.sample.test_details[ char_count ]
+
+			error_context_add_data( "CHARACTERISTIC_NO", char.characteristic_no )
+			error_context_add_data( "ANALYSIS"         , char.analysis_id       )
+			error_context_add_data( "COMPONENT"        , char.component_name    )
+
+			ok         = self.insert_samples( op, char )
+			char_count = char_count + 1
+
+		ENDWHILE
+		op_count = op_count + 1
+	ENDWHILE
+	
+	return( ok )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE smidi_rqst_action_insert_samples( self, op, char )
+
+	DECLARE ok, phys_count, part_count, orig_count, samp, replicates
+
+	ok = TRUE
+
+	phys_count = convert_r3_number( char.physical_sample_no )
+	orig_count = convert_r3_number( char.num_subsamples )
+	part_count = find_max_number( orig_count, 1 )
+
+	char.get_test_counts( replicates )
+	
+	
+	WHILE ( part_count > 0 ) AND ok DO
+
+		samp = self.samples[ phys_count, part_count ]
+
+		IF samp = empty THEN
+
+			CREATE OBJECT "SMIDI_SAMP", samp
+				array samp.tests
+				samp.mapping_profile  = self.mapping_profile
+				samp.physical_sample  = char.physical_sample_no
+				samp.parent           = self
+				samp.master           = op
+				samp.qaivc            = op
+				{op.sample.master      = op                 { ?? }
+				
+			self.samples[phys_count,part_count] = samp
+
+			IF self.parent.part_sample = EMPTY THEN
+
+				IF orig_count <> 0 THEN
+					samp.partial_sample = convert_vg_number( orig_count, 5 )
+				ELSE
+					samp.partial_sample = convert_vg_number( part_count, 5 )
+				ENDIF
+
+			ELSE
+				samp.partial_sample = self.parent.part_sample
+			ENDIF
+		ENDIF
+			
+			error_context_add_data( "PHYSICAL_SAMPLE", samp.physical_sample )
+			error_context_add_data( "PART_SAMPLE_NO" , samp.partial_sample  )
+		
+			ok         = samp.insert_test( char, replicates[ part_count ] )
+			
+			replicates[part_count] = EMPTY
+			samp = EMPTY
+		
+			
+		part_count = part_count - 1
+
+	ENDWHILE
+
+	
+	return( ok )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE smidi_rqst_action_login_job( self )
+
+	DECLARE ok, operation, len, add_template, job_template, user_lib, default, add_job
+
+	job_template = "JOB_TEMPLATE"
+	ok           = TRUE
+
+	operation    = self.operations[1]
+
+	GET_FIELD_DETAILS job_header.job_name, "FIELD_SIZE", len
+
+	add_job     = smidi_lib_get_map_field ( self.mapping_profile, "JOB_HEADER", "JOB_NAME", "MAP_UPDATE" )
+	self.job_id = EMPTY
+
+	smidi_lib_get_mapping ( self.mapping_profile,"JOB_HEADER", "JOB_NAME", self, operation )
+
+	IF ( self.job_id = EMPTY ) AND ( add_job ) THEN
+
+		operation.job.template_id  = smidi_lib_get_mapping   ( self.mapping_profile, job_template, "IDENTITY", self, operation )
+		add_template               = smidi_lib_get_map_field ( self.mapping_profile, job_template, "IDENTITY", "MAP_UPDATE" )
+		user_lib                   = smidi_lib_get_map_field ( self.mapping_profile, job_template, "IDENTITY", "LIBRARY_NAME" )
+		default                    = smidi_lib_get_map_field ( self.mapping_profile, job_template, "IDENTITY", "DEFAULT_VALUE" )
+
+		IF ( BLANK ( default ) ) | ( default = EMPTY ) THEN
+			default = "DEFAULT"
+		ENDIF
+
+		IF ( operation.job.template_id <> EMPTY ) AND ( operation.job.template_id <> ERROR ) THEN
+
+			IF ( BLANK (user_lib) ) THEN
+
+				job_template = "JOB_HEADER"
+
+				IF ( NOT ( self.check_template ( job_template, operation.job.template_id, add_template ) ) ) THEN
+					operation.job.template_id = default
+				ENDIF
+
+			ENDIF   { if user just did a map then validate the template for them  }
+				{ if user did a lib/routine then assume they validated the id }
+
+		ELSE
+
+			operation.job.template_id = default
+
+		ENDIF   { get a job template no matter what }
+
+		self.status_message ( job_template:" ":operation.job.template_id:" ":add_template, MSG_LOW )
+
+		operation.job.master       = self
+		
+		self.requestor             = smidi_lib_get_r3sys()
+		operation.job.job_syntax   = SELECT JOB_TEMPLATE.JOB_SYNTAX_ID WHERE IDENTITY = operation.job.template_id
+
+		IF ( BLANK ( operation.job.job_syntax ) ) OR ( operation.job.job_syntax = EMPTY ) THEN
+
+			{ Create a unique job identity with max size of 20 }
+			DECLARE leftStringIdentity
+			leftStringIdentity = LEFTSTRING(self.requestor, 8):LEFTSTRING(self.lot_no,2)
+			
+{ 1.2 }
+			IF (GLOBAL ("ELAN_SMIDI_JOBNAME_INCLUDE_SYS")) THEN
+
+				operation.job.job_identity = PAD(STRIP(leftStringIdentity):STRIP(RIGHTSTRING(self.lot_no, 10)), "", len)
+			ELSE
+                                { 1.3 dont shorten lot number unless it is greater than size of job field }
+
+                                IF ( STRINGLENGTH (STRIP(self.lot_no)) > len ) THEN
+
+                                    leftStringIdentity = STRIP(RIGHTSTRING(STRIP(self.lot_no), len)) 
+
+                                ELSE
+
+                                    leftStringIdentity = STRIP(self.lot_no)
+
+                                ENDIF
+
+				operation.job.job_identity = PAD ( leftStringIdentity, " ", len )
+			ENDIF
+
+{ end 1.2 }
+			
+			{operation.job.job_identity = PAD ( STRIP(self.requestor):STRIP(self.lot_no), " ", len )}
+
+			IF ( STRINGLENGTH ( operation.job.job_identity ) > len ) THEN
+				
+				self.status_message ( "Job ":operation.job.job_identity:" > ":len, MSG_HIGH)
+			ENDIF
+
+		ENDIF
+
+		self.job_id = operation.job.login_job()
+        
+		IF self.job_id <> ERROR THEN
+        
+			self.status_mess_decode ( "SMIDI_LOGIN_NEWJOB", MSG_MED, self.job_id, EMPTY, EMPTY )
+
+		ELSE
+
+			self.status_message ( "Job Login Failed ":self.smidi_server:"/":self.smidi_query:" ":self.lot_no, MSG_HIGH )
+
+		ENDIF  { job login had an error }
+        
+	ELSEIF self.job_id <> ERROR THEN
+
+		self.requestor       = smidi_lib_get_r3sys()
+		operation.job.master = self
+		self.status_mess_decode ( "SMIDI_LOGIN_OLDJOB", MSG_MED, self.job_id, EMPTY, EMPTY )
+        
+	ELSEIF self.job_id = EMPTY THEN
+
+		self.status_message ( "smidi_rqst_login_job JOB_NAME=EMPTY, Mapping Profile does not allow UPDATE to make a new Job, Login FAILED ", MSG_HIGH )
+		self.job_id = ERROR
+
+	ENDIF    { self.job_id EMPTY or ERROR or a real job name that is ok to add data to }
+
+
+	{ ============================================================================ }
+	{ Final error status on the login of the job                                   }
+	{ ============================================================================ }
+
+	IF self.job_id = ERROR THEN
+		operation.error_status ( "F", "JLOGIN", SMIDI_JOBFAIL )
+		ok = false
+	ENDIF
+		
+	return( ok )
+
+ENDROUTINE   { smidi_rqst_action_login_job  }
+
+{******************************************************************************}
+
+ROUTINE smidi_rqst_action_login_smp_lot( self, smidi_login )
+
+	DECLARE ok, add_lot, batch_login_object, sample_plan_id
+
+	ok      = TRUE
+	add_lot = smidi_lib_get_map_field ( self.mapping_profile, "LOT_DETAILS", "LOT_ID", "MAP_UPDATE" )
+
+	smidi_lib_get_mapping ( self.mapping_profile, "LOT_DETAILS", "LOT_ID", self, self.operations[1] )
+
+	IF ( add_lot <> EMPTY ) & ( add_lot ) & ( self.lot_id = EMPTY ) THEN
+
+		ok = lot_login ( LOT_TEMPLATE, self.job_id)
+
+		IF ok THEN
+			self.map_fields ( "LOT_DETAILS" )
+			self.map_fields ( "LOT_RELATION" )
+		ENDIF
+
+		sample_plan_id = smidi_lib_get_mapping ( self.mapping_profile, "LOT_DETAILS", "SAMPLE_PLAN_ID", self, self.operations[1] )
+
+		IF ( sample_plan_id <> EMPTY ) & ( NOT BLANK ( sample_plan_id ) ) THEN
+
+			batch_login_initialise()
+
+			CREATE OBJECT "BATCH_LOGIN", batch_login_object
+				batch_login_object.login_table           = "job_header"
+				batch_login_object.login_identity        = self.job_id
+				batch_login_object.job                   = self.job_id
+				batch_login_object.rule_only_based_count = GLOBAL ( "SP_RULES_MODE" )
+				batch_login_object.trigger_max_one_rule  = GLOBAL ( "SP_RULES_MODE" )
+				batch_login_object.output_to_literal     = FALSE
+				batch_login_object.check_rules           = FALSE
+				batch_login_object.pre_login_edit        = FALSE
+				batch_login_object.root_sp_identity      = sample_plan_id
+				batch_login_object.root_sp_version       = 1
+				batch_login_object.login()
+	
+		ENDIF
+
+	ENDIF  { if lot_details is not on the map, do nothing }
+
+	return( ok )
+
+ENDROUTINE   { smidi_rqst_action_login_smp_lot }
+
+{******************************************************************************}
+
+ROUTINE smidi_rqst_action_login_sample_list( self )
+
+	DECLARE phys_samp, part_samp, samp, ok, count
+
+	ok        = TRUE
+	phys_samp = 1
+	count     = SIZE_OF_ARRAY ( self.samples )
+
+	self.status_message ( "--> smidi_rqst_action_login_sample_list # Samples ":count, MSG_LOW )
+
+	WHILE ( phys_samp <= count ) AND ( ok ) DO
+
+		part_samp = 1
+
+		WHILE ( self.samples[ phys_samp, part_samp ] <> EMPTY ) AND ( ok ) DO
+
+			self.status_message ( "---> Phys/Part ":phys_samp:"/":part_samp, MSG_LOW )
+
+			samp = self.samples[ phys_samp, part_samp ]
+			
+			IF ( self.login_sample(samp) ) THEN
+
+				part_samp = part_samp + 1
+
+				IF ( VARIABLE_IS_ASSIGNED ( samp.sample_id ) ) THEN
+					error_context_add_data( "SAMPLE", samp.sample_id )
+				ELSE
+					error_context_add_data( "SAMPLE", "Not defined may be due to lot has inspection points " )
+				ENDIF
+
+			ELSE
+
+				ok = FALSE
+				self.status_message ( "smidi_rqst_action_login_sample_list ERROR ":part_samp:phys_samp, MSG_HIGH )
+
+			ENDIF
+			
+			{ Clean up }
+			samp = EMPTY
+			
+			
+		ENDWHILE
+
+		phys_samp = phys_samp + 1
+
+	ENDWHILE
+	
+	return( ok )
+
+ENDROUTINE    { smidi_rqst_action_login_sample_list }
+
+{******************************************************************************}
+
+ROUTINE smidi_rqst_action_login_sample ( self, samp )
+
+	DECLARE ok, template, continue, add_template, sample_template, user_lib, default
+	
+	ok              = TRUE
+	sample_template = "SAMP_TMPL_HEADER"
+
+	error_context_add_data( "PHYSICAL_SAMPLE", samp.physical_sample )
+	error_context_add_data( "PART_SAMPLE_NO" , samp.partial_sample  )
+
+
+	IF flag_set ( samp.qaivc.insp_point_confirm ) THEN
+
+		continue               = BLANK ( SAMP.parent.parent.download.query.fetch_query )   { a lot for points }
+		self.parent.point_mode = continue
+
+	ELSE
+
+		continue = NOT self.parent.point_mode                                               { a lot }
+
+	ENDIF
+
+	{ ======================================================================= }
+	{ Inspection points require confirmation data, regular downloads don't    }
+	{ ======================================================================= }
+
+	IF continue THEN
+
+		samp.qaivc.physical_sample_no  = samp.physical_sample
+		samp.qaivc.partial_sample_no   = samp.partial_sample
+
+		template     = smidi_lib_get_mapping   ( self.mapping_profile,sample_template,"IDENTITY", self, samp.qaivc )
+		add_template = smidi_lib_get_map_field ( self.mapping_profile,sample_template,"IDENTITY","MAP_UPDATE" )
+		user_lib     = smidi_lib_get_map_field ( self.mapping_profile,sample_template,"IDENTITY","LIBRARY_NAME" )
+		default      = smidi_lib_get_map_field ( self.mapping_profile,sample_template,"IDENTITY","DEFAULT_VALUE" )
+
+		{ =========================================================================== }
+		{ Validate that the mapped template is ok and has right fields (add if not)   }
+		{ =========================================================================== }
+
+		IF ( template <> EMPTY ) AND ( template <> ERROR ) THEN
+
+			IF ( BLANK ( user_lib ) ) THEN
+
+				sample_template = "SAMPLE"
+
+				IF NOT ( self.check_template ( sample_template, template, add_template ) ) THEN
+					template = default
+				ENDIF
+
+			ENDIF   { if user just did a mapping then validate the template for them }
+				{ if they did a mapping by routine then assume they validated it }
+
+		ELSE
+
+			template = default
+
+		ENDIF   { get a template no matter what }
+
+		samp.qaivc.sample.job_identity = self.job_id
+		samp.qaivc.sample.template_id  = template
+
+		self.status_message ( sample_template:" ":template:" ":self.job_id:" ":add_template, MSG_LOW )
+
+		{ ================================================================================ }
+		{ IF the user routine in mapping profile returns ERROR then no sample is logged in }
+		{ IF the user routine returns EMPTY then user MIGHT want a new sample logged in    }
+		{ ================================================================================ }
+
+		samp.sample_id = EMPTY
+
+		smidi_lib_get_mapping ( self.mapping_profile, "SAMPLE", "ID_NUMERIC", samp, samp.parent )  { <- user trigger }
+
+		IF ( samp.sample_id = EMPTY ) AND 
+		   ( smidi_lib_get_map_field ( self.mapping_profile, "SAMPLE", "ID_NUMERIC", "MAP_UPDATE" ) )  THEN
+
+			samp.sample_id = samp.qaivc.sample.login_sample()
+
+			IF samp.sample_id <> ERROR THEN
+
+				self.status_mess_decode ( "SMIDI_LOGIN_NEWSAMP", MSG_MED, samp.sample_id, EMPTY, EMPTY )
+
+			ENDIF
+
+		ENDIF
+
+		{ ======================================================================== }
+		{ Sample id can either be ERROR or a real sample number                    }
+		{ ======================================================================== }
+
+		IF samp.sample_id = ERROR THEN
+
+			ok = FALSE
+			samp.qaivc.error_status ( "F", "SAMPLOG", SMIDI_SAMPFAIL )
+			self.status_message ( "smidi_rqst_action_login_sample returned SAMPLE as an ERROR", MSG_MED )
+
+		ELSEIF samp.sample_id = EMPTY THEN
+
+			ok = FALSE
+			samp.qaivc.error_status ( "F", "SAMPLOG", SMIDI_SAMPFAIL )
+			self.status_message ( "smidi_rqst_action_login_sample returned SAMPLE as EMPTY and mapping profile did not set UPDATE", MSG_HIGH )
+
+		ELSE
+
+			error_context_add_data( "SAMPLE", samp.sample_id )
+			self.status_mess_decode ( "SMIDI_LOGIN_OLDSAMP", MSG_MED, samp.sample_id, " Verifying tests ", EMPTY )
+
+			ok = samp.verify_tests()
+
+			IF ok THEN
+
+				self.status_message ( "Verifying results for sample ":samp.sample_id, MSG_LOW )
+				ok = samp.verify_results()
+
+			ENDIF
+
+			IF ( ok ) & ( flag_set ( samp.qaivc.insp_point_confirm ) ) THEN
+
+				self.status_message ( "Updating SMIDI_INSPPOINT":samp.sample_id, MSG_LOW )
+				ok = samp.add_smidi_insppoint()
+
+			ENDIF
+
+		ENDIF  
+
+
+	ELSE
+
+		ok = flag_set ( samp.qaivc.insp_point_confirm )
+
+		IF ok THEN
+			ok = self.create_points_query()
+		ENDIF
+
+	ENDIF   { continue if inspection point setup }
+
+
+	RETURN ( ok )
+
+
+ENDROUTINE { smidi_rqst_action_login_sample }
+
+{******************************************************************************}
+
+ROUTINE smidi_rqst_action_create_points_query ( self )
+
+	DECLARE found, status, count, ok, op_no, op_no_len, subsystem, def_interval,
+		map_profile
+
+	GET_FIELD_DETAILS SMIDI_POINTS_QUERY.FROM_IP_OP_NO, "FIELD_SIZE", op_no_len
+
+	def_interval = self.get_item ( "SMIDI_POINTS_INTERVAL" )
+	IF def_interval = EMPTY THEN
+		def_interval = "0 00:00:10.00"
+	ENDIF
+
+	count     = 1
+	ok        = TRUE
+	subsystem = self.operations[1].subsystem
+
+	WHILE ( ok ) AND ( self.operations[count] <> EMPTY ) DO
+
+		op_no = pad ( self.operations[count].op_no, " ", op_no_len )
+
+		CALL_ROUTINE USER_CHECK_KEYWORDS IN LIBRARY SMIDI_POINT_USER_LIB
+			USING self.lot_no, op_no, self.operations[count]
+
+		found = SELECT SMIDI_POINTS_QUERY.FROM_IP_LOT FOR UPDATE
+			WHERE FROM_IP_LOT   = self.lot_no
+			AND   FROM_IP_OP_NO = op_no
+	
+		self.status_message ( "smidi_rqst_action_create_ipoint_query ":self.lot_no:" ":found, MSG_LOW )
+
+
+		IF ( found <> empty ) AND ( found <> locked ) THEN
+
+			assign smidi_points_query.from_ip_point   = "000001"
+			assign smidi_points_query.to_ip_point     = "999999"
+			assign smidi_points_query.description     = self.job_id:" automatic query created on ":NOW
+			assign smidi_points_query.repeat_interval = def_interval
+			assign smidi_points_query.process_routine = POINTS_PROCESS_ROUTINE
+			assign smidi_points_query.process_library = SMIDI_LIB_QPUP
+			assign smidi_points_query.subsystem       = subsystem
+
+			assign smidi_points_query.user_C1_enabled = self.operations[count].user_C1_enabled
+			assign smidi_points_query.user_C1_keyword = self.operations[count].user_C1_keyword
+			assign smidi_points_query.user_C2_enabled = self.operations[count].user_C2_enabled
+			assign smidi_points_query.user_C2_keyword = self.operations[count].user_C2_keyword
+			assign smidi_points_query.user_D1_enabled = self.operations[count].user_D1_enabled
+			assign smidi_points_query.user_D1_keyword = self.operations[count].user_D1_keyword
+			assign smidi_points_query.user_N1_enabled = self.operations[count].user_N1_enabled
+			assign smidi_points_query.user_N1_keyword = self.operations[count].user_N1_keyword
+			assign smidi_points_query.user_N2_enabled = self.operations[count].user_N2_enabled
+			assign smidi_points_query.user_N2_keyword = self.operations[count].user_N2_keyword
+			assign smidi_points_query.user_T1_enabled = self.operations[count].user_T1_enabled
+			assign smidi_points_query.user_T1_keyword = self.operations[count].user_T1_keyword
+ 		
+			map_profile = smidi_lib_get_map_field ( self.mapping_profile, "SMIDI_POINTS_QUERY", "MAPPING_PROFILE", "DEFAULT_VALUE" )
+
+			IF map_profile <> EMPTY THEN
+				assign smidi_points_query.mapping_profile = map_profile
+			ELSE
+				assign smidi_points_query.mapping_profile = "POINTS"
+			ENDIF
+
+			status = FALSE
+
+			CALL_ROUTINE POINTS_USER_CREATE IN LIBRARY SMIDI_POINT_USER_LIB
+				USING self, count, found, status
+
+			update smidi_points_query, status
+
+		ELSEIF found = empty THEN
+
+			found = self.smidi_server: self.lot_no : op_no
+
+			RESERVE ENTRY smidi_points_query, found, status
+	
+			IF status = empty THEN
+
+				assign smidi_points_query.from_ip_point   = "000001"
+				assign smidi_points_query.to_ip_point     = "999999"
+				assign smidi_points_query.description     = self.job_id:" automatic query created on ":NOW
+				assign smidi_points_query.repeat_interval = def_interval
+				assign smidi_points_query.process_routine = POINTS_PROCESS_ROUTINE
+				assign smidi_points_query.process_library = SMIDI_LIB_QPUP
+				assign smidi_points_query.subsystem       = subsystem
+
+				assign smidi_points_query.user_C1_enabled = self.operations[count].user_C1_enabled
+				assign smidi_points_query.user_C1_keyword = self.operations[count].user_C1_keyword
+				assign smidi_points_query.user_C2_enabled = self.operations[count].user_C2_enabled
+				assign smidi_points_query.user_C2_keyword = self.operations[count].user_C2_keyword
+				assign smidi_points_query.user_D1_enabled = self.operations[count].user_D1_enabled
+				assign smidi_points_query.user_D1_keyword = self.operations[count].user_D1_keyword
+				assign smidi_points_query.user_N1_enabled = self.operations[count].user_N1_enabled
+				assign smidi_points_query.user_N1_keyword = self.operations[count].user_N1_keyword
+				assign smidi_points_query.user_N2_enabled = self.operations[count].user_N2_enabled
+				assign smidi_points_query.user_N2_keyword = self.operations[count].user_N2_keyword
+				assign smidi_points_query.user_T1_enabled = self.operations[count].user_T1_enabled
+				assign smidi_points_query.user_T1_keyword = self.operations[count].user_T1_keyword
+				map_profile = smidi_lib_get_map_field ( self.mapping_profile, "SMIDI_POINTS_QUERY", "MAPPING_PROFILE", "DEFAULT_VALUE" )
+
+				IF map_profile <> EMPTY THEN
+					assign smidi_points_query.mapping_profile = map_profile
+				ELSE
+					assign smidi_points_query.mapping_profile = "POINTS"
+				ENDIF
+
+
+				status = TRUE
+
+				CALL_ROUTINE POINTS_USER_CREATE IN LIBRARY SMIDI_POINT_USER_LIB
+					USING self, count, found, status
+
+				UPDATE smidi_points_query, status
+
+				IF status <> EMPTY THEN
+					self.status_message ( "smidi_rqst_action_create_ipoint_query ERROR-> ":self.lot_no:" ":op_no:" ":status, MSG_HIGH )
+				ENDIF
+
+			ELSE
+				self.status_message ( "smidi_rqst_action_create_ipoint_query ERROR-> ":self.lot_no:" ":op_no:" ":found:" ***-> ":status, MSG_HIGH )
+			ENDIF
+
+		ENDIF
+
+		self.status_message ( "smidi_rqst_action_create_ipoint_query completed-> ":self.lot_no:" ":op_no, MSG_LOW )
+		count = count + 1
+
+	ENDWHILE   { for all operations in the lot }
+
+	self.status_message ( "smidi_rqst_action_create_ipoint_query completed-> ":self.lot_no:" ":ok, MSG_LOW )
+
+	RETURN ( ok )
+
+
+ENDROUTINE  { smidi_rqst_action_create_ipoint_query }
+
+{******************************************************************************}
+
+ROUTINE smidi_samp_action_insert_test( self, a_qaimv, replicates )
+
+	DECLARE count, ok
+
+	ok = TRUE
+	count = 1
+	WHILE ( count <= replicates ) AND ok DO
+
+		error_context_add_data( "REPLICATE", count )
+		ok    = self.insert_test_rep( a_qaimv, count )
+		count = count + 1
+
+	ENDWHILE
+
+	return( ok )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE smidi_samp_action_insert_test_rep( self, a_qaimv, replicate )
+
+	DECLARE count, looking, create, analysis_id, ok, test, version
+	
+	analysis_id = a_qaimv.analysis_id
+	looking     = TRUE
+	create      = FALSE
+	ok = FALSE
+	
+	count       = 1
+
+	WHILE looking DO
+
+		test = self.tests[count]
+
+		IF test = EMPTY THEN
+
+			looking = FALSE
+			create  = TRUE
+
+		ELSEIF ( test.analysis_id = analysis_id ) AND ( test.replicate = replicate ) THEN
+
+			looking = FALSE
+
+		ENDIF
+
+		IF looking THEN count = count + 1 ENDIF
+		
+
+        ENDWHILE
+
+	{ ====================================================================================================== }
+	{ If we haven't processed this analysis yet build the object that is used when checking if LIMS has test } 
+	{ ====================================================================================================== }
+
+	IF create THEN
+
+		CREATE OBJECT "SMIDI_TEST", self.tests[count]
+		test = self.tests[count]
+		
+		ARRAY test.components
+
+		version = lib_utils_highest_version ( "VERSIONED_ANALYSIS", analysis_id  )
+
+		IF version = EMPTY THEN
+			version = 1
+		ENDIF
+
+		test.master         = a_qaimv
+		test.parent         = self
+		test.test_number    = 0
+		test.analysis_id    = analysis_id
+		test.replicate      = replicate
+		test.comp_count     = 0
+		test.version        = version
+		
+		{ ===================================================================================== }
+		{                                                                                       }
+		{ We have not determined the component list yet, we do not have the test schedule, but  }
+		{ we do have if they want to map by WorkProfile or Versioned_CL_Header.  So, check this }
+		{ map, and if it has a value, then try to use this to get the component list.           }
+		{                                                                                       }
+		{ ===================================================================================== }
+			
+		
+		test.comp_list = smidi_lib_get_mapping ( test.mapping_profile, "VERSIONED_C_L_HEADER", "COMP_LIST", test, a_qaimv )
+
+		
+		IF ( test.comp_list = EMPTY ) THEN
+			test.comp_list = smidi_lib_get_mapping ( test.mapping_profile, "SAMPLE", "WORK_PROFILE", test, a_qaimv )
+		ENDIF
+
+		test.status_message ( "smidi_samp_action_insert_test_rep ":STRIP(analysis_id):" Component_list-> [":test.comp_list:"]", MSG_MED )
+
+		{ ===================================================================================== }
+		{                                                                                       }
+		{ Based on mapping, we build the SAP versus LIMS list by component list or by analysis  }
+		{                                                                                       }
+		{ ===================================================================================== }
+
+		
+
+		IF ( test.comp_list <> EMPTY ) THEN
+			test.build_component_list()
+		ELSE
+			test.build_anal_comp_list()
+		ENDIF
+	
+
+	ENDIF  { create set by if analysis already in array or not }
+
+
+	{ ================================================================================== }
+	{ Whenever we have this test, build result object that is used to check lims (later) }
+	{ ================================================================================== }
+
+	ok = test.add_required_comp ( a_qaimv )
+	{ Clean up }
+	test = EMPTY
+
+	return( ok )
+
+
+ENDROUTINE   { smidi_samp_action_insert_test_rep }
+
+{******************************************************************************}
+
+ROUTINE smidi_samp_action_verify_tests( self )
+
+	DECLARE ok, test_editor, pos, i, j, sid, found, atest, samp_tsched, test_sched_anal, test_sched_rep
+
+	ok = TRUE     { only FALSE if we find an error }
+
+	CREATE OBJECT "STD_TEST_ASSN_EDITOR", test_editor
+	test_editor.mode = MODE_EDIT_TEST
+
+	sid = SELECT sample.id_numeric for update where id_numeric = self.sample_id
+
+	IF sid = EMPTY THEN
+
+		ok = FALSE
+		self.status_message ( "smidi_samp_action_verify_tests - SID Empty ":self.sample_id, MSG_FULL )
+
+	ELSEIF ( sid = LOCKED ) THEN
+
+		ok = FALSE
+		self.status_message ( "smidi_samp_action_verify_tests - LOCKED SAMPLE ":self.sample_id, MSG_FULL )
+
+	ELSE
+
+		samp_tsched = SELECT sample.test_schedule
+		test_editor_initialise ( sid, FALSE, FALSE, TRUE, global("CURRENT_LIBRARY"), test_editor.test_list )
+		pos         = test_editor_get_size (test_editor.test_list)
+
+		{ ================================================================================================ }
+		{ Go thru the test list for the sample/test schedule check the list of tests from SAP are defined  }
+		{ ================================================================================================ }
+
+		i = 1
+		WHILE self.tests[i] <> empty DO
+
+			atest = self.tests[i]
+			j     = 1
+			found = FALSE
+			WHILE (NOT found) AND (j <= pos) DO
+
+				test_editor_make_current(j, test_editor.test_list)
+	
+				test_sched_anal = SELECT test.analysis
+				test_sched_rep  = SELECT test.test_count
+
+				IF ( test_sched_anal = atest.analysis_id ) AND ( test_sched_rep  = atest.replicate   ) THEN
+
+					atest.test_number = select test.test_number
+					atest.test_status = select test.status
+
+					found = TRUE
+					self.status_message ( "smidi_samp_action_verify_tests ":sid:samp_tsched:test_sched_anal:test_sched_rep:atest.test_number, MSG_LOW )
+
+				ENDIF
+
+				j = j + 1
+
+			ENDWHILE
+			
+			{ Clean up }
+			atest = EMPTY
+				
+			i = i + 1
+			
+		ENDWHILE
+
+		{ ========================================================== }
+		{ For any that SAP wanted but are not in the list make them  }
+		{ ========================================================== }
+
+		pos = pos + 1
+		i   = 1
+
+		WHILE ( self.tests[i] <> EMPTY ) AND ok DO
+
+			atest = self.tests[i]
+
+			IF atest.test_number = 0 THEN
+
+				ok                = atest.create ( test_editor, pos, samp_tsched )
+				atest.test_status = "?"           { so auto upload does not queue }
+				pos               = pos + 1
+
+			ENDIF
+
+			i = i + 1
+
+		ENDWHILE
+
+		test_editor_assign("IDI Download", test_editor.test_list)
+		update sample
+
+	ENDIF  { sid empty }
+
+	return(ok)
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE smidi_samp_action_verify_results( self )
+
+	DECLARE ok, i
+
+	ok = TRUE
+	i = 1
+	WHILE (self.tests[i] <> empty) AND ok DO
+
+		ok = self.tests[i].verify_results( self.sample_id )
+		
+		{ Clean up }
+		self.tests[i] = EMPTY
+		
+		i = i + 1
+
+	ENDWHILE
+	
+	{ Clean up}
+	self.tests = EMPTY
+	
+	return(ok)
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE smidi_samp_action_add_smidi_insppoint ( self )
+
+	DECLARE found, status, request_key, retval, subsys
+
+	retval      = FALSE
+	request_key = PAD ( self.master.lot_no : self.master.op_no : self.master.physical_sample_no, " ", 30 )
+	subsys      = smidi_lib_get_r3sys()
+
+	found = SELECT smidi_insppoint.request_key FOR UPDATE
+		WHERE (smidi_system = subsys ) and ( request_key  = request_key )
+
+	IF ( found = EMPTY ) THEN
+
+		RESERVE ENTRY SMIDI_INSPPOINT, subsys : request_key, status
+
+		ASSIGN SMIDI_INSPPOINT.JOB                = self.parent.job_id
+		ASSIGN SMIDI_INSPPOINT.SAMPLE             = self.sample_id
+		ASSIGN SMIDI_INSPPOINT.QMIDI_OBJECT       = self.qmidi_object
+		ASSIGN SMIDI_INSPPOINT.MESSAGE            = self.master.qaipp.sap_message
+		ASSIGN SMIDI_INSPPOINT.SAP_POINT_CREATED  = TRUE
+
+		self.map_fields ( "SMIDI_INSPPOINT" )
+
+		UPDATE SMIDI_INSPPOINT, status
+
+		IF status <> EMPTY THEN
+
+			self.status_message ( "smidi_samp_action_add_smidi_insppoint UPDATE error ":request_key:" ":status, MSG_HIGH )
+
+		ELSE
+
+			CALL_ROUTINE POINT_CREATED IN LIBRARY SMIDI_POINT_USER_LIB
+				USING self, subsys, request_key RETURNING retval
+
+			self.status_message ( "smidi_samp_action_add_smidi_insppoint completed ":request_key, MSG_HIGH )
+
+		ENDIF
+
+
+	ELSEIF ( found <> EMPTY ) & ( found <> LOCKED ) THEN
+
+		ASSIGN SMIDI_INSPPOINT.JOB                = self.parent.job_id
+		ASSIGN SMIDI_INSPPOINT.SAMPLE             = self.sample_id
+		ASSIGN SMIDI_INSPPOINT.QMIDI_OBJECT       = self.qmidi_object
+		ASSIGN smidi_insppoint.message            = self.master.qaipp.sap_message
+		ASSIGN SMIDI_INSPPOINT.SAP_POINT_CREATED  = TRUE
+
+		self.map_fields ( "SMIDI_INSPPOINT" )
+
+		UPDATE smidi_insppoint, status
+
+		IF status <> EMPTY THEN
+
+			self.status_message ( "smidi_samp_action_add_smidi_insppoint UPDATE error ":request_key:" ":status, MSG_HIGH )
+
+		ELSE
+
+			CALL_ROUTINE POINT_CREATED IN LIBRARY SMIDI_POINT_USER_LIB
+				USING self, subsys, request_key RETURNING retval
+
+			self.status_message ( "smidi_samp_action_add_smidi_insppoint modify completed ":request_key, MSG_HIGH )
+
+		ENDIF
+
+
+	ELSE
+
+
+		self.status_message ( "smidi_samp_action_add_smidi_insppoint RESERVE error ":request_key:" ":found, MSG_HIGH )
+
+	ENDIF
+
+
+	RETURN ( retval )
+
+
+ENDROUTINE  { smidi_samp_action add_smidi_insppoint }
+
+{******************************************************************************}
+{*                                                                            *}
+{*                   S M I D I    T E S T    C L A S S                        *}
+{*                                                                            *}
+{******************************************************************************}
+
+ROUTINE smidi_test_action_create (       self       , 
+                                         test_editor, 
+                                   VALUE position   ,
+                                   VALUE schedule   )
+
+	DECLARE version, inst_id, ok
+
+	ok      = FALSE
+	version = lib_utils_highest_version ( "VERSIONED_ANALYSIS", self.analysis_id  ) 
+
+	IF version <> EMPTY THEN
+
+		ok = self.call_trigger ( test_editor, EMPTY,  SML_TEST_ADD_TRIGGER )		
+
+		IF not ok THEN
+
+			ok = self.get_map_header ( "TEST_MISSING" )     { user says ok when SMP ain't got no SAP test }
+
+		ELSE
+
+			test_editor_pre_insert ( position, test_editor.test_list )
+			test_editor_set_repeat ( 1, test_editor.test_list )
+			test_editor_set_assign ( TRUE, test_editor.test_list )
+	
+			ASSIGN test.analysis         = self.analysis_id
+			ASSIGN test.analysis_version = version
+			ASSIGN test.has_result_list  = self.has_result_list     { set when COMP object is made without SMP static data }
+
+			inst_id = SELECT test_sched_entry.instrument_id 
+					WHERE identity    = schedule
+        	                        AND   analysis_id = self.analysis_id 
+        	                        AND   is_analysis = TRUE               
+
+			IF inst_id <> EMPTY THEN
+	
+				ASSIGN test.instrument_id = inst_id
+
+				IF ( self.comp_list = EMPTY ) | BLANK ( self.comp_list ) THEN
+
+					self.comp_list = SELECT test_sched_entry.component_list
+					self.status_message ( "smidi_test_action_create TEST_SCHEDULE component list -> ":STRIP(schedule):" <":STRIP(self.analysis_id):"> component_list [":STRIP(self.comp_list):"]" , MSG_MED )
+
+				ENDIF
+	
+			ENDIF
+
+			{ =============================================================== }
+			{ comp list could have been read from above or done by mapping    }
+			{ =============================================================== }
+
+			IF self.comp_list <> EMPTY THEN
+
+				ASSIGN test.component_list = self.comp_list
+				self.status_message ( "smidi_test_action_create component list-> ":STRIP(schedule):" <":STRIP(self.analysis_id):"> component_list [":STRIP(self.comp_list):"]" , MSG_MED )
+
+			ENDIF
+
+			self.map_fields ( "TEST" )
+			ok = self.call_trigger ( test_editor, EMPTY,  SML_TEST_CREATE_TRIGGER )
+
+		ENDIF  { ok return from test add trigger }
+
+	ELSE
+
+		self.error_status ( "F", "RESLIST", SMIDI_BADVERS )
+        
+	ENDIF
+
+	RETURN ( ok ) 
+
+ENDROUTINE { smidi_test_action_create }
+
+{******************************************************************************}
+
+ROUTINE smidi_test_action_verify_results ( self, sample_id )
+
+	DECLARE ok, j, testno, comp
+
+	ok = TRUE
+	error_context_add_data( "ANALYSIS" , self.analysis_id )
+	error_context_add_data( "REPLICATE", self.replicate   )
+
+	testno = SELECT test.test_number
+                 WHERE ( sample_id  = sample_id        )
+                 AND   ( analysis   = self.analysis_id )
+                 AND   ( test_count = self.replicate   )
+
+	IF testno <> EMPTY THEN
+
+		error_context_add_data( "TEST", testno )
+		j = 1
+
+		WHILE ( self.components[ j ] <> EMPTY ) AND ok DO
+
+			comp = self.components [ j ]
+			ok   = self.resolve_list ( comp, j )
+			
+			{ Clean up }
+			self.components[j] = EMPTY
+			
+			j    = j + 1
+
+		ENDWHILE
+		{ Clean up}
+		self.components = EMPTY
+		
+
+	ELSE
+
+		ok = self.get_map_header ( "TEST_MISSING" )
+
+		IF not ok THEN
+
+			self.error_status ( "F", "RESLIST", SMIDI_BADTEST )
+
+		ELSE
+
+			self.status_message ( "Test missing, but user says it is ok ":sample_id:self.analysis_id:self.replicate, MSG_MED )
+
+		ENDIF
+
+	ENDIF
+
+	RETURN ( ok )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE smidi_test_action_resolve_list ( self, comp, pos ) 
+
+	DECLARE continue, test_number, detail, detail2
+
+	test_number = SELECT test.test_number
+
+	error_context_add_data( "COMPONENT", comp.name )
+
+	{ ========================================================================= }
+	{ The first is for SAP results (e.g. a qaimv is an SAP component)           }
+	{ The second trigger is for components that are only in LIMS and not in SAP }
+	{ ========================================================================= }
+
+	IF comp.qaimv <> EMPTY THEN
+		error_context_add_data ( "CHARACTERISTIC_NO", comp.qaimv.characteristic_no )
+		continue = self.call_trigger ( comp, EMPTY, SML_ASSIGN_RESULT_TRIGGER )
+	ELSE
+		continue = self.call_trigger ( comp, EMPTY, SML_ASSIGN_RESLIST_TRIGGER )
+	ENDIF
+
+        
+	IF continue THEN
+
+		detail = STRIP ( test_number  ) : "/" : STRIP ( comp.name )
+
+		IF ( BLANK ( SELECT test.component_list )) THEN
+
+			{ ===================================================== }
+			{ No component list, so add this SAP or LIMS component  }
+			{ ===================================================== }
+
+			self.status_message ( GET_USER_MESSAGE ( "SMIDI_LOGIN_NO_COMP_LIST_FOUND", 1 ):comp.name, MSG_LOW )
+			continue = comp.add_result ( test_number, pos )
+
+		ELSEIF ( NOT BLANK ( SELECT test.component_list ))
+
+			detail2 = STRIP ( SELECT test.component_list )
+			self.status_mess_decode ( "SMIDI_LOGIN_ADDLIST", MSG_1, detail, EMPTY, detail2 )
+
+			continue = comp.add_result ( test_number, pos )
+
+		ENDIF   { either we have a complist or we do not }
+
+	ELSE
+
+		continue = self.get_map_header ( "RESULT_CREATE" )
+
+	ENDIF  { if the user trigger says to not add any results at all then do not }
+
+	RETURN ( continue )
+
+ENDROUTINE { smidi_test_action_resolve_list }
+
+
+{******************************************************************************}
+
+ROUTINE smidi_test_action_add_required_comp ( self, a_qaimv )
+
+
+	DECLARE count, found, comp, tmpString
+
+	found  = FALSE
+	count  = 1
+
+	WHILE ( self.components[count] <> EMPTY ) DO
+
+		IF ( self.components[count].name = a_qaimv.component_name ) THEN
+
+			tmpString = "Found SAP component = LIMS component ":STRIP(a_qaimv.analysis_id):"/":STRIP(a_qaimv.component_name)
+			self.status_message ( tmpString, MSG_LOW )
+
+			self.components[count].qaimv  = a_qaimv
+			self.components[count].master = a_qaimv
+			self.components[count].set_from_qaimv ( a_qaimv )    { so the compare updates versions }
+			found                         = TRUE
+			count                         = SIZE_OF_ARRAY ( self.components )
+
+		ENDIF
+		
+		count = count + 1
+
+	ENDWHILE  { look through all the components to see if this qaimv is one of them }
+	
+
+
+	{ ==================================================================== }
+	{                                                                      }
+	{ If we are supposed to create the results, then build the comp object }
+	{ this will be used later by the process tree to actually add results  }
+	{                                                                      }
+	{ ==================================================================== }
+
+	IF  NOT found THEN
+
+		CREATE OBJECT "SMIDI_COMPONENT", self.components[ count ]
+			comp        = self.components[count]
+			comp.qaimv  = a_qaimv         
+			comp.master = a_qaimv
+			comp.name   = a_qaimv.component_name
+			comp.parent = self
+
+		self.has_result_list = TRUE       { this is a result list TEST, since SMP did not have this comp }
+
+		comp.set_from_qaimv( a_qaimv )    { instead of load from LIMS all fields are set by SAP values   }
+
+		tmpString = GET_USER_MESSAGE ( "SMIDI_LOGIN_BUILD_COMPONENTS", 1 ):count:" ":STRIP(a_qaimv.analysis_id):"/":a_qaimv.component_name
+		self.status_message ( tmpString, MSG_LOW )
+
+		found = TRUE
+
+	ELSE
+
+		self.has_result_list = FALSE      { the components match LIMS and will use them  }
+
+        ENDIF
+	
+        RETURN ( found )
+
+
+ENDROUTINE  { add_required_comp }
+
+{******************************************************************************}
+
+ROUTINE smidi_test_action_verify ( self )
+
+	DECLARE ok, analysis, count, component, create_list
+
+	ok = TRUE
+
+	{ ============================================================================ }
+	{ Check if we are supposed to update the component list for the anlaysis       }
+
+	create_list = smidi_lib_get_map_field ( self.mapping_profile, "VERSIONED_C_L_HEADER", "COMP_LIST", "MAP_UPDATE" )
+
+	IF NOT create_list THEN
+		create_list = smidi_lib_get_map_field ( self.mapping_profile, "SAMPLE", "WORK_PROFILE", "MAP_UPDATE" )
+	ENDIF
+
+	self.version = lib_utils_highest_version ( "VERSIONED_ANALYSIS", self.analysis_id  )
+
+	IF self.version = EMPTY THEN
+
+		self.version = SELECT MAX versioned_analysis.analysis_version
+                                 WHERE identity = self.analysis_id
+                
+		IF self.version = EMPTY THEN
+			self.version = PACKED_DECIMAL (1)
+		ELSE
+			self.version = PACKED_DECIMAL ( self.version + 1 )
+		ENDIF
+
+	ENDIF
+
+	analysis = SELECT versioned_analysis.identity 
+		   FOR UPDATE
+                   WHERE  identity         = self.analysis_id 
+                   AND    analysis_version = self.version
+                   AND    removeflag       = FALSE
+
+	IF analysis = EMPTY THEN
+
+		IF NOT self.create_analysis() THEN
+
+			self.error_status ( "F", "DOWNLOAD", SMIDI_BADANAL )
+			ok = FALSE
+
+		ENDIF
+        
+        ELSE
+        	
+        	        IF NOT TRANSACTION_IS_WRITE () THEN
+		
+		            START WRITE TRANSACTION "Versioned Analysis"
+		
+		        ENDIF
+		
+		        self . map_fields ( "VERSIONED_ANALYSIS" )
+		
+		        UPDATE VERSIONED_ANALYSIS
+	
+	ENDIF
+
+
+	IF ( ok ) THEN
+
+		IF ( self.comp_list <> EMPTY ) AND ( create_list ) THEN
+
+			ok = self.create_list()
+
+		ELSE
+
+			self.status_message ( "smidi_test_action_verify, component list update disabled ":STRIP(self.analysis_id):"/":STRIP(self.version):"->":STRIP(self.comp_list), MSG_MED )
+
+		ENDIF
+
+	ENDIF
+
+	IF ok THEN
+
+		save_order = 0       {  in case we have to keep track of order number on cl entries }
+		count      = 1
+
+		WHILE ( self.components[count] <> EMPTY ) AND ( ok ) DO
+
+			component = self.components[count]
+			ok        = self.components[count].compatible()
+
+			IF ( ok ) THEN
+
+				IF ( self.comp_list <> EMPTY ) AND ( create_list ) THEN
+					ok = component.create_c_l_entry()
+				ENDIF
+
+			ENDIF
+			
+			count = count + 1
+
+		ENDWHILE
+		
+		IF NOT ok THEN
+			self.error_status ( "F", "DOWNLOAD", SMIDI_BADCOMP )
+		ENDIF
+
+	ENDIF
+
+	RETURN ( ok )
+
+ENDROUTINE { smidi_test_action_create_analysis }
+
+{******************************************************************************}
+
+ROUTINE smidi_test_action_create_list ( self )
+
+	DECLARE check, key, ok, found
+
+	ok = TRUE
+
+	found = SELECT VERSIONED_C_L_HEADER.COMP_LIST
+		WHERE  ANALYSIS         = self.analysis_id
+		AND    ANALYSIS_VERSION = self.version
+		AND    COMP_LIST        = self.comp_list
+
+	IF ( found = EMPTY ) THEN
+
+		key = self.analysis_id:self.version:self.comp_list
+
+		self.status_message ( ( GET_USER_MESSAGE ( "SMIDI_LOGIN_NEWCLH", 1 ) : key), MSG_HIGH )
+
+		RESERVE ENTRY versioned_c_l_header, key, check
+
+		IF ( check = EMPTY ) THEN
+
+			self.map_fields ("VERSIONED_C_L_HEADER")
+			self.call_trigger ( key, EMPTY, SML_CL_HEADER_CREATE_TRIGGER )
+
+			UPDATE versioned_c_l_header
+
+		ELSE
+
+			self.error_status("F", "DOWNLOAD", SMIDI_BADLIST )
+			ok = FALSE
+
+		ENDIF  { reserve entry on cl header }
+
+
+	ENDIF  { creating a list } 
+
+
+	RETURN ( ok )
+
+ENDROUTINE { smidi_test_action_create_list }
+
+{******************************************************************************}
+
+ROUTINE smidi_test_action_create_analysis ( self )
+
+	DECLARE check, key, ok
+
+	ok = FALSE
+
+	IF ( smidi_lib_get_map_field ( self.mapping_profile, "VERSIONED_ANALYSIS", "IDENTITY", "MAP_UPDATE" ) ) THEN
+
+		key = self.analysis_id : self.version
+		self.status_mess_decode ( "SMIDI_LOGIN_NEWANAL", MSG_HIGH, key, EMPTY, EMPTY )
+
+		RESERVE ENTRY versioned_analysis, key, check
+
+		IF check = EMPTY THEN
+
+			self.new_version = TRUE
+			self.map_fields ( "VERSIONED_ANALYSIS" )
+			self.call_trigger ( key, EMPTY, SML_ANALYSIS_CREATE_TRIGGER )
+
+			UPDATE versioned_analysis
+			ok = TRUE
+
+		ELSE
+			self.error_status ( "F", "DOWNLOAD", SMIDI_BADANAL )
+		ENDIF
+
+	ENDIF
+
+	RETURN ( ok )
+
+ENDROUTINE  { smidi_test_action_create_analysis }
+
+{******************************************************************************}
+
+ROUTINE smidi_test_action_build_component_list ( self )
+
+	DECLARE found, temp, count, cl_components
+
+	ARRAY cl_components
+	count  = 0
+
+
+	{ ============================================================================= }
+	{ First, get all the components that are assigned in this component list        }
+	{ ============================================================================= }
+
+	found = select versioned_c_l_entry.name
+                where ( analysis         = self.analysis_id ) 
+                and   ( analysis_version = self.version     )
+                and   ( comp_list        = self.comp_list   )
+                and   ( create_always    = TRUE             )
+                ORDER ON order_number
+
+	WHILE found <> empty DO
+
+		count                  = count + 1
+		cl_components[count,1] = found
+		temp                   = GET_USER_MESSAGE ( "SMIDI_LOGIN_NEWCLE", 1 )
+
+		self.status_message ( temp:self.analysis_id:self.version:" ":found, MSG_LOW )
+
+		next versioned_c_l_entry
+		found = select versioned_c_l_entry.name
+
+	ENDWHILE
+
+
+	{ ============================================================================= }
+	{ Got the list of the c_l_entries, now resolve the component settings for each  }
+	{ If we did not find the component list, then just use the components           }
+	{ ============================================================================= }
+
+
+	IF ( count > 0 ) THEN
+
+		count = 1
+		found = select versioned_component.name
+			where analysis         = self.analysis_id
+			and   analysis_version = self.version
+			and   name             = cl_components[count,1]
+
+	ELSE
+
+
+		found = select versioned_component.name
+			where analysis         = self.analysis_id
+			and   analysis_version = self.version
+			ORDER ON ORDER_NUMBER
+
+	ENDIF  { get from one or the other }
+
+
+	{ ============================================================================= }
+	{ Get them, by whatever means you have to, but get them all.                    }
+	{ ============================================================================= }
+
+	WHILE ( found <> EMPTY ) DO
+
+		CREATE OBJECT "SMIDI_COMPONENT", temp
+			temp.parent = self 
+			temp.load()
+
+		self.comp_count                  = self.comp_count + 1
+		self.components[self.comp_count] = temp
+
+		IF ( count = 0 ) THEN
+
+			self.status_message ( "build_components ":found, MSG_LOW )
+			NEXT VERSIONED_COMPONENT
+			found = SELECT versioned_component.name
+
+		ELSE
+
+			self.status_message ( "build_components by component_list ":count:found, MSG_LOW )
+			count = count + 1
+
+			IF ( count > SIZE_OF_ARRAY ( cl_components ) ) THEN
+				found = EMPTY
+			ELSE
+				found = select versioned_component.name
+					  where analysis         = self.analysis_id
+					  and   analysis_version = self.version
+					  and   name             = cl_components[count,1]
+			ENDIF
+
+		ENDIF  { count is 0 when no component list found, so use just components }
+
+	ENDWHILE   { resolve the versioned_component against the ones that are assigned in c l entry }
+
+
+ENDROUTINE   {smidi_test_action_build_component_list - use the component list to build analyses }
+
+{******************************************************************************}
+
+ROUTINE smidi_test_action_build_anal_comp_list( self )
+
+	DECLARE found, temp
+
+	found = select versioned_component.name
+              where analysis         = self.analysis_id
+              and   analysis_version = self.version
+              order on order_number
+
+	WHILE found <> empty DO
+
+		self.status_message ( "build_anal_comp_list ":self.analysis_id:self.version:" ":found, MSG_LOW )
+
+		CREATE OBJECT "SMIDI_COMPONENT", temp
+		
+			temp.parent = self
+			temp.load()
+		
+		self.comp_count                    = self.comp_count + 1
+		self.components[ self.comp_count ] = temp
+		
+		{ Clean up }
+		temp = EMPTY
+		
+		
+		NEXT versioned_component
+		found = SELECT versioned_component.analysis
+
+	ENDWHILE
+	
+ENDROUTINE   { smidi_test_action_build_anal_comp_list - list of components on analysis (not using component lists) }
+
+{******************************************************************************}
+
+ROUTINE smidi_test_action_new_version ( self )
+
+	DECLARE ok, old_key, new_key, mode, count, mt, status
+
+	mt = EMPTY
+	ARRAY mode
+
+	mode [ 1 ] = "READ_FOR_MODIFY"
+	mode [ 2 ] = "COPY"
+	mode [ 3 ] = "SAVE"
+
+	ok = TRUE
+
+	IF ( NOT self.new_version )                                                                             AND
+         ( smidi_lib_get_map_field ( self.mapping_profile, "VERSIONED_ANALYSIS", "IDENTITY", "MAP_UPDATE" )  ) AND
+         ( self.call_trigger ( mt, mt, SML_ANALYSIS_NEW_TRIGGER ) )                                             THEN
+
+		old_key          = self.analysis_id : self.version
+		self.new_version = TRUE
+		self.version     = PACKED_DECIMAL ( self.version + 1 )
+		new_key          = self.analysis_id : self.version
+
+		self.status_mess_decode ( "SMIDI_LOGIN_NEWVER", MSG_MED, new_key, old_key, EMPTY )
+               
+		RESERVE ENTRY versioned_analysis, new_key COPY_FROM old_key, status
+
+		IF ( status = EMPTY ) THEN
+
+			self.map_fields ( "VERSIONED_ANALYSIS" )
+			UPDATE versioned_analysis       
+
+			IF self.get_map_header ( "ANALYSIS_COPY_COMPS" ) THEN
+
+				count = 1
+				WHILE mode [ count ] <> EMPTY DO
+
+					CALLROUTINE "LABTABLE_INPUT"  IN LIBRARY "$COMP_EDIT"
+						USING new_key, old_key, mode [ count ]
+					count = count + 1
+        
+				ENDWHILE
+
+			ENDIF
+
+			IF self.get_map_header ( "ANALYSIS_COPY_LISTS" ) THEN
+
+				count = 1
+				WHILE mode [ count ] <> EMPTY DO
+					CALLROUTINE "LABTABLE_INPUT" IN LIBRARY "$COMP_LIST"
+                                            USING new_key, old_key, mode [ count ]
+					count = count + 1
+				ENDWHILE
+
+			ENDIF
+
+			self.call_trigger ( new_key, old_key, SML_ANALYSIS_NEW_VERS_TRIGGER )
+
+		ELSE
+
+			ok      = FALSE   
+			self.status_message ( "*** MASSIVE Failure making new version for analysis ":new_key, MSG_HIGH )
+
+		ENDIF { status empty on reserve entry }
+
+	ENDIF   { if.elseif for self.new_version }
+  
+	RETURN ( ok )
+
+ENDROUTINE { smidi_test_action_new_version }
+
+
+{******************************************************************************}
+{*               S M I D I    C O M P O N E N T    C L A S S                  *}
+{******************************************************************************}
+
+ROUTINE smidi_component_action_load( self )
+
+        self.qaimv              = EMPTY  { do not assign QAIMV here, only when built totally from SAP }
+
+        self.name               = SELECT versioned_component.name
+        self.result_type        = SELECT versioned_component.result_type
+        self.units              = SELECT versioned_component.units
+        self.minimum            = SELECT versioned_component.minimum
+        self.maximum            = SELECT versioned_component.maximum
+        self.true_word          = SELECT versioned_component.true_word
+        self.false_word         = SELECT versioned_component.false_word
+        self.allowed_characters = SELECT versioned_component.allowed_characters
+        self.calculation        = SELECT versioned_component.calculation
+        self.places             = SELECT versioned_component.places
+        self.rep_control        = SELECT versioned_component.rep_control
+        self.replicates         = SELECT versioned_component.replicates
+        self.sig_figs_number    = SELECT versioned_component.sig_figs_number
+        self.sig_figs_rounding  = SELECT versioned_component.sig_figs_rounding
+        self.sig_figs_filter    = SELECT versioned_component.sig_figs_filter
+        self.minimum_pql        = SELECT versioned_component.minimum_pql
+        self.maximum_pql        = SELECT versioned_component.maximum_pql
+        self.pql_calculation    = SELECT versioned_component.pql_calculation
+        self.formula            = SELECT versioned_component.formula
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE smidi_component_action_set_from_qaimv ( self, a_qaimv )
+
+	DECLARE save_format 
+
+	save_format = GLOBAL ( "FORMAT_TEXT" )
+	CALL_ROUTINE "set_format" USING self.qaimv.decimal_places IN LIBRARY "$LIB_MLPS"
+
+	self.units       = self.qaimv.char_unit
+	self.result_type = self.qaimv.get_result_type()
+
+	IF ( self.get_map_header ( "COMP_LIMITS_PLAUSIBLE" ) ) THEN
+
+		{ ==================================================================== }
+		{                                                                      }
+		{ SAP open ended on plausible resets to a high/low huge number         }
+		{                                                                      }
+		{ *******************  E FORMAT LARGE DECIMAL PLACES  **************** }
+		{                                                                      }
+		{ ==================================================================== }
+
+		IF ( STRIP ( self.qaimv.upper_plausible )  = STRIP ( " " ) ) AND
+                   ( STRIP ( self.qaimv.lower_plausible ) <> STRIP ( " " ) ) THEN
+	
+			self.qaimv.lower_plausible = STRIP( NUMERIC ( self.qaimv.lower_plausible ))
+			self.qaimv.upper_plausible = "999999999"
+
+		ELSEIF ( STRIP ( self.qaimv.lower_plausible )  = STRIP ( " " ) ) AND
+                       ( STRIP ( self.qaimv.upper_plausible ) <> STRIP ( " " ) ) THEN
+
+			self.qaimv.upper_plausible = STRIP( NUMERIC ( self.qaimv.upper_plausible ))
+			self.qaimv.lower_plausible = "-999999999"
+
+		ENDIF
+
+		self.maximum = STRIP(NUMERIC(self.qaimv.upper_plausible))
+		self.minimum = STRIP(NUMERIC(self.qaimv.lower_plausible))
+
+	ELSE
+
+		self.maximum = ""
+		self.minimum = ""
+
+	ENDIF
+
+
+	IF self.result_type = "B" THEN
+
+		self.true_word  = self.get_map_header ( "BOOLEAN_TRUE_WORD"  )
+		self.false_word = self.get_map_header ( "BOOLEAN_FALSE_WORD" ) 
+
+	ELSEIF self.result_type = "N" THEN
+
+		self.places            = self.qaimv.decimal_places
+		self.sig_figs_number   = 0
+		self.sig_figs_rounding = 0
+		self.sig_figs_filter   = "          "
+		self.minimum_pql       = 0.0
+		self.maximum_pql       = 0.0
+		self.pql_calculation   = NULL
+		self.formula           = NULL
+
+	ELSEIF self.result_type = "O" THEN
+
+		self.calculation = self.qaimv.phrase_type
+
+	ENDIF
+
+
+	SET FORMAT save_format
+
+ENDROUTINE  { smidi_component_action_set_from_qaimv }
+
+{******************************************************************************}
+
+ROUTINE smidi_component_action_compatible ( self )
+
+	DECLARE ok, msg, component, type, create, places, units, analysis, version, mt, phrase, maxval, minval
+
+	create   = FALSE
+	ok       = TRUE
+	mt       = EMPTY
+	analysis = self.parent.analysis_id
+	version  = self.parent.version
+
+	component = SELECT versioned_component.name
+                    WHERE  analysis_id      = analysis
+                    AND    analysis_version = version
+                    AND    name             = self.name
+
+	IF component = EMPTY THEN
+
+		ok     = FALSE
+		create = TRUE
+
+	ELSE
+
+		{**************************************************************}
+		{* Check the Result Type. Calculations can be different       *}
+		{**************************************************************}
+
+		type = SELECT versioned_component.result_type
+
+		IF self.result_type <> type THEN
+
+			IF ( type = "K" ) THEN
+
+				self.result_type = "K"
+				self.calculation = SELECT VERSIONED_COMPONENT.CALCULATION
+				self.formula     = SELECT VERSIONED_COMPONENT.FORMULA
+				self.status_message ( "Coerce component to K ":STRIP(analysis):"/":STRIP(version):" ":STRIP(self.name):"->":self.calculation, MSG_HIGH )
+
+			ELSEIF ( self.result_type = " " ) THEN
+
+				self.status_message ( "*** ---> No Result recording ":STRIP(analysis):"/":STRIP(version):" ":STRIP(self.name):" LIMS=":type:" SAP=":self.result_type, MSG_HIGH )
+
+			ELSE
+
+				ok = FALSE
+				self.status_message ( "Invalid result type ":STRIP(analysis):"/":STRIP(version):" ":STRIP(self.name):" LIMS=":type:" SAP=":self.result_type, MSG_HIGH )
+
+			ENDIF
+
+		ENDIF  { type's mismatch (had N's that should be K's }
+
+
+		{**************************************************************}
+		{* Check the Units. Blank units should adopt the Request Val. *}
+		{**************************************************************}
+
+
+		units = SELECT versioned_component.units
+
+		IF ( self.get_map_header ( "COMPONENT_UNITS" ) ) THEN
+
+			IF ( NOT BLANK ( self.units) ) THEN
+
+				IF ( NUMTEXT ( self.units ) ) & ( units_were_converted ( self, units ) ) THEN
+
+					ok = FALSE
+					self.status_message ( "Units NUMERIC SAP mismatch ":STRIP(analysis):"/":STRIP(version):" ":STRIP(self.name):" LIMS=":units:" SAP=":self.units, MSG_HIGH )
+
+				ELSEIF ( self.units <> units ) THEN
+
+					ok = unit_check_units ( self.units , units, msg )
+					IF ( NOT ok ) THEN
+						self.status_message ( "Units mismatch ":STRIP(analysis):"/":STRIP(version):" ":STRIP(self.name):" LIMS=":units:" SAP=":self.units, MSG_HIGH )
+					ENDIF
+
+				ENDIF
+
+			ENDIF
+
+		ELSE
+
+			self.units = units
+
+		ENDIF
+
+
+		{**************************************************************}
+		{* Check the Decimal Places.                                  *}
+		{**************************************************************}
+
+		places = SELECT versioned_component.places 
+
+		IF ( self.get_map_header ( "COMPONENT_PLACES" ) ) THEN
+
+			IF ( NUMERIC ( places ) >= 0 ) THEN
+				IF NUMERIC ( self.places ) > NUMERIC ( places ) THEN
+					ok = FALSE
+					IF ( NOT ok ) THEN
+						self.status_message ( "Places mismatch ":STRIP(analysis):"/":STRIP(version):" ":STRIP(self.name):" LIMS=":places:" SAP=":self.places, MSG_HIGH )
+					ENDIF
+				ENDIF
+			ENDIF   
+
+		ELSE
+
+			self.places = places 
+
+		ENDIF  { places }
+
+		{**************************************************************}
+		{* Check the plausibility (SAP) against LIMS min/max          *}
+		{**************************************************************}
+
+		IF ( type = "N" ) THEN 
+
+			maxval = SELECT versioned_component.maximum
+			minval = SELECT versioned_component.minimum
+
+			IF ( self.get_map_header ( "COMP_LIMITS_PLAUSIBLE"  ) ) THEN
+
+				IF ( self.minimum < minval ) THEN
+					ok = FALSE
+					self.status_message ( "Component minimum mismatch ":STRIP(analysis):"/":STRIP(version):" ":STRIP(self.name):" LIMS=":minval:" SAP=":self.minimum, MSG_HIGH )
+				ELSEIF ( self.maximum > maxval ) THEN
+					ok = FALSE
+					self.status_message ( "Component maximum mismatch ":STRIP(analysis):"/":STRIP(version):" ":STRIP(self.name):" LIMS=":maxval:" SAP=":self.maximum, MSG_HIGH )
+				ENDIF
+
+			ELSE
+
+				self.minimum = minval
+				self.maximum = maxval
+
+			ENDIF  { only on type "N" }
+
+		ENDIF  { limits/plausible }
+
+
+		{**************************************************************}
+		{* Check the phrase id on O types                             *}
+		{**************************************************************}
+
+		IF ( type = "O" ) THEN 
+
+			phrase = SELECT versioned_component.calculation
+
+			IF ( self.get_map_header ( "COMPONENT_PHRASE"  ) ) THEN
+
+				IF ( self.calculation <> phrase ) THEN
+					ok = FALSE
+					self.status_message ( "Phrase mismatch ":STRIP(analysis):"/":STRIP(version):" ":STRIP(self.name):" LIMS=":phrase:" SAP=":self.calculation, MSG_HIGH )
+				ENDIF
+
+			ELSE
+
+				self.calculation = phrase
+
+			ENDIF  { only on type "O" }
+
+		ENDIF  { phrases }
+
+	ENDIF  { empty versus the 3 checks }
+
+	{**********************************************************************}
+	{* Lets see if we need to update the component.                       *}
+	{**********************************************************************}
+
+	IF ( create ) AND ( smidi_lib_get_map_field ( self.mapping_profile, "VERSIONED_COMPONENT", "NAME", "MAP_UPDATE" ) ) THEN
+
+		IF self.call_trigger ( mt, mt, SML_COMPONENT_DO_CREATE_TRIGGER ) THEN
+
+			self.parent.new_version()
+
+			IF self.create_component() THEN
+				ok = self.update_component()
+			ENDIF
+
+		ENDIF
+
+	ELSEIF ( create ) THEN
+
+		ok = TRUE
+
+	ELSEIF ( NOT ok ) AND ( smidi_lib_get_map_field ( self.mapping_profile, "VERSIONED_COMPONENT", "NAME", "MAP_UPDATE" ) ) THEN
+
+		IF self.call_trigger ( mt, mt, SML_COMPONENT_DO_UPDATE_TRIGGER ) THEN
+
+			self.parent.new_version()
+			version   = self.parent.version
+			component = SELECT versioned_component.name FOR UPDATE
+                              WHERE  analysis_id      = analysis
+                              AND    analysis_version = version
+                              AND    name             = self.name
+                
+			IF ( component <> EMPTY  ) AND ( component <> LOCKED ) THEN
+				ok = self.update_component() 
+			ENDIF
+
+		ENDIF
+
+	ENDIF
+
+	RETURN ( ok )
+
+ENDROUTINE { smidi_component_action_compatible }
+
+{******************************************************************************}
+
+ROUTINE units_were_converted ( self, units )
+
+	DECLARE retval
+
+	retval = SELECT SMIDI_R3_UNITS.IDENTITY 
+		  WHERE IDENTITY = units
+	            AND removeflag = FALSE
+
+	IF retval <> EMPTY THEN
+
+		retval = TRUE
+
+		IF retval THEN
+			self.status_message ( "Unit conversion SAP QAIMV ":STRIP(self.parent.analysis_id):"/":STRIP(self.parent.version):" ":STRIP(self.name):" LIMS=":units:" SAP=":self.units, MSG_HIGH )
+		ENDIF
+
+	ELSE
+		retval = FALSE
+	ENDIF
+
+	RETURN ( retval )
+
+ENDROUTINE  { units_check_units }
+
+{******************************************************************************}
+
+ROUTINE smidi_component_action_create_component ( self )
+
+	DECLARE ok, key, check, order, mt, exists
+	mt = EMPTY
+	ok = TRUE
+
+	exists = SELECT versioned_component.analysis
+                 FOR UPDATE
+                 WHERE  analysis         = self.parent.analysis_id
+                 AND    analysis_version = self.parent.version
+                 AND    name             = self.name
+
+	IF exists = LOCKED THEN
+
+		ok = FALSE
+		self.status_message("*** Lock component ":self.parent.analysis_id:self.parent.verison:self.name, MSG_HIGH )
+
+	ELSEIF exists = EMPTY THEN
+
+		key = self.parent.analysis_id : self.parent.version : self.name
+
+		RESERVE ENTRY versioned_component, key, check
+
+		IF check = EMPTY THEN
+
+			order = SELECT COUNT versioned_component
+                          WHERE analysis = self.parent.analysis_id
+                          AND   analysis_version = self.parent.version
+
+			order = PACKED_DECIMAL ( order + 1 )
+
+			self.call_trigger ( mt, mt, SML_COMPONENT_CREATE_TRIGGER )
+
+			ASSIGN versioned_component.order_number = order
+        
+		ELSE
+
+
+			ok = FALSE
+			self.status_message ( "*** MASSIVE Failure making component ":key:" ":check, MSG_HIGH )
+
+
+		ENDIF
+        
+	ENDIF
+
+	RETURN ( ok )
+
+ENDROUTINE { smidi_component_action_create_component }
+
+{******************************************************************************}
+
+ROUTINE smidi_component_action_create_c_l_entry ( self )
+
+	DECLARE exists, key, status, anal_len, complist_len, name_len
+
+
+	GET_FIELD_DETAILS versioned_c_l_entry.analysis , "FIELD_SIZE", anal_len
+	GET_FIELD_DETAILS versioned_c_l_entry.comp_list, "FIELD_SIZE", complist_len
+	GET_FIELD_DETAILS versioned_c_l_entry.name     , "FIELD_SIZE", name_len
+
+	exists = SELECT VERSIONED_C_L_ENTRY.NAME
+		 WHERE  analysis         = self.parent.analysis_id
+		 AND    analysis_version = self.parent.version
+		 AND    comp_list        = self.parent.comp_list
+		 AND    name             = self.name
+
+	IF exists = EMPTY THEN
+
+		key    = PAD ( self.parent.analysis_id, " ", anal_len )   :
+			 PACKED_DECIMAL ( self.parent.version )           :
+			 PAD ( self.parent.comp_list, " ", complist_len ) : 
+			 PAD ( self.name, " ", name_len )
+	
+		self.status_message ( (GET_USER_MESSAGE ( "SMIDI_LOGIN_NEWCLE", 1 ):" ":key), MSG_MED )
+
+		RESERVE ENTRY versioned_c_l_entry, key, status
+
+		IF status = EMPTY THEN
+
+			ASSIGN VERSIONED_C_L_ENTRY.ORDER_NUMBER = assign_order_number ( self )
+
+			self.map_fields   ("VERSIONED_C_L_ENTRY")
+			self.call_trigger ( key, EMPTY, SML_C_L_ENTRY_CREATE_TRIGGER )
+
+			UPDATE versioned_c_l_entry, status
+
+			IF status <> EMPTY THEN
+				self.status_message ( "smidi_component_action_create_c_l_entry Error on Update ":key:" ":status, MSG_HIGH )
+			ELSE
+				self.status_message ( "smidi_component_action_create_c_l_entry-> ":key, MSG_LOW )
+			ENDIF
+
+		ELSE
+
+			exists = self.status_message ( ((GET_USER_MESSAGE ( "SMIDI_LOGIN_NEWCLE", 1 )):key:"->":status), MSG_MED )
+
+		ENDIF
+
+	ENDIF  { exists empty }  
+
+	RETURN (TRUE)
+
+ENDROUTINE { smidi_component_action_create_c_l_entry }
+
+{******************************************************************************}
+
+ROUTINE assign_order_number ( self )
+
+	DECLARE ord_numb
+
+	ord_numb = SELECT MAX VERSIONED_C_L_ENTRY.ORDER_NUMBER
+		 		WHERE  analysis         = self.parent.analysis_id
+		 		AND    analysis_version = self.parent.version
+		 		AND    comp_list        = self.parent.comp_list
+		 		AND    name             = self.name
+
+	IF ord_numb = EMPTY THEN
+		save_order = save_order + 1
+	ELSE
+		save_order = ord_numb + 1
+	ENDIF
+
+	RETURN ( save_order )
+
+ENDROUTINE   {  assign the order number for the newly created versioned_c_l_entry }
+
+{******************************************************************************}
+
+ROUTINE smidi_component_action_update_component ( self )
+
+        DECLARE mt
+        mt = EMPTY
+
+        ASSIGN versioned_component.result_type       = self.result_type
+        ASSIGN versioned_component.true_word         = self.true_word
+        ASSIGN versioned_component.false_word        = self.false_word
+        ASSIGN versioned_component.calculation       = self.calculation
+        ASSIGN versioned_component.places            = self.places
+        ASSIGN versioned_component.units             = self.units
+        ASSIGN versioned_component.sig_figs_number   = self.sig_figs_number
+        ASSIGN versioned_component.sig_figs_rounding = self.sig_figs_rounding
+        ASSIGN versioned_component.sig_figs_filter   = self.sig_figs_filter
+        ASSIGN versioned_component.minimum_pql       = self.minimum_pql
+        ASSIGN versioned_component.maximum_pql       = self.maximum_pql
+        ASSIGN versioned_component.pql_calculation   = self.pql_calculation
+        ASSIGN versioned_component.formula           = self.formula 
+        ASSIGN versioned_component.maximum           = self.maximum
+        ASSIGN versioned_component.minimum           = self.minimum
+
+        IF variable_is_assigned ( self.master ) THEN
+        
+        	IF self.master <> EMPTY THEN
+        	        self.map_fields ( "VERSIONED_COMPONENT" )
+        	ENDIF
+        
+        ENDIF
+
+        self.call_trigger ( mt, mt, SML_COMPONENT_UPDATE_TRIGGER )
+        UPDATE versioned_component
+
+        RETURN ( TRUE )
+
+ENDROUTINE { smidi_component_action_update_component }
+
+{******************************************************************************}
+
+ROUTINE smidi_component_action_add_result( self, testno, order_no )
+
+	DECLARE ok, status, found, tmpString  { MSM V800 optional field }
+
+	ok = FALSE
+
+	found = select result.name for update
+              where ( test_number = testno )
+              and   ( name = self.name )
+
+	IF ( found = empty ) THEN
+
+		ok = self.call_trigger ( test_no, order_no, SML_RESULT_MISSING_TRIGGER )
+
+		IF ok THEN
+
+			reserve entry result, testno : self.name, status
+
+			IF status = EMPTY THEN
+
+				found = self.name
+				ok    = TRUE
+
+				assign result.order_number       = order_no
+				assign result.status             = "U"
+				assign result.result_type        = self.result_type
+				assign result.rep_control        = self.rep_control
+				assign result.allowed_characters = self.allowed_characters
+	
+				IF self.result_type = "B" THEN
+	
+					assign result.true_word  = self.true_word
+					assign result.false_word = self.false_word
+	
+				ELSEIF self.result_type = "N" THEN
+
+					assign result.places            = self.places
+					assign result.units             = self.units
+					assign result.maximum           = self.maximum
+					assign result.minimum           = self.minimum
+					assign result.sig_figs_number   = self.sig_figs_number
+					assign result.sig_figs_rounding = self.sig_figs_rounding
+					assign result.sig_figs_filter   = self.sig_figs_filter
+					assign result.minimum_pql       = self.minimum_pql
+					assign result.maximum_pql       = self.maximum_pql
+					assign result.pql_calculation   = self.pql_calculation
+					assign result.formula           = self.formula
+
+				ELSEIF self.result_type = "O" THEN
+
+					assign result.calculation = self.calculation
+	
+				ELSEIF self.result_type = "K" THEN
+
+					assign result.calculation       = self.calculation
+					assign result.units             = self.units
+					assign result.places            = self.places
+					assign result.units             = self.units
+					assign result.maximum           = self.maximum
+					assign result.minimum           = self.minimum
+					assign result.sig_figs_number   = self.sig_figs_number
+					assign result.sig_figs_rounding = self.sig_figs_rounding
+					assign result.sig_figs_filter   = self.sig_figs_filter
+					assign result.minimum_pql       = self.minimum_pql
+					assign result.maximum_pql       = self.maximum_pql
+					assign result.pql_calculation   = self.pql_calculation
+					assign result.formula           = self.formula
+       	 
+				ENDIF
+
+				{ -------------------------------------------------------- }
+				{ If user has fields in Result table then map for them     }
+				{ -------------------------------------------------------- }
+
+				IF ( self.qaimv <> EMPTY ) AND ( TOUPPER ( OBJECT_GET_CLASS_NAME ( self.qaimv ) ) = "QAIMV" ) THEN
+
+					tmpString = "SAP_DOC_REQUIRED"                            { MSM 800 optional fields }
+					IF ( VALID_FIELD ( "RESULT", tmpString ) ) THEN
+						assign result.'tmpString' = self.qaimv.doc_required
+					ENDIF
+
+					tmpString = "SAP_SERIAL_REQUIRED"
+					IF ( VALID_FIELD ( "RESULT", tmpString  ) ) THEN
+						assign result.'tmpString' = self.qaimv.serial_no_required
+					ENDIF
+
+					tmpString = "SAP_RESULT_CONF_NO"
+					IF ( VALID_FIELD ( "RESULT", tmpString ) ) THEN
+						assign result.'tmpString' = self.qaimv.result_number
+					ENDIF
+
+				ENDIF
+
+				self.call_trigger ( test_no, order_no, SML_RESULT_CREATE_TRIGGER )
+				UPDATE RESULT
+
+			ENDIF   { status on reserve entry is empty }
+
+		ELSE
+
+			ok = self.get_map_header ( "RESULT_ASSIGN" )    { user can say ok, so what SAP results are missing }
+
+		ENDIF  { ok true returned from missing trigger }
+
+	ELSEIF ( found <> EMPTY ) THEN
+
+		{ -------------------------------------------------------- }
+		{ If user has fields in Result table then map for them     }
+		{ -------------------------------------------------------- }
+
+		IF ( self.qaimv <> EMPTY ) AND ( TOUPPER ( OBJECT_GET_CLASS_NAME ( self.qaimv ) ) = "QAIMV" ) THEN
+
+			tmpString = "SAP_DOC_REQUIRED"                            { MSM 800 optional fields }
+			IF ( VALID_FIELD ( "RESULT", tmpString ) ) THEN
+				assign result.'tmpString' = self.qaimv.doc_required
+			ENDIF
+
+			tmpString = "SAP_SERIAL_REQUIRED"
+			IF ( VALID_FIELD ( "RESULT", tmpString ) ) THEN
+				assign result.'tmpString' = self.qaimv.serial_no_required
+			ENDIF
+
+			tmpString = "SAP_RESULT_CONF_NO"
+			IF ( VALID_FIELD ( "RESULT", tmpString ) ) THEN
+				assign result.'tmpString' = self.qaimv.result_number
+			ENDIF
+
+		ENDIF
+
+		ok = self.call_trigger ( test_no, order_no, SML_RESULT_FOUND_TRIGGER )
+
+	ELSE
+
+		ok = FALSE  { record locked - lot will increment retries and try again when not locked }
+
+	ENDIF  { found is empty, then make new result, not empty then set ok and trigger updates fields }
+
+
+	return( ok )
+
+
+ENDROUTINE   { smidi_component_action_add_result }
+
+
+{******************************************************************************}
+{*                                                                            *}
+{*                                                                            *}
+{*                          MAIN ROUTINES                                     *}
+{*                                                                            *}
+{*                                                                            *}
+{******************************************************************************}
+
+ROUTINE smidi_login_action_process ( self )
+
+	DECLARE continue
+	continue = TRUE
+
+	self.status_message ( "1-> smidi_login_action_process storing phrases", MSG_MED )
+		continue = continue AND self.store_phrases() 
+
+	self.status_message ( "2--> smidi_login_action_process lookup mlp's ":continue, MSG_MED )
+		continue = continue AND self.verify_products_exist()
+
+	self.status_message ( "3---> smidi_login_action_process making login request":continue, MSG_MED )
+		continue = continue AND self.make_request_tree()
+
+
+	self.status_message ( "4----> smidi_login_action_process storing lims data & doing login":continue, MSG_MED )
+		continue = continue AND self.process_full_tree()
+
+{ 1.1 Elan reduced lot testing }
+{ Need to get the job names here, then leter in this routine, do RLT stuff }
+{ 1.3 Check continue flag                                                  }
+
+	DECLARE array_rlt_jobs, rlt_job_cnt
+
+	ARRAY array_rlt_jobs   ARRAYSIZE (0)
+
+	rlt_job_cnt = 0
+	WHILE (rlt_job_cnt < size_of_array(self.tree)) AND
+              (continue = TRUE)                         DO
+
+		rlt_job_cnt = rlt_job_cnt + 1
+
+		IF (self.tree[rlt_job_cnt] <> EMPTY) THEN
+
+			array_rlt_jobs [size_of_array(array_rlt_jobs) + 1] = self.tree[rlt_job_cnt].job_id
+
+		ENDIF
+
+	ENDWHILE
+
+{ end 1.1 }
+
+	{ -------------------------------------------- }
+	{ Do not update srh/srr when in point mode     }
+	{ -------------------------------------------- }
+
+	IF ( NOT self.point_mode ) THEN
+
+		self.status_message ( "5-----> smidi_login_action_process storing low level request records":continue, MSG_MED )
+		continue = continue AND self.store_request()
+
+	ENDIF  { do not do srh/srr when in point mode }
+
+	{ ------------------------------------------------- }
+	{ If continue is true at this stage you are happy ! }
+	{ ------------------------------------------------- }
+
+	self.status_message ( "6------> smidi_login_action_process completed ":continue, MSG_MED )
+
+
+{ 1.1 RLT }
+
+    IF (continue) THEN
+
+        CALL_ROUTINE "elan_rlt" 
+           USING array_rlt_jobs  RETURNING continue 
+	    IN LIBRARY "$SMIDI_USER"
+
+
+    ENDIF
+
+{ end 1.1 }
+
+
+	RETURN ( continue )
+
+ENDROUTINE   { action process *** MAIN routine called by login_requests *** }
+
+{******************************************************************************}
+
+ROUTINE smidi_login_action_store_phrases ( self )
+
+	DECLARE count, status
+
+	self.status_message ( (GET_USER_MESSAGE ( "SMIDI_LOGIN_PHRASE", 1 )), MSG_MED )
+
+	status = store_phrase_list ( self.phrases, count )
+
+	IF status <> SMIDI_NORMAL THEN
+		self.download.download_error ( SMIDI_FAILPHRASE ) 
+	ENDIF
+
+	RETURN ( status = SMIDI_NORMAL )
+
+ENDROUTINE { smidi_login_action_store_phrases }
+
+
+{******************************************************************************}
+
+ROUTINE smidi_login_action_make_request_tree ( self )
+
+	DECLARE count, scan, looking, create, ok, request, operation
+
+	self.status_message ( (GET_USER_MESSAGE ( "SMIDI_LOGIN_TREE", 1 )), MSG_MED )
+
+	ok    = TRUE
+	count = 1
+
+	WHILE ( self.operations[count] <> EMPTY ) AND ok DO
+
+		operation = self.operations[count]
+		scan      = 1
+		looking   = TRUE
+		create    = FALSE 
+
+		WHILE looking DO
+			request = self.tree[scan]
+			IF request = EMPTY THEN
+				looking = FALSE
+				create  = TRUE
+			ELSEIF request.lot_no = operation.lot_no THEN
+				looking = FALSE
+			ENDIF
+			IF looking THEN scan = scan + 1 ENDIF
+		ENDWHILE
+
+		IF create THEN
+			CREATE OBJECT "SMIDI_RQST", request
+				request.lot_no = operation.lot_no
+				request.parent = self
+				self.tree[scan] = request
+		ENDIF
+
+		IF ok THEN
+			error_context_add_data( "LOT_NO", request.lot_no )
+			ok = request.insert_operation( operation, self.chars )
+			request.insert_material( operation )
+		ENDIF
+	
+		count = count + 1
+
+	ENDWHILE
+
+	{ ========================================================================== }
+	{ built up the materials for operations, now build list of samples for login }
+	{ ========================================================================== }
+
+	IF ok THEN
+		count = 1
+		WHILE ( self.tree [ count ] <> EMPTY ) AND ok DO
+			request = self.tree[count]
+			error_context_clear( "ALL" )
+			error_context_add_data( "LOT_NO", request.lot_no )
+			ok = request.build_sample_list()
+			
+			count = count + 1
+		ENDWHILE
+		
+		
+	ENDIF
+
+	RETURN ( ok )
+
+ENDROUTINE { smidi_login_action_make_request_tree }
+
+{******************************************************************************}
+
+ROUTINE smidi_login_action_process_full_tree ( self )
+
+	DECLARE count, ok
+
+	self.status_message ( (GET_USER_MESSAGE ( "SMIDI_LOGIN_PROCESS", 1 )), MSG_MED )
+
+	ok    = TRUE
+	count = 1
+
+	WHILE ( ok ) AND ( self.tree[count] <> EMPTY ) DO
+
+		IF NOT self.point_mode THEN
+
+			ok = self.update_analyses ( self.tree[count] )
+
+			IF ok THEN
+
+				ok = self.update_product_specs ( self.tree[count] )
+
+				IF ok THEN
+					ok = self.update_test_schedule ( self.tree[count] )
+				ENDIF
+
+			ENDIF
+
+		ENDIF  { only when doing a lot do you update static tables }
+
+		{ --------------------------------------------------------------------------------------- }
+		{ These are done for points & lots, but only on points (no static data updated on points) }
+		{ --------------------------------------------------------------------------------------- }
+
+		IF ok THEN
+			ok = self.update_tables ( self.tree[count] )     { user trigger be wary...}
+		ENDIF
+
+		IF ok THEN
+			ok = self.process_tree ( self.tree [count] )
+		ENDIF
+
+		count = count + 1
+
+	ENDWHILE
+	
+	RETURN ( ok )
+
+ENDROUTINE { smidi_login_action_process_full_tree }
+
+{******************************************************************************}
+
+ROUTINE smidi_login_action_process_tree ( self, root )
+
+	DECLARE ok
+
+	self.status_mess_decode ( "SMIDI_LOGIN_ACTIVE", MSG_LOW, root.lot_no, EMPTY, EMPTY )
+
+	error_context_add_data( "LOT_NO", root.lot_no )
+	ok = root.login_job()
+
+	IF ok THEN
+
+		error_context_add_data( "JOB_HEADER", root.job_id )
+
+		ok = root.login_smp_lot(self)
+
+		IF ok THEN
+			ok = root.login_sample_list()
+		ENDIF
+
+	ENDIF
+
+	RETURN ( ok )
+
+ENDROUTINE  { action process_tree }
+
+{******************************************************************************}
+
+ROUTINE smidi_login_action_store_request ( self )
+
+	DECLARE c1, c2, c3, ok, op
+
+	self.status_message ( (GET_USER_MESSAGE ( "SMIDI_LOGIN_STORE", 1 )), MSG_MED )
+
+	ok = TRUE
+	c1 = 1
+	
+	WHILE self.tree[c1] <> EMPTY DO
+
+		c2 = 1
+		op = self.tree[c1].operations[c2]
+
+		WHILE ( op <> EMPTY ) AND ok DO
+
+			ok = op.create_record()
+
+			IF NOT ok THEN
+				op.error_status ( "F", "RQST", SMIDI_OPFAIL )
+			ENDIF
+
+			c3 = 1
+
+			WHILE ( op.sample.test_details[c3] <> empty) AND ok DO
+
+				ok = op.sample.test_details[c3].create_record()
+				IF NOT ok THEN
+					op.error_status ( "F", "RQST", SMIDI_CHARFAIL )
+				ENDIF
+				c3 = c3 + 1
+
+			ENDWHILE
+
+			c2 = c2 + 1
+			op = self.tree[c1].operations[c2]
+
+		ENDWHILE
+
+		{**********************Start Clean Up Routine*********************}
+		DECLARE counter, ctr
+		counter = 1
+		ctr = 1
+		IF self.tree <> EMPTY THEN
+			
+			WHILE counter <= SIZE_OF_ARRAY(self.tree) DO
+				
+				IF self.tree[c1] <> EMPTY THEN
+					
+					WHILE ctr <= SIZE_OF_ARRAY(self.tree[c1].materials) DO
+						IF self.tree[c1].materials[ctr] <> EMPTY THEN 
+							self.tree[c1].materials[ctr].product_object.limit_details = EMPTY
+							self.tree[c1].materials[ctr].product_object = EMPTY
+							self.tree[c1].materials[ctr] = EMPTY
+						ENDIF
+						ctr = ctr + 1
+					ENDWHILE
+
+					self.tree[c1].materials = EMPTY
+					self.tree[c1] = EMPTY
+
+				ENDIF
+				
+				counter = counter + 1
+			ENDWHILE
+
+			ctr = 1
+			WHILE ( self.operations[ctr] <> EMPTY ) AND ok DO
+				self.operations[ctr].sample.test_details = EMPTY
+				ctr = ctr + 1
+			ENDWHILE
+
+		ENDIF		
+		{**********************End Clean Up Routine*************************}
+		
+		c1 = c1 + 1
+
+	ENDWHILE
+
+	RETURN ( ok )
+
+ENDROUTINE { smidi_login_action_store_request }
+
+
+{******************************************************************************}
+{*                                                                            *}
+{*                                                                            *}
+{*                             ANALYSIS ROUTINES                              *}
+{*                                                                            *}
+{*                                                                            *}
+{******************************************************************************}
+
+ROUTINE smidi_login_action_update_analyses ( self, root )
+
+	DECLARE count, sample, ok, test, samp_count
+
+	self.status_mess_decode ( "SMIDI_LOGIN_VERANAL", MSG_LOW, root.lot_no, EMPTY, EMPTY )
+
+	ok     = TRUE
+	count  = 1
+
+	WHILE ( count <= SIZE_OF_ARRAY ( root.samples ) ) AND ( ok ) DO 
+		samp_count = 1
+		sample     = root.samples [ count, samp_count ]
+        	WHILE ( sample <> EMPTY ) AND ok DO
+			test = 1
+			WHILE ( sample.tests[test] <> EMPTY ) AND ok DO
+				ok   = sample.tests[test].verify()
+				test = test + 1
+			ENDWHILE
+			
+			{ Clean up }
+			sample = EMPTY
+			
+			
+			samp_count = samp_count + 1
+			sample     = root.samples[count,samp_count]
+		
+		ENDWHILE
+		
+		count = count + 1
+	ENDWHILE
+	
+	RETURN ( ok )
+
+ENDROUTINE { smidi_login_action_update_analyses }
+
+{******************************************************************************}
+
+ROUTINE smidi_login_action_update_test_schedule ( self, root )
+
+
+	DECLARE ok, count, sample, samp_count, test_schedule, user_lib, user_routine, table, field
+
+	self.status_message ( GET_USER_MESSAGE ( "SMIDI_LOGIN_TEST_SCHEDULE", 1 ), MSG_LOW )
+
+	table  = "TEST_SCHED_HEADER"
+	field  = "IDENTITY"
+	ok     = TRUE
+	count  = 1
+
+	WHILE ( count <= SIZE_OF_ARRAY ( root.samples ) ) AND ( ok ) DO 
+
+		samp_count = 1
+		sample     = root.samples [ count, samp_count ]
+
+        	WHILE ( sample <> EMPTY ) AND ok DO
+
+			test_schedule = smidi_lib_get_mapping ( self.mapping_profile,table,field, self, sample.master )
+
+			IF test_schedule = EMPTY THEN
+
+				table  = "SAMPLE"
+				field  = "WORK_PROFILE"
+				test_schedule = smidi_lib_get_mapping ( self.mapping_profile, table, field, self, sample.master )
+
+			ENDIF
+
+
+			IF ( test_schedule <> EMPTY ) AND ( test_schedule <> ERROR ) THEN
+
+				user_lib     = smidi_lib_get_map_field ( self.mapping_profile,table,field,"LIBRARY_NAME" )
+				user_routine = smidi_lib_get_map_field ( self.mapping_profile,table,field,"ROUTINE_NAME" )
+
+				IF ( BLANK ( user_lib ) ) | ( BLANK ( user_routine ) ) THEN
+
+					IF ( VGL_VALIDATE_ROUTINE ( SMIDI_PROCESS_USER_LIB, "update_test_sched" ) ) THEN
+
+						CALL_ROUTINE UPDATE_TEST_SCHEDULE IN LIBRARY SMIDI_PROCESS_USER_LIB
+							USING self, sample, test_schedule RETURNING ok
+
+					ENDIF  { if map found the tsched, then validate it for the user }
+
+				ENDIF  { if a userlib/routine did the lookup then trust that it validated }
+
+			ENDIF  { if tsched was mapped and not a routine then check it }
+	
+			{ Clean up }
+			sample = EMPTY
+			
+			
+			samp_count = samp_count + 1
+			sample     = root.samples[count,samp_count]
+
+		ENDWHILE
+		
+		count = count + 1
+
+	ENDWHILE
+	
+	RETURN ( ok )
+
+
+ENDROUTINE { smidi_login_action_update_test_schedules }
+
+{******************************************************************************}
+
+ROUTINE smidi_login_action_update_tables ( self, root )
+
+
+	DECLARE count, sample, ok, samp_count
+
+	self.status_message ( GET_USER_MESSAGE ( "SMIDI_LOGIN_USER_TABLES", 1 ), MSG_LOW )
+
+	ok     = TRUE
+	count  = 1
+
+	WHILE ( count <= SIZE_OF_ARRAY ( root.samples ) ) AND ( ok ) DO 
+
+		samp_count = 1
+		sample     = root.samples [ count, samp_count ]
+
+        	WHILE ( sample <> EMPTY ) AND ok DO
+
+			CALL_ROUTINE PROCESS_USER_TABLES IN LIBRARY SMIDI_PROCESS_USER_LIB 
+				USING sample, self, root RETURNING ok
+
+			{ Clean up }
+			sample = EMPTY
+			
+			samp_count = samp_count + 1
+			sample     = root.samples[count,samp_count]
+
+		ENDWHILE
+		
+		{ Clean up }
+		sample = EMPTY
+		
+
+		count = count + 1
+
+	ENDWHILE
+	
+	RETURN ( ok )
+
+ENDROUTINE { smidi_login_action_update_tables }
+
+{******************************************************************************}
+
+ROUTINE smidi_rqst_action_check_template ( smidi_rqst, VALUE template_type, VALUE template, VALUE force_add )
+
+
+        DECLARE check_id, retval, template_fields
+
+	retval = FALSE       { return failed, unless all checks are ok }
+	ARRAY template_fields
+
+
+	{ ====================================================== }
+	{ Build the list of fields on template from mapping      }
+	{ ====================================================== }
+	
+	build_fields ( smidi_rqst, template_fields, template_type )
+
+
+	{ ====================================================== }
+	{ Select the template id then validate the fields        }
+	{ ====================================================== }
+	
+	IF template_type = "SAMPLE" THEN
+
+		check_id = SELECT SAMP_TMPL_HEADER.IDENTITY 
+				WHERE IDENTITY = template AND REMOVEFLAG = FALSE
+
+	ELSE
+
+		check_id = SELECT JOB_TEMPLATE.IDENTITY 
+				WHERE IDENTITY = template AND REMOVEFLAG = FALSE
+
+	ENDIF   { sample or job template }
+
+
+	{ ====================================================== }
+	{ Whichever template was checked, check its fields       }
+	{ ====================================================== }
+	
+	IF ( check_id = EMPTY ) THEN
+
+		IF force_add THEN
+
+			retval = add_the_template ( template_type, template, template_fields )
+
+		ENDIF
+
+	ELSEIF ( check_required_fields ( template_type, template, template_fields ) ) THEN
+
+		IF force_add THEN
+
+			retval = update_required_fields ( template_type, template, template_fields )
+
+		ENDIF
+
+	ELSE
+
+		retval = TRUE
+
+	ENDIF   { the template exists and has all the necessary fields }
+
+
+	RETURN ( retval )
+
+
+ENDROUTINE  { end smidi_rqst_action_check_template }
+
+{******************************************************************************}
+
+ROUTINE build_fields ( smidi_rqst, template_fields, template_type )
+
+	DECLARE count, id, is_key
+
+	count = 0
+	id    = SELECT SMIDI_MAP_ITEM.FIELD_NAME
+		WHERE TABLE_NAME      = template_type
+		AND   MAPPING_PROFILE = smidi_rqst.mapping_profile
+
+	WHILE id <> EMPTY DO
+
+		IF template_type = "SAMPLE" THEN
+			GET_FIELD_DETAILS SAMPLE.'id', "KEY0_FIELD", is_key
+		ELSE
+			GET_FIELD_DETAILS JOB_HEADER.'id', "KEY0_FIELD", is_key
+		ENDIF	
+
+		IF NOT is_key THEN
+			count = count + 1
+			template_fields[count] = id
+		ENDIF
+
+		NEXT SMIDI_MAP_ITEM
+		id = SELECT SMIDI_MAP_ITEM.FIELD_NAME
+
+	ENDWHILE
+
+
+	IF VGL_VALIDATE_ROUTINE ( SMIDI_PROCESS_USER_LIB, "update_template_fields" ) THEN
+
+		CALL_ROUTINE UPDATE_TEMPLATE_FIELDS IN LIBRARY SMIDI_PROCESS_USER_LIB 
+			USING count, template_fields, template_type, smidi_rqst
+
+	ENDIF
+
+ENDROUTINE  { build_fields }
+
+{******************************************************************************}
+
+ROUTINE check_required_fields ( VALUE template_type, VALUE template, template_fields )
+
+        DECLARE field_id, count, retval
+
+        retval = FALSE         { true causes the fields to be update on return from here }
+        count  = 1
+
+        WHILE ( ( count <= SIZE_OF_ARRAY ( template_fields ) ) AND ( NOT retval ) ) DO
+
+                field_id = SELECT TEMPLATE_FIELDS.FIELD_NAME
+                                WHERE TEMPLATE_ID = template
+                                AND   TABLE_NAME  = template_type
+                                AND   FIELD_NAME  = template_fields[count]
+
+                IF field_id = EMPTY THEN
+                        retval = TRUE
+                ENDIF
+
+                count = count + 1
+
+        ENDWHILE     { search all the fields for the template }
+
+        RETURN ( retval )
+
+ENDROUTINE { end check required fields for sample and job templates }
+
+{******************************************************************************}
+
+ROUTINE update_required_fields ( VALUE template_type, VALUE template, template_fields )
+
+        DECLARE field_id, count, add_order_numb, retval
+
+        retval         = TRUE           { assume that all is ok unless we encounter an error }
+        count          = 1              { count through the array of fields to add           }
+        add_order_numb = 0              { keep track of how many added for order_number      }
+
+        WHILE ( count <= SIZE_OF_ARRAY ( template_fields ) ) AND retval DO
+
+                field_id = SELECT TEMPLATE_FIELDS.FIELD_NAME FOR UPDATE
+                                WHERE TABLE_NAME    = template_type
+                                AND   TEMPLATE_ID   = template
+                                AND   FIELD_NAME    = template_fields[count]
+
+                IF ( field_id = EMPTY ) THEN
+
+                        IF ( add_order_numb > 0 ) THEN
+                                add_order_numb = add_order_numb + 1
+                        ELSE
+                                add_order_numb = get_max_order ( template_type, template )
+                        ENDIF
+
+                        retval = add_template_field ( template_type, template, template_fields[count], add_order_numb )
+
+                ENDIF
+
+                count = count + 1
+
+        ENDWHILE    { for all the fields }
+
+        RETURN ( retval )
+
+ENDROUTINE { end update required fields for sample and job templates }
+
+{******************************************************************************}
+
+ROUTINE get_max_order ( VALUE template_type, VALUE template )
+
+	DECLARE retval
+
+        retval = SELECT MAX TEMPLATE_FIELDS.ORDER_NUMBER
+                        WHERE TABLE_NAME  = template_type
+                        AND   TEMPLATE_ID = template
+
+        IF ( retval = EMPTY ) THEN
+                retval = 1
+        ELSEIF ( NUMTEXT ( retval ) ) THEN
+                retval = NUMERIC ( retval ) + 1
+        ELSE
+                retval = 1
+        ENDIF
+
+        RETURN ( retval )
+
+ENDROUTINE   { end get max order }
+
+{******************************************************************************}
+
+ROUTINE add_template_field ( VALUE template_type, VALUE template, VALUE field, VALUE add_order_numb )
+
+
+        DECLARE new_id, status, len_table, len_temp, len_field, retval
+
+        retval  = TRUE         {  assume good unless find an error }
+	
+	GET_FIELD_DETAILS TEMPLATE_FIELDS.TABLE_NAME , "FIELD_SIZE", len_table
+	GET_FIELD_DETAILS TEMPLATE_FIELDS.TEMPLATE_ID, "FIELD_SIZE", len_temp
+	GET_FIELD_DETAILS TEMPLATE_FIELDS.FIELD_NAME , "FIELD_SIZE", len_field
+
+        new_id  = PAD ( template_type, " ", len_table ) :
+                  PAD ( template     , " ", len_temp  ) :
+                  PAD ( field        , " ", len_field )
+
+        RESERVE ENTRY TEMPLATE_FIELDS, new_id, status
+
+        IF ( status <> EMPTY ) THEN
+
+                retval = FALSE
+
+        ELSE
+
+                ASSIGN TEMPLATE_FIELDS.DEFAULT_TYPE = "V"
+                ASSIGN TEMPLATE_FIELDS.TEXT_PROMPT  = field
+                ASSIGN TEMPLATE_FIELDS.ORDER_NUMBER = packed_decimal ( add_order_numb )
+                UPDATE TEMPLATE_FIELDS, status
+
+        ENDIF
+
+        RETURN ( retval )
+
+ENDROUTINE { end add template field }
+
+{******************************************************************************}
+
+ROUTINE add_the_template ( VALUE template_type, VALUE template, template_fields )
+
+
+        DECLARE new_id, status, retval, len_temp
+
+        retval = TRUE
+
+        do_the_table_push()
+                
+                IF ( template_type = "JOB_HEADER" ) THEN
+		
+		    GET_FIELD_DETAILS JOB_TEMPLATE.IDENTITY, "FIELD_SIZE", len_temp
+		
+		ELSE
+		
+		    GET_FIELD_DETAILS SAMP_TMPL_HEADER.IDENTITY, "FIELD_SIZE", len_temp
+		
+		ENDIF
+		
+		new_id = PAD ( template, " ", len_temp )
+
+		IF template_type = "SAMPLE" THEN
+	                RESERVE ENTRY SAMP_TMPL_HEADER, new_id, status
+		ELSE
+	                RESERVE ENTRY JOB_TEMPLATE, new_id, status
+		ENDIF
+
+                IF ( status <> EMPTY ) THEN
+
+                        retval = FALSE
+
+                ELSEIF ( template_type = "JOB_HEADER" ) THEN
+
+                        ASSIGN JOB_TEMPLATE.PROMPT_FOR_NAME     = FALSE
+                        ASSIGN JOB_TEMPLATE.JOB_SYNTAX_ID       = " "
+                        ASSIGN JOB_TEMPLATE.SAMPLE_SYNTAX_ID    = "          "
+                        ASSIGN JOB_TEMPLATE.SAMPLE_TEMPLATE_ID  = "          "
+                        ASSIGN JOB_TEMPLATE.SAMPLE_REPEAT_COUNT = 0
+                        ASSIGN JOB_TEMPLATE.CREATION_TITLE      = " "
+                        ASSIGN JOB_TEMPLATE.BROWSE_DESCRIPTION  = " "
+
+                        UPDATE JOB_TEMPLATE, status
+
+                ELSE
+
+                        ASSIGN SAMP_TMPL_HEADER.RECEIPT_ACTION = "N"
+                        ASSIGN SAMP_TMPL_HEADER.LABEL_ACTION   = "N"
+                        ASSIGN SAMP_TMPL_HEADER.WSHT_ACTION    = "N"
+                        ASSIGN SAMP_TMPL_HEADER.SUPERTEMPLATE  = FALSE
+                        ASSIGN SAMP_TMPL_HEADER.ACTION_TYPE    = "N"
+                        ASSIGN SAMP_TMPL_HEADER.SYNTAX_ID      = " "
+                        ASSIGN SAMP_TMPL_HEADER.SAMPLE_STATUS  = "V"
+                        ASSIGN SAMP_TMPL_HEADER.LOGIN_TITLE    = " "
+                        ASSIGN SAMP_TMPL_HEADER.DESCRIPTION    = " "
+
+                        UPDATE SAMP_TMPL_HEADER, status
+
+                ENDIF
+
+                IF ( retval ) THEN
+                        retval = update_required_fields ( template_type, template, template_fields )
+                ENDIF
+
+        do_the_table_pop()
+
+        RETURN ( retval )
+
+ENDROUTINE { end add template }
+
+{******************************************************************************}
+
+ROUTINE do_the_table_push
+
+        ARRAY table_contexts
+
+        push_file_descriptor( "JOB_HEADER"           , table_contexts[ 1  ] )
+        push_file_descriptor( "SAMPLE"               , table_contexts[ 2  ] )
+        push_file_descriptor( "TEST"                 , table_contexts[ 3  ] )
+        push_file_descriptor( "RESULT"               , table_contexts[ 4  ] )
+
+        push_file_descriptor( "VERSIONED_ANALYSIS"   , table_contexts[ 5  ] )
+        push_file_descriptor( "VERSIONED_COMPONENT"  , table_contexts[ 6  ] )
+        push_file_descriptor( "VERSIONED_C_L_HEADER" , table_contexts[ 7  ] )
+        push_file_descriptor( "VERSIONED_C_L_ENTRY"  , table_contexts[ 8  ] )
+
+        push_file_descriptor( "MLP_HEADER"           , table_contexts[ 9  ] )
+        push_file_descriptor( "MLP_ANALYSIS"         , table_contexts[ 10 ] )
+        push_file_descriptor( "MLP_COMPONENTS"       , table_contexts[ 11 ] )
+        push_file_descriptor( "MLP_VALUES"           , table_contexts[ 12 ] )
+        push_file_descriptor( "MLP_LEVEL"            , table_contexts[ 13 ] )
+        push_file_descriptor( "MLP_SCHEDULE"         , table_contexts[ 14 ] )
+
+        push_file_descriptor( "TEST_SCHED_HEADER"    , table_contexts[ 15 ] )
+        push_file_descriptor( "TEST_SCHED_ENTRY"     , table_contexts[ 16 ] )
+
+        push_file_descriptor( "SMIDI_DOWNLOAD_QUEUE" , table_contexts[ 17 ] )
+
+
+        IF ( NOT ( TRANSACTION_IS_WRITE() ) ) THEN
+                START WRITE TRANSACTION "SMIDI adding template"
+        ENDIF
+        
+        RETURN
+
+ENDROUTINE   { end do the table push }
+
+{******************************************************************************}
+
+ROUTINE do_the_table_pop
+
+        DECLARE count
+
+        COMMIT   {  for the pop make all changes saved }
+
+        count = 1
+        WHILE ( table_contexts[count] <> EMPTY ) DO
+                pop_file_descriptor ( table_contexts[count] )
+                count = count + 1
+        ENDWHILE
+
+        IF ( NOT TRANSACTION_IS_WRITE() ) THEN
+                START WRITE TRANSACTION "SMIDI added template"
+        ENDIF
+
+        RETURN
+
+ENDROUTINE   { end do the table pop }
+{ $smidi_lib_login }

@@ -1,0 +1,3800 @@
+{==============================================================================}
+{                                                                              }
+{  ORBIS INFORMATION SYSTEMS                                                   }
+{                                                                              }
+{  Filename         : $SMMILL_RESULT_MAP.RPF                                   }
+{  Version          :                                                          }
+{  Document Ref.    :                                                          }
+{  Author           : D. Kelly                                                 }
+{  Date Created     : 06-Nov-2001                                              }
+{  Description      : Report to for SMP Component Result Mapping with          }
+{                     Millennium data.                                         }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{                                                                              }
+{  Ver.     Date        By          Description                                }
+{  ----     ----        --          -----------                                }
+{  1.0      06-Nov-2001 DK          Release version                            }
+{  2.0      13-Jan-2005 AF          Bug fixes from Versions 3.0 and 3.1 added  }
+{                                   (1) Only browse on all analysis for ADD    }
+{                                   (2) Modification details                   }
+{ Added by to Live by Enon Gavin 02/08/05                                      }
+{                                                                              }
+{  3.0      07-Sep-2012  AF        Version-independant mapping                 }
+{==============================================================================}
+
+SET NAME "DEFER/"
+ENABLE WINDOWS
+
+SET NOTPROTECTED
+
+SET COMPILE_OPTION DECLARE
+
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_WINDOW
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_CLIENT
+JOIN STANDARD_LIBRARY STD_GENERAL
+JOIN STANDARD_LIBRARY STD_MESSAGE
+JOIN STANDARD_LIBRARY STD_STRUCTURE
+JOIN STANDARD_LIBRARY STD_WINDOW
+
+
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $LIST_GRID
+JOIN LIBRARY $SMMILL_DYNAMIC_SQL
+JOIN LIBRARY $SMMILL_CONST
+JOIN LIBRARY $PROMPT_TAB
+
+
+
+CONSTANT FORM_WIDTH       = 100
+CONSTANT FORM_HEIGHT_GUI  = 20
+CONSTANT FORM_HEIGHT_TERM = 17
+
+CONSTANT BLANK_CELL = ""
+
+CONSTANT BUTTON_WIDTH   = 16
+CONSTANT BUTTON_SPACE   = 10
+
+CONSTANT TAB_HEIGHT        = 13
+CONSTANT TAB_ROW           = 5
+CONSTANT TAB_COLUMN        = 2
+CONSTANT TAB_BUTTON_WIDTH  = 8
+
+
+CONSTANT FORM_PROJ         = 1
+CONSTANT FORM_ANAL         = 2
+CONSTANT FORM_VER          = 3
+CONSTANT FORM_DESC         = 4
+CONSTANT FORM_GRID         = 5
+CONSTANT FORM_OK           = 6
+CONSTANT FORM_CANC         = 7
+CONSTANT FORM_HELP         = 8
+CONSTANT FORM_TAB          = 9
+ 
+
+                                   {============================================}
+                                   { Setup Grid Column Constants                }    
+                                   {============================================}
+
+CONSTANT ENABLED           = 2
+CONSTANT SMP_COMP          = 1
+CONSTANT MILL_RES_TYPE     = 5 
+CONSTANT INJECT            = 4
+CONSTANT INJECT_COMM       = 6
+CONSTANT MILL_COMP         = 3
+CONSTANT PROJECT_COL       = 7
+CONSTANT DELETE_COL        = 8
+
+
+
+CONSTANT DELETED_TEXT            = "SAMPLEMANAGER COMPONENT DELETED"
+CONSTANT CTXT_SM_COMP_REMOVED    = "Component removed"
+
+
+DECLARE select_array, do_commit
+ARRAY select_array ARRAYSIZE (10)
+
+
+do_commit= FALSE
+
+add_interface ( 1 )
+
+modify_interface ( 1 )
+
+display_interface ( 1 )
+
+copy_interface ( 1 )
+{
+archive_project ( 1 )
+}
+{==============================================================================}
+{                                                                              }
+{  ROUTINE define_grid_class                                                   }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  06-Nov-2001  DK              The routine for the modify menu option         }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE define_grid_class
+
+    DEFINE CLASS "SMMILL_MAP_GRID"
+
+	INITIALISATION
+
+	INHERIT "STD_GRID_EDITOR"
+	
+	PROPERTIES
+		"prev_array"
+
+    END CLASS
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE SMMILL_MAP_GRID_CLASS_INITIALISATION                                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  06-Nov-2001  DK              The routine for the modify menu option         }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE SMMILL_MAP_GRID_CLASS_INITIALISATION (self)
+
+	ARRAY self . prev_array
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE add_interface                                                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  06-Nov-2001  DK              The routine for the modify menu option         }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE add_interface ( VALUE option )
+
+    main ( "ADD" )
+
+ENDROUTINE
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE modify_interface                                                    }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  06-Nov-2001  DK              The routine for the modify menu option         }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE modify_interface ( VALUE option )
+
+    main ( "MODIFY" )
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE display_interface                                                   }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  06-Nov-2001  DK              The routine for the display menu option        }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE display_interface ( VALUE option )
+
+    main ( "DISPLAY" )
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE copy_interface                                                      }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  06-Nov-2001  DK              The routine for the modify menu option         }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE copy_interface ( VALUE option )
+
+    copy_project ( "COPY" )
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE archive_project                                                     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  06-Nov-2001  DK              The routine for the modify menu option         }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE archive_project ( VALUE option )
+
+    copy_project ( "ARCHIVE" )
+
+ENDROUTINE
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE main                                                                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  06-Nov-2001  DK              The main routine for invoking the form         }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE main ( VALUE option )
+
+    interface_assignment ( option )
+
+ENDROUTINE
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE interface_assignment                                                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  06-Nov-2001  DK              invoke the interface assignment functionality  }
+{  13-Jan-2005  AF              Refresh mod. details on GUI after update       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  is_display             value                is the screen display only T/F  }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE interface_assignment ( VALUE option )
+
+    DECLARE main_form, keep_prompting, is_display, the_mess
+
+    do_commit= FALSE
+
+    is_display = FALSE
+
+    IF option = "DISPLAY" THEN
+
+        is_display = TRUE
+
+    ENDIF
+
+    keep_prompting = TRUE
+
+    setup_form ( main_form, option )
+
+    main_form . start_prompt ()
+
+    WHILE keep_prompting DO 
+
+        main_form . wait_prompt ()
+ 
+        IF ( main_form . get_lastkey () = "DO" ) AND NOT (is_display) THEN
+
+           do_db_transactions ( main_form,
+                                option  )
+
+           IF do_commit THEN
+
+               COMMIT
+               
+               IF option = "ADD" THEN
+
+                   the_mess = "Mapping Created Successfully!"
+
+               ELSE
+
+                   the_mess = "Mapping Updated Successfully!"
+
+               ENDIF
+
+               { AF 13-Jan-2005 Bug fix from ver 3.1 }
+               update_mod_details_disp_now (main_form) 
+
+
+               flashmessage(the_mess, TRUE)
+               do_commit = FALSE
+
+           ELSE
+
+               do_commit = FALSE
+
+           ENDIF
+
+        ELSE
+
+           keep_prompting = FALSE
+
+        ENDIF
+
+    ENDWHILE
+
+    main_form . end_prompt ()
+
+ENDROUTINE
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE setup_form                                                          }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  06-Nov-2001  DK              Sets up properties for the main form           }
+{  13-Jan-2005  AF              Bug fixes (from later releases)                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  main_form              reference            the main form                   }
+{  is_display             value                is the screen display only T/F  }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE setup_form ( main_form, VALUE option )
+
+    DECLARE the_header, anal_id, anal_ver, desc, mod_on, mod_by, the_routine,
+            tab, each_tab, the_proj, ok_button, inst_button,
+            exit_button, proj_prompt, anal_enabled, smp_version
+
+ 
+    IF GLOBAL("MILL_PROJECT_SPECIFIC_MAPPING") THEN
+
+        the_proj = "     "
+
+    ELSE
+
+        the_proj = GLOBAL_PROJECT
+
+    ENDIF
+
+    IF option = "DISPLAY" THEN
+
+        the_header = "Display SampleManager -> Millennium Analysis/Component Mapping"
+
+        the_routine = "enable_get_components_dis"
+
+    ELSEIF option = "MODIFY" THEN
+
+        the_header = "Modify SampleManager -> Millennium Analysis/Component Mapping"
+
+        the_routine = "enable_get_components_mod"
+
+    ELSEIF option = "ADD" THEN
+
+        the_header = "Add SampleManager -> Millennium Analysis/Component Mapping"
+
+        the_routine = "enable_get_components_add"
+
+    ENDIF
+
+    PROMPT OBJECT main_form
+        CLASS PROMPT_CLASS_FORM
+        WITH ( width  = FORM_WIDTH                          ,
+               row    = 10                                  ,
+               column = 10                                  ,
+               header = the_header                          ,
+               footer = "<DO> to Continue, <EXIT> to Cancel",
+               proportional = TRUE                          ,
+               button_style = FORM_BUTTON_NONE              ,
+               return_behaviour = FORM_RETURN_WRAP          )
+
+    main_form . add_frame ("", 1, 1, 3, FORM_WIDTH -2 )
+    main_form . add_frame ("", 1, 5, 13, FORM_WIDTH -2 )
+
+
+                                   {============================================}
+                                   { Add the prompt objects to the form.        }    
+                                   {============================================}
+
+    IF GLOBAL("MILL_PROJECT_SPECIFIC_MAPPING") THEN
+
+       { AF 13-Jan-2005 }
+       { As in Version 3.0 onwards, dont browse on every available project for modify and display }
+
+        IF option = "ADD" THEN
+
+               PROMPT OBJECT proj_prompt
+                    ON LINE 1 FROM 17 TO 42
+                    WITH ( LOWERED = TRUE,
+                           ALWAYS_VALIDATE = TRUE ,
+                           BROWSE_ROUTINE = "select_project_data",
+                           LEAVE_PROMPT_ROUTINE = "enable_analysis")
+
+         ELSE
+
+                 PROMPT OBJECT proj_prompt
+                    ON LINE 1 FROM 17 TO 42
+                    WITH ( LOWERED = TRUE,
+                           ALWAYS_VALIDATE = TRUE ,
+                           BROWSE_ROUTINE = "select_project_data_mapped",
+                           LEAVE_PROMPT_ROUTINE = "enable_analysis")
+
+         ENDIF
+
+         anal_enabled = FALSE
+
+    ELSE
+
+        PROMPT OBJECT proj_prompt
+                    ON LINE 1 FROM 17 TO 42
+                    WITH ( LOWERED = TRUE,
+                           ALWAYS_VALIDATE = TRUE ,
+                           DISPLAY_ONLY = TRUE,
+                           VALUE = the_proj)
+
+       anal_enabled = TRUE
+
+    ENDIF
+
+
+    main_form . add_display ( "Project       ",
+                              2         ,
+                              1           ,
+                              PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED)
+
+  { AF 13-Jan-2005 }
+  { As in Version 3.0 onwards, dont browse on every analysis for modify and display }
+
+  IF option = "ADD" THEN
+
+    PROMPT OBJECT anal_id
+                BROWSE ON VERSIONED_ANALYSIS . identity
+                ON LINE 2 FROM 17
+                WITH ( ALWAYS_VALIDATE = TRUE,
+                       VGL_LIBRARY = GLOBAL( "CURRENT_LIBRARY" ),
+                       LOWERED = TRUE, 
+                       LEAVE_PROMPT_ROUTINE = the_routine,
+                       enabled = anal_enabled )
+
+     ELSE
+
+        PROMPT OBJECT anal_id
+                    ON LINE 2 FROM 17 TO 27
+                    WITH ( ALWAYS_VALIDATE = TRUE,
+                           VGL_LIBRARY = GLOBAL( "CURRENT_LIBRARY" ),
+                           LOWERED = TRUE, 
+                           enabled = TRUE,
+                           BROWSE_ROUTINE = "browse_exist_anals",
+                           LEAVE_PROMPT_ROUTINE = the_routine )
+
+    ENDIF
+
+
+
+    main_form . add_display ( "Analysis      ",
+                              2         ,
+                              2         ,
+                              PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED)
+
+    { AF 13-Jan-2005 }
+    { Correct analysis version browse, as in version 3.1 }
+    IF option = "ADD" THEN
+
+        PROMPT OBJECT anal_ver
+                ON LINE 2 FROM 38 TO 42
+                BROWSE ON VERSIONED_ANALYSIS . analysis_version
+                WITH ( LOWERED = TRUE,
+                       enabled=FALSE, value=0 )
+     ELSE
+
+         PROMPT OBJECT anal_ver
+                ON LINE 2 FROM 38 TO 42
+                    WITH ( LOWERED = TRUE,
+                       enabled=FALSE, value=0 )
+
+     ENDIF
+    { end AF 13-Jan-2005 }
+
+    smp_version = STRIP(smp_version_number ( ))
+
+
+    IF LEFTSTRING(smp_version, 4) = "2001" THEN
+
+        main_form . add_display ( "Version",
+                                  30       ,
+                                  2        ,
+                                  PROMPT_RENDITION_BOLD)
+
+
+    ELSE
+
+        main_form . add_display ( "Version",
+                                  30       ,
+                                  2        ,
+                                  PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED)
+
+    ENDIF
+
+
+    PROMPT OBJECT desc
+                ON LINE 3 FROM 17 to 57
+		FORMAT TEXT
+                WITH ( LOWERED = TRUE,
+                       DISPLAY_ONLY = TRUE)
+
+
+    main_form . add_display ( "Description   ",
+                              2         ,
+                              3         ,
+                              PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED)
+
+
+
+    PROMPT OBJECT mod_on
+                ON LINE 1 FROM 75 TO 96
+		FORMAT TEXT
+		WITH ( lowered = TRUE ,
+                       DISPLAY_ONLY = TRUE )
+
+
+    main_form . add_display ( "Modified On",
+                              63         ,
+                              1          ,
+                              PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED)
+
+    PROMPT OBJECT mod_by
+                ON LINE 2 FROM 75 TO 96
+		FORMAT TEXT
+		WITH ( lowered = TRUE ,
+                       DISPLAY_ONLY = TRUE )
+
+    main_form . add_display ( "Modified By",
+                              63        ,
+                              2          ,
+                              PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED)
+
+
+
+
+
+    main_form . add_prompt ( proj_prompt ) {Prompt 1}
+    main_form . add_prompt ( anal_id  )    {Prompt 2}
+    main_form . add_prompt ( anal_ver )    {Prompt 3}
+    main_form . add_prompt ( desc    )     {Prompt 4}
+
+
+
+
+    main_form . add_display ( mod_on   )
+    main_form . add_display ( mod_by   )
+
+    IF ( GLOBAL ( "TERMTYPE" ) = "GUI" ) THEN
+
+        main_form . height = FORM_HEIGHT_GUI
+
+    ELSE
+
+        main_form . height = FORM_HEIGHT_TERM
+
+    ENDIF
+
+
+    PROMPT OBJECT ok_button
+        CLASS "STD_PROMPT_BUTTON"
+        WITH ( row                 = main_form  . height - 1,
+               width               = BUTTON_WIDTH          ,
+               column              = BUTTON_WIDTH/2        ,
+               caption             = "OK"                  ,
+               send_lastkey        = "DO"                  )
+
+    main_form . add_prompt ( ok_button ) {Prompt 6}
+
+
+    PROMPT OBJECT exit_button
+            CLASS "STD_PROMPT_BUTTON"
+            WITH ( row                 = main_form  . height - 1,
+                   width               = BUTTON_WIDTH          ,
+                   column              = BUTTON_WIDTH + BUTTON_SPACE,
+                   caption             = "Cancel"              ,
+                   send_lastkey        = "EXIT"                ,
+                   enabled             = TRUE                  )
+
+
+
+    main_form . add_prompt ( exit_button ) {Prompt 7}
+
+
+    PROMPT OBJECT inst_button
+            CLASS "STD_PROMPT_BUTTON"
+            WITH ( row                 = main_form .  height - 1 ,
+                   width               = BUTTON_WIDTH          ,
+                   column              = (BUTTON_SPACE*5) + BUTTON_WIDTH + BUTTON_SPACE,
+                   caption             = "Help"              ,
+                   mouse_click_routine = "execute_help_file" ,     
+                   vgl_library         = "$SMMILL_HELP"      ,
+                   enabled             = TRUE                  )
+
+
+
+    main_form . add_prompt ( inst_button ) {Prompt 8}
+
+    set_up_std_prompt_tab_class ()
+
+    CREATE OBJECT PROMPT_TAB_CLASS , tab
+
+    tab . height = TAB_HEIGHT
+    tab . width  = ( main_form . width ) - 3
+    tab . row    = TAB_ROW
+    tab . column = TAB_COLUMN
+
+    IF GLOBAL("MILL_PROJECT_SPECIFIC_MAPPING") = FALSE THEN
+
+        the_proj = GLOBAL_PROJECT
+
+    ENDIF
+
+
+    add_proj_tab ( tab , 
+                   each_tab,
+                   the_proj,
+                   main_form,
+                   option  )
+     
+
+    main_form . add_prompt ( tab ) {Prompt 9}
+
+
+ENDROUTINE
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE get_anal_versions                                                   }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  06-Nov-2001  DK              Sets up properties for the main form           }
+{  13-Jan-2005  AF              Bug fix from v3.1 for analysis version browse  }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE get_anal_versions ( anal_prompt )
+
+    anal_prompt . parent_prompt . prompt_objects[FORM_VER] . value = 0
+
+    RETURN ( TRUE )
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE enable_analysis                                                     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  06-Nov-2001  DK              Sets up properties for the main form           }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE enable_analysis(proj_prompt)
+
+    proj_prompt . parent_prompt . prompt_objects [FORM_ANAL] . set_enabled ( TRUE )
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE get_ver_sel_array                                                   }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  06-Nov-2001  DK              Sets up properties for the main form           }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+{==============================================================================}
+{ ER 4/11/98 On entering the version prompt, assign the select array for the   }
+{            prompt based on the array passed by the analysis prompt           }
+{==============================================================================}
+
+ROUTINE get_ver_sel_array ( vers_prompt )
+
+
+    vers_prompt . parent_prompt . prompt_objects[FORM_VER] . select_array = 
+    vers_prompt . parent_prompt . prompt_objects[FORM_VER] . user_info
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE setup_grid                                                          }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  06-Nov-2001  DK              Sets up the grid and the buttons.              }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  main_form              reference            The main form                   }
+{  is_display             value                is the screen display only T/F  }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE setup_grid ( main_form, VALUE option )
+
+    DECLARE the_prompt_routine, interface_grid
+    DECLARE col_title, col_sizes, smp_version
+
+    ARRAY col_title
+    ARRAY col_sizes
+
+                                   {============================================}
+                                   { Setup the Interface grid.                  }    
+                                   {============================================}
+
+    col_title [ ENABLED      , 1 ] = "Enable"
+    col_title [ SMP_COMP     , 1 ] = "SampleManager Component"
+    col_title [ MILL_RES_TYPE, 1 ] = "Millennium Field"
+    col_title [ MILL_COMP    , 1 ] = "Millennium Result Name"
+    col_title [ INJECT       , 1 ] = "Injection"
+    col_title [ INJECT       , 2 ] = "Order"
+    col_title [ INJECT_COMM  , 1 ] = "Injection Comment"
+
+    smp_version = STRIP(smp_version_number ( ))
+
+
+    IF LEFTSTRING(smp_version, 4) = "2001" THEN
+        col_sizes [ ENABLED       ]  = 6
+        col_sizes [ INJECT        ]  = 7
+    ELSE
+        col_sizes [ ENABLED       ]  = 5
+        col_sizes [ INJECT        ]  = 6
+    ENDIF
+
+
+    col_sizes [ SMP_COMP      ]  = 24
+    col_sizes [ MILL_RES_TYPE ]  = 11
+    col_sizes [ MILL_COMP     ]  = 20
+    col_sizes [ INJECT_COMM   ]  = 40
+
+    define_grid_class ( )
+
+    IF option = "DISPLAY"
+
+        the_prompt_routine = "DISP_ONLY_INTERFACE_CELL"
+
+    ELSE
+
+        the_prompt_routine = "PROMPT_INTERFACE_CELL"
+
+    ENDIF
+
+
+    PROMPT OBJECT interface_grid
+        CLASS "SMMILL_MAP_GRID"
+        WITH ( width  = FORM_WIDTH-8                          ,
+               height = 8                                     ,
+               border = TRUE                                  ,
+               column = 2                                     ,
+               row    = 1                                     ,
+               return_behaviour     = GRID_RETURN_RIGHT       ,
+               cell_columns         = 6                       ,
+               title_rendition_top  = PROMPT_RENDITION_BOLD   ,
+               title_separator_top  = GRID_SEPARATOR_BOTH     ,
+               title_size_top       = 2                       ,
+               title_text_top       = col_title               ,
+               column_size          = col_sizes               ,
+               display_cell_routine = "DISPLAY_INTERFACE_CELL",
+               prompt_cell_routine  = the_prompt_routine      ,
+               enter_cell_routine   = "UPDATE_DISPLAY_FIELDS" )
+
+
+    interface_grid . title_rendition_top  = GRID_SEPARATOR_BOTH
+       
+    interface_grid . column_separator [ENABLED      ] = GRID_SEPARATOR_BOTH
+    interface_grid . column_separator [SMP_COMP     ] = GRID_SEPARATOR_BOTH
+    interface_grid . column_separator [MILL_RES_TYPE] = GRID_SEPARATOR_BOTH
+    interface_grid . column_separator [MILL_COMP    ] = GRID_SEPARATOR_BOTH
+    interface_grid . column_separator [INJECT       ] = GRID_SEPARATOR_BOTH
+    interface_grid . column_separator [INJECT_COMM  ] = GRID_SEPARATOR_BOTH
+
+
+    ARRAY interface_grid . user_info ARRAYSIZE(0,6) = ""
+
+    interface_grid . cell_rows = size_of_array(interface_grid . user_info)
+
+    main_form . add_prompt ( interface_grid ) {Prompt 5}
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE populate_modify_grid                                                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  12-Oct-2001  DK              Populates the interface grid with information  }
+{                               from the interface table.                      }
+{                               Saves the information to form .userinfo and    }
+{                               prev_array                                     }
+{  14-Jan-2005  AF              Modified details bug fix from version 3.1      }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  self                   reference            the form                        }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE populate_modify_grid ( the_form,
+                               the_grid,
+                               the_proj)
+
+    DECLARE mod_on, mod_by, is_enabled, row_count, the_anal, prev_array,
+            the_anal_ver, grid_array, rec_count
+
+ 
+    rec_count = 1
+
+
+    the_anal     = the_form . prompt_objects [FORM_ANAL]
+    the_anal_ver = the_form . prompt_objects [FORM_VER]
+
+    mod_on = the_form . display_objects [1]
+    mod_by = the_form . display_objects [2]                 
+
+   { AF 13-Jan-2005 Ensure Max date selected (and get matching mod_by) }
+
+    mod_on . text = SELECT MAX mill_component_map . modified_on 
+                     WHERE analysis         = the_anal . text     AND
+                           analysis_version = the_anal_ver . text AND
+                           mill_project = the_proj  
+
+
+        IF mod_on . text = EMPTY THEN
+
+        mod_on .text = ""
+        mod_by .text = ""
+
+    ELSE
+
+        IF ( IS_DATE (mod_on . text) ) THEN
+
+          mod_by . text = SELECT mill_component_map . modified_by
+                     WHERE analysis         = the_anal . text     AND
+                           analysis_version = the_anal_ver . text AND
+                           mill_project = the_proj                AND  
+                           modified_on      = DATE (mod_on . text)
+
+        ELSE
+
+           mod_by . text = ""
+
+        ENDIF
+
+        IF mod_by . text = EMPTY THEN
+
+            mod_by .text = ""
+
+        ENDIF 
+
+    ENDIF   
+
+   { end AF 13-Jan-2005 }  
+                           
+    mod_on . repaste()
+    mod_by . repaste()
+
+
+    { Clear Arrays }
+
+    WHILE rec_count <= SIZE_OF_ARRAY(the_grid . user_info)
+
+        the_grid . user_info [ rec_count , 1] = ""
+        the_grid . user_info [ rec_count , 2] = ""
+        the_grid . user_info [ rec_count , 3] = ""
+        the_grid . user_info [ rec_count , 4] = ""
+        the_grid . user_info [ rec_count , 5] = ""
+        the_grid . user_info [ rec_count , 6] = ""
+
+        rec_count = rec_count + 1
+
+    ENDWHILE
+
+    rec_count = 1
+
+    WHILE rec_count <= SIZE_OF_ARRAY(the_grid . prev_array)
+
+        the_grid . prev_array [ rec_count , 1] = ""
+        the_grid . prev_array [ rec_count , 2] = ""
+        the_grid . prev_array [ rec_count , 3] = ""
+        the_grid . prev_array [ rec_count , 4] = ""
+        the_grid . prev_array [ rec_count , 5] = ""
+        the_grid . prev_array [ rec_count , 6] = ""
+        the_grid . prev_array [ rec_count , 7] = ""
+        the_grid . prev_array [ rec_count , 8] = ""
+        the_grid . prev_array [ rec_count , 9] = ""
+        the_grid . prev_array [ rec_count , 10] = ""
+
+        rec_count = rec_count + 1
+
+    ENDWHILE
+        
+
+    { AF 14-Jan-2005
+      Clear grid properly be emptying the arrays, not just blanking them out
+    }
+
+    empty_the_array (the_grid . user_info)
+    empty_the_array (the_grid . prev_array)
+
+    { end AF 14-Jan-2005 }
+
+
+
+    grid_array = the_grid . user_info
+    prev_array = the_grid . prev_array
+
+    row_count = 1
+
+    is_enabled  = SELECT MILL_COMPONENT_MAP . enable
+                   WHERE analysis         = the_anal . text  
+                     AND analysis_version = the_anal_ver . text
+                     AND mill_project = the_proj
+                  ORDER ON order_num
+
+    IF is_enabled <> EMPTY THEN
+
+        IF is_enabled = TRUE THEN
+
+           is_enabled = "*" 
+
+        ELSE
+
+            is_enabled = "-"
+
+        ENDIF
+
+
+        WHILE is_enabled <> EMPTY DO
+
+                                   {============================================}
+                                   { Populate the grid with the relevant data   }
+                                   { for the analysis, analysis version         }
+                                   { and component combination. Make two copies }
+                                   { of the grid array before it is modified to }
+                                   { use in database transactions later.        }
+                                   {============================================}
+
+            grid_array [row_count , ENABLED       ] = is_enabled
+            grid_array [row_count , SMP_COMP      ] = SELECT MILL_COMPONENT_MAP . component
+            grid_array [row_count , MILL_RES_TYPE ] = SELECT MILL_COMPONENT_MAP . mill_type
+            grid_array [row_count , MILL_COMP     ] = SELECT MILL_COMPONENT_MAP . mill_analyte
+            grid_array [row_count , INJECT        ] = SELECT MILL_COMPONENT_MAP . injection
+            grid_array [row_count , INJECT_COMM   ] = SELECT MILL_COMPONENT_MAP . inject_comment
+
+
+            prev_array [row_count , ENABLED       ] = grid_array [row_count , ENABLED       ]
+            prev_array [row_count , SMP_COMP      ] = grid_array [row_count , SMP_COMP      ]
+            prev_array [row_count , MILL_RES_TYPE ] = grid_array [row_count , MILL_RES_TYPE ]
+            prev_array [row_count , MILL_COMP     ] = grid_array [row_count , MILL_COMP     ]
+            prev_array [row_count , INJECT        ] = grid_array [row_count , INJECT        ]
+            prev_array [row_count , INJECT_COMM   ] = grid_array [row_count , INJECT_COMM   ]
+
+            row_count = row_count + 1
+
+            NEXT MILL_COMPONENT_MAP
+            is_enabled  = SELECT MILL_COMPONENT_MAP . enable
+
+            IF is_enabled = TRUE THEN
+
+               is_enabled = "*" 
+
+            ELSEIF is_enabled = FALSE THEN
+
+                is_enabled = "-"
+
+            ENDIF
+
+        ENDWHILE
+
+
+   { AF 14-JAN-05 Fixes for V3.0 issues - PI0404042, PI0404003}
+
+     update_mill_mapped_complist  (  grid_array,  
+       	                           the_anal.text, the_anal_ver.text, 
+                                   the_proj,  FALSE )
+
+     update_mill_mapped_complist  ( prev_array,  
+   	                            the_anal.text, the_anal_ver.text, 
+                                    the_proj,  TRUE  )
+
+      { The +1 is just so no code further down has to be changed }
+      { Old loop above increments row_count at row end, so it is 1 bigger than it should be}
+      row_count = size_of_array (grid_array) + 1
+
+    { end AF 14-JAN-05 }
+
+
+
+        the_grid . cell_rows = row_count - 1
+
+        the_grid . rebuild ()
+
+        the_form . prompt_objects [FORM_OK] . set_enabled ( TRUE )
+        the_form . prompt_objects [FORM_CANC] . set_enabled ( TRUE )
+ 
+
+    ELSE
+
+
+        flashmessage("No Mapping exists for the selected analysis/version for Project: ":STRIP(the_proj),TRUE)
+
+        the_grid . parent_prompt . bounding_object . remove_form( 1)
+        the_grid . remove()
+
+
+    ENDIF
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE populate_the_grid                                                   }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  12-Oct-2001  DK              Populates the interface grid with information  }
+{                               from the interface table.                      }
+{                               Saves the information to form .userinfo and    }
+{                               prev_array                                     }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  self                   reference            the form                        }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE populate_the_grid ( the_form,
+                            the_grid,
+                            the_proj)
+
+    DECLARE mod_on , mod_by, comp, row_count, the_anal, the_anal_ver, grid_array,
+            exists, prev_array, rec_count
+
+    rec_count = 1
+
+
+    the_anal     = the_form . prompt_objects [FORM_ANAL]
+    the_anal_ver = the_form . prompt_objects [FORM_VER]
+
+    mod_on = the_form . display_objects [1]
+    mod_by = the_form . display_objects [2]                 
+
+    mod_on . text = SELECT mill_component_map . modified_on 
+                     WHERE analysis         = the_anal . text     AND
+                           analysis_version = the_anal_ver . text AND
+                           mill_project = the_proj    
+                         
+    IF mod_on . text = EMPTY THEN
+
+        mod_on .text = ""
+
+    ENDIF
+  
+    mod_on . repaste()
+
+    mod_by . text = SELECT mill_component_map . modified_by
+                     WHERE analysis         = the_anal . text     AND
+                           analysis_version = the_anal_ver . text AND
+                           mill_project = the_proj    
+
+    IF mod_by . text = EMPTY THEN
+
+        mod_by .text = ""
+
+    ENDIF
+
+    mod_by . repaste()
+
+
+    { Clear Arrays }
+
+    WHILE rec_count <= SIZE_OF_ARRAY(the_grid . user_info)
+
+        the_grid . user_info [ rec_count , 1] = ""
+        the_grid . user_info [ rec_count , 2] = ""
+        the_grid . user_info [ rec_count , 3] = ""
+        the_grid . user_info [ rec_count , 4] = ""
+        the_grid . user_info [ rec_count , 5] = ""
+        the_grid . user_info [ rec_count , 6] = ""
+
+
+        rec_count = rec_count + 1
+
+    ENDWHILE
+
+    rec_count = 1
+
+    WHILE rec_count <= SIZE_OF_ARRAY(the_grid . prev_array)
+
+        the_grid . prev_array [ rec_count , 1] = ""
+        the_grid . prev_array [ rec_count , 2] = ""
+        the_grid . prev_array [ rec_count , 3] = ""
+        the_grid . prev_array [ rec_count , 4] = ""
+        the_grid . prev_array [ rec_count , 5] = ""
+        the_grid . prev_array [ rec_count , 6] = ""
+        the_grid . prev_array [ rec_count , 7] = ""
+        the_grid . prev_array [ rec_count , 8] = ""
+        the_grid . prev_array [ rec_count , 9] = ""
+        the_grid . prev_array [ rec_count , 10] = ""
+
+        rec_count = rec_count + 1
+
+    ENDWHILE
+
+    grid_array = the_grid . user_info
+    prev_array = the_grid . prev_array
+
+    row_count = 1
+
+    DECLARE new_anal_ver
+    new_anal_ver = get_max_analysis_version (the_anal . text )
+
+    IF (new_anal_ver = EMPTY) THEN
+    
+        comp = EMPTY
+    ELSE
+
+        comp  = SELECT VERSIONED_COMPONENT . name
+             WHERE analysis         = the_anal . text  
+               AND analysis_version = new_anal_ver
+            ORDER ON order_number
+
+    ENDIF
+
+    WHILE comp <> EMPTY DO
+
+                                   {============================================}
+                                   { Populate the grid with the relevant data   }
+                                   { for the analysis, analysis version         }
+                                   { and component combination. Make two copies }
+                                   { of the grid array before it is modified to }
+                                   { use in database transactions later.        }
+                                   {============================================}
+
+        exists = SELECT MILL_COMPONENT_MAP . component
+                  WHERE analysis = the_anal . text 
+                    AND analysis_version = the_anal_ver . text
+                    AND component = comp
+                    AND mill_project = the_proj
+
+        IF exists = EMPTY THEN
+
+            grid_array [row_count , ENABLED       ] = "-"
+            grid_array [row_count , SMP_COMP      ] = comp
+            grid_array [row_count , MILL_RES_TYPE ] = GLOBAL("MILL_PEAK_VALUE_DEFAULT")
+            grid_array [row_count , MILL_COMP     ] = ""
+            grid_array [row_count , INJECT        ] = "1"
+            grid_array [row_count , INJECT_COMM   ] = ""
+
+
+
+            prev_array [row_count , ENABLED       ] = grid_array [row_count , ENABLED       ]
+            prev_array [row_count , SMP_COMP      ] = grid_array [row_count , SMP_COMP      ]
+            prev_array [row_count , MILL_RES_TYPE ] = grid_array [row_count , MILL_RES_TYPE ]
+            prev_array [row_count , MILL_COMP     ] = grid_array [row_count , MILL_COMP     ]
+            prev_array [row_count , INJECT        ] = grid_array [row_count , INJECT        ]
+            prev_array [row_count , INJECT_COMM   ] = grid_array [row_count , INJECT_COMM   ]
+
+
+            row_count = row_count + 1
+
+        ENDIF
+
+        NEXT VERSIONED_COMPONENT
+        comp  = SELECT VERSIONED_COMPONENT . name
+
+    ENDWHILE
+
+
+    the_grid . cell_rows = row_count - 1
+
+    the_grid . rebuild ()
+
+    IF SIZE_OF_ARRAY(the_grid. user_info) = 0 THEN
+
+        flashmessage("Analysis Already Mapped", TRUE)
+
+    ELSE
+
+        the_form . prompt_objects [FORM_OK] . set_enabled ( TRUE )
+        the_form . prompt_objects [FORM_CANC] . set_enabled ( TRUE )
+
+    ENDIF
+
+ENDROUTINE
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE prompt_interface_cell                                               }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  14-Oct-2001  DK              prompts for information in grid                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  grid                   ref                  grid object                     }
+{  cell_column            value                the cell column in the grid     }
+{  cell_row               value                the cell row    in the grid     }
+{  window                 ref                  the window the grid is in       }
+{  column                 value                prompt column in cell           }
+{  row                    value                prompt row    in cell           }
+{  cell_width             value                cell width                      }
+{  cell_height            value                cell height                     }
+{                                                                              }
+{==============================================================================}
+ROUTINE prompt_interface_cell ( grid        ,
+                          VALUE cell_column ,
+                          VALUE cell_row    ,
+                                window      ,
+                          VALUE column      ,
+                          VALUE row         ,
+                          VALUE cell_width  ,
+                          VALUE cell_height )
+
+                                   {============================================}
+                                   { Setup prompts to appear in the grid cells  }    
+                                   {============================================} 
+    DECLARE tmp, the_colour, the_proj
+
+    tmp = grid . user_info [cell_row, cell_column]
+    the_proj = grid . parent_prompt . header
+
+    IF ( cell_column = ENABLED)
+
+
+        IF  ( ( grid . user_info [ cell_row, cell_column] = TRUE )     OR 
+            ( grid . user_info [ cell_row, cell_column] = "*"  ) ) THEN
+
+            grid . user_info [ cell_row, cell_column] = "*"
+            the_colour = PROMPT_COLOUR_BLUE
+
+        ELSE
+
+            grid . user_info [ cell_row, cell_column] = "-"
+            the_colour = PROMPT_COLOUR_GREY
+
+        ENDIF
+
+        PROMPT FOR grid . user_info [ cell_row, cell_column]
+            AT column, row
+            IN WINDOW window
+            TO column + cell_width - 1
+            BROWSE ON BOOLEAN
+	    WITH ( IS_CHECK = TRUE ,
+		   TRUE_WORD = "*" ,
+		   FALSE_WORD = "-",
+                   PARENT_PROMPT = grid, 
+                   TOGGLED_ROUTINE = "switch_colour",
+                   FOREGROUND_COLOUR = the_colour   ,
+                   justification = PROMPT_JUSTIFY_LEFT)
+
+        IF grid . user_info[cell_row, cell_column] <> tmp THEN
+
+            grid . redisplay_contents()
+
+        ENDIF
+
+    ELSEIF ( cell_column = SMP_COMP )
+
+        IF  ( ( grid . user_info [ cell_row, ENABLED] = TRUE )     OR 
+            ( grid . user_info [ cell_row, ENABLED] = "*"  ) ) THEN
+
+            the_colour = PROMPT_COLOUR_BLUE
+
+        ELSE
+
+            the_colour = PROMPT_COLOUR_GREY
+
+        ENDIF
+
+
+        PROMPT FOR grid . user_info [ cell_row, cell_column]
+            AT column, row
+            IN WINDOW window
+            TO column + cell_width - 1
+            BROWSE ON VERSIONED_COMPONENT . name
+            WITH (DISPLAY_ONLY = TRUE,
+                  FOREGROUND_COLOUR = the_colour,
+                  justification = PROMPT_JUSTIFY_LEFT)
+
+
+    ELSEIF ( cell_column = MILL_RES_TYPE)
+
+        IF  ( ( grid . user_info [ cell_row, ENABLED] = TRUE )     OR 
+            ( grid . user_info [ cell_row, ENABLED] = "*"  ) ) THEN
+
+            the_colour = PROMPT_COLOUR_BLUE
+
+        ELSE
+
+            the_colour = PROMPT_COLOUR_GREY
+
+        ENDIF
+
+
+        PROMPT FOR grid . user_info [ cell_row, cell_column]
+            AT column, row
+            IN WINDOW window
+            TO column + cell_width - 1
+            BROWSE ON PHRASE . MILL_PEAK
+            WITH ( foreground_colour = the_colour,
+                   VALUE = GLOBAL("MILL_PEAK_VALUE_DEFAULT"),
+                   justification = PROMPT_JUSTIFY_LEFT )
+
+
+
+    ELSEIF ( cell_column = MILL_COMP)
+
+        IF  ( ( grid . user_info [ cell_row, ENABLED] = TRUE )     OR 
+            ( grid . user_info [ cell_row, ENABLED] = "*"  ) ) THEN
+
+            the_colour = PROMPT_COLOUR_BLUE
+
+        ELSE
+
+            the_colour = PROMPT_COLOUR_GREY
+
+        ENDIF
+
+{ DK ADDED FOR DELETED COMPONENTS }
+
+        IF (grid . user_info [ cell_row, MILL_COMP] = DELETED_TEXT ) THEN
+
+            the_colour = PROMPT_COLOUR_BLUE           
+ 
+        ENDIF
+
+{ DK END OF MODS }
+        
+        IF the_proj <> GLOBAL_PROJECT THEN
+
+
+
+            PROMPT FOR grid . user_info [ cell_row, cell_column]
+                BROWSE ON TEXT
+                AT column, row
+                IN WINDOW window
+                TO column + cell_width - 1
+                WITH (foreground_colour = the_colour,
+                      browse_routine = "select_component_names",
+                      PARENT_PROMPT = grid,
+                      justification = PROMPT_JUSTIFY_LEFT)
+
+
+        ELSE
+
+            PROMPT FOR grid . user_info [ cell_row, cell_column]
+                BROWSE ON TEXT
+                AT column, row
+                IN WINDOW window
+                TO column + cell_width - 1
+                WITH (foreground_colour = the_colour,
+                      browse_routine = "select_component_names_all",
+                      PARENT_PROMPT = grid,
+                      justification = PROMPT_JUSTIFY_LEFT )
+
+
+        ENDIF
+
+
+    ELSEIF ( cell_column = INJECT )
+
+        IF  ( ( grid . user_info [ cell_row, ENABLED] = TRUE )     OR 
+            ( grid . user_info [ cell_row, ENABLED] = "*"  ) ) THEN
+
+            the_colour = PROMPT_COLOUR_MAGENTA
+
+        ELSE
+
+            the_colour = PROMPT_COLOUR_GREY
+
+        ENDIF
+
+
+        PROMPT FOR grid . user_info [ cell_row, cell_column]
+            AT column, row
+            IN WINDOW window
+            TO column + cell_width - 1
+            BROWSE ON INTEGER
+            WITH ( VALUE = "1",
+                   foreground_colour = the_colour,
+                   justification = PROMPT_JUSTIFY_LEFT )
+
+    ELSEIF ( cell_column = INJECT_COMM )
+
+        IF  ( ( grid . user_info [ cell_row, ENABLED] = TRUE )     OR 
+            ( grid . user_info [ cell_row, ENABLED] = "*"  ) ) THEN
+
+            the_colour = PROMPT_COLOUR_BLUE
+
+        ELSE
+
+            the_colour = PROMPT_COLOUR_GREY
+
+        ENDIF
+
+
+        PROMPT FOR grid . user_info [ cell_row, cell_column]
+            AT column, row
+            IN WINDOW window
+            TO column + cell_width - 1
+            BROWSE ON TEXT40
+            WITH ( foreground_colour = the_colour,
+                   justification = PROMPT_JUSTIFY_LEFT )
+
+    ELSE 
+
+    ENDIF
+
+
+ENDROUTINE
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE get_select_array                                                    }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  06-Nov-2001  DK              enter_prompt_routine : used by prompt for      }
+{                               samples in the grid to restrict the browse to  }
+{                               the appropriate job                            }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  sample_prompt          reference            the prompt in                   }
+{                                              "prompt_samp_lab_cell"          }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE get_select_array ( anal_ver )
+
+    DECLARE select_array
+
+    ARRAY select_array
+
+    array_select_add (  select_array         ,
+                        ARRAY_SELECT_EQ      ,
+                        "VERSIONED_ANALYSIS" ,
+                        anal_ver              )
+
+    anal_ver . select_array = select_array
+
+    RETURN ( TRUE )
+
+ENDROUTINE 
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE disps_only_interface_cell                                           }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  06-Nov-2001  DK              displays information in grid                   }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  grid                   ref                  grid object                     }
+{  cell_column            value                the cell column in the grid     }
+{  cell_row               value                the cell row    in the grid     }
+{  window                 ref                  the window the grid is in       }
+{  column                 value                prompt column in cell           }
+{  row                    value                prompt row    in cell           }
+{  cell_width             value                cell width                      }
+{  cell_height            value                cell height                     }
+{                                                                              }
+{==============================================================================}
+ROUTINE disp_only_interface_cell (     self ,
+                          VALUE cell_column ,
+                          VALUE cell_row    ,
+                                window      ,
+                          VALUE column      ,
+                          VALUE row         ,
+                          VALUE cell_width  ,
+                          VALUE cell_height )
+
+
+    DECLARE the_grid, the_colour
+
+    the_colour = PROMPT_COLOUR_GREY
+
+    the_grid = self
+        
+    IF ( cell_column = ENABLED) THEN
+
+        IF ( ( the_grid . user_info [ cell_row, cell_column] = TRUE )     OR 
+             ( the_grid . user_info [ cell_row, cell_column] = "*"  ) ) THEN
+
+            the_grid . user_info [ cell_row, cell_column] = "*"
+            the_colour = PROMPT_COLOUR_BLUE
+
+        ELSE
+
+            the_grid . user_info [ cell_row, cell_column] = "-"
+            the_colour = PROMPT_COLOUR_GREY
+
+        ENDIF
+
+	PROMPT FOR self . user_info [ cell_row , cell_column ]
+	AT column , row
+	IN WINDOW window
+	TO column + cell_width - 1
+	FORMAT BOOLEAN
+	WITH ( IS_CHECK = TRUE ,
+	       TRUE_WORD = "*" ,
+	       FALSE_WORD = "-" ,
+               foreground_colour = the_colour,
+               DISPLAY_ONLY = TRUE,
+               justification = PROMPT_JUSTIFY_LEFT)
+ 
+
+    ELSEIF ( cell_column = INJECT) THEN
+
+        the_colour = PROMPT_COLOUR_MAGENTA
+
+    	PROMPT FOR the_grid . user_info [ cell_row, cell_column]
+        AT column, row
+        IN WINDOW window
+        TO column + cell_width - 1
+        WITH ( display_only = TRUE,
+               foreground_colour = the_colour,
+               justification = PROMPT_JUSTIFY_LEFT)
+
+    ELSE
+ 
+        IF ( the_grid . user_info [ cell_row, ENABLED] = "*") OR
+           ( the_grid . user_info [ cell_row, ENABLED] = TRUE ) THEN
+
+            the_colour = PROMPT_COLOUR_BLUE
+
+        ENDIF
+
+    	PROMPT FOR the_grid . user_info [ cell_row, cell_column]
+        AT column, row
+        IN WINDOW window
+        TO column + cell_width - 1
+        WITH ( display_only = TRUE,
+               foreground_colour = the_colour,
+               justification = PROMPT_JUSTIFY_LEFT )
+
+   ENDIF
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE display_interface_cell                                              }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  08-DEC-1997  JOD             display cell contents                          }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  self                   ref                  grid object                     }
+{  cell_column            value                the cell column in the grid     }
+{  cell_row               value                the cell row    in the grid     }
+{  window                 ref                  the window the grid is in       }
+{  column                 value                prompt column in cell           }
+{  row                    value                prompt row    in cell           }
+{  cell_width             value                cell width                      }
+{  cell_height            value                cell height                     }
+{                                                                              }
+{==============================================================================}
+ROUTINE display_interface_cell (   self        ,
+                             VALUE cell_column ,
+                             VALUE cell_row    ,
+                             window      ,
+                             VALUE column      ,
+                             VALUE row         ,
+                             VALUE cell_width  ,
+                             VALUE cell_height )
+
+    DECLARE the_grid, the_colour
+
+    the_colour = PROMPT_COLOUR_GREY
+
+    the_grid = self
+
+    IF ( cell_column = ENABLED) THEN
+
+
+        IF ( ( the_grid . user_info [ cell_row, cell_column] = TRUE )     OR 
+             ( the_grid . user_info [ cell_row, cell_column] = "*"  ) ) THEN
+
+            the_grid . user_info [ cell_row, cell_column] = "*"
+            the_colour = PROMPT_COLOUR_BLUE
+
+        ELSE
+
+            the_grid . user_info [ cell_row, cell_column] = "-"
+            the_colour = PROMPT_COLOUR_GREY
+
+        ENDIF
+
+	DISPLAY self . user_info [ cell_row , cell_column ]
+	AT column , row
+	IN WINDOW window
+	TO column + cell_width - 1
+	FORMAT BOOLEAN
+	WITH ( IS_CHECK = TRUE ,
+	       TRUE_WORD = "*" ,
+	       FALSE_WORD = "-",
+               foreground_colour = the_colour,
+               justification = PROMPT_JUSTIFY_LEFT )
+
+
+
+{ DK ADDED FOR DELETED COMPONENTS }
+
+    ELSEIF ( cell_column = MILL_COMP) THEN
+
+        IF (the_grid . user_info [ cell_row, MILL_COMP] = DELETED_TEXT ) THEN
+
+            the_colour = PROMPT_COLOUR_BLUE           
+ 
+        ENDIF
+
+        IF ( the_grid . user_info [ cell_row, ENABLED] = "*") OR
+           ( the_grid . user_info [ cell_row, ENABLED] = TRUE ) THEN
+
+            the_colour = PROMPT_COLOUR_BLUE
+
+        ENDIF
+
+        DISPLAY self . user_info [cell_row, cell_column]
+              AT column, row
+              IN WINDOW window
+              TO column + cell_width - 1
+              WITH( FOREGROUNDCOLOUR = the_colour,
+                    justification = PROMPT_JUSTIFY_LEFT )
+
+{ DK END OF MODS }
+
+    ELSEIF ( cell_column = INJECT) THEN
+
+        the_colour = PROMPT_COLOUR_MAGENTA
+
+
+        DISPLAY self . user_info [cell_row, cell_column]
+              AT column, row
+              IN WINDOW window
+              TO column + cell_width - 1
+              WITH( FOREGROUNDCOLOUR = the_colour,
+                    justification = PROMPT_JUSTIFY_LEFT )
+
+    ELSE
+
+        IF ( the_grid . user_info [ cell_row, ENABLED] = "*") OR
+           ( the_grid . user_info [ cell_row, ENABLED] = TRUE ) THEN
+
+            the_colour = PROMPT_COLOUR_BLUE
+
+        ENDIF
+
+        DISPLAY self . user_info [cell_row, cell_column]
+              AT column, row
+              IN WINDOW window
+              TO column + cell_width - 1
+              WITH( FOREGROUNDCOLOUR = the_colour,
+                    justification = PROMPT_JUSTIFY_LEFT )
+		
+
+    ENDIF
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE do_db_transactions                                                  }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  20-OCT-2001  DK              Create new records, modifies existing records  }
+{                               and deletes records no longer in the grid      }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  the_form               reference            the form                        }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE do_db_transactions ( the_form,
+                             VALUE option)
+
+    DECLARE grid_array, i,  the_anal, the_anal_ver, new_rec, the_key, grid_row,
+            the_proj, proj_count, prev_array, proj_tab
+
+    ARRAY grid_array
+    ARRAY prev_array
+
+    i = 1
+    grid_row = 1
+    proj_count = 1
+  
+
+    the_anal     = the_form . prompt_objects [FORM_ANAL]
+    the_anal_ver = the_form . prompt_objects [FORM_VER]
+
+    the_anal = the_anal . text
+    the_anal_ver = STRIP(the_anal_ver . text)
+
+    proj_tab = the_form.prompt_objects[FORM_TAB].bounding_object.forms[proj_count]
+
+    IF proj_tab <> EMPTY THEN
+
+        the_proj = STRIP(the_form.prompt_objects[FORM_TAB].bounding_object.forms[proj_count].header)
+
+        grid_array = the_form.prompt_objects[FORM_TAB].bounding_object.forms[proj_count] . prompt_objects[1].user_info
+        prev_array = the_form.prompt_objects[FORM_TAB].bounding_object.forms[proj_count] . prompt_objects[1].prev_array
+
+        the_anal_ver = PAD(the_anal_ver, " ", 10)
+        the_anal_ver = JUSTIFY(the_anal_ver, "RIGHT")
+
+        IF option = "ADD" THEN
+
+            WHILE i <= SIZE_OF_ARRAY(grid_array) DO
+
+                new_rec = SELECT mill_component_map . component
+                           WHERE analysis = the_anal AND
+                                 analysis_version = the_anal_ver AND
+                                 component      = grid_array[ i, SMP_COMP      ] AND
+                                 mill_analyte   = grid_array[ i, MILL_COMP     ] AND
+                                 injection      = grid_array[ i, INJECT        ] AND
+                                 mill_type      = grid_array[ i, MILL_RES_TYPE ] AND
+                                 inject_comment = grid_array[ i, INJECT_COMM   ] AND
+                                 mill_project   = the_proj
+ 
+
+                IF new_rec = EMPTY THEN
+
+                    the_key = PAD(STRIP(the_anal)," ",10):the_anal_ver:
+                              PAD(STRIP(grid_array[ i, SMP_COMP      ])," ",40):
+                              PAD(STRIP(grid_array[ i, MILL_COMP     ])," ",40):
+                              PAD(STRIP(the_proj)                      ," ",20):
+                              PAD(STRIP(grid_array[ i, MILL_RES_TYPE ])," ",20):
+                              PAD(STRIP(grid_array[ i, INJECT        ])," ",10)
+
+                    add_new_records ( the_key, 
+                                      grid_array,
+                                      i )
+
+               ENDIF
+
+               i = i + 1
+
+           ENDWHILE
+
+
+        ELSEIF option = "MODIFY" THEN
+
+                                   {============================================}
+                                   { Now do any record modifications.           }
+                                   {============================================}
+
+            WHILE i <= size_of_array ( prev_array ) DO
+
+
+                IF (prev_array[ i, ENABLED       ] <> grid_array[ grid_row, ENABLED       ]) OR           
+                   (prev_array[ i, MILL_RES_TYPE ] <> grid_array[ grid_row, MILL_RES_TYPE ]) OR
+                   (prev_array[ i, INJECT        ] <> grid_array[ grid_row, INJECT        ]) OR 
+                   (prev_array[ i, INJECT_COMM   ] <> grid_array[ grid_row, INJECT_COMM   ]) OR
+                   (prev_array[ i, SMP_COMP      ] <> grid_array[ grid_row, SMP_COMP      ]) OR    
+                   (prev_array[ i, MILL_COMP     ] <> grid_array[ grid_row, MILL_COMP     ]) THEN     
+      
+
+                     update_interface_rec ( the_anal, 
+                                            the_anal_ver, 
+                                            i, 
+                                            grid_row,
+                                            grid_array,
+                                            prev_array,
+                                            the_proj)
+
+
+                ENDIF
+
+                IF prev_array[i, DELETE_COL ] = "DELETE" THEN
+
+                    grid_row = grid_row - 1  { Re-match prev_grid with smaller grid array }
+
+                ENDIF
+
+                i = i + 1
+                grid_row = grid_row + 1
+
+            ENDWHILE
+   
+         ENDIF
+
+     ENDIF
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE add_new_records                                                     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  20-OCT-2001  DK              Add new mapping records.                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  analysis               value                Analysis                        }
+{  analysis_version       value                The Analysis Version            }
+{  component              value                The Component                   }         
+{  grid_row               value                Current row                     }
+{  grid_array             reference            The grid array                  }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE add_new_records ( VALUE the_key,
+                                grid_array,
+                                the_row )
+
+
+    DECLARE check_ok, is_enabled
+
+    IF grid_array [ the_row, ENABLED ] = "*" THEN
+  
+        is_enabled = TRUE
+
+    ELSE
+
+        is_enabled = FALSE
+
+    ENDIF
+
+    RESERVE ENTRY MILL_COMPONENT_MAP, the_key, check_ok
+
+    IF (check_ok <> EMPTY) THEN
+
+        flashmessage(check_ok, TRUE)
+        ROLLBACK
+
+    ELSE
+
+        check_write_transaction()
+
+        ASSIGN mill_component_map . enable         = is_enabled
+        ASSIGN mill_component_map . inject_comment = grid_array [ the_row, INJECT_COMM   ]
+        ASSIGN mill_component_map . order_num      = the_row
+
+        UPDATE mill_component_map
+
+        do_commit = TRUE
+
+
+    ENDIF
+
+ENDROUTINE
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE update_interface_rec                                                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  20-OCT-2001  DK              An existing record has been found in the       }
+{                               interface table, so update it                  }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  analysis               value                Analysis                        }
+{  analysis_version       value                The Analysis Version            }
+{  component              value                The Component                   }         
+{  grid_row               value                Current row                     }
+{  grid_array             reference            The grid array                  }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE update_interface_rec ( VALUE analysis, 
+                               VALUE analysis_version,
+                               VALUE prev_row,
+                                     grid_row,
+                                     grid_array,
+                                     prev_array,
+                                     the_proj)
+
+    DECLARE the_rec, check_ok, the_key
+
+    check_ok = EMPTY
+
+    IF prev_array [prev_row, DELETE_COL ] <> "INSERT" THEN
+
+        the_rec = SELECT mill_component_map . analysis FOR UPDATE
+                   WHERE ( analysis_version = analysis_version ) AND
+                         ( analysis         = analysis         ) AND
+                         ( component        = prev_array [ prev_row, SMP_COMP      ] ) AND
+                         ( mill_analyte     = prev_array [ prev_row, MILL_COMP     ] ) AND
+                         ( injection        = prev_array [ prev_row, INJECT        ] ) AND
+                         ( mill_type        = prev_array [ prev_row, MILL_RES_TYPE ] ) AND
+                         ( inject_comment   = prev_array [ prev_row, INJECT_COMM   ] ) AND
+                         ( mill_project     = the_proj )
+
+ 
+
+        IF the_rec <> EMPTY
+
+            check_write_transaction()
+
+            DELETE MILL_COMPONENT_MAP, check_ok
+
+            IF check_ok = EMPTY THEN
+
+                do_commit = TRUE
+
+            ENDIF
+
+            IF prev_array[prev_row, DELETE_COL ] <> "DELETE" THEN {Updated Records only }
+
+                the_key = PAD(STRIP(analysis)," ",10):analysis_version:
+                          PAD(STRIP(grid_array[ grid_row, SMP_COMP      ])," ",40):
+                          PAD(STRIP(grid_array[ grid_row, MILL_COMP     ])," ",40):
+                          PAD(STRIP(the_proj)                             ," ",20):
+                          PAD(STRIP(grid_array[ grid_row, MILL_RES_TYPE ])," ",20):
+                          PAD(STRIP(grid_array[ grid_row, INJECT        ])," ",10)
+
+                add_new_records ( the_key,
+                                  grid_array,
+                                  grid_row )
+
+            ENDIF
+
+        ELSE
+
+            flash_message("Cannot Update Record", TRUE)
+
+        ENDIF
+
+    ELSE { INSERT RECORD }
+
+        the_key = PAD(STRIP(analysis)," ",10):analysis_version:
+                  PAD(STRIP(grid_array[ grid_row, SMP_COMP      ])," ",40):
+                  PAD(STRIP(grid_array[ grid_row, MILL_COMP     ])," ",40):
+                  PAD(STRIP(the_proj)                             ," ",20):
+                  PAD(STRIP(grid_array[ grid_row, MILL_RES_TYPE ])," ",20):
+                  PAD(STRIP(grid_array[ grid_row, INJECT        ])," ",10)
+
+
+        add_new_records ( the_key,
+                          grid_array,
+                          grid_row)
+
+
+    ENDIF
+
+ENDROUTINE
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE check_write_transaction                                             }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  17-DEC-1997  ER              This checks if the process is already in a     }
+{                               write_transaction, and if not, starts one.     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE check_write_transaction
+
+    IF NOT transaction_is_write() THEN
+
+       START WRITE TRANSACTION "update record"
+
+    ENDIF
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE update_display_fields                                               }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  23-OCT-2001  DK              Updates the modified on and modified by        }
+{                               display fields as the user moves through the   }
+{                               grid.                                          }
+{ 13-Jan-2005   AF              Bug fix from version 3.1 Just blank out for now}
+{                               - this functionality not used                  }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{  self                   reference            the grid                        }
+{  cell_column            value                the cell column in the grid     }
+{  cell_row               value                the cell row    in the grid     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE update_display_fields( self,
+                               VALUE cell_column,
+                               VALUE cell_row )
+
+   { AF 13-Jan-2005 Blanked out this routine }
+   { It is not required (and did not work in version 2.0 ) }
+
+ENDROUTINE
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE switch_colour                                                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  23-OCT-2001  DK              Toggles grid cell colours                      }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  self                   reference            the grid                        }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE switch_colour (grid)
+
+    IF  ( grid . text = "*" ) THEN
+
+        grid . foregroundcolour = PROMPT_COLOUR_BLUE
+
+    ELSE
+
+        grid . foregroundcolour = PROMPT_COLOUR_GREY
+
+    ENDIF
+
+    grid . parent_prompt . redisplay_contents()
+
+    RETURN (EMPTY)
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE insert_row                                                          }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  23-OCT-2001  DK              Toggles grid cell colours                      }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  self                   reference            the grid                        }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE insert_row (self)
+
+    DECLARE the_row, i, the_grid, the_value
+
+    the_grid = self . parent_prompt . prompt_objects [1]
+    the_row  = the_grid . current_row
+
+    the_value = the_grid . user_info[ the_row, SMP_COMP ]
+
+    array_insert_slice ( the_grid . user_info, 1, the_row )
+    array_insert_slice ( the_grid . prev_array, 1, the_row )
+
+    the_grid . prev_array [ the_row, DELETE_COL] = "INSERT"  
+
+    the_grid . insert_row ( the_row, 1, GRID_SEPARATOR_NONE )
+
+    IF the_row = 0 THEN
+
+        the_row = 1
+        the_grid . set_position ( 1, the_row  )
+
+    ELSE
+
+        the_grid . set_position ( 1, the_row  )        
+
+    ENDIF
+
+    i = 1
+
+    WHILE ( i <= the_grid . cell_columns ) DO
+
+        IF i = SMP_COMP THEN
+
+            the_grid . user_info  [the_row, i] = the_value
+            the_grid . prev_array [the_row, i] = the_value 
+
+        ELSEIF i = ENABLED THEN
+
+            the_grid . user_info[the_row, i] = "*"
+
+        ELSEIF i = MILL_COMP THEN
+
+            the_grid . user_info  [the_row, i] = BLANK_CELL
+            the_grid . prev_array [the_row, i] = BLANK_CELL 
+
+
+        ELSEIF i = INJECT THEN
+
+            the_grid . user_info[the_row, i] = "1"
+            the_grid . prev_array [the_row, i] = "1"
+
+
+        ELSEIF i = MILL_RES_TYPE THEN
+
+            the_grid . user_info[the_row, i] = GLOBAL("MILL_PEAK_VALUE_DEFAULT")
+            the_grid . prev_array [the_row, i] = GLOBAL("MILL_PEAK_VALUE_DEFAULT")
+
+        ELSEIF i = INJECT_COMM
+
+            the_grid . user_info[the_row, i] = BLANK_CELL
+            the_grid . prev_array [the_row, i] = BLANK_CELL
+
+
+        ELSE
+
+            the_grid . user_info[the_row, i] = BLANK_CELL
+            the_grid . prev_array [the_row, i] = BLANK_CELL
+
+        ENDIF
+
+        i = i + 1
+
+    ENDWHILE
+
+    the_grid . redisplay_row ( the_grid . current_row )
+    the_grid . rebuild()
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE delete_row                                                          }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  23-OCT-2001  DK              Deletes Duplicate Component Row                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  self                   reference            the grid                        }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE delete_row ( self )
+
+    DECLARE the_row, grid_array, the_grid, the_value, row_count,
+            comp_count, the_comp
+
+    row_count = 1
+
+    comp_count = 0
+
+    the_grid = self . parent_prompt . prompt_objects [1]
+
+    the_row = the_grid . current_row
+
+    grid_array = the_grid . user_info
+
+    the_value = the_grid . user_info[ the_row, SMP_COMP ]
+
+    WHILE row_count <= SIZE_OF_ARRAY ( grid_array) DO
+
+        the_comp = grid_array [ row_count , SMP_COMP ]
+
+        IF ( the_comp = the_value ) THEN
+
+            comp_count = comp_count + 1
+
+        ENDIF
+
+        row_count = row_count + 1
+
+    ENDWHILE
+
+    row_count = 1
+
+    IF comp_count  > 1 THEN
+
+        the_grid . remove_row ( the_row )
+
+        array_remove_slice ( the_grid . user_info, 1, the_row )
+
+        { Find equivalent row in the prev array }
+
+
+        IF the_grid . prev_array[the_row , DELETE_COL ] = "INSERT" THEN
+
+            array_remove_slice ( the_grid . prev_array, 1, row_count) 
+
+        ELSE
+
+            IF the_grid . prev_array[the_row , DELETE_COL ] = "DELETE" THEN
+
+                REPEAT
+
+                    row_count = row_count + 1
+
+                UNTIL the_grid . prev_array [ row_count, DELETE_COL] <> "DELETE" 
+
+                the_grid . prev_array [ row_count, DELETE_COL] = "DELETE"  
+
+            ELSE
+
+                the_grid . prev_array [ the_row, DELETE_COL] = "DELETE"  
+
+            ENDIF
+ 
+        ENDIF
+
+
+    ELSE
+
+        flashmessage("Cannot Remove a Non-Duplicate Component Row!", TRUE)
+
+    ENDIF
+
+   
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE show_instructions                                                   }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  06-Nov-2001  DK              Sets up properties for the main form           }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE show_instructions (self)
+
+    DECLARE the_table, the_option, copy_value
+
+    the_option = "DISPLAY"
+    copy_value = "dsfsdfs"
+    the_table = "MILL_COMPONENT_MAP"
+
+    CALL_ROUTINE "METHOD_REF" USING
+        the_table,
+        copy_value,
+        the_option
+    IN LIBRARY "WORD_SOP"
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE select_project_data                                                 }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  12-Nov-2001  DK              Selects Millennium Data.                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE select_project_data ( self )
+
+    DECLARE the_schema, the_field, the_table
+
+    the_schema = ""
+    the_field  = "name"
+    the_table = "PROJECTINFO"
+
+    select_millennium_data ( self,
+                             the_schema,
+                             the_field,
+                             the_table )
+
+
+
+    self . parent_prompt . prompt_objects [ FORM_ANAL ] . set_enabled (TRUE)
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE select_component_names                                              }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  12-Nov-2001  DK              Selects Millennium Data.                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE select_component_names ( self )
+
+    DECLARE the_schema, the_field, the_table, the_proj
+
+    the_proj = STRIP(self.parent_prompt . parent_prompt . header)
+
+    IF STRIP(the_proj) <> "" THEN
+
+        the_proj = STRIP(the_proj)
+        the_schema = TOUPPER(STRIP(the_proj)):"_1"
+        the_field  = "name"
+        the_table = the_schema:".CALCURVE"
+
+        select_millennium_data ( self,
+                                 the_schema,
+                                 the_field,
+                                 the_table )
+
+    ENDIF
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE select_component_names_all                                          }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  12-Nov-2001  DK              Selects Millennium Data.                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE select_component_names_all ( self )
+
+    DECLARE the_schema, the_field, the_table, the_proj
+
+    the_proj = ""
+
+    IF STRIP(the_proj) <> "" THEN
+
+        the_proj = STRIP(the_proj)
+        the_schema = TOUPPER(STRIP(the_proj)):"_1"
+        the_field  = "name"
+        the_table = the_schema:".CALCURVE"
+
+        select_millennium_data ( self,
+                                 the_schema,
+                                 the_field,
+                                 the_table )
+
+    ENDIF
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE select_millennium_data                                              }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  12-Nov-2001  DK              Selects Millennium Data.                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE get_all_projects ( proj_array )
+
+    DECLARE dynamic_sql, sql_string, ss_name, record_count, count
+
+    count = 1
+
+    proj_array[count] = GLOBAL_PROJECT
+{
+    IF GLOBAL("MILL_PROJECT_SPECIFIC_MAPPING") THEN
+}
+        sql_string = "SELECT s.name FROM PROJECTINFO@":GLOBAL("MILL_DATABASE_LINK_NAME"):" s":
+                     " ORDER BY name ASC"
+
+        CREATE OBJECT "STD_DYNAMIC_SQL" , dynamic_sql
+
+        dynamic_sql . add_to_sql_statement ( sql_string )
+        record_count = dynamic_sql . add_select_string ( 40 )
+        dynamic_sql . execute ()
+
+        count = count + 1
+
+        ss_name = dynamic_sql . select (record_count)
+
+        WHILE ss_name <> EMPTY DO
+
+            proj_array[count] = ss_name
+
+            dynamic_sql . next ()
+            ss_name = dynamic_sql . select (record_count)
+            count = count + 1
+
+        ENDWHILE
+{
+    ENDIF
+}
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE add_proj_tab                                                        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  06-Nov-2001  DK              Sets up properties for the main form           }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE add_proj_tab ( tab , 
+                       each_tab,
+                       the_proj,
+                       main_form,
+                       VALUE option  )
+
+    DECLARE delete_button, insert_button
+
+    CREATE OBJECT "STD_FORM" , each_tab
+        
+    tab . set_size ( each_tab )
+
+    each_tab . header = STRIP(the_proj)
+
+    tab . add_form ( each_tab )
+
+    setup_grid ( each_tab, option )
+
+    each_tab . add_frame ("", 1, 10, 1, FORM_WIDTH -8 )
+
+
+    PROMPT OBJECT insert_button
+            CLASS "STD_PROMPT_BUTTON"
+            WITH ( row                 = 10                         ,
+                   width               = BUTTON_WIDTH + 7           ,
+                   column              = 12                          ,
+                   caption             = "Insert Duplicate Component",
+                   mouse_click_routine = "insert_row"       ,
+                   vgl_library         = GLOBAL( "CURRENT_LIBRARY" ) ,
+                   enabled             = FALSE                         )
+
+    each_tab . add_prompt ( insert_button ) {Prompt 6}
+
+    PROMPT OBJECT delete_button
+            CLASS "STD_PROMPT_BUTTON"
+            WITH ( row                 = 10                           ,
+                   width               = BUTTON_WIDTH + 7           ,
+                   column              = 59                         ,
+                   caption             = "Delete Duplicate Component",
+                   mouse_click_routine = "delete_row"       ,
+                   vgl_library         = GLOBAL( "CURRENT_LIBRARY" ) ,
+                   enabled             = FALSE                         )
+
+    each_tab . add_prompt ( delete_button ) {Prompt 7}
+
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE enable_get_components_add                                           }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  06-Nov-2001  DK              Sets up properties for the main form           }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE enable_get_components_add ( anal_ver_prompt )
+
+
+    DECLARE each_tab, the_proj, the_main_form, tab_form, each_grid
+
+    the_proj = STRIP(anal_ver_prompt . parent_prompt . prompt_objects[1] . text)
+
+    IF STRIP(the_proj) <> "" THEN
+
+        the_main_form = anal_ver_prompt . parent_prompt
+        tab_form  = the_main_form . prompt_objects[FORM_TAB]
+        each_tab  = tab_form . bounding_object . forms[1]
+
+        each_tab . change_header(STRIP(the_proj))
+
+        each_grid = each_tab. prompt_objects[1]
+
+        each_tab . header =STRIP(the_proj)
+
+        populate_the_grid ( the_main_form,
+                            each_grid,
+                            the_proj)
+
+        IF each_grid . user_info[1,1] <> "" THEN
+
+            each_tab . prompt_objects[2] . set_enabled ( TRUE )
+            each_tab . prompt_objects[3] . set_enabled ( TRUE )
+
+        ENDIF
+
+    ELSE
+
+        flashmessage("No project selected!", TRUE)
+
+    ENDIF
+
+ENDROUTINE 
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE enable_get_components_mod                                           }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  06-Nov-2001  DK              Sets up properties for the main form           }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE enable_get_components_mod ( anal_ver_prompt )
+
+
+    DECLARE each_tab, the_proj, the_main_form, tab_form, each_grid
+
+    the_proj = STRIP(anal_ver_prompt . parent_prompt . prompt_objects[FORM_PROJ] . text)
+
+    IF STRIP(the_proj) <> "" THEN
+
+        the_main_form = anal_ver_prompt . parent_prompt
+        tab_form  = the_main_form . prompt_objects[FORM_TAB]
+        each_tab  = tab_form . bounding_object . forms[1]
+
+        each_tab . change_header(STRIP(the_proj))
+        each_tab . re_paste()
+
+
+        each_grid = each_tab. prompt_objects[1]
+
+
+        populate_modify_grid ( the_main_form,
+                               each_grid,
+                               the_proj)
+
+        IF each_grid . user_info[1,1] <> "" THEN
+
+            each_tab . prompt_objects[2] . set_enabled ( TRUE )
+            each_tab . prompt_objects[3] . set_enabled ( TRUE )
+
+        ENDIF
+
+    ELSE
+
+        flashmessage("No project selected!", TRUE)
+
+    ENDIF
+
+
+ENDROUTINE 
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE enable_get_components_dis                                           }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  06-Nov-2001  DK              Sets up properties for the main form           }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE enable_get_components_dis ( anal_ver_prompt )
+
+
+    DECLARE each_tab, the_proj, the_main_form, tab_form, each_grid
+
+
+    the_proj = STRIP(anal_ver_prompt . parent_prompt . prompt_objects[FORM_PROJ] . text)
+
+    IF STRIP(the_proj) <> "" THEN
+
+        the_main_form = anal_ver_prompt . parent_prompt
+        tab_form  = the_main_form . prompt_objects[FORM_TAB]
+        each_tab  = tab_form . bounding_object . forms[1]
+
+        each_tab . change_header(STRIP(the_proj))
+        each_tab . re_paste()
+
+        each_grid = each_tab. prompt_objects[1]
+
+        populate_modify_grid ( the_main_form,
+                               each_grid,
+                               the_proj)
+
+        IF each_grid . user_info[1,1] <> "" THEN
+
+            each_tab . prompt_objects[2] . set_enabled ( FALSE )
+            each_tab . prompt_objects[3] . set_enabled ( FALSE )
+
+        ENDIF
+
+    ELSE
+
+        flashmessage("No project selected!", TRUE)
+
+    ENDIF
+
+ENDROUTINE 
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE copy_project                                                        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  06-Nov-2001  DK              Sets up properties for the main form           }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE copy_project ( VALUE option )
+
+    DECLARE from_project, to_project, the_form, copy_array{, do_del},
+            the_table, do_del
+
+    ARRAY copy_array
+
+    the_table = "MILL_COMPONENT_MAP"
+
+    IF option = "COPY" THEN
+
+        the_table = "MILL_COMPONENT_MAP"
+        two_prompt_form ( the_form )
+
+    ELSEIF option = "ARCHIVE" THEN
+
+        the_table = "MILL_COMPONENT_MAP_C"
+        one_prompt_form ( the_form )
+
+    ENDIF
+
+    the_form . start_prompt()
+    the_form . wait_prompt()
+    the_form . end_prompt()
+
+    IF option = "COPY" THEN
+
+       from_project = the_form . prompt_objects[1] . text
+       to_project   = the_form . prompt_objects[2] . text
+
+    ELSEIF option = "ARCHIVE" THEN
+
+       from_project = the_form . prompt_objects[1] . text
+       to_project   = the_form . prompt_objects[2] . text
+
+    ENDIF
+
+    IF the_form . get_lastkey () = "DO" THEN
+
+        IF STRIP(to_project) <> STRIP(from_project) THEN
+
+            select_copy_data ( from_project,
+                               to_project,
+                               copy_array )
+
+            do_del = confirm_with_text("This action will delete all mapping records from Project: ":STRIP(to_project):" prior to copying if any exist. Do you wish to continue?")
+
+            IF do_del THEN
+
+                delete_from_to_project (to_project )
+
+                create_copy_data ( copy_array,
+                                   the_table )
+
+            ENDIF
+
+        ELSE
+
+            flashmessage("You must select two different projects!", TRUE)
+
+        ENDIF
+
+    ENDIF
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE one_prompt_form                                                     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  28/11/01     DK              Prompt for Job and Level.                      }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE one_prompt_form ( form )
+
+    DECLARE display_prompt, prompt_obj, the_header, the_border, display_1
+
+    the_header = "Archive Project Interface Mapping"
+    the_border = ""
+
+    display_1 = "Select Project"
+
+    CREATE OBJECT PROMPT_CLASS_FORM, form
+
+    form . header = the_header
+    form . footer = ""
+    form . height = 1
+    form . width  = 47
+    form . row    = ( GLOBAL ( "SCREEN_HEIGHT") - form . height) / 2
+    form . column = ( GLOBAL ( "SCREEN_WIDTH" ) - form . width ) / 2
+    form . border = TRUE
+    form . active_prompt = 1
+    form . return_behaviour = FORM_RETURN_STAY
+    form . add_frame ( the_border  ,   1, 1, 1, 46 )
+
+    PROMPT OBJECT display_prompt
+            CLASS "STD_PROMPT_TEXT"
+            ON LINE 1 FROM 2 TO 16
+            WITH ( VALUE      =  display_1,
+                   BOLD       =  TRUE       ,
+                   RAISED     =  TRUE )
+
+    form . add_display ( display_prompt )
+
+
+    PROMPT OBJECT prompt_obj
+            BROWSE ON TEXT
+            ON LINE 1 FROM 20 to 40
+            WITH ( ALWAYS_VALIDATE = TRUE,
+                   LOWERED = TRUE,
+                   BROWSE_ROUTINE = "select_project_data")
+
+    form . add_prompt ( prompt_obj )
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE two_prompt_form                                                     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  28/11/01     DK              Prompt for Job and Level.                      }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE two_prompt_form ( form )
+
+    DECLARE display_prompt, prompt_obj, the_header, the_border, display_1,
+            display_2
+
+    the_header = "Copy Project Interface Mapping"
+    the_border = "Select Projects"
+
+    display_1 = "From Project"
+    display_2 = "To Project"
+
+    CREATE OBJECT PROMPT_CLASS_FORM, form
+
+    form . header = the_header
+    form . footer = ""
+    form . height = 2
+    form . width  = 37
+    form . row    = ( GLOBAL ( "SCREEN_HEIGHT") - form . height) / 2
+    form . column = ( GLOBAL ( "SCREEN_WIDTH" ) - form . width ) / 2
+    form . border = TRUE
+    form . active_prompt = 1
+    form . return_behaviour = FORM_RETURN_STAY
+    form . add_frame ( the_border  ,   1, 1, 2, 36 )
+
+    PROMPT OBJECT display_prompt
+            CLASS "STD_PROMPT_TEXT"
+            ON LINE 1 FROM 2 TO 10
+            WITH ( VALUE      =  display_1,
+                   BOLD       =  TRUE       ,
+                   RAISED     =  TRUE )
+
+    form . add_display ( display_prompt )
+
+
+    PROMPT OBJECT prompt_obj
+            BROWSE ON TEXT
+            ON LINE 1 FROM 13 to 33
+            WITH ( ALWAYS_VALIDATE = TRUE,
+                   LOWERED = TRUE,
+                   BROWSE_ROUTINE = "select_project_data")
+
+    form . add_prompt ( prompt_obj )
+
+    PROMPT OBJECT display_prompt
+            CLASS "STD_PROMPT_TEXT"
+            ON LINE 2 FROM 2 TO 10
+            WITH ( VALUE      =  display_2,
+                   BOLD       =  TRUE       ,
+                   RAISED     =  TRUE )
+
+    form . add_display ( display_prompt )
+
+
+    PROMPT OBJECT prompt_obj
+            BROWSE ON TEXT
+            ON LINE 2 FROM 13 to 33
+            WITH ( ALWAYS_VALIDATE = TRUE,
+                   LOWERED = TRUE        ,
+                   BROWSE_ROUTINE = "select_project_data")
+
+    form . add_prompt ( prompt_obj )
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE copy_data                                                           }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  28/11/01     DK              Prompt for Job and Level.                      }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE select_copy_data ( from_project,
+                           to_project,
+                           copy_array )
+  
+    DECLARE count, the_anal, the_key, the_anal_ver, the_comp, the_mill_comp, 
+            the_mill_type, the_injection
+
+    count = 1
+    
+    the_anal = SELECT MILL_COMPONENT_MAP . analysis
+                WHERE mill_project = from_project
+               ORDER ON order_num
+
+    WHILE the_anal <> EMPTY DO
+
+        the_anal_ver     = SELECT MILL_COMPONENT_MAP . analysis_version
+        the_comp         = SELECT MILL_COMPONENT_MAP . component
+        the_mill_comp    = SELECT MILL_COMPONENT_MAP . mill_analyte
+        the_mill_type    = SELECT MILL_COMPONENT_MAP . mill_type
+        the_injection    = SELECT MILL_COMPONENT_MAP . injection
+
+        the_key = PAD(STRIP(the_anal     )," ",10):the_anal_ver:
+                  PAD(STRIP(the_comp     )," ",40):
+                  PAD(STRIP(the_mill_comp)," ",40):
+                  PAD(STRIP(to_project   )," ",20):
+                  PAD(STRIP(the_mill_type)," ",20):
+                  PAD(STRIP(the_injection)," ",10)
+
+     
+        copy_array[count, 1] = the_key
+        copy_array[count, 2] = SELECT MILL_COMPONENT_MAP . anal_description
+        copy_array[count, 3] = SELECT MILL_COMPONENT_MAP . enable
+        copy_array[count, 4] = SELECT MILL_COMPONENT_MAP . res_type
+        copy_array[count, 5] = SELECT MILL_COMPONENT_MAP . inject_comment
+        copy_array[count, 6] = SELECT MILL_COMPONENT_MAP . order_num
+
+        count = count + 1
+
+        NEXT MILL_COMPONENT_MAP
+        the_anal = SELECT MILL_COMPONENT_MAP . analysis
+
+    ENDWHILE
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE delete_from_to_project                                              }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  28/11/01     DK              Prompt for Job and Level.                      }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE delete_from_to_project (to_project )
+
+    DECLARE sql_string
+
+    sql_string = "DELETE FROM MILL_COMPONENT_MAP WHERE MILL_PROJECT = '":STRIP(to_project):"'"
+
+    EXECUTE_SQL ( sql_string )
+    EXECUTE_SQL ( "COMMIT" )
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE create_copy_data                                                    }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  28/11/01     DK              Prompt for Job and Level.                      }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE create_copy_data ( copy_array,
+                           the_table )
+
+    DECLARE count, the_key, check_ok, is_commit
+
+    count = 1
+    is_commit = FALSE
+
+    WHILE count <= SIZE_OF_ARRAY(copy_array) DO
+
+        the_key = copy_array[count, 1]
+
+        RESERVE ENTRY 'the_table', the_key, check_ok
+
+        IF (check_ok <> EMPTY) THEN
+
+            flashmessage(check_ok,TRUE)
+
+        ELSE
+
+            check_write_transaction()
+
+            ASSIGN 'the_table' . anal_description = copy_array[count, 2]
+            ASSIGN 'the_table' . enable           = copy_array[count, 3]
+            ASSIGN 'the_table' . res_type         = copy_array[count, 4]
+            ASSIGN 'the_table' . inject_comment   = copy_array[count, 5]
+            ASSIGN 'the_table' . order_num        = copy_array[count, 6]
+
+            UPDATE 'the_table'
+            is_commit = TRUE
+
+        ENDIF
+
+        count = count + 1
+
+    ENDWHILE
+
+    IF is_commit THEN
+
+        COMMIT
+        flashmessage("Project Mapping Successfully Copied!", TRUE)
+
+    ELSE
+
+        ROLLBACK
+
+    ENDIF
+
+ENDROUTINE
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE browse_exist_anals                                                  }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  23/06/03     DK              Selects Existing Analysis Data.                }
+{  13-Jan-05    AF              Modified V3.1 version to fix bug in V2.0       }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE browse_exist_anals( self )
+
+    DECLARE count, ss_name, record_count, ss_array, dynamic_sql, sql_string,
+            the_proj 
+
+    ARRAY ss_array
+   
+    count = 1
+
+
+    IF GLOBAL("MILL_PROJECT_SPECIFIC_MAPPING") THEN
+
+        the_proj = STRIP(self.parent_prompt.prompt_objects[1].text)
+
+    ELSE
+
+        the_proj = GLOBAL_PROJECT
+
+    ENDIF
+
+
+    sql_string = "SELECT DISTINCT ANALYSIS FROM MILL_COMPONENT_MAP ":
+                  " WHERE MILL_PROJECT = '":the_proj:"' "
+
+
+    CREATE OBJECT "STD_DYNAMIC_SQL" , dynamic_sql
+
+    dynamic_sql . add_to_sql_statement ( sql_string )
+    record_count = dynamic_sql . add_select_string ( 50 )
+    dynamic_sql . execute ()
+
+    ss_name = dynamic_sql . select (record_count)
+
+    WHILE ss_name <> EMPTY DO
+
+        ss_array[count,1] = ss_name
+
+        dynamic_sql . next ()
+        ss_name = dynamic_sql . select (record_count)
+
+       count = count + 1
+
+    ENDWHILE
+
+    browse_on_array ( 80 , self.text , ss_array )
+
+    self.repaste()
+
+ENDROUTINE     {  browse_exist_anals  }
+
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE browse_anal_vers_mapped                                             }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  20-Dec-2004  AF             Browse routine for MODIFY/DISPLAY. Browses on   }
+{                              analysis versions in mill_component_map table   } 
+{                                                                              }
+{==============================================================================}
+
+ROUTINE browse_anal_vers_mapped  (self)
+
+    DECLARE the_anal, the_entity, the_ver, i, browse_array
+
+    ARRAY browse_array
+
+    the_anal   = self . parent_prompt . prompt_objects [FORM_ANAL] . value 
+    the_entity = self . parent_prompt . prompt_objects [FORM_PROJ] . value 
+
+
+    the_ver = SELECT DISTINCT mill_component_map . analysis_version
+                WHERE mill_project = the_entity
+                 AND analysis = the_anal
+
+   i = 0
+
+   WHILE (the_ver <> EMPTY) DO
+
+        i = i + 1
+        browse_array [i,1] = STRIP(the_ver)
+        browse_array [i,2] = ""
+
+        NEXT mill_component_map
+        the_ver = SELECT mill_component_map . analysis_version
+
+   ENDWHILE
+
+  browse_on_array (10, self.text, browse_array)
+  self.repaste()
+
+ENDROUTINE     {  browse_anal_vers_mapped  }
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE select_project_data_mapped                                          }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  13-Jan-2005  AF              Selects result MAPPED Millennium Projects      }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE select_project_data_mapped ( self )
+
+     DECLARE the_proj, i, browse_array
+
+     ARRAY browse_array
+
+     the_proj = SELECT DISTINCT mill_component_map . mill_project
+
+    i = 0
+
+    WHILE (the_proj <> EMPTY) DO
+
+        i = i + 1
+        browse_array [i,1] = STRIP(the_proj)
+        browse_array [i,2] = ""
+
+        NEXT mill_component_map
+        the_proj = SELECT mill_component_map . mill_project
+
+   ENDWHILE
+
+   browse_on_array (10, self.text, browse_array)
+   self.repaste()
+
+
+   self . parent_prompt . prompt_objects [ FORM_ANAL ] . set_enabled (TRUE)
+
+
+ENDROUTINE     {  select_project_data_mapped  }
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE update_mod_details_disp_now                                         }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  20-Dec-2004  AF             Updates Modify details display with current date}
+{                              and operator                                    }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE update_mod_details_disp_now (the_form) 
+
+    { modified on }
+    the_form . display_objects [1] . text = NOW
+               
+    { modified by }
+    the_form . display_objects [2] . text = GLOBAL ("operator")
+
+    the_form . display_objects [1] . re_paste ()
+    the_form . display_objects [2] . re_paste ()
+
+ENDROUTINE     {  update_mod_details_disp_now }
+
+
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE update_mill_mapped_complist                                         }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By             Description                                     }
+{  ----         --             -----------                                     }
+{  09-Jul-04    AF             If components were added/removed from the       }
+{                              mapped analysis, updates the smmill mapping     }
+{  07-Sep-04    AF             Module test 58 (SMMILLv3.1-SDS0.1 4.7a.doc)     }
+{                              fix #4 - input parameters                       }
+{                              should be passed by VALUE unless need for output}
+{  14-Jan-05    AF             Modified for V2.0 fixes                         }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE update_mill_mapped_complist  (   grid_array  ,
+	                                 VALUE the_anal, 
+                            		 VALUE the_anal_ver, 
+                            		 VALUE the_ent,
+                                         VALUE is_prev_array )
+
+
+    DECLARE comp_array, iGrid, iComp, the_comp, found, do_commit,
+            iGridMax, peak_value, mod_database
+
+    ARRAY comp_array ARRAYSIZE (0)
+
+ 
+    do_commit = FALSE
+ 
+    the_anal = STRIP (the_anal)
+    the_anal_ver = STRIP (the_anal_ver)
+
+
+    peak_value = GLOBAL ("MILL_PEAK_VALUE_DEFAULT")
+
+    get_sm_anal_comps (comp_array, the_anal, the_anal_ver)
+
+    { Go through grid array, if it includeds non-existant components, remove them }
+    { Comparison is case in-sensitive and ignores lead/trailing white spaces }
+
+    iGrid = size_of_array (grid_array)
+    WHILE ( iGrid > 0  ) DO
+
+        the_comp = grid_array [ iGrid, SMP_COMP]
+
+        found = FALSE
+        iComp = 0
+        WHILE ( iComp < size_of_array (comp_array) ) AND
+                (found = FALSE) DO
+
+            iComp = iComp + 1
+
+            IF ( STRIP(TOLOWER(comp_array [iComp])) = STRIP(TOLOWER(the_comp)) ) THEN
+
+                found = TRUE
+
+            ENDIF
+
+        ENDWHILE
+
+        IF (found = FALSE) THEN
+
+            {
+              Dont remove it from the display  
+              ( the following would: array_remove_slice (grid_array, 1, iGrid))
+               Instead update the display as disabled and with a comment
+               If disabled, dont change comment, in case user wants that comment
+               Note that *,- used for TRUE,FALSE
+             }
+             mod_database = FALSE
+             IF (grid_array [iGrid , ENABLED       ] = "*") THEN
+
+                mod_database = TRUE
+		grid_array [iGrid , ENABLED       ] = "-"
+                grid_array [iGrid , INJECT_COMM   ] = CTXT_SM_COMP_REMOVED
+
+             ENDIF
+
+
+             IF (NOT is_prev_array) AND (mod_database) THEN
+{
+AF 3.0 dont need this now
+
+               { Update the obselete component in interface mapping table }
+               { Make it disabled and having a "removed" comment    }
+{
+               REPEAT
+
+                  the_comp = SELECT mill_component_map . component FOR UPDATE
+                               WHERE  analysis       = the_anal         AND
+                                    analysis_version = the_anal_ver     AND
+                                    mill_project     = the_ent          AND
+                                    component        = the_comp
+
+                  IF the_comp = LOCKED THEN
+
+                       SLEEP FOR "0 00:00:02"	
+
+                   ENDIF
+
+                UNTIL the_comp <> LOCKED
+
+                IF (the_comp <> EMPTY) THEN
+
+                   check_write_transaction ()
+
+                   ASSIGN mill_component_map.enable = FALSE
+                   ASSIGN mill_component_map.inject_comment = CTXT_SM_COMP_REMOVED
+
+                   UPDATE mill_component_map
+
+                   do_commit = TRUE
+
+                ENDIF
+}
+
+            ENDIF    { IF (do_delete) }
+
+	ENDIF    {  IF (found = FALSE)  }
+
+        iGrid = iGrid - 1
+
+    ENDWHILE   {  iGrid > 0 }
+
+
+    IF (do_commit) THEN
+
+        COMMIT
+
+    ENDIF
+
+
+    { See if any components are missing from the grid }
+
+    iComp = 0
+    WHILE ( iComp < size_of_array (comp_array) )  DO
+
+        iComp = iComp + 1
+
+        found = FALSE
+        iGrid = 0
+        WHILE (iGrid < size_of_array (grid_array)) DO
+
+            iGrid = iGrid + 1
+
+            the_comp = grid_array [ iGrid, SMP_COMP]
+	    IF ( STRIP(TOLOWER(comp_array [iComp])) = STRIP(TOLOWER(the_comp)) ) THEN
+
+                found = TRUE
+
+            ENDIF
+
+        ENDWHILE
+
+        IF (found = FALSE) THEN
+
+            iGridMax = size_of_array (grid_array) + 1
+            array_insert_slice (grid_array, 1 , iGridMax)
+
+            grid_array [iGridMax , ENABLED       ] = "-"
+            grid_array [iGridMax , SMP_COMP      ] = comp_array [iComp]
+            grid_array [iGridMax , MILL_RES_TYPE ] = peak_value
+            grid_array [iGridMax , MILL_COMP     ] = ""
+            grid_array [iGridMax , INJECT        ] = "1"
+            grid_array [iGridMax , INJECT_COMM   ] = ""
+ 
+
+            { this will make the row be added }
+            IF (is_prev_array) THEN
+
+                grid_array [iGridMax , DELETE_COL ] = "INSERT"
+
+            ENDIF
+
+        ENDIF
+
+    ENDWHILE    { iComp loop }
+    
+
+     
+ENDROUTINE   {   update_mill_mapped_complist   }
+
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE get_sm_anal_comps                                                   }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  09/07/04     AF              Gets components for a SampleManager analysis   }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE get_sm_anal_comps (comp_array, the_anal, the_anal_ver)
+
+    DECLARE comp, i
+
+    DECLARE new_anal_ver
+    new_anal_ver = get_max_analysis_version ( the_anal )
+
+    comp  = SELECT VERSIONED_COMPONENT . name
+                 WHERE analysis         = the_anal
+                 AND analysis_version   = new_anal_ver
+                 ORDER ON order_number
+
+    i = 0
+    WHILE comp <> EMPTY DO
+
+        i = i + 1
+        comp_array [i] = comp
+
+
+        NEXT VERSIONED_COMPONENT
+        comp  = SELECT VERSIONED_COMPONENT . name
+
+    ENDWHILE
+
+
+ENDROUTINE   {   get_sm_anal_comps   }
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE empty_the_array                                                     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  09-JUL-2004  AF             emptys an array                                 }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE empty_the_array  (the_array)
+
+   DECLARE i
+
+   i = size_of_array (the_array)
+   WHILE (i > 0) DO
+
+      array_remove_slice (the_array, 1, i)   
+      i = i - 1
+
+   ENDWHILE
+
+ENDROUTINE     { empty_the_array  }
+
+
+ROUTINE get_max_analysis_version (VALUE anal)
+
+	DECLARE ver
+
+	ver = SELECT MAX versioned_analysis . analysis_version
+		   WHERE identity = anal
+			AND approval_status = "A"
+			AND removeflag = FALSE
+
+	RETURN (ver)
+
+ENDROUTINE

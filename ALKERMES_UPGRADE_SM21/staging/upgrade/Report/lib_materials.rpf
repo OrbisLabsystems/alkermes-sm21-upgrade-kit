@@ -1,0 +1,172 @@
+{******************************************************************************
+*
+* Module Name          : LIB_MATERIALS
+*
+* Purpose              : Explorer routines for supplier qualification
+*
+* Portability          : Not Checked
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By             Description
+* -------   -----------  ----------     ---------------------------------------
+* 1.0       11-Apr-2005  J. O'Neill     Release Version 
+*
+*******************************************************************************}
+
+SET NOTPROTECTED
+SET NAME "DEFER/"
+SET COMPILEOPTION DECLARE
+
+SET FORMAT "9999999999"
+SET PRINTERCODES TRUE
+SET COMPILE_OPTION DECLARE
+
+
+ENABLE WINDOWS
+
+JOIN STANDARD_LIBRARY STD_CLASS
+
+JOIN LIBRARY $LIB_UTILS
+
+ROUTINE qualify_rmb (rmb_object, 
+                            object, 
+                            data)
+
+{
+*  RMB option for disposal of Retain.
+*
+*******************************************************************************}
+
+    DECLARE the_record, 
+            no_records, 
+            the_article,
+            the_table,
+            the_status,
+            the_supplier
+
+    the_table = "material_qualification"
+
+    no_records = data . size()
+
+    data . set_first ()
+
+    WHILE ((data . current_position <= no_records) AND ( data . current_position > 0 )) DO
+
+        the_record = data . get_by_number (data . current_position) 
+        
+        the_article =  SELECT 'the_table' . article_code IN OBJECT the_record
+        the_supplier = SELECT 'the_table' . supplier     IN OBJECT the_record       
+        
+        the_status  = SELECT materials_suppliers . qualification_status FOR UPDATE WHERE 
+                                   article_code = the_article AND
+                                   supplier = the_supplier
+                
+	IF ( the_status <> EMPTY ) THEN
+	
+	    START WRITE TRANSACTION "Update Materials Supplier Record"
+	
+	    ASSIGN materials_suppliers . qualification_status  = TRUE
+	        	    
+	    UPDATE materials_suppliers
+	    
+	    COMMIT
+	                    
+	ELSE
+			         
+	    flashmessage("Error Updating ":the_article:" ":the_supplier, TRUE)        
+			         
+        ENDIF
+
+        data . set_next()
+    
+    ENDWHILE
+ 
+    explorer_refresh(rmb_object)
+    
+ENDROUTINE {qualify_rmb}
+
+ROUTINE disqualify_rmb (rmb_object, 
+                            object, 
+                            data)
+
+{
+*  RMB option for disposal of Retain.
+*
+*******************************************************************************}
+
+    DECLARE the_record, 
+            no_records, 
+            the_article,
+            the_table,
+            the_status,
+            the_supplier
+
+    the_table = "material_qualification"
+
+    no_records = data . size()
+
+    data . set_first ()
+
+    WHILE ((data . current_position <= no_records) AND ( data . current_position > 0 )) DO
+
+        the_record = data . get_by_number (data . current_position) 
+        
+        the_article =  SELECT 'the_table' . article_code IN OBJECT the_record
+        the_supplier = SELECT 'the_table' . supplier     IN OBJECT the_record       
+        
+        the_status  = SELECT materials_suppliers . qualification_status FOR UPDATE WHERE 
+                                   article_code = the_article AND
+                                   supplier = the_supplier
+                
+	IF ( the_status <> EMPTY ) THEN
+	
+	    START WRITE TRANSACTION "Update Materials Supplier Record"
+	
+	    ASSIGN materials_suppliers . qualification_status  = FALSE
+	        	    
+	    UPDATE materials_suppliers
+	    
+	    COMMIT
+	                    
+	ELSE
+			         
+	    flashmessage("Error Updating ":the_article:" ":the_supplier, TRUE)        
+			         
+        ENDIF
+
+        data . set_next()
+    
+    ENDWHILE
+ 
+    explorer_refresh(rmb_object)
+    
+ENDROUTINE {disqualify_rmb}
+    
+    
+ROUTINE explorer_refresh (rmb_object)
+
+{
+*  Explorer refresh
+*
+*******************************************************************************}
+
+    IF (object_check_property (rmb_object . parent, "ROW")) THEN
+
+        { Standard Explorer } 
+
+        rmb_object . parent . refresh ()
+
+    ELSE
+
+        { Table Defaults }
+
+        rmb_object . parent . parent . listview . refresh ()
+
+    ENDIF
+
+
+ENDROUTINE {explorer_refresh}
+

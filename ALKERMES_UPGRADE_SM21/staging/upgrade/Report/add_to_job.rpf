@@ -1,0 +1,269 @@
+{******************************************************************************
+*
+* Module Name          : ADD_TO_JOB
+*
+* Purpose              : Program to add samples to old job 
+*                        (sets the sample template, unlike standard menu option)
+*
+* Portability          : 2004 R2
+*
+*******************************************************************************
+*
+* History :
+* 
+* Version   Date         By                Description
+* -------   -----------  ----------        ------------------------------------
+* 1.0       04-APR-2007  Aidan Finnerty    Initial version
+*
+*******************************************************************************}
+
+
+SET NOTPROTECTED
+
+SET COMPILE_OPTION DECLARE
+
+SET NAME "DEFER/"
+
+ENABLE WINDOWS
+
+
+JOIN STANDARD_LIBRARY STD_arraY 
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_CLIENT
+JOIN STANDARD_LIBRARY STD_MESSAGE
+JOIN STANDARD_LIBRARY STD_STRUCTURE
+JOIN STANDARD_LIBRARY STD_TRANSFER
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_VGL
+JOIN STANDARD_LIBRARY STD_WINDOW
+JOIN STANDARD_LIBRARY std_user_global
+
+JOIN LIBRARY $lib_utils
+JOIN LIBRARY $login_interface      { job login stuff here }
+ 
+
+
+startup (0)
+
+
+{======================================================}
+{
+  Entry point 
+}
+{======================================================}
+
+ROUTINE startup (VALUE option)
+
+    DECLARE the_job
+
+
+    detail_prompt (the_job)
+
+
+    IF (the_job = "") OR (the_job = EMPTY) THEN
+
+        flashmessage ("No job. Select valid job", TRUE)    
+
+    ELSE
+
+        { Do update }
+
+        on_ok (the_job)
+
+    ENDIF
+
+
+ENDROUTINE     {  startup  }
+
+
+{==================================================}
+{ Call into standard "Add to existing job code"    }
+{==================================================}
+
+ROUTINE on_ok (VALUE the_job)
+
+    DECLARE session_form, job_tmpl, samp_tmpl
+
+
+{
+   Know the job, so set it ant its sample template on the "Addb to existing job" prompt
+}
+
+        { get sample template on job template }
+        
+        samp_tmpl = ""
+
+        IF (the_job <> EMPTY) AND (STRIP(the_job) <> "") THEN
+
+            job_tmpl = SELECT job_header . template_id
+                          WHERE job_name = the_job
+
+            IF (job_tmpl <> EMPTY) AND (STRIP(job_tmpl) <> "") THEN
+
+                samp_tmpl = SELECT job_template . sample_template_id
+                                    WHERE identity = job_tmpl
+                                      AND removeflag = FALSE
+
+
+               IF (samp_tmpl <> EMPTY) THEN
+
+                   samp_tmpl = SELECT samp_tmpl_header . identity
+                                    WHERE identity = samp_tmpl
+                                      AND removeflag = FALSE
+
+
+               ENDIF
+
+               IF (samp_tmpl = EMPTY) THEN
+
+                   samp_tmpl = ""
+
+               ENDIF
+
+            ENDIF
+
+        ENDIF
+
+
+        { This code is from $login_interface }
+
+	login_interface_initialise ()
+
+	CREATE OBJECT LOGIN_INTERFACE_SESSION_FORM , session_form
+
+	session_form . job_identity = the_job     { not in standard code }
+
+	session_form . header               = GET_USER_MESSAGE ( "SAMP_JOB_CONST_1" ,1)
+	session_form . display_job_identity = TRUE
+	session_form . prompt_job_identity  = TRUE
+	session_form . display_template     = TRUE
+	session_form . prompt_template      = TRUE
+	session_form . prompt_repeat_count  = TRUE
+	session_form . repeat_count         = 0
+	session_form . template             = samp_tmpl
+	session_form . sample_syntax        = ""
+	session_form . prompt_id            = "$LOGIN_INTERFACE_EXISTING_JOB"
+
+	session_form . go()
+
+ENDROUTINE    {  on_ok  }
+
+
+
+
+{=======================================}
+{ detail prompt                         }
+{=======================================}
+
+ROUTINE detail_prompt (the_job)
+		
+
+    DECLARE form,  can_leave
+
+    the_job = ""
+
+    detail_create_main_form ( form)
+
+    form . start_prompt ()
+
+    REPEAT
+
+        form . wait_prompt  ()
+
+
+        can_leave = TRUE
+
+
+        IF form.get_lastkey() <> "EXIT" THEN
+
+            IF (TRUE) THEN
+
+                 the_job = STRIP (form . prompt_objects [1] . value)
+                
+            ENDIF
+
+        ELSE
+
+            EXIT
+
+        ENDIF
+
+    UNTIL  (can_leave) OR (form . get_lastkey () = "EXIT" ) 
+ 
+
+    form . end_prompt ()
+
+
+    RETURN (form . user_info)   { next/previous/exit }
+
+
+ENDROUTINE    {  detail_prompt  }
+
+
+{=======================================}
+{ Create detail prompt form             }
+{=======================================}
+
+ROUTINE detail_create_main_form ( form )
+
+    DECLARE  pr, start_line, start_col,
+          the_header, form_height
+
+    the_header  = "Add Samples to Job"
+    form_height = 1
+
+
+
+    PROMPT OBJECT form
+        CLASS PROMPT_CLASS_FORM
+        WITH ( width  = 50                                  ,
+               row    = 5                                   ,
+               column = 10                                  ,
+               height = form_height                          ,
+               header = the_header                          ,
+               footer = "<DO> to Continue, <EXIT> to Cancel",
+               proportional = TRUE                          ,
+               return_behaviour = FORM_RETURN_LEAVE     ,
+               user_info = ""  )
+
+    form . add_frame ( "" ,   1, 1, form_height, form.width )
+
+      
+    start_line = 1
+    start_col  = 3
+
+
+    form . add_display ( "Select Job", 
+                          start_col, 
+                          start_line,
+                          PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+
+    PROMPT OBJECT pr
+            BROWSE ON job_header 
+	    on line start_line from start_col+14 TO 55
+
+    
+    form.add_prompt ( pr )           { Prompt 1  }
+
+
+ENDROUTINE     {  detail_create_main_form  }
+
+
+
+{==========================================}
+{ If not in write transaction, start one   }
+{==========================================}
+
+ROUTINE check_write_transaction
+
+    IF NOT transaction_is_write() THEN
+
+       START WRITE TRANSACTION "Write"
+
+    ENDIF
+
+ENDROUTINE
+
+
+
+

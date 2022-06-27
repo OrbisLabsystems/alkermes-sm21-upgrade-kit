@@ -1,0 +1,74 @@
+{******************************************************************************
+*
+* Module Name          : SOP
+*
+* Purpose              : Display SOP
+*
+* Portability          : Not Checked
+*
+* Author               : Jonathan O'Neill
+*
+* Date created         : 28-JAN-2005
+*
+* Version              : 1.0
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By                Description
+* -------   -----------  ----------        ------------------------------------
+* 1.0       28-JAN-2005  Jonathan O'Neill  Initial version
+*
+*******************************************************************************}
+ENABLE WINDOWS
+
+SET NAME "DEFER/"
+SET COMPILE_OPTION DECLARE
+
+JOIN LIBRARY $LIB_UTILS
+
+JOIN STANDARD_LIBRARY STD_DATABASE
+
+
+{******************************************************************************}
+
+ROUTINE display_sop (VALUE the_anal, VALUE the_anal_version)
+
+    DECLARE sop,
+            ole_shell,
+            command
+    
+    sop = SELECT versioned_analysis . sop
+           WHERE identity = the_anal
+           AND analysis_version = the_anal_version
+           
+    IF strip ( sop ) <> "" THEN
+    
+        IF FILE EXISTS ( sop ) = FALSE THEN
+    
+            flashmessage(GET_USER_MESSAGE("RESULTS_DOCUMENT", 1):" ":
+                         STRIP ( sop ):" ":
+                         GET_USER_MESSAGE("RESULTS_NOT_FOUND", 1), TRUE)
+    
+        ELSE
+        
+            CREATE OBJECT "STD_OLE_AUTOMATION", ole_shell
+    
+            ole_shell . create("WScript.Shell")
+            
+            command = "cmd /K ":ASCII(34):sop:ASCII(34)
+    
+            ole_shell . run (command,0)       
+            
+            ole_shell = EMPTY
+            
+        ENDIF
+        
+    ELSE
+    
+        flashmessage(GET_USER_MESSAGE("RESULTS_NO_SOP_DOCUMENT", 1), TRUE)
+            
+    ENDIF
+
+ENDROUTINE

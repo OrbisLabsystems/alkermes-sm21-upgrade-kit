@@ -1,0 +1,165 @@
+MESSAGE GROUP "INST_CALIB_LTE_"
+
+MESSAGE        = "ID"
+TEXT           = "Identity"
+
+MESSAGE        = "TYPE"
+TEXT           = "Type"
+
+MESSAGE        = "SEQUENCE"
+TEXT           = "Sequence"
+
+MESSAGE        = "MOD_ON"
+TEXT           = "Modified On"
+
+MESSAGE        = "MOD_BY"
+TEXT           = "Modified By"
+
+MESSAGE        = "LTE_READ_TRANS"
+TEXT           = "Labtable Read Transaction"
+
+MESSAGE        = "LTE_WRITE_TRANS"
+TEXT           = "Labtable Write Transaction"
+
+
+
+
+MESSAGE GROUP "INST_CALIB_TYPES_"
+
+
+MESSAGE        = "HEADER_MESS"
+TEXT           = "Calibration Types"
+
+MESSAGE        = "GROUP"
+TEXT           = "Group"
+
+MESSAGE        = "DESCRIPTION"
+TEXT           = "Description"
+
+MESSAGE        = "PROCEDURE_NUM"
+TEXT           = "Procedure Number"
+
+MESSAGE        = "CAL_LABEL"
+TEXT           = "Calibration Label Report"
+
+MESSAGE        = "DNU_LABEL"
+TEXT           = "Do Not Use Label Report"
+
+MESSAGE        = "MODIFIABLE"
+TEXT           = "Modifiable"
+
+MESSAGE        = "DISPLAYED_TABLE_NAME"
+TEXT           = "Calibration Types"
+
+MESSAGE        = "INPUT_MESSAGE"
+TEXT           = "Calibration Types"
+
+MESSAGE        = "THE_ROUTINE_BROWSE"
+TEXT           = "Do Not Use Label Report"
+
+
+MESSAGE GROUP "INST_CALIBRATION_"
+
+
+MESSAGE        = "TYPE"
+TEXT           = "Type"
+
+MESSAGE        = "INTERVAL"
+TEXT           = "Interval"
+
+MESSAGE        = "WINDOW"
+TEXT           = "Window"
+
+MESSAGE        = "COMMENTS"
+TEXT           = "Comments"
+
+
+MESSAGE        = "NON_POS_INTERVAL"
+TEXT           = "Non Positive Calibration Interval for Type "
+TEXT           = " not permitted."
+TEXT           = "Negative Calibration Window for Type "
+
+
+MESSAGE GROUP "INST_CALIB_HIST_"
+
+
+MESSAGE        = "HEADER_MESS"
+TEXT           = "Calibration History"
+
+MESSAGE        = "GROUP"
+TEXT           = "Group"
+
+MESSAGE        = "DATE_CALIBRATED"
+TEXT           = "Date Calibrated"
+
+MESSAGE        = "STATUS"
+TEXT           = "Pass/Fail"
+
+MESSAGE        = "PERFORMED_BY"
+TEXT           = "Performed By"
+
+MESSAGE        = "ACTUAL_CAL_DUE"
+TEXT           = "Next Calibration Due (Actual)"
+
+MESSAGE        = "CALC_CALIB_DUE"
+TEXT           = "Next Calibration Due (Calculated)"
+
+MESSAGE        = "COMMENTS"
+TEXT           = "Notes"
+
+MESSAGE        = "MODIFIABLE"
+TEXT           = "Modifiable"
+
+MESSAGE        = "DISPLAYED_TABLE_NAME"
+TEXT           = "Calibration History"
+
+MESSAGE        = "INPUT_MESSAGE"
+TEXT           = "Instrument"
+
+MESSAGE        = "TYPE_MENU_ERR"
+TEXT           = "No calibration type exists for this menu option"
+
+MESSAGE        = "NO_INT_SET"
+TEXT           = "No calibration interval defined"
+
+MESSAGE        = "NO_DATE_ENTERED"
+TEXT           = "Enter Date Calibrated"
+
+MESSAGE        = "WRONG_DATE_DUE1"
+TEXT           = "Calibration due date must be in the future"
+
+{EH 08-Jun-2004 CC2004-080 start mod}
+MESSAGE        = "SERVICE_REP"
+TEXT           = "Service Report"
+{EH 08-Jun-2004 end mod}
+
+
+
+MESSAGE GROUP "INST_CALIB_REPORTS_"
+
+
+MESSAGE        = "NO_CAL_DUE_SET"
+TEXT           = "No calibration due for this instrument"
+
+MESSAGE        = "INVALID_TYPE"
+TEXT           = "Invalid Type"
+
+MESSAGE        = "INVALID_SEQ_NUM"
+TEXT           = "Invalid sequence number"
+
+MESSAGE        = "START_LATER_END_DATE"
+TEXT           = "Start date cannot be later than end date"
+
+{EH 08-Jun-2004 CC2004-080 start mod}
+MESSAGE        = "LISTING_FORM_HEADER"
+TEXT           = "Listing Report Group Prompt"
+
+MESSAGE        = "LISTING_FORM_FOOTER"
+TEXT           = "Exit to Quit"
+
+MESSAGE        = "LISTING_FORM_GROUP_ID"
+TEXT           = "Group Identity"
+
+MESSAGE        = "LISTING_FORM_ALL_GROUPS"
+TEXT           = "All Groups"
+{EH 08-Jun-2004 end mod}

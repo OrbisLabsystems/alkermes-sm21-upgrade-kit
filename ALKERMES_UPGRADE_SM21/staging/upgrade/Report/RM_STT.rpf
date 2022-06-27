@@ -1,0 +1,1009 @@
+{-----------------------------------------------------------------------------}
+{                                                                             }
+{ Module Name   : RM_STT.RPF (based on $STT.RPF)                              }
+{                                                                             }
+{ Purpose       : Extends the existing report to include worksheet information}
+{                 and authorisation notes                                     }
+{                                                                             }
+{ Document Ref. : P97684 Action Items 21,39                                   }
+{                                                                             }
+{ Description   : The changed routines are create_and_paste_window and        }
+{                 display sample. These routines involve the screen handling  }
+{                 and the display of sample and worksheet information.        }
+{                                                                             }
+{=============================================================================}
+{                                                                             }
+{  Modification History                                                       }
+{                                                                             }
+{  Ver.     Date        By          Description                               }
+{  ----     ----        --          -----------                               }
+{ 1.00      06/10/97    JOD         Release Version                           }
+{ 1.10      01/12/98     VM         Modifications for V3.2 Upgrade            }
+{ ============================================================================}
+{******************************************************************************
+*
+* Module Name   : $STT
+*
+* Purpose       : SMP report for viewing tests assigned to a sample
+*
+* Document Ref. : SE/T/TVGL-WORK-REPORTS/1/3
+*
+* Specification :
+*
+* Portability   : Not Checked
+*
+* Re-entrant    :
+*
+*******************************************************************************}
+
+
+    JOIN STANDARD_LIBRARY STD_WINDOW
+    JOIN STANDARD_LIBRARY STD_PROMPT
+    JOIN STANDARD_LIBRARY STD_RESULT
+    JOIN LIBRARY $RESULT_LIST
+    JOIN LIBRARY $RESULT_SPREADSHEET
+    JOIN LIBRARY $LIB_RE_GLOBALS
+
+    SET FORMAT "9999999999"
+    SET NAME "DISPLAY/"
+    	
+    ENABLE WINDOWS
+
+    CONSTANT BUTTON_WIDTH = 16
+    CONSTANT CAN_DO_DSE = TRUE
+    CONSTANT keystring =
+		"EXIT-SELECT-INSERT HERE-REMOVE-NEXT SCREEN-PREVIOUS SCREEN"
+    { $GEN_CONF contains two constants used by this programs.                }
+
+    { DISPLAY_READ_MESSAGE = True and a message will be displayed at the     }
+    { bottom of the screen when tests are read in.                           }
+
+    { MAXIMUM_SAMPLE_STORE holds the number of previously displayed samples  }
+    { which will have their test lists stored in an internal array.          }
+
+    JOIN LIBRARY $gen_conf
+
+    JOIN LIBRARY $lib_utils
+
+    DECLARE main_window ,
+	    test_grid ,
+	    sample_id_prompt ,
+	    sample_text_prompt ,
+	    sample_status_prompt ,
+	    sample_priority_prompt ,
+	    sample_job_prompt ,
+	    sample_date_prompt,
+            sample_wks_prompt,               { VM 01-12-98 } 
+	    sample_auth_notes_prompt ,       { VM 01-12-98 } 
+            wks_date_gen_prompt,             { VM 01-12-98 } 
+            wks_gen_operator_prompt          { VM 01-12-98 } 
+
+
+    large_stt()
+
+RETURN { back to where-ever }
+
+
+{----------------------------------------------------------------------------}
+{ SETUP_MESSAGE_TEXT                                                         }
+{                                                                            }
+{ Read the user message file for the message text displayed by this program  }
+{                                                                            }
+{!---------------------------------------------------------------------------}
+ROUTINE setup_message_text
+
+
+    { The following 3 messages are displayed when the small $STT window is }
+    { displayed.                                                           }
+
+    c_small_header = get_user_message( "stt_small_header", 1 )
+    c_small_footer_with_test = get_user_message("stt_small_with_test", 1 )
+    c_small_footer_no_test = get_user_message("stt_small_no_test", 1 )
+
+    { The next 3 messages are displayed when the large $STT window is pasted }
+
+    c_window_header = get_user_message( "stt_header", 1 )
+    c_window_footer_with_test = get_user_message( "stt_footer_with_test", 1 )
+    c_window_footer_no_test = get_user_message( "stt_footer_no_test", 1 )
+
+
+    { The following messages are used on both the small and large $STT window}
+
+    c_sample_num_id = get_user_message( "stt_sample_num", 1 )
+    c_sample_txt_id = get_user_message( "stt_sample_text", 1 )
+    c_job_id = get_user_message( "stt_job_name", 1 )
+    c_login_date = get_user_message( "stt_login_date", 1 )
+    c_sample_status = get_user_message( "stt_status", 1 )
+    
+
+                                      { JOD, 06-OCT-1997                      }
+{    c_sample_priority = get_user_message( "stt_priority", 1 )}
+    c_sample_auth_notes = "Auth. Notes"
+    c_sample_wks        = "Worksheet ID"
+    c_wks_date_gen      = "Date Worksheet Generated"
+    c_wks_gen_operator  = "Worksheet Generated by"
+    c_reading_tests = get_user_message( "stt_reading_tests", 1 )
+    c_max_num_tries = 10
+
+
+ENDROUTINE {setup_message_text}
+
+                                   
+{----------------------------------------------------------------------------}
+{ CREATE_AND_PASTE_WINDOWS                                                   }
+{                                                                            }
+{ Creates the main window and footer window.                                 }
+{                                                                            }
+{!---------------------------------------------------------------------------}
+ROUTINE create_and_paste_window( VALUE use_small_window ,
+                                       main_window ,
+                                       window_height ,
+                                       window_width ,
+                                       test_lines )
+
+
+    { Set the window width, height and number of lines of sample tests to be  }
+    { displayed.                                                              }
+
+    DECLARE rendition , display_pos , analysis_size , count
+
+    IF global ( "TERMTYPE" ) = "GUI" THEN
+
+	rendition = PROMPT_RENDITION_RAISED + PROMPT_RENDITION_BOLD
+        display_pos = 2
+    ELSE
+	rendition = PROMPT_RENDITION_NORMAL
+        display_pos = 1
+    ENDIF
+
+    IF use_small_window THEN
+
+        { If we are using the small_window then get the header and footer     }
+        { messages from the small_header and small_footer messages.           }
+
+        c_window_header = c_small_header
+        c_window_footer_with_test = c_small_footer_with_test
+        c_window_footer_no_test = c_small_footer_no_test
+        window_height = 9       { VM 01-12-98 } 
+        window_width = 56          
+        test_lines = 4
+    ELSE
+        window_height = 14      { VM 01-12-98 } 
+        window_width = 76
+        test_lines = 9
+    ENDIF
+
+    PROMPT OBJECT main_window
+	CLASS PROMPT_CLASS_FORM
+	WITH  ( column        = 3                                        ,
+		row           = 7                                        ,
+		height        = window_height + 1                        ,
+		width         = window_width                             ,
+		vgl_library   = GLOBAL("CURRENT_LIBRARY")                ,
+		border        = TRUE	                                 ,
+		proportional  = TRUE                                     ,
+		button_style  = FORM_BUTTON_NONE                         ,
+		help_context  = "$SST_MAIN"                              ,
+		header        = C_WINDOW_HEADER                          ,
+		footer        = C_WINDOW_FOOTER_NO_TEST                  )
+
+    PROMPT OBJECT sample_id_prompt
+           ON LINE 1 FROM 18
+           BROWSE ON sample
+	   WITH ( vgl_library          = GLOBAL("CURRENT_LIBRARY"),
+		  leave_prompt_routine = "check_lastkey"          ,
+		  width		       = 40                       ,
+		  insert_routine       = "stop_current_prompt"	  ,
+		  remove_routine       = "stop_current_prompt" 	  )
+
+    main_window. add_prompt ( sample_id_prompt )
+
+    PROMPT OBJECT sample_text_prompt
+	   FORMAT SAMPLE . ID_TEXT
+           ON LINE 2 FROM 18       
+           WITH ( lowered = TRUE )
+
+    main_window. add_display ( sample_text_prompt )
+
+    PROMPT OBJECT sample_status_prompt
+	   FORMAT TEXT3
+           ON LINE 1 FROM main_window . width - 11
+           WITH ( lowered = TRUE )
+
+    main_window. add_display ( sample_status_prompt )
+
+{   PROMPT OBJECT sample_priority_prompt
+	   FORMAT INTEGER
+           ON LINE 2 FROM main_window . width - 3
+           WITH ( lowered = TRUE , minimum = 0 , maximum = 999 )
+
+    main_window. add_display ( sample_priority_prompt )
+}
+ { VM 01-12-98 }
+
+    PROMPT OBJECT sample_auth_notes_prompt
+	   FORMAT TEXT11
+           ON LINE 2 FROM main_window . width - 11
+           WITH ( lowered = TRUE )
+
+    main_window. add_display ( sample_auth_notes_prompt )
+
+    PROMPT OBJECT sample_wks_prompt
+	   FORMAT worksheet
+           ON LINE 5 FROM 18
+           WITH ( lowered = TRUE )
+
+    main_window. add_display ( sample_wks_prompt )
+
+    PROMPT OBJECT wks_date_gen_prompt
+	   FORMAT DATE
+           ON LINE 5 FROM main_window . width - 11
+           WITH ( lowered    = TRUE  ,
+                  allow_time = FALSE )
+
+    main_window. add_display ( wks_date_gen_prompt )
+
+    PROMPT OBJECT wks_gen_operator_prompt
+	   FORMAT TEXT11
+           ON LINE 4 FROM main_window . width - 11
+           WITH ( lowered = TRUE )
+
+    main_window. add_display ( wks_gen_operator_prompt )
+
+{ VM 01-12-98 END }
+                                               
+    PROMPT OBJECT sample_job_prompt
+	   FORMAT SAMPLE . JOB_NAME
+           ON LINE 3 FROM 18
+           WITH ( lowered = TRUE )
+
+    main_window. add_display ( sample_job_prompt )
+
+    PROMPT OBJECT sample_date_prompt
+	   FORMAT SAMPLE . LOGIN_DATE
+           ON LINE 4 FROM 18
+	   WITH ( lowered = TRUE )
+
+    main_window. add_display ( sample_date_prompt )
+
+    main_window. add_display (PAD(c_sample_num_id, " ", 14) ,
+			      display_pos                   ,
+			      1                             ,
+			      rendition		            )	
+                                   
+    main_window. add_display (PAD(c_sample_txt_id, " ", 14) ,
+			      display_pos                   ,
+			      2                             ,
+			      rendition  		    )	
+
+    main_window. add_display (PAD(c_job_id, " ", 14) ,
+			      display_pos            ,
+			      3                      ,
+			      rendition 	     )   	
+
+    main_window. add_display (PAD(c_login_date, " ", 14) ,
+			      display_pos                ,
+			      4                          ,
+			      rendition 		 )	
+
+    PROMPT OBJECT test_grid
+	CLASS PROMPT_CLASS_GRID
+	WITH (  height               = test_lines               ,
+		width  		     = main_window . width      ,
+		column               = 1                        ,
+                row                  = 7                        ,
+                cell_columns         = 4                        ,
+                border		     = FALSE                    ,
+                vgl_library          = GLOBAL("CURRENT_LIBRARY"),
+		enter_prompt_routine = "switch_on"              ,
+		leave_prompt_routine = "switch_off"             ,
+	    	display_cell_routine = "display_test"           ,
+		prompt_cell_routine  = "prompt_test"            ,
+		check_move_routine   = "check_move"             ,
+		select_routine       = "call_dtr"               ,
+		insert_routine       = "call_dse"	   	,
+		remove_routine       = "call_dsr"          	,
+		off_top_routine      = "stop_current_prompt"    ,
+		enabled 	     = FALSE			) 
+
+    get_field_details analysis . identity	
+		      "FIELD_SIZE"         ,
+		      analysis_size
+
+    test_grid . cell_columns = test_grid . width DIV ( analysis_size + 7 ) 	
+
+    count = 1
+    
+    WHILE count <= test_grid . cell_columns DO
+
+         test_grid. column_size [count] = analysis_size + 7
+         count = count + 1
+
+    ENDWHILE
+
+	
+    main_window. add_prompt ( test_grid )
+
+    IF use_small_window THEN
+
+        main_window. add_display (PAD(c_sample_status, " ", 11) ,
+	 		          window_width - 24            ,
+			          3                            ,
+			      	  rendition	               )	
+{ VM 01-12-98 }
+      { main_window. add_display (PAD(c_sample_priority, " ", 9) ,
+			          window_width - 14              ,
+			          4                              ,
+			          rendition          	         )	
+      }
+        main_window. add_display (PAD(c_sample_auth_notes, " ", 11) ,
+			          window_width - 24                 ,
+			          4                                 ,
+			          rendition          	            )	
+
+        main_window. add_display (PAD(c_sample_wks, " ", 14)        ,
+			          display_pos                       ,
+			          7                                 ,
+			          rendition            	            )	
+
+        main_window. add_display (PAD(c_wks_date_gen, " ", 24)      ,
+			          window_width - 37                 ,
+			          7                                 ,
+			          rendition            	            )	
+
+        main_window. add_display (PAD(c_wks_gen_operator, " ", 24)  ,
+			          window_width - 37                 ,
+			          6                                 ,
+			          rendition            	            )	
+
+
+	sample_status_prompt . row = 3
+ {	sample_priority_prompt . row = 4
+  }
+	sample_auth_notes_prompt . row = 4
+	sample_wks_prompt        . row = 5
+	wks_date_gen_prompt      . row = 6
+	wks_gen_operator_prompt  . row = 6
+
+{ VM 01-12-98 END } 
+
+	main_window . row = 11
+	main_window . column = 5
+
+    ELSE
+
+        main_window. add_display (PAD(c_sample_status, " ", 11 ) ,
+			          window_width - 24             ,
+			          1                             ,
+			      	  rendition 	                )	
+
+    {  VM 01-12-98
+
+         main_window. add_display (PAD(c_sample_priority, " ", 9 ) ,
+			          window_width - 14               ,
+			          2                               ,
+			          rendition         	          )	
+     }
+
+        main_window. add_display (PAD(c_sample_auth_notes, " ", 11) ,
+			          window_width - 24                 ,
+			          2                                 ,
+			          rendition            	            )	
+
+        main_window. add_display (PAD(c_sample_wks, " ", 14)        ,
+			          display_pos                       ,
+			          5                                 ,
+			          rendition            	            )	
+
+        main_window. add_display (PAD(c_wks_date_gen, " ", 24)      ,
+			          window_width - 37                 ,
+			          5                                 ,
+			          rendition            	            )	
+
+        main_window. add_display (PAD(c_wks_gen_operator, " ", 24)  ,
+			          window_width - 37                 ,
+			          4                                 ,
+			          rendition            	            )	
+
+
+    ENDIF
+
+    IF GLOBAL("TERMTYPE") = "GUI" THEN
+
+        test_grid . row = test_grid . row + 2
+        test_grid . height = test_grid . height - 2
+	test_grid . column = test_grid . column + 1
+	test_grid . width = test_grid . width - 2
+
+	main_window . height = window_height + 4
+
+	main_window. add_frame ( "" 	      	      ,
+				 1		      ,
+				 test_grid . row      ,
+				 test_grid . height   ,
+				 main_window . width  )	
+
+	main_window. add_frame ( "" , 1 , 1 , 5 , main_window . width )
+
+	PROMPT OBJECT dsr_button
+		CLASS "STD_PROMPT_BUTTON"
+		ON LINE window_height + 3
+		FROM 3
+		TO   3 + BUTTON_WIDTH
+		WITH ( caption      = get_user_message("STT_SAMP_RES_BUT",1),
+		       send_lastkey = "REMOVE"          )		
+
+	main_window . add_prompt ( dsr_button )
+
+	PROMPT OBJECT dtr_button
+		CLASS "STD_PROMPT_BUTTON"
+		ON LINE window_height+3
+		FROM 21
+		TO   21 + BUTTON_WIDTH
+		WITH ( caption      = get_user_message("STT_SAMP_TEST_BUT",1),
+		       send_lastkey = "SELECT"        ,
+		       enabled      = FALSE           )		
+
+	main_window . add_prompt ( dtr_button )
+
+	IF CAN_DO_DSE THEN
+
+	   PROMPT OBJECT dse_button
+		CLASS "STD_PROMPT_BUTTON"
+		ON LINE window_height+3
+		FROM 39
+		TO   39 + BUTTON_WIDTH
+		WITH ( caption      = get_user_message("STT_SAMP_INFO_BUT",1),
+		       send_lastkey = "INSERT HERE"  )		
+
+		main_window . add_prompt ( dse_button )	
+
+	ENDIF
+
+	PROMPT OBJECT exit_button
+		CLASS "STD_PROMPT_BUTTON"
+		ON LINE window_height+3
+		FROM 57
+		TO   57 + BUTTON_WIDTH
+		WITH ( caption      = get_user_message
+					( "SMP_PROMPT_BUTTON_CLOSE" , 1 ) ,
+		       send_lastkey = "EXIT")		
+
+	main_window . add_prompt ( exit_button )
+
+	PROMPT OBJECT first_button
+		CLASS "STD_PROMPT_BUTTON"
+		ON LINE 7 FROM 2 TO 10
+		WITH ( caption = get_user_message
+				   ( "SMP_PROMPT_BUTTON_FIRST" , 1 ) ,
+		       mouse_click_routine = "get_first_sample"      )	
+
+	main_window . add_prompt ( first_button )
+
+	PROMPT OBJECT prev_button
+		CLASS "STD_PROMPT_BUTTON"
+		ON LINE 7 FROM 12 TO 20
+		WITH ( caption      = get_user_message
+					( "SMP_PROMPT_BUTTON_PREVIOUS" , 1 ) ,
+		       mouse_click_routine = "get_prev_sample"               )	
+
+	main_window . add_prompt ( prev_button )
+
+	PROMPT OBJECT next_button
+		CLASS "STD_PROMPT_BUTTON"
+		ON LINE 7 FROM main_window . width - 20
+			    TO main_window . width - 12
+		WITH ( caption      = get_user_message
+					( "SMP_PROMPT_BUTTON_NEXT" , 1 )  ,
+		       mouse_click_routine = "get_next_sample"            )	
+
+	main_window . add_prompt ( next_button )
+
+	PROMPT OBJECT last_button
+		CLASS "STD_PROMPT_BUTTON"
+		ON LINE 7 FROM main_window . width - 10
+			    TO main_window . width - 2
+		WITH ( caption = get_user_message
+				   ( "SMP_PROMPT_BUTTON_LAST" , 1 ) ,
+		       mouse_click_routine = "get_last_sample"      )	
+                       
+	main_window . add_prompt ( last_button )
+
+	PROMPT OBJECT rec_number_prompt
+	   FORMAT INTEGER
+           ON LINE 7 FROM 34 TO 39
+	   WITH ( minimum = 0 , maximum = 999999 , lowered = TRUE )
+
+        main_window. add_display ( rec_number_prompt )
+
+	PROMPT OBJECT rec_count_prompt
+	   FORMAT INTEGER
+           ON LINE 7 FROM 47 TO 52
+	   WITH ( minimum = 0 , maximum = 999999 , lowered = TRUE )
+
+	rec_count_prompt . value = select count sample
+                                      where sample . id_numeric > " "
+	
+        main_window. add_display ( rec_count_prompt )
+
+        main_window. add_display ( 
+		PAD ( get_user_message ( "STT_SAMP_RECORD" , 1 ) , " ", 8 ) ,
+   		24 , 7 , rendition                         		    )
+
+        main_window. add_display ( 
+		PAD ( get_user_message ( "STT_SAMP_OF" , 1 ) , " ", 3 ) ,
+   		42 , 7 , rendition 		                        )
+
+    ENDIF	
+
+
+ENDROUTINE {create_and_paste_window}
+
+{----------------------------------------------------------------------------}
+
+ROUTINE switch_on ( self )
+
+        IF GLOBAL("TERMTYPE") = "GUI" THEN
+
+	   	dtr_button . set_enabled ( TRUE )
+
+        ENDIF
+
+ENDROUTINE { switch on }
+
+{----------------------------------------------------------------------------}
+
+ROUTINE switch_off ( self )
+
+	IF GLOBAL("TERMTYPE") = "GUI" THEN
+
+	   	dtr_button . set_enabled ( FALSE )
+
+	ENDIF
+
+ENDROUTINE { switch off }
+
+{----------------------------------------------------------------------------}
+
+ROUTINE get_first_sample ( dummy )
+
+	DECLARE next_samp
+
+	next_samp = SELECT MIN sample.id_numeric
+		      WHERE id_numeric > " "
+
+	IF next_samp <> EMPTY THEN
+
+		sample_id_prompt . set_text ( next_samp )
+
+		display_sample ( sample_id_prompt )
+	
+	ENDIF
+
+	RETURN( next_samp <> EMPTY )
+
+ENDROUTINE { get_first_sample }
+
+{----------------------------------------------------------------------------}
+
+ROUTINE get_last_sample ( dummy )
+
+	DECLARE next_samp
+
+	next_samp = SELECT MAX sample.id_numeric
+
+	IF next_samp <> EMPTY THEN
+
+		sample_id_prompt . set_text ( next_samp )
+
+		display_sample ( sample_id_prompt )
+
+	ENDIF
+
+	RETURN( next_samp <> EMPTY )
+
+ENDROUTINE { get_last_sample }
+
+{----------------------------------------------------------------------------}
+ROUTINE get_next_sample ( dummy )
+
+	DECLARE next_samp
+
+	next_samp = SELECT MIN sample.id_numeric
+		    WHERE id_numeric > sample_id_prompt. value
+
+	IF next_samp <> EMPTY THEN
+
+		sample_id_prompt . set_text ( next_samp )
+
+		display_sample ( sample_id_prompt )
+
+	ENDIF
+
+	RETURN( next_samp <> EMPTY )
+
+ENDROUTINE { get_next_sample }
+
+{----------------------------------------------------------------------------}
+
+ROUTINE get_prev_sample ( dummy )
+
+	DECLARE prev_samp
+
+	IF blank ( sample_id_prompt . value ) THEN
+		prev_samp = SELECT MAX sample.id_numeric
+        ELSE
+
+		prev_samp = SELECT sample.id_numeric
+		            WHERE id_numeric = ( sample_id_prompt . value - 1 )
+
+		IF prev_samp = EMPTY THEN
+			prev_samp = SELECT MAX sample.id_numeric
+				    WHERE id_numeric < sample_id_prompt . value
+		ENDIF
+
+	ENDIF
+	
+	IF prev_samp <> EMPTY THEN
+
+		sample_id_prompt . set_text ( prev_samp )
+
+		display_sample ( sample_id_prompt )
+
+	ENDIF
+
+	RETURN( prev_samp <> EMPTY )
+
+ENDROUTINE { get_prev_sample }
+
+{----------------------------------------------------------------------------}
+
+ROUTINE check_lastkey ( self )
+
+	DECLARE action
+
+   	action = self. getlastkey ()
+
+   	IF ( action = "RIGHT" ) OR ( action = "NEXT SCREEN" ) THEN
+      
+		get_next_sample ( self )	
+
+   	ELSEIF ( action = "LEFT" ) OR ( action = "PREVIOUS SCREEN" ) THEN
+      
+		get_prev_sample ( self )	
+
+   	ELSEIF ( action = "INSERT HERE" ) THEN
+      
+		IF sample_id_prompt . value <> "" THEN
+
+			call_dse ( self )	
+          	ENDIF
+
+   	ELSEIF ( action = "REMOVE" ) THEN
+
+		IF sample_id_prompt . value <> "" THEN
+			call_dsr ( self )	
+          	ENDIF
+	ELSE
+
+		display_sample ( self )
+
+	ENDIF
+   
+
+ENDROUTINE
+
+{----------------------------------------------------------------------------}
+{ DISPLAY_SAMPLE                                                             }
+{                                                                            }
+{ Displays the sample information onto the screen.                           }
+{                                                                            }
+{!---------------------------------------------------------------------------}
+
+ROUTINE display_sample ( self )
+
+	DECLARE status_txt
+
+	IF ( self. user_info <> self . value  ) THEN	
+
+	    	status_txt = SELECT sample . status
+		    	       WHERE id_numeric = self. value
+
+		IF status_txt <> EMPTY THEN
+
+			sample_id_prompt . repaste ( )
+
+			sample_text_prompt     . set_text (
+			                            SELECT sample . id_text )
+        		sample_status_prompt   . set_text (
+			                            SELECT sample . status)
+        	   {	sample_priority_prompt . set_text (
+					    STRIP ( SELECT sample . priority ) )
+        	   }  { VM 01-12-98 } 
+  
+                        sample_auth_notes_prompt . set_text (
+		              STRIP ( SELECT sample . authorisation_notes ) )
+
+                       { VM 01-12-98 END } 
+
+        		sample_job_prompt      . set_text (
+			                            SELECT sample . job_name )
+       		 	sample_date_prompt     . set_text (
+			                            SELECT sample . login_date )
+
+                       { VM 01-12-98 } 
+                        worksheet_id = SELECT worksheet . identity
+                             WHERE ( identity = self . value ) AND
+                                   ( worksheet_type = PAD ("SMPWKS", "", 10 ) )
+
+                        IF worksheet_id = EMPTY THEN
+                            worksheet_id   = ""
+                            worksheet_date = ""
+                            worksheet_op   = ""
+
+                        ELSE
+                            worksheet_date = SELECT worksheet . date_generated
+                            worksheet_op = SELECT worksheet . generator_operator
+
+                        ENDIF
+
+                        sample_wks_prompt . set_text ( worksheet_id )
+
+                        wks_date_gen_prompt . set_text ( worksheet_date )
+
+                        wks_gen_operator_prompt . set_text ( worksheet_op )
+
+                       { VM 01-12-98 END } 
+
+			IF global ( "TERMTYPE" ) = "GUI" THEN
+
+				rec_number_prompt . set_text ( 
+				     STRIP ( SELECT COUNT sample
+					     WHERE id_numeric <= self. value ) )
+                        ENDIF
+
+       			ARRAY test_array
+
+		       	test_array [ 0 , 0 ] = " "
+
+       			get_sample_tests ( self , test_array )
+
+       			test_grid . user_info = test_array
+
+       			test_grid . rebuild ()
+
+       			self . user_info = self . value
+
+    		ENDIF   	
+	ENDIF
+
+ENDROUTINE {display_sample}
+
+{+---------------------------------------------------------------------------}
+
+ROUTINE get_sample_tests (self, test_array )
+
+DECLARE row, col, a_test
+
+        a_test = SELECT test . analysis_id
+                 WHERE sample = self. value
+                 ORDER ON analysis , test_count
+
+	test_grid . set_enabled ( a_test <> EMPTY )
+
+	row = 1
+	col = 1			
+	WHILE a_test <> EMPTY DO
+              test_array [ row, col , 1] =
+				a_test : "/" :
+                                PAD(STRIP( SELECT test . test_count ), " ", 2) :
+                                " " : SELECT test . status
+              test_array [ row, col , 2] = a_test
+              test_array [ row, col , 3] = SELECT test . test_number
+	      col = col + 1
+	      IF col = test_grid . cell_columns + 1 THEN	
+                 row = row + 1
+		 col = 1
+	      ENDIF		
+	      NEXT test
+              a_test = SELECT test . analysis_id	
+	ENDWHILE
+	WHILE col < 5 DO
+            test_array[row, col, 1] = " "
+            test_array[row, col, 2] = "         0"
+            test_array[row, col, 3] = "         0"
+	    col = col + 1	
+	ENDWHILE
+
+	test_grid. cell_rows = row
+
+ENDROUTINE { get_sample_tests }
+
+{+---------------------------------------------------------------------------}
+
+ROUTINE call_dtr ( self )
+
+	result_list_test ( test_array [ self . current_row   ,
+			                self . current_column, 3 ] ,
+		           sample_id_prompt . value                ,
+		           RE_DISPLAY                              )
+
+	sample_id_prompt . user_info = 0
+
+	sample_id_prompt . repaste ( )
+
+	display_sample ( sample_id_prompt )
+
+ENDROUTINE { call_dtr }
+
+{+---------------------------------------------------------------------------}
+
+ROUTINE call_dse ( self )
+
+	MENUPROC MENUNUMBER ( "DSE" ) USING sample_id_prompt . value , "$EXIT"
+
+ENDROUTINE  { call_dse }
+
+{+---------------------------------------------------------------------------}
+
+ROUTINE call_dsr ( self )
+
+	result_list_sample ( sample_id_prompt . value, RE_DISPLAY )
+        	
+	sample_id_prompt . user_info = 0
+
+	sample_id_prompt . repaste ( )
+
+	display_sample ( sample_id_prompt )
+        
+ENDROUTINE  { call_dsr }
+
+{+---------------------------------------------------------------------------}
+ROUTINE display_test (       grid_name  ,
+		       VALUE cell_column,
+		       VALUE cell_row   ,
+		             window     ,
+		       VALUE column     ,
+		       VALUE row        ,		
+		       VALUE cell_height,
+		       VALUE cell_width )
+
+	DISPLAY test_grid. user_info [ cell_row, cell_column, 1 ]
+		IN WINDOW window
+		AT column, row
+		
+ENDROUTINE { display_test }
+
+{+---------------------------------------------------------------------------}
+
+ROUTINE prompt_test  (       grid_name  ,
+		       VALUE cell_column,
+		       VALUE cell_row   ,
+		             window     ,
+		       VALUE column     ,
+		       VALUE row        ,		
+		       VALUE cell_height,
+		       VALUE cell_width )
+
+	DISPLAY test_grid. user_info [ cell_row, cell_column, 1 ]
+		IN WINDOW window
+		AT column, row
+		INVERSE
+	
+	PROMPT IN WINDOW window AT column , row
+	
+	DISPLAY test_grid. user_info [ cell_row, cell_column, 1 ]
+		IN WINDOW window
+		AT column, row
+				
+ENDROUTINE { prompt_test }
+
+{+---------------------------------------------------------------------------}
+
+ROUTINE check_move (       grid_name  ,
+		     VALUE old_column ,
+		     VALUE old_row    ,
+		           new_column ,		
+			   new_row    )
+
+        IF (test_array [ new_row, new_column, 1 ] = " "  ) OR
+	   (test_array [ new_row, new_column, 1 ] = EMPTY) THEN
+	   new_column = old_column
+	   new_row    = old_row
+	ENDIF
+
+ENDROUTINE { check_move }
+
+{+---------------------------------------------------------------------------}
+
+ROUTINE stop_current_prompt ( self )
+
+	self . stop_prompt ( )
+
+ENDROUTINE
+
+{+---------------------------------------------------------------------------}
+
+{----------------------------------------------------------------------------}
+{ EXECUTE_MAIN_STT                                                           }
+{                                                                            }
+{ This is the main routine for STT.                                          }
+{!---------------------------------------------------------------------------}
+ROUTINE execute_main_stt(       main_window      ,
+                          VALUE window_height    ,
+                          VALUE window_width     ,
+                          VALUE test_lines       ,
+                          VALUE use_small_window )
+
+    main_window. start_prompt ()
+
+    REPEAT
+
+	main_window. wait_prompt ()	
+  
+    UNTIL ( main_window . get_lastkey () = "EXIT" )
+
+    main_window. end_prompt ()
+
+ENDROUTINE {execute_main_stt}
+
+
+{----------------------------------------------------------------------------}
+
+ROUTINE do_stt ( VALUE small_screen )
+
+DECLARE main_window, window_height, window_width, test_lines, old_format
+
+    old_format = GLOBAL( "FORMAT_TEXT" )
+
+    SET FORMAT "9999999999"
+
+    { Read the smp_user_message file for the displayed text }
+
+    setup_message_text()
+
+    create_and_paste_window( small_screen  ,
+                             main_window   ,
+                             window_height ,
+                             window_width  ,
+                             test_lines    )
+
+    execute_main_stt( main_window   ,
+                      window_height ,
+                      window_width  ,
+                      test_lines    ,
+                      small_screen  )
+
+    SET FORMAT old_format
+
+ENDROUTINE {small_stt}
+
+
+{----------------------------------------------------------------------------}
+{ SMALL_WINDOW                                                               }
+{                                                                            }
+{ When $STT is executed via this routine, the display window is smaller. This}
+{ was put in to keep DM happy.                                               }
+{!---------------------------------------------------------------------------}
+
+GLOBAL ROUTINE small_stt
+
+	do_stt ( global ( "TERMTYPE" ) <> "GUI" )
+
+ENDROUTINE
+
+{----------------------------------------------------------------------------}
+{ LARGE_STT                                                                  }
+{                                                                            }
+{ When called direct this routine is executed. This displays the sample's    }
+{ details in a full-screen window.                                           }
+{                                                                            }
+{----------------------------------------------------------------------------}
+
+GLOBAL ROUTINE large_stt
+
+	do_stt ( FALSE )
+
+ENDROUTINE {large_stt}
+
+{----------------------------------------------------------------------------}

@@ -1,0 +1,16 @@
+! Messages for print events
+
+
+MESSAGE GROUP = "PRINT_EVENT_"
+
+MESSAGE       = "HEADER"
+TEXT          = "Print Event"
+
+MESSAGE       = "REASON"
+TEXT          = "Print Reason"
+
+MESSAGE       = "REASON_REQUIRED"
+TEXT          = "A print reason must be entered"
+
+MESSAGE       = "INITIAL_REASON"
+TEXT          = "Initial print"

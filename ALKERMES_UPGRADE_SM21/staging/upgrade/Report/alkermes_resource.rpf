@@ -1,0 +1,788 @@
+{******************************************************************************
+*
+* Module Name          : ALKERMES_RESOURCE
+*
+* Purpose              : Library to Support Alkermes Resource Management Functionality
+*
+* Portability          : Not Checked
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By             Description
+* -------   -----------  ----------     ---------------------------------------
+* 1.0       07-Jan-2009  V. Molloy      Release Version 
+* 1.1       24-Oct-2012  V. Molloy      CC-ATH-2012-1060 TS Protocol No. 1600026679 
+*                                       Flag sample with HAS_TASKS = true
+* 1.2       10-Jul-2015  M. Flattery    CC-ATH-2015-2072 TS Protocol No. 1600031009
+*                                       Update to enable RMBs to work with views.
+*
+*******************************************************************************}
+
+SET NOTPROTECTED
+SET NAME "DEFER/"
+SET COMPILEOPTION DECLARE
+ENABLE WINDOWS
+
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_CLIENT
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_TRANSFER
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_WINDOW
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN STANDARD_LIBRARY STD_VGL
+
+JOIN LIBRARY $LABTABLIB
+JOIN LIBRARY $LIB_UTILS
+
+
+JOIN LIBRARY $lib_utils
+JOIN LIBRARY $prompt_imprint
+JOIN LIBRARY $LOGIN
+JOIN LIBRARY $LIB_RE_CRITERIA
+
+JOIN LIBRARY $LABTABLE_DB
+
+
+CONSTANT PROMPT_DISPLAY_COLUMN = 2
+CONSTANT PROMPT_DISPLAY_LENGTH = 13
+CONSTANT PROMPT_PROMPT_COLUMN  = 25
+
+
+{
+*  RMB Options for creating set of tasks for FULL / REDUCED / RETEST level testing
+*
+*******************************************************************************}
+
+
+ROUTINE create_task_full_rmb (rmb_object, 
+                              object, 
+                              data)
+
+    DECLARE testing_level
+
+    testing_level = "FULL"
+
+    create_tasks_by_testing_level (rmb_object, object, data, testing_level)
+    
+ 
+ENDROUTINE {create_task_full_rmb}
+
+
+ROUTINE create_task_reduced_rmb (rmb_object, 
+                              object, 
+                              data)
+
+    DECLARE testing_level
+
+    testing_level = "REDUCED"
+
+    create_tasks_by_testing_level (rmb_object, object, data, testing_level)
+    
+ 
+ENDROUTINE {create_task_reduced_rmb}
+
+
+ROUTINE create_task_retest_rmb (rmb_object, 
+                            object, 
+                            data)
+
+    DECLARE testing_level
+
+    testing_level = "RETEST"
+
+    create_tasks_by_testing_level (rmb_object, object, data, testing_level)
+    
+ 
+ENDROUTINE {create_task_retest_rmb}
+
+
+
+
+ROUTINE create_tasks_by_testing_level (rmb_object, 
+                                       object, 
+                                       data,
+                                       VALUE testing_level)
+
+{
+*  Create tasks for testing sample based on testing level
+*
+*******************************************************************************}
+
+    DECLARE the_record, 
+            no_records, 
+            product_id,
+            the_sample,
+            check,
+            the_table  {1.2}
+
+    no_records = data . size()
+
+    data . set_first ()
+
+    WHILE ((data . current_position <= no_records) AND ( data . current_position > 0 )) DO
+
+        the_record = data . get_by_number (data . current_position)
+
+{1.2 replace "sample" with variable the_table}
+        the_table  = data . table 
+        product_id    = SELECT 'the_table' . product    IN OBJECT the_record         
+        the_sample    = SELECT 'the_table' . id_numeric IN OBJECT the_record
+{/1.2}
+        check = check_existing_tasks (the_sample)
+ 
+        IF (check) THEN
+
+            create_tasks_for_sample (the_sample, product_id, testing_level)
+
+        ENDIF
+
+        data . set_next()
+    
+    ENDWHILE
+
+
+ENDROUTINE {create_task_full_by_testing_level}
+
+
+ROUTINE check_existing_tasks (VALUE the_sample)
+
+    DECLARE task_id,
+            proceed,
+            do_commit,
+            task_array,
+            check_ok,
+            i
+
+    ARRAY task_array
+
+    i = 1
+
+    do_commit = FALSE 
+
+    proceed = TRUE
+
+    task_id = SELECT tasks . task_id WHERE id_numeric = the_sample
+
+    IF (task_id <> EMPTY) THEN
+
+        proceed = confirm_with_text ("Tasks already exist for this sample. Delete tasks and create new tasks(Y/N)?")
+
+        IF (proceed = TRUE) THEN
+ 
+            window_set_status ("Deleting existing tasks for sample " : STRIP(the_sample))
+
+            task_id = SELECT tasks . task_id WHERE id_numeric = the_sample
+
+            WHILE (task_id <> EMPTY)
+
+                task_array[i] = task_id
+
+                NEXT tasks
+
+                task_id = SELECT tasks . task_id
+
+                i = i + 1
+ 
+            ENDWHILE
+
+            i = 1
+
+            WHILE (i <= size_of_array(task_array))
+
+                task_id = SELECT tasks . task_id FOR UPDATE WHERE task_id = task_array[i]
+
+                IF (NOT (transaction_is_write() )) THEN
+
+                    START WRITE TRANSACTION "Delete existing task"
+
+                    do_commit = TRUE
+            
+                ENDIF
+
+                    DELETE tasks, check_ok
+
+                    IF check_ok = EMPTY THEN
+
+                        IF do_commit THEN
+
+                            COMMIT
+     
+                        ENDIF
+
+                    ELSE
+
+                        flash_message(check_ok, true)
+
+                    ENDIF
+ 
+                i = i + 1
+ 
+            ENDWHILE
+
+            window_set_status ("Task deletion complete")
+
+        ENDIF
+
+    ENDIF
+
+    RETURN (proceed)
+
+
+ENDROUTINE {check_existing_tasks}
+
+
+
+
+
+
+
+
+
+
+
+
+
+ROUTINE explorer_refresh (rmb_object)
+
+{
+*  Explorer refresh
+*
+*******************************************************************************}
+
+    IF (object_check_property (rmb_object . parent, "ROW")) THEN
+
+        { Standard Explorer } 
+
+        rmb_object . parent . refresh ()
+
+    ELSE
+
+        { Table Defaults }
+
+        rmb_object . parent . parent . listview . refresh ()
+
+    ENDIF
+
+
+ENDROUTINE {explorer_refresh}
+
+
+
+
+ROUTINE goto_my_calendar (VALUE option)
+
+     DECLARE url
+
+     url = SELECT web_link . url WHERE identity = "RES_MGR_MY_CAL"
+
+     url = STRIP(url) : "?OperatorID=": STRIP(GLOBAL("OPERATOR"))
+
+     client_set_desktop_url( url)
+
+ENDROUTINE
+
+ROUTINE goto_task_calendar (VALUE option)
+
+     DECLARE url
+
+     url = SELECT web_link . url WHERE identity = "RES_MGR"
+
+     url = STRIP(url)
+
+     client_set_desktop_url( url)
+
+ENDROUTINE
+
+
+
+
+
+GLOBAL ROUTINE re_criteria_task (VALUE option)
+
+    DECLARE select_array,
+            sample_database,
+            task_id
+
+    PROMPT FOR task_id
+  
+    CREATE OBJECT "STD_OBJECT_DATABASE" , sample_database
+ 
+    sample_database . initialise ( "SAMPLE" )
+ 
+    ARRAY select_array
+ 
+    array_select_add ( select_array ,
+                       ARRAY_SELECT_EQ ,
+                       "TASK_ID" ,
+ 	                  task_id )
+ 
+    sample_database . select ( select_array )
+ 
+    IF sample_database . size() > 0 THEN
+
+        lib_re_criteria_from_collection("MODIFY", sample_database)
+
+    ELSE
+
+        flash_message ("No Samples are associated with this task.", true)
+
+    ENDIF
+
+ENDROUTINE
+
+
+GLOBAL ROUTINE re_criteria_task_original (VALUE option)
+
+    DECLARE select_array,
+            sample_database,
+            task_id
+
+    PROMPT FOR task_id
+  
+    CREATE OBJECT "STD_OBJECT_DATABASE" , sample_database
+ 
+    sample_database . initialise ( "SAMPLE" )
+ 
+    ARRAY select_array
+ 
+    array_select_add ( select_array ,
+                       ARRAY_SELECT_EQ ,
+	               "TASK_ID" ,
+	               task_id )
+ 
+    sample_database . select ( select_array )
+ 
+    IF sample_database . size() > 0 THEN
+
+        lib_re_criteria_from_collection("MODIFY", sample_database)
+
+    ELSE
+
+        flash_message ("No Samples are associated with this task.", true)
+
+    ENDIF
+
+ENDROUTINE
+
+
+{
+*
+* Generates the next unique Task ID using database level functionality
+*
+******************************************************************************************************}
+
+GLOBAL ROUTINE next_task
+
+    DECLARE task_id,
+            dynamic_sql,
+            field
+
+    CREATE OBJECT "STD_DYNAMIC_SQL" , dynamic_sql
+
+    IF GLOBAL("DATABASE_TYPE") = "ORACLE" THEN
+
+        dynamic_sql . add_to_sql_statement ( "SELECT sq_task.nextval " )
+        dynamic_sql . add_to_sql_statement ( " from DUAL " )
+
+        field = dynamic_sql . add_select_integer() 
+
+    ELSE
+
+        execute_sql ("insert into tasks (duration) values (0)")
+        execute_sql ("commit")
+
+        dynamic_sql . add_to_sql_statement ( "SELECT @@IDENTITY" )  {Get last inserted identity} 
+
+        field = dynamic_sql . add_select_integer() 
+
+    ENDIF
+ 
+    field = field
+
+    dynamic_sql . execute ()
+ 
+    task_id = dynamic_sql . select ( 1 ) 
+
+    RETURN (task_id)
+
+ENDROUTINE
+
+
+
+ROUTINE interval_to_mins (VALUE in_interval)
+
+    DECLARE mins,
+            hours,
+            days
+
+    days  = STRIP(SUBSTRING(in_interval, 1, 4))
+    hours = STRIP(SUBSTRING(in_interval, 6, 2))
+    mins  = STRIP(SUBSTRING(in_interval, 9, 2))
+
+    RETURN ((days * 24 * 60) + (hours * 60) + mins)
+
+ENDROUTINE
+
+
+
+GLOBAL ROUTINE create_tasks_for_sample (VALUE the_sample, 
+                                        VALUE product_id,
+                                        VALUE testing_level) 
+
+    DECLARE task_id,
+            check_ok,
+            do_commit,
+            task_plan_id,
+            entry_id,
+            entry_array,
+            i
+
+     ARRAY entry_array
+
+     i = 1
+
+     {Get task plan header}
+
+     task_plan_id = SELECT task_plan_header . identity 
+                     WHERE product = product_id AND 
+                           testing_level = testing_level
+
+     {Get the task plan entries}
+
+     IF (task_plan_id = EMPTY) THEN
+
+         flash_message("There are no matching task plans for Product: " : STRIP(product_id) : " AND testing level: " : testing_level, true)
+
+         EXIT
+ 
+     ENDIF 
+
+
+     entry_id = SELECT task_plan_entry . task_plan_id 
+                 WHERE task_plan_id = task_plan_id ORDER ON order_number
+
+     {Put all the entries in an array } 
+   
+     WHILE (entry_id <> EMPTY)
+
+         entry_array [i, 1] = SELECT task_plan_entry . order_number
+         entry_array [i, 2] = SELECT task_plan_entry . task_type_id
+         entry_array [i, 3] = SELECT task_plan_entry . task_description
+         entry_array [i, 4] = SELECT task_plan_entry . duration
+         entry_array [i, 5] = SELECT task_plan_entry . priority
+         entry_array [i, 6] = SELECT task_plan_entry . group_id
+
+         NEXT task_plan_entry
+
+         entry_id = SELECT task_plan_entry . task_plan_id
+
+         i = i + 1
+
+     ENDWHILE
+
+     {Loop through the array and create the tasks}
+   
+     i = 1
+
+
+     do_commit = FALSE
+
+     WHILE (i <= size_of_array(entry_array))
+
+         CALL_ROUTINE "next_task" 
+         IN LIBRARY "ALKERMES_RESOURCE" 
+         RETURNING task_id
+
+        { If ORACLE database, need to do an insert with task_id,
+          If SQL Server, need to do an update with task_id       }
+
+        window_set_status ("Creating Task " : task_id : " " : " for sample " : STRIP(the_sample))
+
+        IF (GLOBAL("DATABASE_TYPE") = "ORACLE") THEN
+
+            RESERVE ENTRY tasks, task_id, check_ok 
+    
+            IF (check_ok = EMPTY) THEN
+
+                ASSIGN tasks . description       = entry_array[i, 3]
+                ASSIGN tasks . duration          = entry_array[i, 4]
+                ASSIGN tasks . status            = "U"
+                ASSIGN tasks . task_type         = entry_array[i, 2]
+                ASSIGN tasks . percent_complete  = 0
+                ASSIGN tasks . due_date          = ""
+                ASSIGN tasks . priority          = entry_array[i, 5]
+                ASSIGN tasks . group_id          = entry_array[i, 6]
+                ASSIGN tasks . id_numeric        = the_sample
+                ASSIGN tasks . test_number       = 0
+
+                IF NOT ( transaction_is_write () ) THEN
+
+                    START WRITE TRANSACTION get_user_message ( "CREATE_TASK_TRANSACTION", 1 )   {2.0}
+
+                    do_commit = TRUE
+     
+                ENDIF
+           
+                UPDATE tasks
+            
+                IF do_commit
+
+                    COMMIT
+
+                ENDIF
+    
+            ELSE
+    
+                flash_message(check_ok, TRUE)
+
+            ENDIF
+
+        ELSE
+
+            { An update because next_task performs the insert first }
+
+            task_id = SELECT tasks . task_id FOR UPDATE WHERE task_id = task_id
+
+            IF (task_id <> EMPTY) THEN
+
+                ASSIGN tasks . description       = entry_array[i, 3]
+                ASSIGN tasks . duration          = entry_array[i, 4]
+                ASSIGN tasks . status            = "U"
+                ASSIGN tasks . task_type         = entry_array[i, 2]
+                ASSIGN tasks . percent_complete  = 0
+                ASSIGN tasks . due_date          = ""
+                ASSIGN tasks . priority          = entry_array[i, 5]
+                ASSIGN tasks . group_id          = entry_array[i, 6]
+                ASSIGN tasks . id_numeric        = the_sample
+                ASSIGN tasks . test_number       = 0
+
+                IF NOT ( transaction_is_write () ) THEN
+
+                    START WRITE TRANSACTION get_user_message ( "CREATE_TASK_TRANSACTION", 1 )
+
+                    do_commit = TRUE
+     
+                ENDIF
+
+                UPDATE tasks
+             
+                IF do_commit
+
+                    COMMIT
+
+                ENDIF
+
+            ELSE
+
+                flash_message("Error getting Task ID", TRUE)                
+
+            ENDIF
+
+        ENDIF
+
+        i = i + 1
+
+    ENDWHILE
+
+    {1.1 Flag sample has has_tasks}
+    flag_sample (the_sample)
+
+    flash_message ("Task Creation Complete", true)
+
+ENDROUTINE {create_tasks_for_sample}
+
+ROUTINE flag_sample (VALUE the_sample)
+ 
+    DECLARE task_id,
+            do_commit
+
+    IF NOT ( transaction_is_write () ) THEN
+
+        START WRITE TRANSACTION "Flag Sample Has Tasks"  
+
+        do_commit = TRUE
+     
+    ENDIF
+     
+    {Check if there have been tasks created for the sample}
+
+    task_id = SELECT tasks . task_id WHERE 
+                     id_numeric = the_sample
+
+    IF (task_id <> EMPTY) THEN
+  
+        {If the sample has tasks, flag it}
+
+        the_sample = SELECT sample . id_numeric FOR UPDATE 
+                      WHERE id_numeric = the_sample
+
+        ASSIGN sample . has_tasks = TRUE
+
+        UPDATE sample
+
+    ENDIF
+
+    IF do_commit THEN
+
+        COMMIT
+
+    ENDIF
+
+
+ENDROUTINE {flag_sample}
+
+
+
+ROUTINE start_task (VALUE option)
+
+    DECLARE task_id
+
+    IF GLOBAL ("PARAM_ACTIVE") THEN
+
+        PROMPT FOR task_id
+ 
+        START WRITE TRANSACTION "Start Task"
+
+        task_id = SELECT tasks . status FOR UPDATE WHERE task_id = task_id
+
+        ASSIGN tasks . status = "V"
+        ASSIGN tasks . actual_start_date = NOW
+
+        UPDATE tasks
+
+        COMMIT
+
+    ENDIF 
+
+    goto_my_calendar("")
+
+ENDROUTINE {start_task}
+
+ROUTINE end_task (VALUE option)
+
+    DECLARE task_id,
+            actual_duration,
+            actual_start_date
+
+    IF GLOBAL ("PARAM_ACTIVE") THEN
+
+        PROMPT FOR task_id
+ 
+        START WRITE TRANSACTION "Start Task"
+
+        task_id = SELECT tasks . status FOR UPDATE WHERE task_id = task_id
+
+        ASSIGN tasks . status = "C"
+        ASSIGN tasks . actual_end_date = NOW
+
+        actual_start_date = SELECT tasks . actual_start_date
+
+        actual_duration = NOW - actual_start_date
+
+        ASSIGN tasks . actual_duration = interval_to_mins(actual_duration)
+
+        UPDATE tasks
+
+        COMMIT
+
+    ENDIF 
+
+    goto_my_calendar("")
+
+ENDROUTINE {end_task}
+
+
+ROUTINE labtable_add_task 
+
+    DECLARE task_id,
+            menu_no
+
+    {get menu number}
+
+    menu_no = SELECT master_menu . procedure_num 
+               WHERE table_name = "TASKS" AND 
+               action_type= "MODIFY"
+
+    task_id = next_task()
+
+    IF (GLOBAL("DATABASE_TYPE") = "ORACLE") THEN
+
+        execute_sql ("insert into tasks (task_id, duration, status) values (" : task_id  :", 0, 'U')")
+        execute_sql ("commit")
+
+    ENDIF
+
+    menuproc menu_no USING task_id
+
+
+ENDROUTINE {labtable_add_task}
+
+
+ROUTINE delete_task_rmb (rmb_object, 
+                         object, 
+                         data )
+
+{
+*  Create tasks for testing sample based on testing level
+*
+*******************************************************************************}
+
+    DECLARE the_record, 
+            no_records,
+            task_id,
+            do_commit
+
+    do_commit = FALSE
+ 
+    no_records = data . size()
+
+    data . set_first ()
+
+    IF NOT(transaction_is_write()) THEN
+
+        START WRITE TRANSACTION "Delete Task"
+
+        do_commit = TRUE
+
+    ENDIF
+
+    WHILE ((data . current_position <= no_records) AND ( data . current_position > 0 )) DO
+
+        the_record = data . get_by_number (data . current_position)
+
+        task_id = SELECT tasks . task_id IN OBJECT the_record
+
+        task_id = SELECT tasks . task_id FOR UPDATE 
+                   WHERE task_id = task_id
+
+        IF task_id <> EMPTY THEN
+
+            DELETE tasks
+
+        ENDIF
+
+        task_id = SELECT task_operators . task_id FOR UPDATE 
+                   WHERE task_id = task_id
+
+        IF task_id <> EMPTY THEN
+
+            DELETE task_operators
+
+        ENDIF 
+
+        data . set_next()
+    
+    ENDWHILE
+ 
+    IF do_commit THEN
+
+        COMMIT
+
+    ENDIF
+
+
+ENDROUTINE {delete_task_rmb}

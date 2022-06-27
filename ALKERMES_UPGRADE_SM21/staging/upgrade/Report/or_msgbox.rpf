@@ -1,0 +1,205 @@
+{******************************************************************************
+*
+* Module Name	: OR_MSGBOX
+*
+* Purpose	: MEssagebox routines
+*
+* Version	: 1.0
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By             Description
+* -------   -----------  ----------     ---------------------------------------
+* 1.0       21-Jan-2014  Orbis          Release Version 
+*******************************************************************************}
+
+SET NOTPROTECTED
+SET COMPILE_OPTION DECLARE
+SET NAME "DEFER/"
+ENABLE WINDOWS
+
+
+JOIN STANDARD_LIBRARY STD_ARRAY 
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_CLIENT
+JOIN STANDARD_LIBRARY STD_MESSAGE
+JOIN STANDARD_LIBRARY STD_STRUCTURE
+JOIN STANDARD_LIBRARY STD_TRANSFER
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_VGL
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_WINDOW
+JOIN LIBRARY $lib_utils
+
+
+{=====================================================================}
+test_it ()
+EXIT
+
+ROUTINE test_it
+
+	DECLARE answer, default_v
+
+	default_v = FALSE
+
+	answer=
+		orMsgbox_yn_prompt ("Answer the Yes/No question {LF}Answer is Yes or No.  {LF}Default=":
+			STRIP(default_v):" {LF}Choose ?", default_v, "TEST")
+
+	flashmessage ("answer=":STRIP(answer),true)
+
+ENDROUTINE
+
+{=====================================================================}
+
+GLOBAL
+ROUTINE orMsgbox_yn_prompt (VALUE msg_to_display, VALUE default_answer, VALUE caller_id)
+		
+    { caller_id controls windows settings }
+
+    DECLARE form,  can_leave , answer_is_yes
+
+    answer_is_yes = default_answer
+
+    yn_create_main_form ( form, msg_to_display,
+					default_answer, caller_id )
+
+    form . start_prompt ()
+
+    REPEAT
+
+        form . wait_prompt  ()
+        can_leave = TRUE
+
+        IF form.get_lastkey() = "DO" THEN
+
+		answer_is_yes = TRUE
+
+        ELSEIF form.get_lastkey() = "EXIT" THEN
+
+		answer_is_yes = FALSE
+
+	  ENDIF
+
+    UNTIL  (can_leave) OR (form . get_lastkey () = "EXIT" ) 
+ 
+
+    form . end_prompt ()
+
+    RETURN (answer_is_yes)
+
+ENDROUTINE    { yn_prompt }
+
+{*****************************************************************************}
+
+ROUTINE yn_create_main_form ( form , VALUE msg, VALUE default_answer, VALUE caller_id)
+
+    DECLARE  pr_y, pr_n,
+	start_line, start_col,
+          the_header, form_height, array_lines, i
+
+    the_header  = "SampleManager       (":STRIP(caller_id):")"
+
+    split_message_into_lines (msg, array_lines)
+    form_height = 3 + size_of_array(array_lines)
+
+    PROMPT OBJECT form
+        CLASS PROMPT_CLASS_FORM
+        WITH ( width  = 35                                  ,
+               row    = 5                                   ,
+               column = 10                                  ,
+               height = form_height                          ,
+               header = the_header                          ,
+               footer = "",
+               proportional = FALSE                          ,
+		   button_style = FORM_BUTTON_NONE        ,
+               return_behaviour = FORM_RETURN_LEAVE   ,
+		   border = TRUE, 
+               user_info = "" ,
+			full_height = form_height )
+
+    start_line = 1
+    start_col  = 1
+
+    i = 0
+    WHILE (i < size_of_array(array_lines)) DO
+
+      i = i + 1
+      form . add_display ( array_lines [i], 
+                          start_col, start_line,
+                          PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+
+       start_line = start_line + 1
+
+    ENDWHILE
+
+    start_line = start_line + 1
+
+    PROMPT OBJECT pr_y
+            CLASS "STD_PROMPT_BUTTON"
+            WITH ( row                 = start_line    ,
+                   width               = 10            ,
+                   column              = start_col         ,
+                   caption             = "YES"                    ,
+                   send_lastkey        = "DO"                        ,
+                   vgl_library         = GLOBAL( "CURRENT_LIBRARY" ) ,
+                   enabled             = TRUE  )    
+
+    PROMPT OBJECT pr_n
+            CLASS "STD_PROMPT_BUTTON"
+            WITH ( row                 = start_line    ,
+                   width               = 10            ,
+                   column              = start_col + 15         ,
+                   caption             = "NO"                    ,
+                   send_lastkey        = "EXIT"                        ,
+                   vgl_library         = GLOBAL( "CURRENT_LIBRARY" ) ,
+                   enabled             = TRUE  )   
+
+    { Control the focus }
+    IF (default_answer) THEN
+
+        form.add_prompt ( pr_y )   
+        form.add_prompt ( pr_n )             
+
+    ELSE
+
+        form.add_prompt ( pr_n )   
+        form.add_prompt ( pr_y )             
+
+    ENDIF
+
+ENDROUTINE    { yn_create_main_form }
+
+
+ROUTINE split_message_into_lines (VALUE msg, array_lines)
+
+	DECLARE delim, i, oneLine
+
+	ARRAY array_lines   ARRAYSIZE (0)
+	delim = "{LF}"
+
+      WHILE (msg <> "")
+
+          i = INDEX (msg, delim)
+          IF (i>0) THEN
+
+               oneLine = LEFTSTRING (msg, i-1)
+               msg = STRIP ( RIGHTSTRING (msg, (STRINGLENGTH(msg)+1) - (STRINGLENGTH(delim)+i)) )
+
+          ELSE
+
+               oneLine = msg
+               msg = ""
+
+          ENDIF
+
+          array_lines [sizeofarray(array_lines)+1] = oneLine
+
+      ENDWHILE
+
+ENDROUTINE
+
+
+

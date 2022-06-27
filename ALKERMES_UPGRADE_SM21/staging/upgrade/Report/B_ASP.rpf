@@ -1,0 +1,878 @@
+{==============================================================================}
+{                                                                              }
+{  TENSOR TECHNOLOGIES                                                         }
+{                                                                              }
+{  Filename     : B_ASP.RPF                                                    }
+{  Version      : 1.2                                                          }
+{  Document Ref : see description                                              }
+{  Author       : John O'Gorman                                                }
+{  Date Created : 11/04/96                                                     }
+{  Responsible  : Tensor Technologies                                          }
+{  Description  :The primary function of this program is to authorises samples.}
+{               However different samples are handled different. This report   }
+{               centralises the Authorisation Functions in one Program.        }
+{                                                                              }
+{                                                                              }
+{		Recalibration Samples   P96372-05.DOC,App. E, release 1.04     }
+{	        ---------------------                                          }
+{                                                                              }
+{               A Special Template will be designed and configured for         }
+{               Calibration Samples . When a Calibration Sample is logged      }
+{               against an instrument then if the Calibration Sample has       }
+{               results entered that are in-specification when it is           }
+{               authorised, the Removed Instrument that it references is       }
+{               restored. A Calibration Label is printed at the                }
+{               default Printer which includes the current Date and            }
+{               the expected Actual Internal and External Calibration Date     }
+{               based on the External and Internal Calibration intervals       }
+{               specified in the Instrument Table.                             }
+{                                                                              }
+{               A calibration sample is identitifed by having a                }
+{               sample_type of "CALIBRATE"                                     }
+{                                                                              }
+{                                                                              }
+{               Batch Failure Report    P96378-02.DOC, 4.7.4, release 1.04     }
+{               --------------------                                           }
+{                                                                              }
+{               A Batch Failure should trigger an e-mail ( or equivalent )     }
+{               message to the relevant personnel ( e.g. purchasing )          }
+{               indicating the status of the batch.                            }
+{                                                                              }
+{               Authorisation of the Sample ( Batch for Raw                    }
+{               Materials ) has been customised so that :-                     }
+{                                                                              }
+{               1. The authoriser can view all the results for a               }
+{               particular sample prior to authorisation                       }
+{               2. If the Sample fails specification , then a report           }
+{               detailing the failure is produced and it can be mailed to      }
+{               a selected user or printed at a particular printer as          }
+{               desired.                                                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Passed Parameters            Value           Description                    }
+{  -----------------            -----           -----------                    }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Libraries Used           Routine             Description                    }
+{  --------------           -------             -----------                    }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{                                                                              }
+{  Ver.     Date        By          Description                                }
+{  ----     ----        --          -----------                                }
+{  1.0      16/04/96    JOG         Release Version                            }
+{                                                                              }
+{  1.1      6/6/96      JOG         The Standard Sample Authorisation Program  }
+{                                   (B_ASP) will  be modified to incorporate a }
+{                                   group checking stage before authorisation. }
+{                                   Managers must be granted access to non-own }
+{                                   group samples in order to view results,    }
+{                                   however, it is not appropriate for these   }
+{                                   managers to authorise non-own groups       }
+{                                   samples. In order to prevent this, a       }
+{                                   customisation will be added to the B_ASP   }
+{                                   Program.The customisation will firstly     }
+{                                   check for group id and secondly, sample    }
+{                                   owner:-                                    }
+{                                                                              }
+{                                   	1) Group ID : It will not be possible  }
+{                                   for a user to authorise a sample that has  }
+{                                   a non-blank group id that is different to  }
+{                                   his default group id.                      }
+{                                                                              }
+{                                   	2) Sample Owner : It will not be       }
+{                                   possible for a user to authorise a sample  }
+{                                   if the default group of the sample owner   }
+{                                   is different to the default group of the   }
+{                                   user trying to authorise.                  }
+{                                                                              }
+{                                   In both of these cases, the program B_ASP  }
+{                                   must be used for authorisation and the     }
+{                                   authoriser will be able to browse on       }
+{                                   non-own group samples but will not be      }
+{                                   able to authorise.                         }
+{                                                                              }
+{  1.2     27/01/98     JMW         P98766 : Req : B_ASP to be modified to     }
+{                                   allow specific QA users to authorise QC    }
+{                                   samples. This must be maintainable in      }
+{                                   house. The list must be readily modifiable }
+{                                   by the systems administrator to accomodate }
+{                                   changes in personnel.                      }
+{                                   List is available at the bottom of this    }
+{                                   program.                                   }
+{                                                                              }
+{  1.3    30/06/98      DMcN        User ODONKATH removed and users GALLBRIA   }
+{                                   and MCHUIAN added to list of QA users.     }
+{                                                                              }
+{  1.4    15/09/98      DMcN        User CURLDYMP added to list of QA users.   }
+{                                                                              }
+{  1.5    29/04/04      MF          REGAMARI account was disabled and Marion   }
+{                                   new user name KELLMARI The report B_ASP is }
+{                                   Being updated to reflect this new user ID. }
+{                                   Ref Change Control No 2004-076             }
+{                                                                              }
+{  1.6    08/10/04      EH          John Macken Added CC 2004-250              } 
+{                                                                              }
+{  1.7    23/06/05      MF          Pauline Mangan, Beatrice Higgins,          }
+{				    Siobhan Egan and Tanya Grehan Added        }
+{				    CC 05D-0462                                }
+{									       ]
+{  1.8    27/04/06      EH          Jacinta Barclay, Mary McHugh, John P Ryan  }
+{				    and Rosaleen Harrington added CC 06D-0170  }
+{  1.9    10/04/07	AF	    Updated routine qa_user to make report     }
+{				    generic, field QA_APPROVER added to        }
+{				    Personnel table and this is now checked    }
+{  1.10   21/10/08      AF          include check_user () check                }
+{==============================================================================}
+
+
+SET NOTPROTECTED
+
+JOIN STANDARD_LIBRARY std_utils
+
+JOIN LIBRARY $AUX_LIB
+JOIN LIBRARY $LIB_UTILS
+
+JOIN LIBRARY EL_SPEC
+
+CONSTANT CALIBRATE = "CALIBRATE "
+CONSTANT PASS      = "PASS      "
+CONSTANT RAW       = "RAW       "
+
+SET NAME "DEFER/"
+ENABLE WINDOWS
+
+Array prompt_text
+Array table_names
+Array change_stat ARRAY_SIZE (3) = " "
+
+Array display_details ARRAY_SIZE ( 0 , 6 )
+Array prompt_details ARRAY_SIZE ( 0 , 6 )
+
+
+{***********************************************************************}
+{                   USER INPUT BEGINS HERE                              }
+{***********************************************************************}
+
+{SECTION A - SCREEN SETUP}
+{specify the header text for the command window}
+{ie header_txt =  "Change Sample Status"}
+
+    header_txt = GET_USER_MESSAGE("AUX_ASP_HEADER_TXT" ,1)
+
+{specify footer text for the command window }
+
+    footer_txt = GET_USER_MESSAGE("AUX_ASP_FOOTER_TXT" ,1)
+
+{specify the text string to be displayed upon        }
+{successful completion of the command                }
+{ie success_txt = "Sample Status Changed"            }
+
+  success_txt  = GET_USER_MESSAGE("AUX_ASP_SUCCESS_TXT" ,1)
+
+{specify the text string to be displayed upon        }
+{abortion from the command                           }
+{ie abort_txt =   "Change Sample Status Aborted"     }
+
+  abort_txt    = GET_USER_MESSAGE("AUX_ASP_ABORT_TXT" ,1)
+
+{specify the sample statuses allowable within the    }
+{browse list for this command if sample identity     }
+{is prompted for.                                    }
+
+  samp_stat_allowed  = "C"
+  job_stat_allowed   = "AVCX"
+  test_stat_allowed  =  ""
+
+{SECTION B - INITIAL PROMPTS }
+
+
+{Specify the tables that the initial prompts browse  }
+{upon .                                              }
+
+   table_names [ 1 ]    = "SAMPLE"
+
+
+{  table_names [ 2 ]    = "TEST"}
+
+
+{Specify the initial prompt fields and the associated}
+{prompt text strings                                 }
+
+  prompt_text [ 1 ]    = GET_USER_MESSAGE("AUX_ASP_PROMPT_TXT" ,1)
+
+ {prompt_text [ 2 ]    = "Enter Test Name"}
+
+
+{SECTION C - DISPLAY INFORMATION}
+
+{The user may require a header for the display area }
+{Any descriptive text may be used here              }
+
+    mess_area_one = ""
+
+
+{Specify the fields which require displaying with the}
+{appropriate descriptive text string                 }
+
+{Display fields from prompt_table[1] : }
+
+  display_details [ 1, MESSAGE_POSITION    ]   = GET_USER_MESSAGE("AUX_ASP_DISPLAY_1" ,1)
+  display_details [ 1, TYPE_POSITION       ]   = "DISPLAY"
+  display_details [ 1, TABLE_NAME_POSITION ]   = "SAMPLE"
+  display_details [ 1, FIELD_NAME_POSITION ]   = "ID_TEXT"
+
+  display_details [ 2, MESSAGE_POSITION    ]   = GET_USER_MESSAGE("AUX_ASP_DISPLAY_2" ,1)
+  display_details [ 2, TYPE_POSITION       ]   = "DISPLAY"
+  display_details [ 2, TABLE_NAME_POSITION ]   = "SAMPLE"
+  display_details [ 2, FIELD_NAME_POSITION ]   = "STATUS"
+
+{Display fields from prompt_table[2] : }
+
+ {display_details [ 1, MESSAGE_POSITION    ]   = ""
+  display_details [ 1, TYPE_POSITION       ]   = ""
+  display_details [ 1, TABLE_NAME_POSITION ]   = ""
+  display_details [ 1, FIELD_NAME_POSITION ]   = ""
+
+  display_details [ 2, MESSAGE_POSITION    ]   = ""
+  display_details [ 2, TYPE_POSITION       ]   = ""
+  display_details [ 2, TABLE_NAME_POSITION ]   = ""
+  display_details [ 2, FIELD_NAME_POSITION ]   = ""
+
+  display_details [ 3, MESSAGE_POSITION    ]   = ""
+  display_details [ 3, TYPE_POSITION       ]   = ""
+  display_details [ 3, TABLE_NAME_POSITION ]   = ""
+  display_details [ 3, FIELD_NAME_POSITION ]   = ""}
+
+
+  {SECTION D - FIELD ASSIGNMENT                }
+
+{  This section is divided into three areas; }
+{                                            }
+{         (1) Interactive Update             }
+{         (2) Non-interactive Update         }
+{         (3) Status Change Update           }
+
+{----------------------------------------------------}
+{  1.   I N T E R A C T I V E   U P D A T E          }
+{----------------------------------------------------}
+
+{Specify the fields which require Updating and also  }
+{require a user input.Define the text string         }
+{associated with the input along with the browse type}
+
+
+  {Update fields associated with prompt_table[1]}
+  {Interactive_browse may be filled with either }
+  {the browse table_name.field or a number to   }
+  {define the size of the prompted field ie "10"}
+  {or if no browse required " ".                }
+
+{The user may require a header for the prompt area. }
+{ Any descriptive text may be used here.            }
+
+  mess_area_two = ""
+
+  prompt_details [ 1 , MESSAGE_POSITION    ]  = GET_USER_MESSAGE (
+                                                    "AUX_ASP_DISPLAY_3", 1 )
+  prompt_details [ 1 , TYPE_POSITION       ]  = "FORMAT"
+  prompt_details [ 1 , TABLE_NAME_POSITION ]  = "SAMPLE"
+  prompt_details [ 1 , FIELD_NAME_POSITION ]  = "AUTHORISATION_NOTES"
+
+
+{-----------------------------------------------------}
+{   2.   S T A T U S    C H A N G E   U P D A T E     }
+{-----------------------------------------------------}
+
+
+{  Non interactive update of the status field        }
+{  is defined within the array change_stat[n]        }
+{  where n = the array element that defines the      }
+{  table associated with the status in the array     }
+{  prompt_table[n].                                  }
+{  To update sample.status to "V" the user would     }
+{  define change_stat[1] = "V" where prompt_table[1] }
+{   = "SAMPLE"                                       }
+{  If the status change should be back to the old    }
+{  status change_stat[n] = "OLD_STATUS".             }
+
+   change_stat[1] = "A"
+
+
+{*************************************************}
+{             END  OF  USER  INPUT                }
+{*************************************************}
+
+aux_generator (  header_txt ,
+		 footer_txt ,
+	       	 mess_area_one ,
+		 mess_area_two  ,
+                 samp_stat_allowed ,
+                 job_stat_allowed ,
+                 test_stat_allowed ,
+		 prompt_text       ,
+		 table_names       ,
+                 change_stat                  ,
+                 global ( "current_library" ) ,
+	       	 Success_txt ,
+		 Abort_txt   ,
+		 TRUE      ,
+		 display_details ,
+		 prompt_details  ,
+		 "Read Transaction"  ,
+		 "Write Transaction" )
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE action                   Checks the authorisation notes of a sample }
+{                                   are valid . If the sample_type is          }
+{                                   CALIBRATE the results of that sample are   }
+{                                   checked against specification . If the     }
+{                                   results pass the instrument is restored .  }
+{                                   If the sample is not CALIBRATE the results }
+{                                   and spec are displayed and the option to   }
+{                                   continue with authorisation is offered     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  14/4/96      JOG             Release Version                                }
+{  06/06/96     JOG             Modification to prevent non own group authori- }
+{                               sation ( v1.1 )                                }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  first_id               VALUE                sample id                       }
+{  second_id              VALUE                not germane to sample auth.     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE action ( VALUE first_id, VALUE second_id )
+
+    DECLARE return_value, outcome, samp_id
+    return_value = FALSE
+
+    auth_note  = SELECT SAMPLE . authorisation_notes
+
+    IF authorisation_notes_ok ( auth_note ) THEN
+
+        SET GLOBAL "SAMPAUTHNOTE" TO auth_note
+
+        IF ( SELECT sample . sample_type = CALIBRATE ) THEN
+
+                                              { ============================== }
+                                              { This is an Instrument Sample   }
+                                              { ============================== }
+
+            reactivate_instrument ( first_id )
+            return_value = TRUE
+
+        ELSE
+                                              { ============================== }
+                                              { New Authorisation Procedure    }
+                                              { Produce Report and prompt for  }
+                                              { continue Authorisation.        }
+                                              { ============================== }
+
+            {COMMIT}    { JMW, 19/09/97 }
+
+            outcome = result_report ( first_id, FALSE )
+
+            samp_id = SELECT sample . id_numeric FOR UPDATE
+                      WHERE  id_numeric = first_id
+
+            IF ( outcome <>  PASS ) THEN
+
+                group = SELECT personnel . group_id
+                        WHERE  ( identity = OPERATOR )
+
+                IF ( group = RAW ) THEN
+                    send_failure_report ( first_id )
+                ENDIF
+                                        { ================================= }
+                                        { alls failure report for RAW users }
+                                        { referance document P96378-02      }
+                                        { release 1.04                      }
+                                        { ================================= }
+            ENDIF
+
+                                        { ================================= }
+                                        { Modification, 06/06/96, v1.1, JOG }
+                                        { Prevent non own group authorisatin}
+                                        { ================================= }
+
+
+
+                                        { ================================= }
+                                        { Modification, 06/06/96, v1.2, JMW }
+                                        { Allow Maintainable list of users  }
+                                        { to authorise. qa_user ()          }
+                                        { ================================= }
+
+{ 1.10 }
+            IF qa_user () OR check_user () THEN
+                return_value = continue_auth ( first_id )
+            ELSE
+                return_value = FALSE
+            ENDIF
+
+        ENDIF
+
+    ENDIF
+
+    RETURN ( return_value )
+
+ENDROUTINE {action}
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE check_user              Check the operators default group id and if }
+{                                  it is suitable allow the user to continue   }
+{                                  the authorisation procedure                 }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  6/6/96       JOG             Created                                        }
+{                               See design review form for Sample Authorisation}
+{                               P96384                                         }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{==============================================================================}
+ROUTINE check_user
+
+    DECLARE op_default_group,
+            samp_owner,
+            owner_default_group,
+            return_value,
+            check_1,
+            check_2
+
+    op_default_group = SELECT PERSONNEL . default_group
+                       WHERE ( identity = OPERATOR )
+
+    samp_group       = SELECT SAMPLE . group
+
+    owner_default_group = SELECT PERSONNEL . default_group
+                          WHERE ( identity = SELECT SAMPLE . sample_owner )
+
+
+                                        { ================================== }
+                                        { users with no default group are    }
+                                        { allowed unimpeded access           }
+                                        { ================================== }
+
+    IF ( ( op_default_group = EMPTY ) OR ( op_default_group = "" ) ) THEN
+        RETURN ( TRUE )
+    ENDIF
+
+                                        { ================================== }
+                                        { Operators default group and samp   }
+                                        { group are the same or samp group is}
+                                        { empty then continue auth           }
+                                        { ================================== }
+
+    IF ( ( op_default_group = samp_group ) OR
+         ( samp_group = EMPTY ) OR ( samp_group = "" ) ) THEN
+
+        check_1 = TRUE
+
+    ELSE
+
+        flash_message ( "Can not authorise samples in the group " :
+                        STRIP ( samp_group ) ,
+                        TRUE )
+
+        check_1 = FALSE
+
+    ENDIF
+
+                                        { ================================== }
+                                        { if operator def group and sample   }
+                                        { owner def group the same continue  }
+                                        { auth                               }
+                                        { ================================== }
+
+    IF ( ( op_default_group = owner_default_group ) OR
+         ( owner_default_group = EMPTY ) OR
+         ( owner_default_group = "" ) ) THEN
+
+        check_2 = TRUE
+
+    ELSE
+
+        flash_message ( "Sample owner has different default group " :
+                        "to operator. Authorisation halted.",
+                        TRUE )
+
+        check_2 = FALSE
+
+    ENDIF
+
+                                        { ================================== }
+                                        { if both conditions are met then    }
+                                        { allow an authorisation             }
+                                        { ================================== }
+
+    IF check_1 AND check_2 THEN
+        return_value = TRUE
+    ELSE
+        return_value = FALSE
+    ENDIF
+
+    RETURN ( return_value )
+
+ENDROUTINE
+{==============================================================================}
+{                                                                              }
+{  ROUTINE continue_auth                                                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  13/4/96      JOG             Release Version                                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  samp_id                Value                sample identity                 }
+{==============================================================================}
+
+ROUTINE continue_auth ( VALUE samp_id )
+
+    DECLARE text, return_value, auth_form
+
+    text = "Do you wish to continue Authorising Sample " : STRIP ( samp_id )
+              : "?"
+
+    CREATE OBJECT PROMPT_CLASS_FORM , auth_form
+
+        auth_form . height = 1
+        auth_form . width  = 50
+        auth_form . row    = ( GLOBAL ( "SCREEN_HEIGHT" ) - 3 ) / 2
+        auth_form . column = ( GLOBAL ( "SCREEN_WIDTH" ) - 40 ) / 2
+        auth_form . header = "Continue Authorise Sample"
+        auth_form . footer = "<DO> to Authorise, <EXIT> to Quit"
+
+    auth_form . start_prompt ()
+
+    DISPLAY text ON LINE 1 FROM 1 IN WINDOW auth_form . window
+
+    WHILE ( auth_form . get_lastkey () <> "DO" ) AND
+          ( auth_form . get_lastkey () <> "EXIT" ) DO
+
+        auth_form . wait_prompt ()
+
+    ENDWHILE
+
+    auth_form . end_prompt ()
+
+    IF ( auth_form . get_lastkey () = "DO" ) THEN
+        return_value = TRUE
+    ELSE
+        return_value = FALSE
+    ENDIF
+
+    samp_id = SELECT sample . id_numeric FOR UPDATE
+              WHERE  ( id_numeric = samp_id )
+
+    RETURN ( return_value )
+
+ENDROUTINE
+
+{*************************************************}
+{            Select Routine                       }
+{*************************************************}
+
+ROUTINE select_key  ( VALUE line     , display_id      ,
+		      VALUE first_id , VALUE second_id )
+
+set format "999"
+menu_num   = MENUNUMBER ("DSR")
+
+MENUPROC menu_num USING first_id , "$EXIT"
+
+ENDROUTINE
+
+{*************************************************}
+{            Validation Routine                   }
+{*************************************************}
+
+ROUTINE validation ( display_id )
+
+RETURN ( TRUE )
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{ ROUTINE authorisation_notes_ok          Checks if the authorisation notes    }
+{                                         entered is one of the authsamp       }
+{                                         phrases                              }
+{                                         JMW, TTL 11/04/96                    }
+{                                                                              }
+{==============================================================================}
+{ Parameters	             Passed By       Description                       }
+{ --------------------       ---------       --------------------------------- }
+{ entered_authorisation_notes    VALUE       Entered Authorisation Notes       }
+{==============================================================================}
+
+ROUTINE authorisation_notes_ok ( VALUE entered_authorisation_notes )
+
+DECLARE ret_value
+ret_value = TRUE
+                                   { ================================== }
+                                   { Find Valid Phrases                 }
+                                   { For Authorisation Notes            }
+                                   { ================================== }
+
+check_phrase = SELECT PHRASE . phrase_text
+               WHERE ( phrase_type = "AUTHSAMP")
+                 AND ( phrase_text = entered_authorisation_notes )
+
+IF ( auth_note = EMPTY ) OR ( STRIP ( auth_note ) = "" ) THEN
+
+                                   { ================================== }
+                                   { Empty Value - Send Message         }
+                                   { ================================== }
+
+    flash_message ( "Authorisation Cannot Proceed unless Valid " :
+                    "Authorisation Notes are Entered", TRUE )
+    ret_value = FALSE
+
+ELSEIF ( check_phrase <> auth_note ) THEN
+
+                                   { ================================== }
+                                   { Incorrect Value - Send Message     }
+                                   { ================================== }
+
+    flash_message ( "Authorisation Notes Phrase must be selected from valid entries, ":
+                     STRIP (auth_note) : " is not a valid phrase", TRUE )
+    ret_value = FALSE
+
+ENDIF
+RETURN ( ret_value )
+
+ENDROUTINE { Authorisation_notes_not_ok }
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE send_failure_report           outputs a failed specification report }
+{                                        referance document P96372.DOC         }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  16/4/96      JOG             Release Version                                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  sample_id              VALUE                sample unique id                }
+{                                                                              }
+{                                                                              }
+{==============================================================================}
+ROUTINE send_failure_report ( VALUE sample_id )
+
+    DECLARE batch, message
+
+    sample_id_text = SELECT sample . id_text
+
+    batch = SELECT sample . batch_name
+            WHERE  ( id_numeric = sample_id )
+
+    IF ( batch = EMPTY ) THEN
+
+        message = "Sample Number " :
+                  STRIP ( sample_id_text ) :
+                  " fails specification."
+
+    ELSE
+
+        message = "Sample Number " :
+                  STRIP ( sample_id_text ) :
+                  " for Batch " :
+                  STRIP ( batch ) :
+                  " fails specification."
+
+    ENDIF
+
+    LITERAL
+$message___________________________________________________________________
+$ENDLITERAL
+
+    FLUSH_LITERAL
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+{                                                                              }
+{ ROUTINE reactivate_instruments       The routine queries the el_spec report  }
+{                                      to find out if the sample passed its    }
+{                                      specification if it does then the       }
+{                                      instrument is reactivated and           }
+{                                      calibaration label is printed           }
+{                                                                              }
+{                                      JOG TTL 10/4/96                         }
+{                                                                              }
+{------------------------------------------------------------------------------}
+{                                                                              }
+{ PARAMETER	PASSED		DESCRIPTION                                    }
+{ samp_id	VALUE 		the calibrate sample id                        }
+{                                                                              }
+{------------------------------------------------------------------------------}
+
+ROUTINE reactivate_instrument ( VALUE samp_id )
+
+    DECLARE ins, sample_outcome, message, samp_type
+
+    samp_type = STRIP ( SELECT sample . sample_type )
+
+    ins = SELECT sample . instrument
+                                                { JMW 19/9/97}
+    removeflag = SELECT instrument . removeflag  FOR UPDATE
+                 WHERE  identity = ins
+
+    IF ( removeflag = TRUE ) THEN
+
+        IF ( ins <> EMPTY ) OR ( STRIP ( ins <> "" )) THEN
+
+            {COMMIT}           { JMW, 19/9/97 }
+                                            { ============================ }
+                                            { sample information committed }
+                                            { to allow the sample spec to  }
+                                            { be outputted to the screen   }
+                                            { ============================ }
+
+            sample_outcome = result_report ( samp_id , FALSE )
+
+                                            { ======================= }
+                                            { check the mlps of the   }
+                                            { components              }
+                                            { ======================= }
+
+
+            IF ( sample_outcome = "PASS     " ) THEN
+                                            { ======================= }
+                                            { reactivate instrument   }
+                                            { ======================= }
+
+                ins = SELECT instrument . identity FOR UPDATE
+                      WHERE  identity = ins
+
+                ASSIGN instrument . removeflag = FALSE
+                UPDATE instrument
+
+                message = " has been reactivated."
+                                            { ======================= }
+                                            { outputs the calibration }
+                                            { label in library b_rlb  }
+                                            { ======================= }
+
+                CALL_ROUTINE "print_instrument_label"
+                    USING  ins
+                    IN LIBRARY "rm_rlb"
+
+            ELSEIF ( sample_outcome = "LIMIT_FAIL" )
+                message = " has failed a test."
+            ELSEIF ( sample_outcome = "INCOMPLETE" )
+                message = " has an incompleted test."
+            ELSEIF ( sample_outcome = "MISSING   " )
+                message = " has a missing test."
+            ELSE
+                message = " has an unknown error in its sample."
+            ENDIF
+
+            flash_message ( "Instrument " : STRIP ( ins ) :
+                                   message , TRUE )
+
+            samp_id = SELECT sample . id_numeric FOR UPDATE
+                      WHERE ( id_numeric = samp_id )
+
+                                            { ============================ }
+                                            { reacquire the context of the }
+                                            { sample select for the rest   }
+                                            { of the auth program          }
+                                            { ============================ }
+        ENDIF
+
+    ELSE
+
+        flash_message ( "This recalibration sample does not have an " :
+    	      		"instrument entered against it.", TRUE )
+
+    ENDIF
+
+
+    RETURN ( TRUE )
+
+ENDROUTINE { reactivate_instruments }
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE qa_user                 Check against a definable list of users     }
+{                                  QA for authorisation. If the user is found  }
+{                                  in the list then authorisation will proceed }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  27/01/98     JMW             Created                                        }
+{                               See Project P98766.                            }
+{  10/04/07     AF              1.1                                            }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{==============================================================================}
+ROUTINE qa_user
+
+    DECLARE qa_approver
+
+	qa_approver = SELECT PERSONNEL . qa_approver
+		  WHERE identity = GLOBAL("OPERATOR")
+
+	IF (qa_approver = TRUE) THEN
+
+		RETURN (TRUE)
+
+	ELSE 
+
+		RETURN (FALSE)
+
+	ENDIF
+
+ENDROUTINE
+
+

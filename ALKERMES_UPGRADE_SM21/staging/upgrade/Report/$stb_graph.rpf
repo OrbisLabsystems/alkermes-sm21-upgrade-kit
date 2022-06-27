@@ -1,0 +1,585 @@
+ENABLE WINDOWS
+SET NAME "DISPLAY/"
+
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $STB_LIB
+
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_DDE
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN STANDARD_LIBRARY STD_CLIENT
+
+
+
+EXIT
+
+{*****************************************************************************}
+
+ROUTINE stb_matrix_action_option_graph ( self )
+{
+* 
+*
+* Parameters : self, Stb Matrix object
+*
+*******************************************************************************}
+
+	DECLARE sample_count
+
+	done_labels = FALSE
+
+	layer_aka = SELECT pds_axis_point . aka_name
+							IN OBJECT self . layer_factors . current
+	
+
+	cond_aka = SELECT pds_axis_point . aka_name
+							IN OBJECT self . c_factors . current
+	
+	{ time point labels }
+
+	get_time_points ( self, value_labels , sample_count)
+
+	IF ( sample_count <= 0 ) THEN
+			flash_message ( GET_USER_MESSAGE ("STB_GRAPH_NO_SAMPLES",1), TRUE)  
+			RETURN
+	ENDIF
+
+	count = 0
+
+	get_data (value_labels)
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE get_data ( value_labels )
+{
+* 
+*
+* Parameters : 
+*
+*******************************************************************************}
+
+	DECLARE count , sel_array, comps, comp_count, selected_comps, out_str
+
+	comps = get_components( value_labels )
+
+	IF (size_of_array (comps) > 0) THEN
+
+		selected_comps = get_component_selection ( comps )
+
+		comp_count = 1
+		WHILE (selected_comps [comp_count] <> EMPTY) DO
+
+			value_count = 1
+			num_results = 0
+			out_str = ""
+			WHILE (value_labels [value_count , 1] <> EMPTY) DO
+
+				IF (value_labels [value_count , 3] <> "") THEN
+					samp_id = SELECT samp_test_result . id_numeric
+									where id_numeric = value_labels [value_count , 3]
+									and   component_name = selected_comps [comp_count]
+
+					IF ( samp_id <> EMPTY ) THEN
+					
+						comp_id = SELECT samp_test_result . component_name
+						res_txt = SELECT samp_test_result . result_text
+						out_str = out_str : STRIP(value_labels[value_count,2]) : "," : STRIP(res_txt) : ";"
+						
+						IF NOT(BLANK (res_txt) ) THEN
+							num_results = num_results + 1
+						ENDIF
+					ENDIF
+				ENDIF
+				value_count = value_count + 1
+
+			ENDWHILE
+
+			out_str = LEFTSTRING( out_str , LENGTH (out_str) - 1)
+
+			IF (num_results > 1) THEN
+
+				dde_id = 0
+				topic = "StabForm"
+				dde_connect ("StabGraph", topic , dde_id , status)
+
+				IF (status <> EMPTY) THEN
+				
+					smw_path = CLIENT_GET_APP_PATH ( "Stabgraph.exe" )
+					dde_winexec (smw_path ,"SW_SHOW",status)
+					dde_connect ("StabGraph", topic , dde_id , status)
+					
+				ENDIF
+				
+				IF (status = EMPTY) THEN
+				
+					IF NOT (done_labels) THEN
+						do_v_labels ( value_labels ,dde_id )
+
+						dde_poke (dde_id , "t_title", self . matrix_form . header, status)
+						done_labels = TRUE
+					ENDIF
+					
+					dde_poke (dde_id , "g_data", out_str , status )
+					
+					IF (NOT (BLANK (cond_aka)) AND (cond_aka <> EMPTY)) THEN
+						cond_name = cond_aka
+					ELSE
+						cond_name = stb_capitalise (current_cond)
+					ENDIF
+					IF (NOT (BLANK (layer_aka)) AND (layer_aka <> EMPTY)) THEN
+						layer_name = layer_aka
+					ELSE
+						layer_name = stb_capitalise (current_layer)
+					ENDIF
+					series_label = STRIP ( layer_name ) : " " :
+								   STRIP ( cond_name ) : " " :
+								   STRIP ( comp_id )
+					dde_poke (dde_id , "t_series", STRIP(comp_count) :":": series_label , status)
+					dde_disconnect (dde_id , status)
+					
+				ELSE
+				
+					flash_message( "Stabgraph: " : status, TRUE )
+				
+				ENDIF
+				
+			ELSE
+					flash_message (GET_USER_MESSAGE ("STB_GRAPH_NO_POINTS",1) : selected_comps [comp_count]   , TRUE)   { ???? }
+			ENDIF
+			comp_count = comp_count + 1
+
+		ENDWHILE
+
+	ELSE
+			flash_message (GET_USER_MESSAGE ("STB_GRAPH_NO_COMPS",1) ,TRUE)      { ????? }
+	ENDIF
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE get_components( value_labels )
+{
+* 
+*
+* Parameters : 
+*
+*******************************************************************************}
+
+	DECLARE sel_array, comps, do_or, samp_count, comp_count
+
+	ARRAY sel_array
+	ARRAY comps
+
+	count = 1
+	samp_count = 1
+
+	ARRAY_SELECT_ADD( sel_array, ARRAY_SELECT_PUSH, EMPTY, EMPTY )
+
+	do_or = FALSE
+
+	WHILE ( samp_count <= size_of_array (value_labels) ) DO
+
+		IF (value_labels [samp_count , 3] <> "" ) THEN
+
+			IF do_or THEN
+			
+				ARRAY_SELECT_ADD( sel_array, ARRAY_SELECT_OR, EMPTY, EMPTY )
+				
+			ENDIF
+
+			ARRAY_SELECT_ADD( sel_array, ARRAY_SELECT_EQ, "ID_NUMERIC", value_labels [samp_count , 3] )
+
+			do_or = TRUE
+
+		ENDIF
+
+		samp_count = samp_count + 1
+
+	ENDWHILE
+
+	ARRAY_SELECT_ADD( sel_array, ARRAY_SELECT_POP, EMPTY, EMPTY )
+
+	ARRAY_SELECT_ADD( sel_array, ARRAY_SELECT_AND, EMPTY, EMPTY )
+
+	ARRAY_SELECT_ADD( sel_array, ARRAY_SELECT_PUSH, EMPTY, EMPTY )
+
+	ARRAY_SELECT_ADD( sel_array, ARRAY_SELECT_EQ, "RESULT_TYPE", "N" )
+
+	ARRAY_SELECT_ADD( sel_array, ARRAY_SELECT_OR, EMPTY, EMPTY )
+
+	ARRAY_SELECT_ADD( sel_array, ARRAY_SELECT_EQ, "RESULT_TYPE", "K" )
+
+	ARRAY_SELECT_ADD( sel_array, ARRAY_SELECT_POP, EMPTY, EMPTY )
+
+	ARRAY_SELECT_DISTINCT ( "samp_test_result" , "COMPONENT_NAME" , sel_array )
+
+	comp_count = 1
+	comp_id = SELECT samp_test_result . component_name
+
+	WHILE ( comp_id <> EMPTY ) DO
+
+		comps [comp_count] = comp_id
+		
+		NEXT samp_test_result
+		comp_id = SELECT samp_test_result . component_name
+		comp_count = comp_count + 1
+
+	ENDWHILE
+	
+	RETURN( comps )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE get_component_selection ( component_set )
+{
+* 
+*
+* Parameters : 
+*
+*******************************************************************************}
+
+	DECLARE comp_count , count, form, selected_comps, grid
+	
+	ARRAY selected_comps
+
+	CREATE OBJECT "STD_FORM" , form
+
+	form . header = GET_USER_MESSAGE ("STB_GRAPH_SELECT_COMPS",1)
+	form . height = 10
+	form . width  = 35
+	form . column = 10
+	form . row    = 3
+
+	setup_grid ( grid , component_set )
+
+	form . height = grid . height
+
+	form . add_prompt ( grid )
+
+	form . start_prompt ( )
+	form . set_position (2)
+
+	REPEAT
+	
+		form . wait_prompt ()
+
+		IF ( form . get_lastkey () = "DO") THEN
+
+				count = 1
+				comp_count = 0
+				WHILE (grid . user_info [2 , count] <> EMPTY) DO
+						IF ( grid  . user_info [2 , count] = TRUE ) THEN
+								comp_count = comp_count + 1
+								selected_comps [comp_count] = grid . user_info [1 , count]
+						ENDIF
+						count = count + 1
+				ENDWHILE
+
+				IF (size_of_array (selected_comps) <= 0)  THEN
+						flash_message (GET_USER_MESSAGE("STB_GRAPH_NO_SELECT_COMPS",1), TRUE)
+				ENDIF
+
+		ENDIF
+		
+	UNTIL ( form . get_lastkey( ) = "EXIT"      ) OR
+	      ( size_of_array( selected_comps ) > 0 )
+
+	form . end_prompt ()
+
+	RETURN( selected_comps )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE setup_grid ( grid , component_set )
+{
+* 
+*
+* Parameters : 
+*
+*******************************************************************************}
+
+	DECLARE r
+
+	CREATE OBJECT PROMPT_CLASS_GRID , grid
+
+	grid . column               = 1
+	grid . row                  = 1
+	grid . width                = 35
+	grid . height               = size_of_array ( component_set ) + 3
+	grid . cell_columns         = 2
+	grid . cell_rows            = size_of_array ( component_set )
+	grid . border               = TRUE
+	grid . column_size [1]      = 25
+	grid . column_size [2]      = 8
+	grid . display_cell_routine = "display_grid_cell"
+	grid . prompt_cell_routine  = "prompt_grid_cell"
+	grid . column_separator[1]  = GRID_SEPARATOR_NONE
+	grid . column_separator[2]  = GRID_SEPARATOR_NONE
+	
+	ARRAY grid . user_info
+	grid . title_text_top [1,1] = GET_USER_MESSAGE ( "STB_GRAPH_COMP_TITLE", 1 )
+	grid . title_text_top [2,1] = GET_USER_MESSAGE ( "STB_GRAPH_GRAPH_TITLE", 1 )
+	grid . title_size_top = 1
+
+	r = 0
+	REPEAT
+			r = r + 1
+			grid . row_separator [r] = GRID_SEPARATOR_NONE
+			grid . user_info  [1,r] = component_set [r]
+			grid . user_info  [2,r] = FALSE
+			
+	UNTIL (r = grid . cell_rows)
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE display_grid_cell (self,value cell_col,value cell_row,
+                                window,value col,value row,
+                                value cell_w,value cell_h)
+{
+* 
+*
+* Parameters : 
+*
+*******************************************************************************}
+
+
+	IF (cell_col = 1) THEN
+
+			DISPLAY self.user_info [cell_col,cell_row]
+					AT col,row
+					IN WINDOW window
+					FORMAT TEXT30
+	ELSE
+			DISPLAY self.user_info [cell_col,cell_row]
+					AT col,row
+					IN WINDOW window
+					FORMAT BOOLEAN
+					WITH (is_check = TRUE)
+
+
+	ENDIF
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE prompt_grid_cell (self,value cell_col,value cell_row,
+                                window,value col,value row,
+                                value cell_w,value cell_h)
+{
+* 
+*
+* Parameters : 
+*
+*******************************************************************************}
+
+        IF (cell_col = 1) THEN
+                PROMPT FOR self.user_info [cell_col,cell_row]
+                        AT col,row
+                        IN WINDOW window
+                        FORMAT TEXT30
+        ELSE
+                PROMPT FOR self.user_info [cell_col,cell_row]
+                        AT col,row
+                        IN WINDOW window
+                        FORMAT boolean
+                        WITH (is_check = TRUE)
+
+
+        ENDIF
+
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE stb_capitalise ( VALUE in_string )
+{
+* 
+*
+* Parameters : 
+*
+*******************************************************************************}
+
+	DECLARE first_char
+
+	first_char = GET_CHARACTER_AT ( in_string, 1 )
+	RETURN ( first_char :
+	         TOLOWER ( SUBSTRING ( in_string                ,
+	                               2                        ,
+	                               LENGTH ( in_string ) - 1 )))
+ENDROUTINE
+
+{*****************************************************************************}
+
+
+ROUTINE get_time_points (       matrix_object    ,
+                                value_labels     ,
+                          sample_count     )
+{
+* 
+*
+* Parameters : 
+*
+*******************************************************************************}
+
+	DECLARE count, current_layer, current_cond, current_pull_num, tz_pull
+	
+	ARRAY value_labels
+
+	current_layer = matrix_object . get_current_layer_id ( )
+	current_cond  = matrix_object . get_current_condition_id ( )
+
+	current_pull_num = self . get_current_pull_number( )
+	
+	count = 0
+	sample_count = 0
+
+	tz_pull = matrix_object . get_timezero_pull( current_layer, current_pull_num )
+
+	IF ( tz_pull <> EMPTY ) THEN
+	
+			count = count + 1
+			
+			tz_samp_id = SELECT pds_study_pull . created_sample_id
+							IN OBJECT tz_pull
+							
+			day_equiv = 0
+			
+			time_id = GET_USER_MESSAGE ( "STB_GRAPH_TZ", 1 )
+
+			value_labels [count, 1] = time_id
+			value_labels [count, 2] = day_equiv
+			value_labels [count, 3] = tz_samp_id
+
+	ENDIF
+
+
+	time_db = matrix_object . time_factors
+	time_db . re_index ( "AXIS_POS" )
+	idx = 0
+	time_db . set_by_index_number ( "AXIS_POS" , idx )
+
+	time_db . set_next ()
+
+	WHILE (time_db . current <> EMPTY) DO
+		count = count + 1
+
+		time_id = SELECT pds_axis_point . axis_point_name
+						IN OBJECT time_db . current
+
+		matrix_object . current_time = idx + 1
+
+		pull_record = matrix_object . get_current_cell_pull( current_pull_num )
+
+		IF ( pull_record  <> EMPTY                                        ) AND
+		   ( SELECT pds_study_pull . cell_disp IN OBJECT pull_record = "V") THEN
+		   
+			samp_id = SELECT pds_study_pull . created_sample_id
+							IN OBJECT pull_record
+							
+			IF (samp_id <> 0) THEN
+				sample_count = sample_count + 1
+			ENDIF
+		ELSE
+			samp_id = ""
+		ENDIF
+
+		aka_name = SELECT pds_axis_point . aka_name
+						IN OBJECT time_db . current
+
+		start_date = SELECT pds_axis_point . start_date
+						IN OBJECT time_db . current
+
+		day_equiv = interval_to_days ( SELECT time_factor . day_equiv
+					                       WHERE identity = time_id   )
+								
+		IF (NOT (BLANK (aka_name)) AND (aka_name <> EMPTY)) THEN
+			value_labels [count,1] = STRIP(aka_name)
+		ELSE
+			value_labels [count,1] = STRIP(time_id)
+		ENDIF
+		value_labels [count,2] = day_equiv
+		value_labels [count,3] = samp_id
+
+		idx = idx + 1
+		time_db . set_by_index_number ("AXIS_POS", idx)
+		time_db . set_next ()
+
+	ENDWHILE
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE do_v_labels ( value_labels , dde_id)
+{
+* 
+*
+* Parameters : 
+*
+*******************************************************************************}
+
+	DECLARE count , out_str, status, old_format
+
+	old_format = GLOBAL ( "FORMAT_TEXT" )
+	SET FORMAT "99999999.9999999"
+
+	out_str = ""
+	count = 1
+	WHILE (count < size_of_array (value_labels) ) DO
+
+			out_str = out_str : value_labels[count,2] : "," : value_labels [count,1] : ";"
+			count = count + 1
+
+	ENDWHILE
+
+	dde_poke ( dde_id , "v_labels", out_str , status )
+
+	SET FORMAT old_format
+	
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE interval_to_days ( VALUE intv )
+{
+* Converts the passed interval to a number of days
+*
+* Parameters : intv, interval
+*
+*******************************************************************************}
+
+	DECLARE full_days, days, hours, mins, secs, hund
+
+	full_days = MIDSTRING( intv, 1 , 4 )
+	hours     = MIDSTRING( intv, 6 , 2 )
+	mins      = MIDSTRING( intv, 9 , 2 )
+	secs      = MIDSTRING( intv, 12, 2 )
+	hund      = MIDSTRING( intv, 15, 2 )
+
+	days = full_days +
+	       ( hours / 24 ) +
+	       ( mins / ( 24 * 60 ) ) +
+	       ( secs / ( 24 * 60 * 60 ) ) +
+	       ( hund / ( 24 * 60 * 60 * 100 ) )
+
+	RETURN( days )
+
+ENDROUTINE
+
+
+
+
+
+

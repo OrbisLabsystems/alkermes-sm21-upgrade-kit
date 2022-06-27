@@ -1,0 +1,19 @@
+MESSAGE GROUP "CREATE_TASK_"
+
+MESSAGE = "TRANSACTION"
+TEXT    = "Create Tasks Record"
+
+MESSAGE = "CREATED"
+TEXT    = "Successfully created task []"
+
+MESSAGE = "UPDATE_FAIL"
+TEXT    = "Task [] not found for update"
+
+MESSAGE = "UPDATE_TRANS"
+TEXT    = "Update Tasks Record"
+
+MESSAGE = "ENTER_DESC"
+TEXT    = "You must enter a description for the task"
+
+MESSAGE = "ENTER_DURATION"
+TEXT    = "You must enter a duration for the task"

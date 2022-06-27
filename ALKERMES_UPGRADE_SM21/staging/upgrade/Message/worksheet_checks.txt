@@ -1,0 +1,36 @@
+MESSAGE GROUP "WSHEET_CHECKS_"
+
+MESSAGE        = "DATE"
+TEXT           = "DATE"
+
+MESSAGE        = "ANALYST"
+TEXT           = "ANALYST"
+
+MESSAGE        = "NOT_APPROVED_ANAL"
+TEXT           = "Operator is not approved for this analysis"
+
+MESSAGE        = "NOT_APPROVED_INST"
+TEXT           = "Operator is not approved for this Instrument"
+
+MESSAGE        = "REASON_OOC_INST"
+TEXT           = "Reason for using Out of Calibration Instrument"
+
+MESSAGE        = "REASON_UNCALIB_INST"
+TEXT           = "Reason for using Uncalibrated Instrument"
+
+MESSAGE        = "REASON_EXPIRED_STD"
+TEXT           = "Reason for using Expired Standard"
+
+MESSAGE        = "NO_INDATE_CALIB"
+TEXT           = "No In-Date "
+TEXT           = " Calibration Records for  "
+
+MESSAGE        = "CLEAR_ENTRIES"
+TEXT           = "Analysis date has changed, clear all worksheet entries?"
+
+MESSAGE        = "CLEAR_ENTRIES_HEADER"
+TEXT           = "Clear Entries"
+
+
+
+

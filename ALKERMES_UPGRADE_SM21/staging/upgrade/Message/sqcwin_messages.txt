@@ -1,0 +1,1269 @@
+MESSAGE GROUP "SQCWIN_PC_"
+
+MESSAGE  = "PLOT_1"
+TEXT     = "Date of Plot        : "
+
+MESSAGE  = "PLOT_2"
+TEXT     = "Name of Chart       : "
+
+MESSAGE GROUP "SQCWIN_HARD_"
+
+
+MESSAGE  = "DIS_1"
+TEXT     = "Creating Report"
+
+MESSAGE  = "T_1"
+TEXT     = "Control Chart       : "
+
+MESSAGE  = "T_2"
+TEXT     = "Date of Report      : "
+
+MESSAGE  = "T_3"
+TEXT     = "Shewhart Type       : "
+
+MESSAGE  = "T_4"
+TEXT     = "Spec Limits         : "
+
+MESSAGE  = "T_5"
+TEXT     = "Limits Type "
+
+MESSAGE  = "T_6"
+TEXT     = "Trend Table "
+
+MESSAGE  = "T_7"
+TEXT     = "Target Mean         : "
+
+MESSAGE  = "T_8"
+TEXT     = "Target Std Dev      : "
+
+MESSAGE  = "T_9"
+TEXT     = "Upper MLP Control   : "
+
+MESSAGE  = "T_10"
+TEXT     = "Lower MLP Control   : "
+
+MESSAGE  = "T_11"
+TEXT     = "Start Date          : "
+
+MESSAGE  = "T_12"
+TEXT     = "End Date            : "
+
+MESSAGE  = "T_13"
+TEXT     = "Analysis            : "
+
+MESSAGE  = "T_14"
+TEXT     = "Component           : "
+
+MESSAGE  = "T_15"
+TEXT     = "Units               : "
+
+MESSAGE  = "T_16"
+TEXT     = "Minimum Points Sum  : "
+
+MESSAGE  = "T_17"
+TEXT     = "Maximum Points Sum  : "
+
+MESSAGE  = "T_18"
+TEXT     = "Groups Selected By  : "
+
+MESSAGE  = "T_19"
+TEXT     = "Subgroup Size       : "
+
+MESSAGE  = "DIS_2"
+TEXT     = "            Date      "
+
+MESSAGE  = "DIP"
+TEXT     = "         Date   "
+
+MESSAGE  = "DIS_3"
+TEXT     = " Size"
+
+MESSAGE  = "DIS_4"
+TEXT     = "  x-bar"
+
+MESSAGE  = "DIS_5"
+TEXT     = "  value"
+
+MESSAGE  = "DIS_6"
+TEXT     = "  range"
+
+MESSAGE  = "DIS_7"
+TEXT     = "  Std Dev"
+
+MESSAGE  = "DIS_8"
+TEXT     = "    MR "
+
+MESSAGE  = "DIS_9"
+TEXT     = " Comment"
+
+MESSAGE  = "DIS_10"
+TEXT     = "Statistical values to be printed here "
+
+MESSAGE  = "T_20"
+TEXT     = "Trends in "
+
+MESSAGE  = "TREN_1"
+TEXT     = " points"
+
+MESSAGE  = "TREN_2"
+TEXT     = " point"
+
+MESSAGE  = "CU_H1"
+TEXT     = "Target Value"
+
+MESSAGE  = "CU_H2"
+TEXT     = "Decision Point"
+
+MESSAGE  = "CU_H3"
+TEXT     = "Decision Interval"
+
+MESSAGE  = "CU_H4"
+TEXT     = "Decision Slope"
+
+MESSAGE  = "CAP_H1"
+TEXT     = "PC number of Cells"
+
+MESSAGE  = "CAP_H2"
+TEXT     = "Spec Lims"
+
+MESSAGE  = "STDDEV_H1"
+TEXT     = "Spec Lims"
+
+MESSAGE  = "STDDEV_H2"
+TEXT     = "Limits Type Mean"
+
+MESSAGE  = "STDDEV_H3"
+TEXT     = "Trend Table Mean"
+
+MESSAGE  = "STDDEV_H4"
+TEXT     = "Limits Type StDev"
+
+MESSAGE  = "STDDEV_H5"
+TEXT     = "Trend Table StDev"
+
+MESSAGE  = "STDDEV_H6"
+TEXT     = "Group Selected By"
+
+MESSAGE  = "STDDEV_H7"
+TEXT     = "Subgroup Size"
+
+MESSAGE  = "RANGE_H1"
+TEXT     = "Spec Lims"
+
+MESSAGE  = "RANGE_H2"
+TEXT     = "Limits Type Mean"
+
+MESSAGE  = "RANGE_H3"
+TEXT     = "Trend Table Mean"
+
+MESSAGE  = "RANGE_H4"
+TEXT     = "Limits Type Range"
+
+MESSAGE  = "RANGE_H5"
+TEXT     = "Trend Table Range"
+
+MESSAGE  = "RANGE_H6"
+TEXT     = "Group Selected By"
+
+MESSAGE  = "RANGE_H7"
+TEXT     = "Subgroup Size"
+
+MESSAGE  = "INDEP_H1"
+TEXT     = "Spec Lims"
+
+MESSAGE  = "INDEP_H2"
+TEXT     = "Limits Type Ind"
+
+MESSAGE  = "INDEP_H3"
+TEXT     = "Trend Table Ind"
+
+MESSAGE  = "INDEP_H4"
+TEXT     = "Limits Type MR"
+
+MESSAGE  = "INDEP_H5"
+TEXT     = "Trend Table MR"
+
+MESSAGE  = "INDEP_H6"
+TEXT     = "Group Selected By"
+
+MESSAGE  = "USE_SPECIFIED_LIMITS"
+TEXT     = "Use Specified Limits"
+
+MESSAGE  = "DISABLE_LIMITS"
+TEXT     = "Disable Limits"
+
+MESSAGE  = "USE_MLP_LIMITS"
+TEXT     = "Use MLP Limits"
+
+MESSAGE  = "CALCULATED_FROM_DATA"
+TEXT     = "Calculated From Data"
+
+MESSAGE  = "CALCULATED_FROM_TARGETS"
+TEXT     = "Calculated From Targets"
+
+MESSAGE  = "CONTROL_CHART"
+TEXT     = "Control Chart"
+
+MESSAGE  = "CHART_DESCRIPTION"
+TEXT     = "Chart Description"
+
+
+MESSAGE  = "UPPER_SPEC"
+TEXT     = "Upper Spec"
+
+MESSAGE  = "UPPER_CONTROL"
+TEXT     = "Upper Control"
+
+MESSAGE  = "UPPER_WARNING"
+TEXT     = "Upper Warning"
+
+MESSAGE  = "UPPER_ST_DEV"
+TEXT     = "Upper St. Dev."
+
+MESSAGE  = "MEAN"
+TEXT     = "Mean"
+
+MESSAGE  = "LOWER_ST_DEV"
+TEXT     = "Lower St. Dev."
+
+MESSAGE  = "LOWER_WARNING"
+TEXT     = "Lower Warning"
+
+MESSAGE  = "LOWER_CONTROL"
+TEXT     = "Lower Control"
+
+MESSAGE  = "LOWER_SPEC"
+TEXT     = "Lower Spec"
+
+MESSAGE  = "XBMIN3STD"
+TEXT     = "XB-3 Std. "
+
+MESSAGE  = "XBPLUS3STD"
+TEXT     = "XB+3 Std. "
+
+MESSAGE  = "TREND_T1"
+TEXT     = "Trends in Mean Chart"
+
+MESSAGE  = "TREND_T2"
+TEXT     = "Trends in Std Dev. Chart"
+
+MESSAGE  = "TREND_T3"
+TEXT     = "Trends in Mean Chart"
+
+MESSAGE  = "TREND_T4"
+TEXT     = "Trends in Range Chart"
+
+MESSAGE  = "TREND_T5"
+TEXT     = "Trends in Individual Chart"
+
+MESSAGE  = "TREND_T6"
+TEXT     = "Trends in Moving Range Chart"
+
+MESSAGE  = "PAGE_NO"
+TEXT     = "Page No. "
+
+MESSAGE  = "FROM"
+TEXT     = "From"      
+
+MESSAGE  = "TO"
+TEXT     = "To"        
+
+MESSAGE  = "SKEWNESS"
+TEXT     = "Skewness"  
+
+MESSAGE  = "KURTOSIS"
+TEXT     = "Kurtosis"  
+
+MESSAGE  = "CAP_RATIO"
+TEXT     = "Cap Ratio" 
+
+MESSAGE  = "CAP_INDEX"
+TEXT     = "Cap Index" 
+
+MESSAGE  = "CPK_INDEX"
+TEXT     = "Cpk Index" 
+
+MESSAGE  = "STD"
+TEXT     = "Std. "     
+
+MESSAGE  = "NO"
+TEXT     = "No."
+
+MESSAGE  = "DATE"
+TEXT     = "Date"
+
+MESSAGE  = "VALUE"
+TEXT     = "Value"
+
+MESSAGE  = "BAD"
+TEXT     = "BAD"
+
+MESSAGE  = "CUSUM"
+TEXT     = "Cusum"
+
+MESSAGE  = "COMMENTS"
+TEXT     = "Comments"
+
+MESSAGE  = "RANGE"
+TEXT     = "Range"
+
+MESSAGE  = "TREND"
+TEXT     = "TREND"
+
+MESSAGE  = "XBAR"
+TEXT     = "x-bar"
+
+MESSAGE  = "MR"
+TEXT     = "MR"
+MESSAGE GROUP "SQCWIN_PLOT_"
+
+
+MESSAGE  = "PROM_6"
+TEXT     = "Output Printer"
+
+MESSAGE  = "PROM_7"
+TEXT     = "Output Device"
+
+MESSAGE GROUP "SQCWIN_TREND_"
+
+
+MESSAGE  = "TEX_2"
+TEXT     = "                    Trend Point Editor "
+
+MESSAGE  = "DIS_1"
+TEXT     = " point(s) "
+
+MESSAGE  = "DIS_2"
+TEXT     = "SQC Trend"
+
+MESSAGE  = "DIS_3"
+TEXT     = "Table Entries"
+
+MESSAGE  = "DIS_4"
+TEXT     = " Trend Table "
+
+MESSAGE  = "PAR_1"
+TEXT     = "out of"
+
+MESSAGE  = "PAR_2"
+TEXT     = "consecutive"
+
+
+
+MESSAGE GROUP "SQCWIN_MAIN_"
+
+
+MESSAGE  = "NCT_1"
+TEXT     = "Mean Chart"
+
+MESSAGE  = "NCT_2"
+TEXT     = "Range Chart"
+
+MESSAGE  = "NCT_3"
+TEXT     = "Standard Deviation"
+
+MESSAGE  = "NCT_4"
+TEXT     = "Individual Chart"
+
+MESSAGE  = "NCT_5"
+TEXT     = "Moving Range Chart"
+
+MESSAGE  = "NCT_6"
+TEXT     = "Mean "
+
+MESSAGE  = "NCT_7"
+TEXT     = "Range"
+
+MESSAGE  = "NCT_8"
+TEXT     = "StDev"
+
+MESSAGE  = "NCT_9"
+TEXT     = "Indiv"
+
+MESSAGE  = "NCT_10"
+TEXT     = "MR   "
+
+MESSAGE  = "NCT_11"
+TEXT     = "No Shewhart Chart Required"
+
+MESSAGE  = "NCT_12"
+TEXT     = "Mean and Range Chart"
+
+MESSAGE  = "NCT_13"
+TEXT     = "Mean and Standard Deviation Chart"
+
+MESSAGE  = "NCT_14"
+TEXT     = "Individual and Moving Range Chart"
+
+MESSAGE  = "NCT_18"
+TEXT     = "Process Capability"
+
+MESSAGE  = "NCT_19"
+TEXT     = "Standard Deviation Chart"
+
+MESSAGE  = "NCT_20"
+TEXT     = "General Parameters"
+
+MESSAGE  = "NCT_21"
+TEXT     = "Control Limits"
+
+MESSAGE  = "NCT_22"
+TEXT     = "Limits Type"
+
+MESSAGE  = "NCT_23"
+TEXT     = "Trend Tables"
+
+MESSAGE  = "NCT_24"
+TEXT     = "Display Options"
+
+MESSAGE  = "LCT_1"
+TEXT     = "Data"
+
+MESSAGE  = "LCT_2"
+TEXT     = "Target"
+
+MESSAGE  = "LCT_3"
+TEXT     = "Specified"
+
+MESSAGE  = "LCT_4"
+TEXT     = "MLP"
+
+MESSAGE  = "LCT_5"
+TEXT     = "Calculated from Data"
+
+MESSAGE  = "LCT_6"
+TEXT     = "Calculated from Targets"
+
+MESSAGE  = "LCT_7"
+TEXT     = "Use Specified Limits"
+
+MESSAGE  = "LCT_8"
+TEXT     = "Use Multi-Level Product Spec"
+
+MESSAGE  = "LCT_9"
+TEXT     = "Disable Limits"
+
+MESSAGE  = "LCT_10"
+TEXT     = "None"
+
+MESSAGE  = "LCT_11"
+TEXT     = "Size"
+
+MESSAGE  = "LCT_12"
+TEXT     = "Date"
+
+MESSAGE  = "LCT_13"
+TEXT     = "Name"
+MESSAGE  = "LCT_14"
+TEXT     = "Upper"
+
+MESSAGE  = "LCT_15"
+TEXT     = "Lower"
+
+MESSAGE  = "LCT_16"
+TEXT     = "Level"
+
+MESSAGE  = "CONF_1"
+TEXT     = "Are you sure you want to delete chart "
+
+MESSAGE  = "CONF_2"
+TEXT     = " deleted "
+
+MESSAGE  = "CONF_3"
+TEXT     = "Criteria returned no results"
+
+MESSAGE  = "CONF_4"
+TEXT     = "Really Exit ?"
+
+MESSAGE  = "CONF_5"
+TEXT     = "Please Enter Chart ID"
+
+MESSAGE  = "CONF_6"
+TEXT     = "Chart ID already Exists"
+
+MESSAGE  = "CONF_7"
+TEXT     = "Please Enter Chart ID "
+
+MESSAGE  = "100"
+TEXT     = "Less than 100 points returned, Re-enter selection criteria ?"
+
+MESSAGE  = "300"
+TEXT     = "More than 300 points returned, Re-enter selection criteria ?"
+
+MESSAGE  = "HEAD_1"
+TEXT     = "SQC Data Entry Screen"
+
+MESSAGE  = "PROMPT_1"
+TEXT     = "Identity"
+
+MESSAGE  = "PROMPT_2"
+TEXT     = "Modified On"
+
+MESSAGE  = "PROMPT_3"
+TEXT     = "Modified By"
+
+MESSAGE  = "PROMPT_4"
+TEXT     = "Chart ID"
+
+MESSAGE  = "TITL_1"
+TEXT     = "Description"
+
+MESSAGE  = "TITL_2"
+TEXT     = "Group Name"
+
+MESSAGE  = "TITL_3"
+TEXT     = "Reselect Data"
+
+MESSAGE  = "HEAD_2"
+TEXT     = " Header Parameters"
+
+MESSAGE  = "INVALID_LIMITS"
+TEXT     = "Please set Upper specification higher than Lower specification"
+
+MESSAGE GROUP "SQCWIN_PRINT_"
+
+
+MESSAGE  = "T_1"
+TEXT     = "Control Chart       : "
+
+
+MESSAGE  = "T_2"
+TEXT     = "Date of Report      : "
+
+MESSAGE  = "TOP_1"
+TEXT     = "             Date       Group Name Value"
+
+MESSAGE  = "TOP_2"
+TEXT     = "  Sample ID rep Comment"
+
+MESSAGE GROUP "SQCWIN_GEN_"
+
+MESSAGE  = "1"
+TEXT     = "Yes"
+
+MESSAGE  = "2"
+TEXT     = "No"
+
+MESSAGE  = "3"
+TEXT     = " Chart"
+
+
+MESSAGE GROUP "SQCWIN_BUT_"
+
+MESSAGE  = "OK"
+TEXT     = "OK"
+
+MESSAGE  = "PREV"
+TEXT     = "< Previous"
+
+MESSAGE  = "NEXT"
+TEXT     = "Next >"
+
+MESSAGE  = "HELP"
+TEXT     = "Help"
+
+MESSAGE  = "CANCEL"
+TEXT     = "Cancel"
+
+MESSAGE  = "PROPAGATE"
+TEXT     = "Group Name"
+
+MESSAGE  = "PROPAGATE_TIP"
+TEXT     = "Propagate Group Name Down"
+
+MESSAGE  = "INSERT"
+TEXT     = "Insert"
+
+MESSAGE  = "REMOVE"
+TEXT     = "Remove"
+
+MESSAGE  = "OPTIONS"
+TEXT     = "Options"
+
+MESSAGE  = "EXPORT"
+TEXT     = "Export"
+
+MESSAGE  = "CLOSE"
+TEXT     = "Close"
+
+MESSAGE GROUP "SQCWIN_FRM_"
+
+MESSAGE  = "1"
+TEXT     = "Places"
+
+MESSAGE GROUP "SQCWIN_CP_"
+
+MESSAGE  = "CC"
+TEXT     = "Please select at least one chart type"
+
+MESSAGE GROUP "SQCWIN_DATA_"
+
+MESSAGE  = "FORM_HEAD"
+TEXT     = "Data Selection"
+
+MESSAGE  = "ANAL_PROMPT"
+TEXT     = "Analysis"
+
+MESSAGE  = "COMP_PROMPT"
+TEXT     = "Component"
+
+MESSAGE  = "RES_TYPE_PROMPT"
+TEXT     = "Result Type"
+
+MESSAGE  = "PRODUCT_PROMPT"
+TEXT     = "Product"
+
+MESSAGE  = "SIMPLE_CRIT"
+TEXT     = "Basic Criteria"
+
+MESSAGE  = "ADVANCED_CRIT"
+TEXT     = "Advanced Criteria"
+
+MESSAGE  = "ADVANCED_CRIT_BUTTON"
+TEXT     = "Modify..."
+
+MESSAGE  = "DIS_1"
+TEXT     = "Active Database"
+
+MESSAGE  = "DIS_2"
+TEXT     = "Committed Database"
+
+MESSAGE  = "DIS_3"
+TEXT     = "Please Choose a Database Type"
+
+MESSAGE  = "DIS_4"
+TEXT     = "Database Options"
+
+MESSAGE  = "DIS_5"
+TEXT     = "Database Type"
+
+MESSAGE  = "DIS_6"
+TEXT     = "Edit Data"
+
+MESSAGE  = "DIS_7"
+TEXT     = "Num"
+
+MESSAGE  = "DIS_8"
+TEXT     = "Date"
+
+MESSAGE  = "DIS_9"
+TEXT     = "Group Name"
+
+MESSAGE  = "DIS_10"
+TEXT     = "Value"
+
+MESSAGE  = "DIS_11"
+TEXT     = "Sample ID"
+
+MESSAGE  = "DIS_12"
+TEXT     = "Rep"
+
+MESSAGE  = "DIS_13"
+TEXT     = "Bad"
+
+MESSAGE  = "DIS_14"
+TEXT     = "Comment"
+
+MESSAGE  = "DIS_15"
+TEXT     = "Decimal Places"
+
+MESSAGE  = "DIS_16"
+TEXT     = " Options "
+
+MESSAGE  = "DIS_17"
+TEXT     = "Print Data"
+
+MESSAGE  = "DIS_18"
+TEXT     = "Export Data"
+
+MESSAGE  = "DIS_19"
+TEXT     = "SQC Data Export"
+
+MESSAGE  = "DIS_20"
+TEXT     = "Output Application"
+
+MESSAGE  = "DIS_21"
+TEXT     = "Output File Name"
+
+MESSAGE  = "CONF_1"
+TEXT     = "Confirm exit ?"
+
+MESSAGE GROUP "SQCWIN_ERR_"
+
+MESSAGE  = "ADD_1"
+TEXT     = "Error creating SQC Chart"
+
+MESSAGE  = "ADD_2"
+TEXT     = "The Specified Chart Already Exists"
+
+
+MESSAGE GROUP "SQCWIN_GRAPH_"
+
+MESSAGE  = "CUSUM_GR"
+TEXT     = "CuSum Chart"
+
+MESSAGE  = "MEAN_S_GR"
+TEXT     = "Mean Chart"
+
+MESSAGE  = "STD_GR"
+TEXT     = "Standard Deviation Chart"
+
+MESSAGE  = "MEAN_R_GR"
+TEXT     = "Mean Chart"
+
+MESSAGE  = "RANGE_GR"
+TEXT     = "Range Chart"
+
+MESSAGE  = "IND_GR"
+TEXT     = "Individual Chart"
+
+MESSAGE  = "MR_GR"
+TEXT     = "Moving Range Chart"
+
+MESSAGE  = "PROC_CAP_GR"
+TEXT     = "Process Capability Chart"
+
+MESSAGE  = "X_POINT"
+TEXT     = "Points"
+
+MESSAGE  = "X_SUBGROUP"
+TEXT     = "Subgroup"
+
+
+MESSAGE GROUP "CUSUM_PARA_"
+
+MESSAGE  = "TEST_LENGTH"
+TEXT     = "Test Length"
+
+MESSAGE  = "TARGET_VALUE"
+TEXT     = "Target Value"
+
+MESSAGE  = "DEC_POINT"
+TEXT     = "Decision Point"
+
+MESSAGE  = "DEC_INTERVAL"
+TEXT     = "Decision Interval"
+
+MESSAGE  = "DEC_SLOPE"
+TEXT     = "Decision Slope"
+
+MESSAGE  = "ERROR_1"
+TEXT     = "Please enter a value for Target Value"
+
+MESSAGE  = "ERROR_2"
+TEXT     = "Only real numbers or the letter M can be entered in this field."
+
+MESSAGE GROUP "INDMR_PARA_"
+
+MESSAGE  = "TEST_LENGTH"
+TEXT     = "Test Length"
+
+MESSAGE  = "SPEC_TYPE"
+TEXT     = "Spec. Type"
+
+MESSAGE  = "LIMIT_TYPE_A"
+TEXT     = "Individual"
+
+MESSAGE  = "LIMIT_TYPE_B"
+TEXT     = "Moving Range"
+
+MESSAGE  = "TREND_TYPE_A"
+TEXT     = "Individual"
+
+MESSAGE  = "TREND_TYPE_B"
+TEXT     = "Moving Range"
+
+MESSAGE  = "DISP_SPEC"
+TEXT     = "Display Spec"
+
+MESSAGE  = "DISP_CONT"
+TEXT     = "Display Control"
+
+MESSAGE  = "DISP_WARN"
+TEXT     = "Display Warning"
+
+MESSAGE  = "DISP_STDDEV"
+TEXT     = "Display 1 Std. Dev."
+
+MESSAGE GROUP "MEANR_PARA_"
+
+MESSAGE  = "SUBGROUP_CHOSEN_BY"
+TEXT     = "Subgroups Chosen By"
+
+MESSAGE  = "SUBGROUP_SIZE"
+TEXT     = "Subgroup Size"
+
+MESSAGE  = "TEST_LENGTH"
+TEXT     = "Test Length"
+
+MESSAGE  = "SPEC_TYPE"
+TEXT     = "Spec. Type"
+
+MESSAGE  = "LIMIT_TYPE_A"
+TEXT     = "Mean"
+
+MESSAGE  = "LIMIT_TYPE_B"
+TEXT     = "Range"
+
+MESSAGE  = "TREND_TYPE_A"
+TEXT     = "Mean"
+
+MESSAGE  = "TREND_TYPE_B"
+TEXT     = "Range"
+
+MESSAGE  = "DISP_SPEC"
+TEXT     = "Display Spec"
+
+MESSAGE  = "DISP_CONT"
+TEXT     = "Display Control"
+
+MESSAGE  = "DISP_WARN"
+TEXT     = "Display Warning"
+
+MESSAGE  = "DISP_STDDEV"
+TEXT     = "Display 1 Std. Dev."
+
+MESSAGE GROUP "MEANS_PARA_"
+
+MESSAGE  = "SUBGROUP_CHOSEN_BY"
+TEXT     = "Subgroups Chosen By"
+
+MESSAGE  = "SUBGROUP_SIZE"
+TEXT     = "Subgroup Size Wanted"
+
+MESSAGE  = "TEST_LENGTH"
+TEXT     = "Test Length"
+
+MESSAGE  = "SPEC_TYPE"
+TEXT     = "Spec. Type"
+
+MESSAGE  = "LIMIT_TYPE_A"
+TEXT     = "Mean"
+
+MESSAGE  = "LIMIT_TYPE_B"
+TEXT     = "Std Dev"
+
+MESSAGE  = "TREND_TYPE_A"
+TEXT     = "Mean"
+
+MESSAGE  = "TREND_TYPE_B"
+TEXT     = "Std Dev"
+
+MESSAGE  = "DISP_SPEC"
+TEXT     = "Display Spec"
+
+MESSAGE  = "DISP_CONT"
+TEXT     = "Display Control"
+
+MESSAGE  = "DISP_WARN"
+TEXT     = "Display Warning"
+
+MESSAGE  = "DISP_STDDEV"
+TEXT     = "Display 1 Std. Dev."
+
+MESSAGE GROUP "PROCC_PARA_"
+
+MESSAGE  = "TEST_LENGTH"
+TEXT     = "Test Length"
+
+MESSAGE  = "NO_CELLS"
+TEXT     = "PC Number of Cells"
+
+MESSAGE  = "SPEC_TYPE"
+TEXT     = "Specification Type"
+
+MESSAGE  = "LOWER_SPEC"
+TEXT     = "Lower Specification"
+
+MESSAGE  = "UPPER_SPEC"
+TEXT     = "Upper Specification"
+
+MESSAGE  = "USER_LIMITS"
+TEXT     = "User Limits"
+
+MESSAGE  = "MLP_LIMITS"
+TEXT     = "MLP Limits"
+
+MESSAGE  = "LEVEL"
+TEXT     = "Level"
+
+MESSAGE GROUP "SPEC_OPTIONS_"
+
+MESSAGE  = "CALC_DATA"
+TEXT     = "Calculated From Data"
+
+MESSAGE  = "CALC_TARGET"
+TEXT     = "Calculated From Target"
+
+MESSAGE  = "MAN_LIMITS"
+TEXT     = "Use Specified Limits"
+
+MESSAGE  = "MLP_LIMITS"
+TEXT     = "Use MLP Limits"
+
+MESSAGE GROUP "CONTROL_OPTIONS_"
+
+MESSAGE  = "SPEC_LIM"
+TEXT     = "Use Specified Limits"
+
+MESSAGE  = "DISA_LIM"
+TEXT     = "Disable Limits"
+
+MESSAGE GROUP "PROCC_ERR_"
+
+MESSAGE  = "INVALID_SPEC"
+TEXT     = "Process Capability : Invalid specifications"
+
+MESSAGE GROUP "SEL_CRIT_"
+
+MESSAGE  = "INVALID_ANALYSIS"
+TEXT     = "Please Enter a Valid Analysis Selection"
+
+MESSAGE  = "INVALID_COMPONENT"
+TEXT     = "Please Enter a Valid Component Selection"
+
+MESSAGE  = "INVALID_RESULT_TYPE"
+TEXT     = "Result Type MUST be Numeric or Calculated"
+
+MESSAGE GROUP "TARGET_VALUE_"
+
+MESSAGE  = "TARGET_HEADER"
+TEXT     = "Target Values"
+
+MESSAGE  = "MEANSTD_MEAN"
+TEXT     = "Target Mean"
+
+MESSAGE  = "MEANSTD_STD"
+TEXT     = "Target Std Dev"
+
+MESSAGE  = "MEANRAN_MEAN"
+TEXT     = "Target Mean"
+
+MESSAGE  = "MEANRAN_RANGE"
+TEXT     = "Target Range"
+
+MESSAGE  = "MR_IND"
+TEXT     = "Target Individual"
+
+MESSAGE  = "MR_RANGE"
+TEXT     = "Target Moving Range"
+
+MESSAGE GROUP "RECLAC_SEG_"
+
+MESSAGE  = "ERROR1"
+TEXT     = "No plotable points in this segment"
+
+MESSAGE  = "ERROR2"
+TEXT     = "No plotable points in this segment for the first graph"
+
+MESSAGE  = "ERROR3"
+TEXT     = "No plotable points in this segment for the second graph"
+
+MESSAGE  = "ERROR4"
+TEXT     = "The first subgroup should be less than the second subgroup"       
+
+MESSAGE GROUP "DRAW_SHEWHART_GRAPH_"
+
+MESSAGE  = "US"
+TEXT     = " US = "
+
+MESSAGE  = "LS"
+TEXT     = " LS = "
+
+MESSAGE  = "UCL"
+TEXT     = " UCL = "
+
+MESSAGE  = "LCL"
+TEXT     = " LCL = "
+
+MESSAGE  = "UWL"
+TEXT     = " UWL = "
+
+MESSAGE  = "LWL"
+TEXT     = " LWL = "
+
+MESSAGE  = "USD"
+TEXT     = " USD = "
+
+MESSAGE  = "LSD"
+TEXT     = " LSD = "
+
+MESSAGE GROUP "CHART_OPTIONS_"
+
+MESSAGE  = "SAVE"
+TEXT     = "SAVE"
+
+MESSAGE  = "CHANGE_CAP"
+TEXT     = "Add Charts"
+
+MESSAGE  = "CHANGE_TIP"
+TEXT     = "Add/Remove Charts."
+
+MESSAGE  = "PARA_TIP"
+TEXT     = "Change Chart Parameters"
+
+MESSAGE  = "PARA_CAP"
+TEXT     = "Chart Params"
+
+MESSAGE  = "EDIT_TIP"
+TEXT     = "Edit Source Data"
+
+MESSAGE  = "EDIT_CAP"
+TEXT     = "Edit Data"
+
+MESSAGE  = "CRITERIA_TIP"
+TEXT     = "Modify Selection Criteria"
+
+MESSAGE  = "CRITERIA_CAP"
+TEXT     = "Criteria"
+
+MESSAGE  = "SHEW_OPS"
+TEXT     = "Shewhart Operations"
+
+MESSAGE  = "CHART_OPS_CAP"
+TEXT     = "Chart Ops."
+
+MESSAGE  = "CHART_OPS_TIP"
+TEXT     = "Chart Operations"
+
+MESSAGE  = "PRINT_CAP"
+TEXT     = "Print"
+
+MESSAGE  = "PRINT_TIP"
+TEXT     = "Print Chart and/or Report"
+
+MESSAGE  = "EXIT"
+TEXT     = "EXIT"
+
+MESSAGE = "ACTIVE_TIP"
+TEXT    = "Change Active Chart"
+
+MESSAGE = "ACTIVE_CAP"
+TEXT    = "Charts"
+
+MESSAGE GROUP "VIEW_VALID_"
+
+MESSAGE  = "ERROR1"
+TEXT     = "Insufficient data entered for this Chart. Use the Modify option to complete data entry for this Chart."
+
+MESSAGE GROUP "CHART_REPORT_INDMR_"
+
+MESSAGE  = "HEADER_1"
+TEXT     = "Spec Lims"
+
+MESSAGE  = "HEADER_2"
+TEXT     = "Limits Type Ind"
+
+MESSAGE  = "HEADER_3"
+TEXT     = "Trend Table Ind"
+
+MESSAGE  = "HEADER_4"
+TEXT     = "Limits Type MR"
+
+MESSAGE  = "HEADER_5"
+TEXT     = "Trend Table MR"
+           
+MESSAGE  = "HEADER_6"
+TEXT     = "Group Selected By"
+
+MESSAGE GROUP "CHART_REPORT_MEANR_"
+
+MESSAGE  = "HEADER_1"
+TEXT     = "Spec Lims"
+
+MESSAGE  = "HEADER_2"
+TEXT     = "Limits Type Mean"
+
+MESSAGE  = "HEADER_3"
+TEXT     = "Trend Table Mean"
+
+MESSAGE  = "HEADER_4"
+TEXT     = "Limits Type Range"
+
+MESSAGE  = "HEADER_5"
+TEXT     = "Trend Table Range"
+           
+MESSAGE  = "HEADER_6"
+TEXT     = "Group Selected By"
+
+MESSAGE  = "HEADER_7"
+TEXT     = "Subgroup Size"
+
+MESSAGE GROUP "RECALC_SEGMENT_"
+
+MESSAGE  = "ERROR1"
+TEXT     = "No plotable points in segment for both graphs."
+
+MESSAGE  = "ERROR2"
+TEXT     = "No plotable points in the segement for the first graph."
+
+MESSAGE  = "ERROR3"
+TEXT     = "No plotable points in the segement for the second graph."
+
+MESSAGE  = "ERROR4"
+TEXT     = "The first subgroup should be less than the second subgroup."
+
+MESSAGE GROUP "LOCKED_RECORD_"
+
+MESSAGE  = "ERROR1"
+TEXT     = "This record is locked please choose another"
+
+MESSAGE GROUP "CHART_OPS_MENU_"
+
+MESSAGE  = "Y_AXIS"
+TEXT     = "Set Y-Axis Pos."
+
+MESSAGE  = "SOURCE_COMMENTS"
+TEXT     = "View Source Data Comments"
+
+MESSAGE  = "SUBGROUP_COMMENTS"
+TEXT     = "View Subgroup Comments"
+
+MESSAGE  = "SUBGROUP_OPS"
+TEXT     = "Subgroup Operations"
+
+MESSAGE  = "RECALC_SEG"
+TEXT     = "Recalculate Over A Segment"
+
+MESSAGE GROUP "GRAPH_RMB_MENU_"
+
+MESSAGE  = "SAMP_PROPERTY"
+TEXT     = "View Sample Properties..."
+
+MESSAGE  = "SAMP_EXPLORE"
+TEXT     = "Explore Samples..."
+
+MESSAGE  = "SUBGROUP_COMMENT"
+TEXT     = "View Subgroup Comment"
+
+MESSAGE  = "POINT_COMMENT"
+TEXT     = "View Point Comment"
+
+MESSAGE = "SOURCE_COMMENT"
+TEXT    = "View Source Comment"
+
+MESSAGE = "SOURCE_COMMENT_NUM"
+TEXT    = "Comment For Data Point []"
+
+MESSAGE = "SOURCE_COMMENTS"
+TEXT    = "View Source Comments"
+
+MESSAGE = "BAD_SUBGROUP"
+TEXT    = "Mark subgroup as bad."
+
+MESSAGE = "GOOD_SUBGROUP"
+TEXT    = "Mark subgroup as good."
+
+MESSAGE = "BAD_POINT"
+TEXT    = "Mark point as bad."
+
+MESSAGE = "GOOD_POINT"
+TEXT    = "Mark point as good."
+
+MESSAGE = "SUBGROUP_COMMENT_ADD"
+TEXT    = "Add comment for subgroup"
+
+MESSAGE = "SUBGROUP_COMMENT_MOD"
+TEXT    = "Modify comment for subgroup"
+
+MESSAGE = "POINT_COMMENT_MOD"
+TEXT    = "Modify comment for point"
+
+MESSAGE = "POINT_COMMENT_ADD"
+TEXT    = "Add comment for point"
+
+MESSAGE = "RECALC_SEG"
+TEXT    = "Recalculate over range [] - []"
+
+MESSAGE = "SET_START_RECALC"
+TEXT    = "Set start of recalc. range"
+
+MESSAGE = "SUBGROUP_COMMENT_ADD_NUM"
+TEXT    = "Add Comment For Subgroup []"
+
+MESSAGE = "SUBGROUP_COMMENT_MOD_NUM"
+TEXT    = "Modify Comment For Subgroup []"
+
+MESSAGE = "POINT_COMMENT_MOD_NUM"
+TEXT    = "Modify Comment For Point []"
+
+MESSAGE = "POINT_COMMENT_ADD_NUM"
+TEXT    = "Add Comment For Point []"
+
+MESSAGE = "COMMENT_WINDOW_PROMPT_TEXT"
+TEXT    = "Comment"
+
+MESSAGE GROUP "SQCWIN_DRAW_"
+
+MESSAGE  = "CHART_BUTTON"
+TEXT     = "Chart Only"
+
+MESSAGE  = "INSERT_BUTTON"
+TEXT     = "Chart Insert"
+
+MESSAGE  = "ABOVE_BUTTON"
+TEXT     = "Above"
+
+MESSAGE  = "BELOW_BUTTON"
+TEXT     = "Below"
+
+MESSAGE  = "SEP_BUTTON"
+TEXT     = "Separate"
+
+MESSAGE  = "REPORT_BUTTON"
+TEXT     = "Report Only"
+
+MESSAGE  = "PRINT_HEADER"
+TEXT     = "Print SQC Chart"
+
+MESSAGE  = "PRINT_BUTTON"
+TEXT     = "Print"
+
+MESSAGE  = "PREVIEW_BUTTON"
+TEXT     = "Preview"
+
+MESSAGE  = "LAYOUT"
+TEXT     = "Print Layout"
+
+MESSAGE  = "PRINTER"
+TEXT     = "Printer"
+
+MESSAGE  = "NO_PRINTER"
+TEXT     = "Printer not selected."
+
+MESSAGE GROUP "SQCWIN_CHART_TYPE_"
+
+MESSAGE  = "HEADER"
+TEXT     = "Chart Types"
+
+MESSAGE  = "FRAME_HEADER"
+TEXT     = "Select Chart Types To Be Included"
+
+MESSAGE GROUP "SQCWIN_SHEWHART_LIMITS_"
+
+MESSAGE  = "UPP_CONT"
+TEXT     = "Upper Control Limit"
+
+MESSAGE  = "UPP_WARN"
+TEXT     = "Upper Warning Limit"
+
+MESSAGE  = "UPP_STD"
+TEXT     = "Upper Std. Limit"
+
+MESSAGE  = "TARGET"
+TEXT     = "Target Value"
+
+MESSAGE  = "LOW_STD"
+TEXT     = "Lower Std. Limit"
+
+MESSAGE  = "LOW_WARN"
+TEXT     = "Lower Warning Limit"
+
+MESSAGE  = "LOW_CONT"
+TEXT     = "Lower Control Limit"
+
+MESSAGE  = "MLP_PROD"
+TEXT     = "Product"
+
+MESSAGE  = "MLP_LEVEL"
+TEXT     = "MLP Levels"

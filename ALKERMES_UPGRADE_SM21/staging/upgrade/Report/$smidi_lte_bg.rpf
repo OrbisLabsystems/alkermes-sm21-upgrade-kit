@@ -1,0 +1,817 @@
+{*******************************************************************************
+*
+* Module Name   : $SMIDI_LTE_BG
+*
+* Purpose       : LTE Library for the Background
+*
+* Document Ref. :
+*
+* (c) Copyright 1984-cccc Thermo Electron Corporation. All rights reserved.
+********************************************************************************} 
+ENABLE WINDOWS
+SET NAME "DISPLAY/"
+
+SET COMPILE_OPTION DECLARE
+SET COMPILE_OPTION EXP_MESS
+
+JOIN STANDARD_LIBRARY 	STD_ARRAY
+JOIN STANDARD_LIBRARY 	STD_UTILS
+JOIN STANDARD_LIBRARY 	STD_GLOBAL         		 { global_can_write (No Repeat		}
+JOIN STANDARD_LIBRARY 	STD_USER_LOGIN     	 { user_login_change_any_password  }
+JOIN STANDARD_LIBRARY 	STD_VGL				{ vgl_find_routines                  		}
+JOIN LIBRARY 				$LABTABLIB                   
+JOIN LIBRARY 				$LIB_UTILS           	 	{ flash_message                     		}
+JOIN LIBRARY 				$SMIDI_LIB_SAP               { Spreadsheet Options 			}
+JOIN LIBRARY				$QUERY
+JOIN STANDARD_LIBRARY STD_MESSAGE
+
+
+
+JOIN STANDARD_LIBRARY STD_PROMPT
+
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_BROWSE
+JOIN STANDARD_LIBRARY STD_CLIENT
+
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $LIB_LIST_CHOOSER
+
+
+
+{*******************************************************************************
+*                              VARIABLES / CONSTANTS
+*******************************************************************************}
+CONSTANT TABLE_ID             = "SMIDI_BACKGROUND"
+CONSTANT MODIFY_PW_SECURITY   = 10
+GLOBAL CONSTANT PROMPT_FILE_CLASS = "STD_PROMPT_FILE"
+
+ {Variables used in custom routines for update after form is complete  }
+DECLARE 	background_user_id,
+			new_password,	
+			save_labtable_mode
+
+
+{  Variables used within the report setup for pass to labtable library }
+ DECLARE 	 name_of_table,
+			 displayed_name_of_table,	
+			 prompt_details,
+			 labtable_messages,
+			 default_value,
+			 input_mess,
+			 header_mess,
+			 footer_mess,
+			 display_footer_mess,
+			 directory,
+			 extn,
+			 help_context,
+			 fields_to_output,
+			 operation,
+			 special_actions_report,
+			 removeflag_field
+
+{ Variables used for Database actions }
+DECLARE 	field_array,
+			a_field,
+			message_prompt
+
+
+
+{*******************************************************************************
+*                             R O U T I N E S
+*******************************************************************************}
+{******************************************************************************}
+ROUTINE table_setup (operation)
+
+{Set up for the LTE.
+*
+* Parameters   : None
+*              
+* Return Value : None
+*
+*******************************************************************************}
+	DECLARE counter, lte_count, is_key0
+	DECLARE modified_on_field, modified_by_field, removeflag_field
+	
+	ARRAY prompt_details				ARRAY_SIZE ( 0 , 6 )
+	ARRAY fields_to_output 			 ARRAY_SIZE ( 0 )
+	ARRAY labtable_messages 			ARRAY_SIZE ( 0 )
+	ARRAY special_actions_report 		ARRAY_SIZE ( 0 , 4 )
+	
+	counter = 1
+	lte_count = 0
+	operation      = STRIP ( TOUPPER ( operation ) )
+	
+	{ Specify the name of the table }
+	name_of_table           =  "SMIDI_BACKGROUND"
+	
+	{ Get the values of the fields that will not be displayed }
+	GET_TABLE_DETAILS 'name_of_table', "MODIFIED_ON_FIELD", modified_on_field	
+	GET_TABLE_DETAILS 'name_of_table', "MODIFIED_BY_FIELD", modified_by_field	
+	GET_TABLE_DETAILS 'name_of_table', "REMOVE_FIELD"     , removeflag_field	
+
+	{ Text to be displayed at the top of screen }
+	header_mess =GET_USER_MESSAGE ( "SMIDI_BG_LTE", 3 )
+
+	{ Text to be displayed at the bottom of the screen }
+	footer_mess = GET_USER_MESSAGE ( "SMIDI_BG_LTE", 4 )
+
+	{ Text to be displayed at the bottom of the screen for Display option }
+	display_footer_mess = GET_USER_MESSAGE ( "SMIDI_BG_LTE", 5 )
+	
+	{ Retrieve the fields from the table }
+	GET_FIELD_NAMES ( name_of_table, field_array )
+	
+	{ Add the fields on the Display }
+	WHILE ( counter <= SIZE_OF_ARRAY ( field_array ) ) DO
+	
+		a_field  = field_array[counter,1]
+		GET_FIELD_DETAILS 'name_of_table'.'a_field', "PROMPT_DESCRIPTION", message_prompt
+		GET_TABLE_DETAILS 'name_of_table', "REMOVE_FIELD"     , removeflag_field
+		GET_FIELD_DETAILS 'name_of_table'.'a_field', "KEY0_FIELD", is_key0
+		
+		{ Special Fields with additional data required }
+		IF NOT (is_key0) AND NOT (a_field = removeflag_field)THEN
+		
+			IF ( a_field = modified_on_field )
+			OR ( a_field = modified_by_field )
+			OR ( a_field = removeflag_field  )THEN
+			ELSEIF ( a_field = "DEBUG_ID" ) | ( a_field = "VGL_ROUTINE" ) THEN	
+	
+				lte_count = lte_count + 1
+				fields_to_output [ lte_count ] = lte_count
+				prompt_details [  lte_count , MESSAGE_POSITION    ] = message_prompt
+				prompt_details [  lte_count , FIELD_NAME_POSITION ] = field_array[counter,1]
+				prompt_details [  lte_count , TYPE_POSITION       ] = "ROUTINE"
+				prompt_details [  lte_count , LIBRARY_POSITION    ] = GLOBAL ( "CURRENT_REPORT" )
+				prompt_details [  lte_count , ROUTINE_POSITION    ] = "prompt_":a_field
+		
+			ELSE
+		
+				{ Set other fields }
+				lte_count = lte_count + 1
+				fields_to_output [ lte_count ] = lte_count
+				prompt_details [  lte_count , MESSAGE_POSITION    ] = message_prompt
+				prompt_details [  lte_count , FIELD_NAME_POSITION ] = field_array[counter,1]
+		
+			ENDIF
+		
+		ENDIF
+		
+		counter = counter + 1
+		
+	ENDWHILE
+	
+	{ Specify name of table to be displayed on the screen }
+	displayed_name_of_table    = GET_USER_MESSAGE ( "SMIDI_BG_LTE", 1 )
+
+	{ Specify the name of the directory for text files }	
+	directory = EMPTY
+	extn = EMPTY
+
+	{  Specify text to be displayed when prompting for an identifier}
+	input_mess = GET_USER_MESSAGE ( "SMIDI_BG_LTE", 2 )
+
+	{ Default unique key for new additions to the table }
+	default_value = EMPTY
+	
+	{ Special action on pressing the <select > key }
+	IF ( INDEX ( operation, "DISPLAY" ) > 0 ) 
+	OR ( INDEX ( operation, "MODIFY"  ) > 0 )
+	OR ( INDEX ( operation, "COPY"  ) > 0 )
+	OR ( INDEX ( operation, "ADD"     ) > 0 ) THEN
+	
+		
+		{ Include the password options if the mode is modify or add }
+		IF ( INDEX ( operation, "MODIFY" ) > 0 )  | ( INDEX ( operation, "ADD" ) > 0 ) THEN
+
+			IF ( GLOBAL ( "CURRAUTH" ) >= MODIFY_PW_SECURITY  ) THEN
+
+				{ Special action on pressing the <select > key (Password Change) }
+				special_actions_report [ 1 , CHARACTER_POSITION ] = "*"
+				special_actions_report [ 1 , TITLE_POSITION     ] = "Background Password"
+				
+				special_actions_report [ 2 , CHARACTER_POSITION ] = get_user_message("SMIDI_BG_LTE_ACTIONS", 1 )
+				special_actions_report [ 2 , TITLE_POSITION     ] = get_user_message("SMIDI_BG_LTE_ACTIONS", 2 )
+				special_actions_report [ 2 , LIBRARY_POSITION   ] = GLOBAL ( "CURRENT_REPORT" )
+				special_actions_report [ 2 , ROUTINE_POSITION   ] = "prompt_user_password"
+				
+				
+				{ Special action pressing the <select> key (Remove the Service) }
+				special_actions_report [ 1 , CHARACTER_POSITION ] = "*"
+				special_actions_report [ 1 , TITLE_POSITION     ] = "Remove Service"
+	
+				special_actions_report [ 3 , CHARACTER_POSITION ] = get_user_message("SMIDI_BG_LTE_REMOVE", 1 )
+				special_actions_report [ 3 , TITLE_POSITION     ] = get_user_message("SMIDI_BG_LTE_REMOVE", 2 )
+				special_actions_report [ 3 , LIBRARY_POSITION   ] = GLOBAL ( "CURRENT_REPORT" )
+				special_actions_report [ 3 , ROUTINE_POSITION   ] = "prompt_remove_service"
+				
+		
+			ELSE
+				new_password = ""
+			ENDIF   { example of an action based on authority, only users > 10 can modify pw's }
+			
+		ELSE
+
+			new_password = ""
+		
+		ENDIF  { only on modify/add }
+	
+
+		{ Specify five standard messages. }
+       		labtable_messages [ IDENTITY1_MESSAGE ] = "Service"              			 { Process Identity          		}
+       		labtable_messages [ MOD_ON_MESSAGE    ] = GET MESSAGE ( 2546 , 1 )	 { "Modified On"                  		}
+       		labtable_messages [ MOD_BY_MESSAGE    ] = GET MESSAGE ( 2547 , 1 ) 	 { "Modified By"                  		}
+       		labtable_messages [ READ_MESSAGE      ] = GET MESSAGE ( 2566 , 1 ) 		 { "Labtable Read Transaction"    }
+		labtable_messages [ WRITE_MESSAGE     ] = GET MESSAGE ( 2567 , 1 )		 { "Labtable Write Transaction"  }
+			
+	ENDIF		
+			
+{	help_context = "$LTE_TEMPL_EDIT"
+}
+
+
+ENDROUTINE { table_setup }
+
+{******************************************************************************}
+ROUTINE validation_routine
+
+{Validation Routine.
+*
+* Parameters   : None
+*              
+* Return Value : None
+*
+*******************************************************************************}
+
+	RETURN ( TRUE )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE do_the_work(VALUE operation)
+
+{Calling funciton for the LTE.
+*
+* Parameters   : operation
+*              
+* Return Value : None
+*
+*******************************************************************************}
+	DECLARE continue
+	continue = TRUE
+	
+	{ Refresh the services - this will also register the SMIDIBackground.dll - if not registered }
+	refresh_services()
+	
+	smp_lte_initialise()
+	
+	operation = TOUPPER ( operation )
+	{ Unregister the service if we are removing the record and the service exists }
+	IF ( operation = "REMOVE_IDENT" ) THEN
+			
+		continue = confirm_with_text( get_user_message("SMIDI_BG_LTE_REMOVE", 3 ))
+				
+	ENDIF
+	
+	IF continue THEN
+	
+		table_setup ( operation )
+		smp_lte_perform_option  ( name_of_table              ,
+					  displayed_name_of_table    ,
+					  prompt_details             ,
+					  labtable_messages          ,
+					  default_value              ,
+					  input_mess		     ,
+					  header_mess                ,
+					  footer_mess                ,
+					  display_footer_mess        ,
+					  directory                  ,
+					  extn                       ,
+					  help_context               ,
+					  GLOBAL ("CURRENT_LIBRARY") ,
+					  fields_to_output           ,
+					  special_actions_report     ,
+					  operation                  )
+
+
+		{ Save the new/ammended password if required }
+		IF ( ( operation = "MODIFY_IDENT" ) | ( operation = "ADD_IDENT" ) ) & ( VARIABLE_IS_ASSIGNED(new_password) ) THEN
+			update_password()
+		ENDIF
+
+		SET GLOBAL "LABTABLE_MODE" TO save_labtable_mode
+	
+	ENDIF { if continue }
+	
+ENDROUTINE { do_the_work }
+
+{ Routines called from the Menu item }
+{******************************************************************************}
+	
+ROUTINE open_option ( option )
+	
+	refresh_services()
+	
+	DECLARE theTable
+	theTable = TABLE_ID
+	CALL_ROUTINE "query_table_default_criteria" in LIBRARY "$QUERY" USING theTable
+
+ENDROUTINE
+
+{******************************************************************************}
+ROUTINE add_option ( option )
+
+	do_the_work ( "add_ident" )
+
+ENDROUTINE
+
+{******************************************************************************}
+ROUTINE copy_option ( option )
+
+	do_the_work ( "copy_ident" )
+
+ENDROUTINE
+
+{******************************************************************************}
+ROUTINE modify_option ( option )
+
+	do_the_work ( "modify_ident" )
+
+ENDROUTINE
+
+{******************************************************************************}
+ROUTINE display_option ( option )
+
+	do_the_work ( "display_ident" )
+
+ENDROUTINE
+
+{******************************************************************************}
+ROUTINE remove_option ( option )
+
+	do_the_work ( "remove_ident" )
+
+ENDROUTINE
+
+{******************************************************************************}
+ROUTINE restore_option ( option )
+
+	do_the_work ( "restore_ident" )
+
+ENDROUTINE
+
+{******************************************************************************}
+ROUTINE list_option ( option )
+
+	do_the_work ( "list_idents" )
+
+ENDROUTINE
+
+{******************************************************************************}
+ROUTINE print_option ( option )
+
+	do_the_work ( "print_ident" )
+
+ENDROUTINE
+
+{******************************************************************************}
+ROUTINE smp_lte_initialise
+
+	save_labtable_mode = GLOBAL ( "LABTABLE_MODE" )
+	
+	refresh_services ( )
+	
+
+	IF ( global_can_write ( "LABTABLE_MODE" ) ) THEN
+		SET GLOBAL "LABTABLE_MODE" TO TRUE
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+ROUTINE prompt_debug_id ( VALUE column, VALUE row, VALUE cell_width, window, VALUE is_display )
+{Retrieve Debug IDs to display for the Background User.
+*
+* Parameters   : None
+*              
+* Return Value : None
+*
+*******************************************************************************}
+	DECLARE debug_array, counter, a_record
+
+	IF NOT is_display THEN
+
+		ARRAY debug_array
+
+		counter  = 0
+		a_record = SELECT SMIDI_CONFIG_HEADER.IDENTITY WHERE IDENTITY LIKE "%DEBUG%"
+	
+		WHILE a_record <> EMPTY DO
+
+			counter = counter + 1
+			debug_array[counter,1] = a_record
+			debug_array[counter,2] = a_record
+
+			NEXT SMIDI_CONFIG_HEADER
+
+			a_record = SELECT SMIDI_CONFIG_HEADER.IDENTITY
+
+		ENDWHILE
+
+		PROMPT FOR a_record IN WINDOW window ON LINE row FROM column CHOOSE OUTOF debug_array
+		ASSIGN SMIDI_BACKGROUND.DEBUG_ID = a_record
+
+	ELSE
+
+		a_record = SELECT SMIDI_BACKGROUND.DEBUG_ID
+		DISPLAY a_record IN WINDOW window ON LINE row FROM column
+
+	ENDIF
+
+	RETURN ( a_record )
+
+ENDROUTINE  { prompt_debug_id }
+
+
+{******************************************************************************}
+ROUTINE prompt_vgl_routine( VALUE column, VALUE row, VALUE cell_width, window, VALUE is_display )
+
+{Retrieve the VGL Routines in the specified Library for the Background User
+*
+* Parameters   : None
+*              
+* Return Value : None
+*
+*******************************************************************************}
+
+	DECLARE routine_array, lib_name, a_record, counter, bg_array, bg_counter
+
+	IF is_display THEN
+	
+		a_record = SELECT SMIDI_BACKGROUND.VGL_ROUTINE
+		DISPLAY a_record IN WINDOW window ON LINE row FROM column
+
+	ELSE
+		
+		{ Display drop down list of all Routines within the Library }
+		ARRAY routine_array
+		ARRAY bg_array
+
+		lib_name = SELECT SMIDI_BACKGROUND.VGL_LIBRARY
+
+		IF lib_name <> EMPTY THEN
+			
+			vgl_find_routines ( lib_name, routine_array )
+		
+		ELSE
+		
+			DISPLAY "No Routines found" IN WINDOW window ON LINE row FROM column
+			
+		ENDIF
+		
+
+		bg_counter = 0
+		counter  = 1
+		WHILE ( VARIABLE_IS_ASSIGNED ( routine_array[counter] ) ) & ( routine_array[counter] <> EMPTY ) DO
+	
+			IF ( INDEX ( routine_array[counter], "BG" ) > 0 ) THEN
+				bg_counter = bg_counter + 1
+				bg_array[bg_counter,1] = routine_array[counter]
+				bg_array[bg_counter,2] = routine_array[counter]
+
+			ENDIF
+
+			counter = counter + 1
+
+		ENDWHILE
+
+		{ ------------------------------------------------------------- }
+		{ Only prompt on routines that are for the background           }
+		{ ------------------------------------------------------------- }
+
+		IF SIZE_OF_ARRAY ( bg_array ) = 0 THEN
+
+			FLASH_MESSAGE (get_user_message("SMIDI_BACKGROUND_BG":lib_name,30), TRUE )
+			a_record = ""
+
+		ELSE
+
+			PROMPT FOR a_record IN WINDOW window ON LINE row FROM column CHOOSE OUTOF bg_array
+			ASSIGN SMIDI_BACKGROUND.VGL_ROUTINE = a_record
+
+		ENDIF
+
+	ENDIF  { is_display }
+	
+	RETURN ( a_record )
+
+ENDROUTINE  { prompt_vgl_routine }
+
+
+{******************************************************************************}
+ROUTINE prompt_user_password( VALUE identity, VALUE copied_identity, VALUE operation )
+
+{Set the password for the Background user.
+*
+* Parameters   : None
+*              
+* Return Value : None
+*
+*******************************************************************************}
+		
+	DECLARE pwd_prompts, pwd_form, retval, new_pass2
+		ARRAY pwd_prompts
+	
+		retval = TRUE
+	
+		IF ( operation = "MODIFY" ) THEN
+			
+			background_user_id = SELECT SMIDI_BACKGROUND.USER_ID
+			
+			IF NOT BLANK (background_user_id) THEN
+	
+				{ Create the Password form to display }
+				CREATE OBJECT "STD_FORM", pwd_form
+					pwd_form.height           = 2
+					pwd_form.width            = 60
+					pwd_form.row              = 12
+					pwd_form.column           = 12
+					pwd_form.header           = get_user_message("SMIDI_BACKGROUND_PW_HEADER",1)
+					pwd_form.footer           = get_user_message("SMIDI_BACKGROUND_PW_FOOTER",1)
+					pwd_form.border           = TRUE
+					pwd_form.return_behaviour = FORM_RETURN_STAY
+					pwd_form.add_frame( "", 1, 1, 2, 60 )
+		
+				PROMPT OBJECT pwd_prompts[1] ON LINE 1 FROM 40 FORMAT PASSWORD.CRYPTPASS WITH ( zap_on_first=TRUE, silent_mode=TRUE )
+				PROMPT OBJECT pwd_prompts[2] ON LINE 2 FROM 40 FORMAT PASSWORD.CRYPTPASS WITH ( zap_on_first=TRUE, silent_mode=TRUE )
+	
+				pwd_form.add_display( pad( get_user_message("SMIDI_BACKGROUND_PW",1), " ", 30 ),3, 1, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+				pwd_form.add_prompt( pwd_prompts[ 1 ] )
+				pwd_form.add_display( pad( get_user_message("SMIDI_BACKGROUND_PW",2), " ", 30 ),3, 2, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+				pwd_form.add_prompt( pwd_prompts[ 2 ] )
+		
+				
+				{ Input user values for the password }
+				pwd_form.start_prompt()
+				pwd_form.wait_prompt()
+				pwd_form.end_prompt()
+	
+				{ -------------------------------------------------------- }
+				{ If the user enters all correctly, then update the LTE    }
+				{ -------------------------------------------------------- }
+	
+				new_password = pwd_form.prompt_objects[1].value
+				new_pass2 = pwd_form.prompt_objects[2].value
+	
+				{ Retrieve the entered user data }
+				IF ( pwd_form.getlastkey() <> "DO" ) THEN
+	
+					FLASH_MESSAGE ( get_user_message("SMIDI_BACKGROUND_PW",3), TRUE )
+					new_password= EMPTY
+	
+				ELSEIF ( new_password <> new_pass2 ) THEN
+	
+					FLASH_MESSAGE ( get_user_message("SMIDI_BACKGROUND_PW",4), TRUE )
+					new_password = EMPTY
+	
+				ELSE
+					
+					new_password = new_pass2
+					retval = TRUE
+	
+				ENDIF
+	
+				SET GLOBAL "LASTKEY" TO "DOWN"
+	
+			ELSE
+	
+				FLASH_MESSAGE (get_user_message("SMIDI_BACKGROUND_PW",4), TRUE )
+	
+			ENDIF  { first time in do not have any data }
+	
+		ENDIF  { operation must be modify }
+		
+		
+		RETURN ( retval )
+
+ENDROUTINE  { prompt_user_password }
+
+
+
+{******************************************************************************}
+ROUTINE update_password
+
+{Update the password entry in the dB for the specified user 
+*
+* Parameters   : None
+*              
+* Return Value : None
+*
+*******************************************************************************}
+
+		DECLARE valid_user, status
+	
+		status = ""
+		
+		IF NOT BLANK (background_user_id) THEN
+		
+			valid_user = SELECT PASSWORD.CRYPTPASS WHERE IDENTITY = background_user_id
+			
+			IF (valid_user = EMPTY) THEN	{ New user }
+			
+				status = user_login_add_user ( background_user_id, new_password )
+				
+				IF status = EMPTY THEN
+					
+					new_password = SELECT PASSWORD.CRYPTPASS WHERE IDENTITY = background_user_id
+					
+					IF (new_password = EMPTY) THEN
+					
+						FLASH_MESSAGE ( get_user_message("SMIDI_BACKGROUND_PW",6), TRUE )
+						
+					ENDIF
+				ELSE
+				
+					FLASH_MESSAGE ( get_user_message("SMIDI_BACKGROUND_PW",7), TRUE )
+				
+				ENDIF
+				
+			ELSEIF user_login_change_any_password (background_user_id, new_password, status ) THEN
+			
+				new_password = SELECT PASSWORD.CRYPTPASS WHERE IDENTITY = background_user_id
+				
+				IF (new_password = EMPTY) THEN
+					FLASH_MESSAGE ( get_user_message("SMIDI_BACKGROUND_PW",8), TRUE )
+				ENDIF
+			ELSE
+				
+				FLASH_MESSAGE ( get_user_message("SMIDI_BACKGROUND_PW",8), TRUE )
+				
+			ENDIF	{  valid_user = EMPTY...}
+		
+		ELSE
+			
+			FLASH_MESSAGE ( get_user_message("SMIDI_BACKGROUND_PW",5), TRUE )
+			
+		ENDIF { IF NOT BLANK (background_user_id... }
+
+	
+
+ENDROUTINE { update_password }
+
+
+{******************************************************************************}
+ROUTINE spreadsheet_option ( option )
+
+{Dispaly the Background details in a spreadsheet format (calls $SMIDI_LIB_SAP)
+*
+* Parameters   : None
+*              
+* Return Value : None
+*
+*******************************************************************************}
+
+	LTE_spreadsheet ( TABLE_ID, "PROCESS_ID" )
+
+ENDROUTINE
+
+{******************************************************************************}
+ROUTINE prompt_remove_service( VALUE identity, VALUE copied_identity, VALUE operation )
+
+{Remove the actual Service from the Services file (if it exisits)
+*
+* Parameters   :
+*              
+* Return Value : None
+*
+*******************************************************************************}
+
+	DECLARE backgroundObj, running
+	DECLARE theMode, exePath, instance, backgroundServ
+	
+	IF ( operation = "MODIFY" ) THEN
+	
+		START WRITE TRANSACTION "Remove IDI Background Service"
+		
+		{ Check to determine if teh service is running }
+		running = SELECT SMIDI_BACKGROUND.RUNNING
+		
+		IF ( running = "FALSE" ) THEN
+		
+			{ Create the object to call the dll }
+			CREATE OBJECT "STD_OLE_AUTOMATION_SERVER" , backgroundObj
+			 backgroundObj . create ("Thermo.SM.SMIDI.Background.SMIDIBackground")
+		
+			{ Build up the variables that will be passed }
+			theMode = "REMOVE"												{ Mode }
+			exePath =  LIB_UTILS_LOGICAL_TO_STRING ( "SMP$PROGRAMS" ):"\" 						{  Path}
+			instance =  STRIP(GLOBAL ( "INSTANCE" )) 								{ Instance }
+			backgroundServ = STRIP(SELECT SMIDI_BACKGROUND.SERVICE)		{ Name of the Service }
+					
+			{ Add the variables to the Background }
+			backgroundObj.AddParameter(theMode, 0)
+			backgroundObj.AddParameter(STRIP(exePath), 1)
+			backgroundObj.AddParameter(instance, 2)                                                                       
+			backgroundObj.AddParameter(backgroundServ, 3)                                                                 
+			
+			{ Unregister the Service(s) }
+			IF (backgroundObj . InvokeBackgroundService() = "TRUE") THEN
+					
+					{ Re-set the create flag so the service will be re-created }
+					{ when this service is started }
+					ASSIGN SMIDI_BACKGROUND.CREATE_SERVICE = "TRUE"
+					UPDATE SMIDI_BACKGROUND	
+					
+					FLASH_MESSAGE (get_user_message("SMIDI_BG_LTE_REMOVE",5), TRUE )
+			ENDIF
+		ELSE
+	
+			FLASH_MESSAGE (get_user_message("SMIDI_BG_LTE_REMOVE",4), TRUE )
+		
+		ENDIF
+	
+	ENDIF
+	
+ENDROUTINE
+
+{******************************************************************************}
+ROUTINE refresh_services
+
+{ Refresh the running status of the Services 
+* 
+*
+* Parameters   :
+*              
+* Return Value : None
+*Description: If the services have been stopped by the Windows Services Console, then the 
+* SampleMananger IDI Background table requires updating for the Running status
+*******************************************************************************}
+	
+	DECLARE backgroundRec,backgroundObj, svcRunning
+	DECLARE instance, service, running, svcName
+
+	svcRunning = false
+	
+	START WRITE TRANSACTION "Refresh Background Service"
+	
+	CREATE OBJECT "STD_OLE_AUTOMATION_SERVER" , backgroundObj
+	backgroundObj . create ("Thermo.SM.SMIDI.Background.SMIDIBackground")
+	
+			
+	{ Select the active services }
+	backgroundRec = SELECT SMIDI_BACKGROUND.SERVICE FOR UPDATE WHERE ACTIVE = "TRUE" AND CREATE_SERVICE = "FALSE"
+			
+			WHILE (backgroundRec <> EMPTY) 
+				
+				instance = STRIP(SELECT SMIDI_BACKGROUND.INSTANCE)
+				service = STRIP(SELECT SMIDI_BACKGROUND.SERVICE)
+				running = SELECT SMIDI_BACKGROUND.RUNNING
+				svcName = STRIP( LOGICAL( instance:"_":service) )
+				
+				{ Check the status of this Service}	
+				svcRunning = backgroundObj.CheckService ( svcName )
+				
+				IF svcRunning <> running THEN
+					
+					IF NOT svcRunning THEN
+						svcRunning = "FALSE"
+					ELSE
+						svcRunning = "TRUE"
+					ENDIF
+					
+					ASSIGN SMIDI_BACKGROUND.RUNNING = svcRunning
+					UPDATE SMIDI_BACKGROUND
+					
+				ENDIF
+				
+				NEXT SMIDI_BACKGROUND
+				backgroundRec = SELECT SMIDI_BACKGROUND.SERVICE
+				
+			ENDWHILE
+		
+		COMMIT
+			
+ENDROUTINE
+{  $smidi_lte_bg }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,143 @@
+
+{
+
+    Module Name   : LIB_NEW_TEST
+
+    Purpose       : 
+                 
+
+    Document Ref. : 
+
+    Specification : 
+
+
+MODIFICATION HISTORY
+====================
+
+SM      Ref.    Change  Date        Name                Description
+------- ------- ------- ----------- ------------------- -------------------------------------------------------
+10.1    1               30-OCT-2012 Ken Jacobs          Original
+
+10.1    2               17-APR-2013 Ken Jacobs          Assign current highest approved version
+}
+
+{ ----------------------------------------------------------------------------------------------- }
+
+SET COMPILE_OPTION DECLARE
+
+ENABLE WINDOWS
+
+SET NAME "defer/"
+SET NOTPROTECTED
+
+JOIN STANDARD_LIBRARY std_database
+JOIN STANDARD_LIBRARY std_login
+
+JOIN LIBRARY $lib_test
+JOIN LIBRARY $lib_utils
+JOIN LIBRARY $samp_user
+
+JOIN LIBRARY wsheet_info
+
+{ ----------------------------------------------------------------------------------------------- }
+{ Test Code }
+{ ----------------------------------------------------------------------------------------------- }
+
+DECLARE test
+DECLARE sample                  sample              = "      3042"
+DECLARE analysis                analysis            = "KEN1"
+DECLARE componentList           componentList       = ""
+DECLARE instrument              instrument          = ""
+DECLARE priority                priority            = 1
+
+test = lib_new_test( sample, analysis, componentList, instrument, priority )
+
+
+EXIT
+
+{ ----------------------------------------------------------------------------------------------- }
+{ Main }
+{ ----------------------------------------------------------------------------------------------- }
+
+GLOBAL ROUTINE lib_new_test
+    (
+    VALUE   sample,
+    VALUE   analysis,
+    VALUE   componentList,
+    VALUE   instrument,
+    VALUE   priority
+    )
+
+    {
+    Description :
+    }
+    
+    DECLARE testEditor
+    DECLARE test
+    DECLARE position
+    DECLARE found
+    DECLARE analysisVersion
+    
+    analysisVersion = SELECT analysis_view.analysis_version
+                      WHERE  ( identity = analysis )
+
+    IF ( analysisVersion <> EMPTY )
+    
+
+        
+        IF ( lock_required_record ( "SAMPLE", "ID_NUMERIC", sample, TRUE, found ) )
+
+            test_editor_initialise( sample, FALSE, FALSE, FALSE, GLOBAL( "CURRENT_LIBRARY" ), testEditor )
+
+            position = test_editor_get_size( testEditor ) + 1
+            test_editor_pre_insert( position, testEditor )
+
+            ASSIGN test.analysis         = analysis
+            ASSIGN test.analysis_version = analysisVersion
+            ASSIGN test.component_list   = componentList
+            ASSIGN test.instrument       = instrument
+            ASSIGN test.test_priority    = priority
+
+            test_editor_set_repeat( 1, testEditor )
+            test_editor_set_assign( TRUE, testEditor )
+
+            test_add_analysis( testEditor, FALSE, position, MODE_ASSIGN_TEST )
+
+            test_editor_assign( GLOBAL( "CURRENT_LIBRARY" ), testEditor )
+
+            IF ( test_editor_get_size( testEditor ) >= position )
+
+                test_editor_make_current( position, testEditor )
+                test = SELECT test.test_number
+
+                create_wsheet_record( sample, test, analysis, analysisVersion )
+
+                UPDATE sample
+                COMMIT
+
+            ELSE
+
+                test = ERROR
+                ROLLBACK
+
+            ENDIF
+
+            test_editor_release( testEditor )
+
+        ELSE
+
+            test = ERROR
+
+        ENDIF
+    
+    ELSE
+
+        flash_message( "No valid version of analysis " : analysis, TRUE )
+        test = ERROR
+
+    ENDIF
+
+    RETURN( test )
+    
+ENDROUTINE
+

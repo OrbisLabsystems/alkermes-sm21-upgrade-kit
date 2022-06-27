@@ -1,0 +1,248 @@
+{*******************************************************************************
+*
+* Module Name   : ENTITY_NAMES (copy of $ENTITY_NAMES)
+*
+* Purpose       : Create defaults for blank name fields
+*                 Includes fix to handle versions - LD
+*
+* Document Ref  : N/a
+*
+*******************************************************************************}
+
+SET NOTPROTECTED
+SET NAME "DEFER/"
+SET COMPILE_OPTION DECLARE
+ENABLE WINDOWS
+
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN STANDARD_LIBRARY STD_STRUCTURE
+
+JOIN LIBRARY $lib_utils
+
+entity_names_default_blanks_all_tables ( )
+
+{*****************************************************************************}
+
+GLOBAL
+
+ROUTINE entity_names_default_blanks_all_tables
+
+{
+*
+*	Loop through all tables looking for name fields
+*
+******************************************************************************}
+
+	DECLARE table_name_array ,
+	        table_count
+
+	GET_TABLE_NAMES ( table_name_array )
+
+	table_count = 1
+
+	WHILE table_count <= size_of_array ( table_name_array ) DO
+
+		entity_names_default_blanks ( table_name_array [ table_count, 1 ])
+
+		table_count = table_count + 1
+
+	ENDWHILE
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+GLOBAL
+
+ROUTINE entity_names_default_blanks ( VALUE table_nam )
+
+{
+*
+*	Loop through blank names for passed table
+*
+******************************************************************************}
+
+	DECLARE key0_fields ,
+	        browse_field ,
+	        version_field ,
+	        entity_name ,
+	        key0_count ,
+	        record_id ,
+	        message_box ,
+	        name_value ,
+	        update_array ,
+	        update_string ,
+	        update_count
+
+	put_up_message ( "", "Processing table " : table_nam, message_box )
+
+	GET_TABLE_DETAILS 'table_nam', "KEY0_FIELD"  , key0_fields
+	GET_TABLE_DETAILS 'table_nam', "BROWSE_FIELD", browse_field
+	GET_TABLE_DETAILS 'table_nam', "VERSION_FIELD", version_field
+
+	IF ( key0_fields [1] <> browse_field ) AND
+	   ( browse_field = "NAME" )           THEN
+
+		ARRAY update_array ARRAY_SIZE (0)
+
+		entity_name = SELECT 'table_nam' . 'browse_field'
+		              WHERE 'browse_field' = ""
+
+		WHILE entity_name <> EMPTY DO
+
+			record_id = ""
+			key0_count = 1
+
+			WHILE key0_count <= size_of_array ( key0_fields ) DO
+
+				IF key0_fields [ key0_count] <> version_field THEN
+					record_id = record_id : SELECT 'table_nam' . 'key0_fields [ key0_count]'
+				ENDIF
+
+				key0_count = key0_count + 1
+
+			ENDWHILE
+
+			display_new_message ( "Record Id > " : record_id, 80, message_box )
+
+			IF table_nam = "PERSONNEL" THEN
+				name_value = SELECT 'table_nam' . description
+			ELSE
+				name_value = entity_names_id_to_name ( record_id )
+			ENDIF
+
+			IF ( database_system ( ) = DATABASE_SQLSERVER ) THEN
+
+				update_string = "UPDATE [" : STRIP ( table_nam ) : "] SET [" :
+				                    STRIP ( browse_field ) : "] = '" : STRIP ( name_value ) :
+				                "' WHERE"
+
+			ELSE
+
+				update_string = "UPDATE " : STRIP ( table_nam ) : " SET " :
+				                    STRIP ( browse_field ) : " = '" : STRIP ( name_value ) :
+				                "' WHERE"
+
+			ENDIF
+
+			key0_count = 1
+			WHILE key0_count <= size_of_array ( key0_fields ) DO
+
+				IF key0_count > 1 THEN
+					update_string = update_string : " AND "
+				ENDIF
+
+                  {****LD - Do not include single quotes for the version field ************}
+                        
+                        IF ( INDEX( TOUPPER (key0_fields [ key0_count]), "VERSION") > 0 ) THEN
+
+    				    IF ( database_system ( ) = DATABASE_SQLSERVER ) THEN
+				        update_string = update_string : " [" : 
+									STRIP ( key0_fields [ key0_count] ) :
+									"] = " :
+									STRIP ( SELECT 'table_nam' . 'key0_fields [ key0_count]' ) 
+									
+				    ELSE
+					    update_string = update_string : " " : 
+									STRIP ( key0_fields [ key0_count] ) :
+									" = " :
+									STRIP ( SELECT 'table_nam' . 'key0_fields [ key0_count]' ) 
+									
+				    ENDIF
+
+                        ELSE
+				IF ( database_system ( ) = DATABASE_SQLSERVER ) THEN
+					update_string = update_string : " [" : 
+									STRIP ( key0_fields [ key0_count] ) :
+									"] = '" :
+									STRIP ( SELECT 'table_nam' . 'key0_fields [ key0_count]' ) :
+									"'"
+				ELSE
+					update_string = update_string : " " : 
+									STRIP ( key0_fields [ key0_count] ) :
+									" = '" :
+									STRIP ( SELECT 'table_nam' . 'key0_fields [ key0_count]' ) :
+									"'"
+				ENDIF
+                        ENDIF
+
+				key0_count = key0_count + 1
+
+			ENDWHILE
+
+			update_array [ size_of_array ( update_array ) + 1 ] = update_string
+
+			NEXT 'table_nam'
+			entity_name = SELECT 'table_nam' . 'browse_field'
+
+		ENDWHILE
+
+		IF ( size_of_array ( update_array ) > 0 ) THEN
+
+			START WRITE TRANSACTION "Defaulting entity names"
+
+			update_count = 0
+
+			WHILE update_count < size_of_array ( update_array ) DO
+
+				update_count = update_count + 1
+
+				EXECUTE_SQL ( update_array [ update_count ])
+
+			ENDWHILE
+
+			COMMIT
+
+		ENDIF
+
+	ENDIF
+
+	remove_message ( message_box )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+GLOBAL
+
+ROUTINE entity_names_id_to_name ( VALUE record_id )
+
+{
+*
+*	Morph IDs into NAMEs where the name field is blank
+*
+******************************************************************************}
+
+	DECLARE record_name, 
+	        new_name, 
+        	space, 
+	        part
+
+	record_name = STRIP ( record_id )
+	record_name = SUBSTITUTE ( record_name, "_", " " )
+	record_name = SUBSTITUTE ( record_name, "-", " " )
+
+	new_name = ""
+	space = INDEX ( record_name, " " )
+
+	WHILE space > 0 DO
+
+		part = LEFTSTRING ( record_name, space - 1 )
+		record_name = STRIP ( RIGHTSTRING ( record_name, 
+		                      LENGTH ( record_name ) - space ))
+
+		new_name = new_name : capitalise ( STRIP ( part )) : " "
+		space = INDEX ( record_name, " " )
+
+	ENDWHILE
+
+	new_name = new_name : capitalise ( record_name )
+
+	RETURN ( new_name )
+
+ENDROUTINE
+
+{*****************************************************************************}
+{*****************************************************************************}
+{*****************************************************************************}

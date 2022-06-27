@@ -1,0 +1,798 @@
+{******************************************************************************
+*
+* Module Name   : $SMIDI_LIB_PHRASE
+*
+* Purpose       : Manual download of phrases via SM-IDI and the phrase library
+*
+* Document Ref. :
+*
+* Specification :
+*
+* Portability   : OVMS, Unix, NT 4 and Windows 2000
+*
+* Re-entrant    :
+*
+*
+* Modification History
+* By        Date        Reason _____________________________________________
+*
+*******************************************************************************}
+
+ENABLE WINDOWS
+SET NOTPROTECTED
+SET COMPILE_OPTION DECLARE
+SET COMPILE_OPTION EXP_MESS
+SET NAME "DISPLAY/"
+
+JOIN STANDARD_LIBRARY STD_SMIDI
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_MESSAGE
+JOIN STANDARD_LIBRARY STD_WINDOW
+
+JOIN LIBRARY $BROWSE
+JOIN LIBRARY $LIB_UTILS
+
+JOIN LIBRARY $SMIDI_LIB_SAP
+
+{* GLOBAL CONSTANTS ***********************************************************}
+{* LOCAL CONSTANTS ************************************************************}
+
+CONSTANT LIB_USER_PHRASE   = "smidi_lib_user_phrase"
+CONSTANT SAP_PHRASE_PREFIX = "Z_"
+
+{* VARIABLES ******************************************************************}
+
+declare		logged_in         { Ensures we have a valid client login       }
+declare		catalog_types     { Array to hold browse list of catalog types }
+declare		query_form        { Main query form                            }
+declare		query_prompts     { Prompts on main query form                 }
+declare         base_object       { The base object                            }
+
+download_phrases("")
+
+{******************************************************************************}
+
+ROUTINE download_phrases ( VALUE default_server )
+
+	logged_in = SMIDI_NOSESSION
+	smidi_lib_init ( OPERATOR:PACKED_DECIMAL(1) )
+	smidi_lib_sap_define_base_class ( DEFAULT_QMIDI_OBJECT )
+
+	CREATE OBJECT SMIDI_BASE_CLASS, base_object
+
+	build_main_form(default_server,base_object)
+
+	query_form.start_prompt()
+	query_form.wait_prompt()
+
+	IF (query_form.get_lastkey() <> "EXIT") THEN
+		do_download(base_object)
+	ENDIF
+
+	query_form.end_prompt()
+
+	IF logged_in = SMIDI_NORMAL THEN
+		base_object.logout()
+	ENDIF
+
+	logged_in = SMIDI_NOSESSION
+
+	EXIT
+
+ENDROUTINE { phrase_button }
+
+{******************************************************************************}
+
+ROUTINE build_main_form ( VALUE default_server, base_object )
+
+	declare i, tword, fword
+
+	tword = get_user_message("SMIDI_K_PH_TRUE",1)
+	fword = get_user_message("SMIDI_K_PH_FALSE",1)
+
+	array query_prompts
+
+	CREATE OBJECT "STD_FORM", query_form
+		query_form.height             = 9
+		query_form.width              = 60
+		query_form.row                = 10
+		query_form.column             = 10
+		query_form.header             = get_user_message("SMIDI_K_PH_HEADER",1)
+		query_form.footer             = get_user_message("SMIDI_K_PH_FOOTER",1)
+		query_form.border             = TRUE
+		query_form.confirm_required   = TRUE
+		query_form.return_behaviour   = FORM_RETURN_STAY
+		query_form.validation_routine = "query_form_validate"
+		query_form.userinfo           = base_object
+
+	query_form.add_frame( "", 1, 1, 1, 60 )
+	query_form.add_frame( "", 1, 3, 6, 60 )
+
+	PROMPT OBJECT query_prompts[1] BROWSE ON smidi_system ON LINE 1 FROM 33
+	PROMPT OBJECT query_prompts[2] BROWSE ON BOOLEAN      ON LINE 3 FROM 33 WITH ( true_word=tword, false_word=fword )
+	PROMPT OBJECT query_prompts[3] BROWSE ON BOOLEAN      ON LINE 4 FROM 33 WITH ( true_word=tword, false_word=fword )
+	PROMPT OBJECT query_prompts[4]                        ON LINE 5 FROM 33 WITH ( width = 2, length = 2, browse_routine = "browse_cat_types" )
+	PROMPT OBJECT query_prompts[5]                        ON LINE 6 FROM 33 WITH ( width = 4, length = 4 )
+	PROMPT OBJECT query_prompts[6]                        ON LINE 7 FROM 33 WITH ( width = 8, length = 8 )
+	PROMPT OBJECT query_prompts[7]                        ON LINE 8 FROM 33 WITH ( width = 2, length = 2 )
+
+	query_form.add_display( pad(get_user_message("SMIDI_K_PH_SYSTEM" ,1)," ",28),2,1,PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	query_form.add_display( pad(get_user_message("SMIDI_K_PH_SELSET" ,1)," ",28),2,3,PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	query_form.add_display( pad(get_user_message("SMIDI_K_PH_CGROUP" ,1)," ",28),2,4,PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	query_form.add_display( pad(get_user_message("SMIDI_K_PH_CATTYP" ,1)," ",28),2,5,PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	query_form.add_display( pad(get_user_message("SMIDI_K_PH_PLANT"  ,1)," ",28),2,6,PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	query_form.add_display( pad(get_user_message("SMIDI_K_PH_CATALOG",1)," ",28),2,7,PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	query_form.add_display( pad(get_user_message("SMIDI_K_PH_LANGGE" ,1)," ",28),2,8,PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+
+	i = 1
+	WHILE i < 8 DO
+
+		query_form.add_prompt( query_prompts[ i ] )
+		i = i + 1
+
+	ENDWHILE
+
+ENDROUTINE   { build_main_form }
+
+{******************************************************************************}
+
+ROUTINE browse_cat_types( self )
+
+	declare cat_types, count, status, strlen
+
+	array catalog_types
+	browse_initialise()
+
+	IF logged_in <> SMIDI_NORMAL THEN
+		window_set_status ( "SAP Signon--> ":self.parent_prompt.prompt_objects[1].value)
+		logged_in = smidi_lib_client_logon( self.parent_prompt.prompt_objects[1].value )
+	ENDIF
+
+	IF (logged_in = SMIDI_NORMAL) THEN
+
+		window_set_status ( "SAP catalog types retrieval ":self.parent_prompt.prompt_objects[1].value)
+		status = alt_idi_get_catalog_types(cat_types,self.parent_prompt.userinfo)
+
+		IF (status = SMIDI_NORMAL) THEN
+
+			count = 1
+			WHILE (cat_types[count] <> empty) DO
+
+				str_len                 = STRINGLENGTH ( cat_types[count] ) - 1 
+				catalog_types[count, 1] = STRIP ( LEFTSTRING  ( cat_types[count], 1       ) )
+				catalog_types[count, 2] = STRIP ( RIGHTSTRING ( cat_types[count], str_len ) )
+				count                   = count + 1
+
+			ENDWHILE
+
+			browse_on_array(10, self.text, catalog_types)
+
+		ELSE
+			flash_message ( "SMIDI_LTE_CONNECT_BAD", TRUE )
+		ENDIF
+	ELSE
+		flash_message ( "SMIDI_LTE_CONNECT_BAD", TRUE )
+	ENDIF
+
+	self.repaste()
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE query_form_validate( self )
+
+	declare valid
+
+	valid = FALSE
+
+	IF (self.get_lastkey() = "EXIT") THEN
+
+		valid = TRUE
+
+	ELSEIF ((NOT blank(self.prompt_objects[1].value)) & (NOT blank(self.prompt_objects[7].value)) )
+
+		logged_in = smidi_lib_client_logon( self.prompt_objects[1].value )
+
+		IF logged_in = SMIDI_NORMAL THEN
+
+			valid                      = TRUE
+			self.userinfo.smidi_server = SELECT SMIDI_SYSTEM.IDENTITY
+			self.userinfo.qmidi_object = SELECT SMIDI_SYSTEM.QMIDI_OBJECT
+			self.userinfo.set_inherit_from_start_stop()
+
+			IF ( self.userinfo.qmidi_object = EMPTY ) THEN
+
+				self.userinfo.qmidi_object = DEFAULT_QMIDI_OBJECT
+
+			ELSEIF ( INDEX ( SMIDI_QMIDI_OBJECT_LIST, "#":STRIP(self.userinfo.qmidi_object):"#" ) = 0 ) THEN
+
+				self.userinfo.qmidi_object = DEFAULT_QMIDI_OBJECT
+
+			ENDIF
+
+		ENDIF
+
+	ELSE
+
+		FLASH_MESSAGE ( "Not all values filled in correctly", TRUE )
+
+	ENDIF
+
+	return( valid )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE do_download ( base_object )
+
+	declare status, cat_name, cat_type, get_cg, get_ss, language, plant, phrases, errors, count
+
+	IF (logged_in = SMIDI_NORMAL) THEN
+
+		get_ss   = set_flag ( query_form.prompt_objects[2].value         )
+		get_cg   = set_flag ( query_form.prompt_objects[3].value         )
+		cat_type = PAD      ( query_form.prompt_objects[4].value, " ", 1 )
+		plant    = PAD      ( query_form.prompt_objects[5].value, " ", 4 )
+		language = PAD      ( query_form.prompt_objects[7].value, " ", 1 )
+		cat_name = PAD      ( query_form.prompt_objects[6].value, " ", 8 )
+
+		status = alt_idi_get_phrases( cat_name ,
+					      cat_type ,
+					      get_cg   ,
+					      get_ss   ,
+					      language ,
+					      plant    ,
+					      phrases  ,
+					      errors   ,
+					      base_object )
+
+		IF (status = SMIDI_NORMAL) THEN
+
+			count = 1
+			WHILE ( phrases[count] <> EMPTY ) DO
+
+				phrases[count] = smidi_lib_object_from_string ( "QAICA", phrases[count], base_object, count )
+				count          = count + 1
+
+			ENDWHILE
+
+			store_phrases( phrases )
+
+		ELSE
+
+			flash_message(smidi_lib_get_message(status), true)
+
+		ENDIF
+
+	ELSE
+
+		flash_message(smidi_lib_get_message(logged_in), true)
+
+	ENDIF
+
+	return
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE store_phrases( phrases )
+
+	declare count, status
+
+	START WRITE TRANSACTION "SM-IDI Manual Phrase Download"
+
+	status    = store_phrase_list( phrases, count )
+	IF status = SMIDI_NORMAL THEN
+
+		flash_message ( strip(count): get_user_message("SMIDI_K_PH_STORED",1), true)
+		COMMIT
+	ELSE
+		flash_message ( smidi_lib_get_message(status), true)
+		flash_message(get_user_message("SMIDI_K_PH_NOACCESS",1), true)
+		ROLLBACK
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+GLOBAL ROUTINE store_phrase_list( phrases, count )
+
+	declare status, ok, phrase_codes
+
+	array phrase_codes
+
+	status = SMIDI_NORMAL
+	ok     = true
+	count  = 1
+
+	WHILE ((phrases[count] <> empty) & ok) DO
+
+		status = phrases[count].cleanup( phrase_codes[count] )
+		IF status <> SMIDI_NORMAL THEN
+
+			ok = false
+
+		ENDIF
+		count = count + 1
+
+	ENDWHILE
+
+	IF ok THEN
+
+		count = 1
+		WHILE phrases[count] <> empty DO
+
+			phrases[count].add_phrase( count, phrase_codes[count] )
+
+			CALL_ROUTINE LIB_USER_PHRASE IN LIBRARY SMIDI_USER_LIB
+				USING phrases[count], phrase_codes[count]
+
+			count = count + 1
+
+		ENDWHILE
+
+	ENDIF
+
+	return(status)
+
+ENDROUTINE  {store_phrase_list}
+
+{******************************************************************************}
+
+ROUTINE qaica_action_cleanup(self, phrase_code)
+
+	declare delstat, going, status, found, t1, t2
+
+	status = SMIDI_NORMAL
+
+	self.create ( phrase_code )
+
+	found = select smidi_phrase_translate.identity for update where identity = phrase_code AND SYSTEM = self.smidi_server
+	t1    = select phrase_header.identity          for update where identity = phrase_code
+	t2    = select limit_phrase_header.identity    for update where identity = phrase_code
+
+	IF ((found = empty) | (t1 = empty) | (t2 = empty)) THEN
+		status = SMIDI_BADPHRASE
+	ENDIF
+
+	IF ((found = locked) | (t1 = locked) | (t2 = locked)) THEN
+		status = SMIDI_PHRASELOCK
+	ENDIF
+
+
+	IF (status = SMIDI_NORMAL) THEN
+
+		going = SELECT smidi_phrase_supp.phrase_id FOR UPDATE
+				WHERE phrase_type = phrase_code
+				AND   SYSTEM      = self.smidi_server
+
+		WHILE going <> empty DO
+
+			DELETE smidi_phrase_supp, delstat
+		 	going = SELECT smidi_phrase_supp.phrase_id FOR UPDATE
+					WHERE phrase_type = phrase_code
+					AND   SYSTEM      = self.smidi_server
+
+		ENDWHILE
+
+		going = SELECT phrase.phrase_id FOR UPDATE
+				WHERE phrase_type = phrase_code
+
+		WHILE going <> empty DO
+
+			DELETE phrase, delstat
+			going = SELECT phrase.phrase_id FOR UPDATE
+					WHERE phrase_type = phrase_code
+
+		ENDWHILE
+
+
+		going = SELECT limit_phrase_entry.result_value FOR UPDATE
+				WHERE limit_phrase = phrase_code
+
+		WHILE going <> empty DO
+
+			DELETE limit_phrase_entry, delstat
+			going = SELECT limit_phrase_entry.result_value FOR UPDATE
+					WHERE limit_phrase = phrase_code
+
+		ENDWHILE
+
+	ENDIF
+
+	IF ((found <> empty) & (found <> locked)) THEN
+		update smidi_phrase_translate
+	ENDIF
+	IF ((t1 <> empty) & (t1 <> locked)) THEN
+		update phrase_header
+	ENDIF
+	IF ((t2 <> empty) & (t2 <> locked)) THEN
+		update limit_phrase_header
+	ENDIF
+
+	return(status)
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE qaica_action_create ( self, trans )
+
+	DECLARE found, status, r3_system, phrase_prefix, sap_id, len_phrase, len_system
+
+	IF flag_set ( self.entry_is_sset ) THEN
+		sap_id = self.selected_set
+	ELSE
+		sap_id = self.code_group
+	ENDIF
+
+	{ ================================================================== }
+	{ Build the ID based upon config item to use old way or prefix       }
+	{ ================================================================== }
+
+	GET_FIELD_DETAILS phrase_header.identity       , "FIELD_SIZE", len_phrase
+	GET_FIELD_DETAILS smidi_phrase_translate.system, "FIELD_SIZE", len_system
+
+	phrase_prefix = STRIP ( self.get_item ( "SMIDI_PHRASE_PREFIX" ) )
+
+	IF ( phrase_prefix = EMPTY ) | ( BLANK ( phrase_prefix ) ) THEN
+		phrase_prefix = SAP_PHRASE_PREFIX
+	ENDIF
+
+	r3_system = PAD ( smidi_lib_get_r3sys(), " ", len_system )
+
+
+	{ ================================================================== }
+	{ First is the smidi_phrase_translate and the trigger for the ID     }
+	{ ================================================================== }
+
+	found = select smidi_phrase_translate.identity
+		where ( system        = r3_system                    )
+		and   ( entry_is_sset = flag_set(self.entry_is_sset) )
+		and   ( catalog_type  = self.cat_type                )
+		and   ( catalog_plant = self.cat_plant               )
+		and   ( main_id       = sap_id                       )
+
+	IF found = empty THEN
+	
+		found = PAD ( STRIP ( phrase_prefix : sap_id ), " ", len_phrase ) : r3_system
+		trans = found
+
+		self.status_message ( "qaica_action_create [":found:"] <":sap_id:"> ":r3_system, MSG_LOW )
+
+		RESERVE ENTRY smidi_phrase_translate, found, status
+
+		IF status = EMPTY THEN
+
+			assign smidi_phrase_translate.entry_is_sset = flag_set(self.entry_is_sset)
+			assign smidi_phrase_translate.catalog_type  = self.cat_type
+			assign smidi_phrase_translate.catalog_plant = self.cat_plant
+			assign smidi_phrase_translate.main_id       = sap_id
+
+			UPDATE smidi_phrase_translate, status
+
+		ENDIF
+
+
+	ELSE
+
+		trans = found : r3_system
+
+	ENDIF
+
+
+	{ ===================================================================== }
+	{ Got SMIDI Phrase translate, now check SMP's phrase_header/entries     }
+	{ ===================================================================== }
+
+	found = SELECT phrase_header.identity for update
+			where identity = LEFTSTRING ( trans, 10 )
+
+	IF found = empty THEN
+
+		RESERVE ENTRY phrase_header, trans, status
+
+	ENDIF
+
+	IF found <> locked THEN
+
+		assign phrase_header.description = get_user_message ( "SMIDI_K_QAICA_P_DESC", 1 ):trans
+		assign phrase_header.modifiable  = FALSE
+		assign phrase_header.removeflag  = FALSE
+
+		update phrase_header
+
+	ENDIF
+
+
+	found = select limit_phrase_header.identity for update
+			where identity = LEFTSTRING ( trans, 10 )
+
+	IF found = empty THEN
+
+		RESERVE ENTRY limit_phrase_header, trans, status
+
+	ENDIF
+
+
+	IF found <> locked THEN
+
+		assign limit_phrase_header.description        = get_user_message ( "SMIDI_K_QAICA_L_DESC", 1 ):trans
+		assign limit_phrase_header.modifiable         = FALSE
+		assign limit_phrase_header.removeflag         = FALSE
+		assign limit_phrase_header.phrase_link        = trans
+		assign limit_phrase_header.default_comparison = "P"
+
+		update limit_phrase_header, status
+
+	ENDIF
+
+ENDROUTINE    { qaica_action_create }
+
+{******************************************************************************}
+
+ROUTINE qaica_action_add_phrase(self, count, phrase_code)
+
+	declare keyval, other_keyval, lims_keyval, lims2_keyval, status, len_phrase_id
+
+	GET_FIELD_DETAILS phrase.phrase_id, "FIELD_SIZE", len_phrase_id
+
+	keyval       = phrase_code                    : PAD( self.code, " ", len_phrase_id )
+	lims_keyval  = LEFTSTRING ( phrase_code, 10 ) : PAD( self.code, " ", len_phrase_id )
+	other_keyval = phrase_code                    : SUBSTRING ( self.code_short, 1  , 30 )
+	lims2_keyval = LEFTSTRING ( phrase_code, 10 ) : SUBSTRING ( self.code_short, 1  , 30 )
+
+	self.status_message ( "qaica_action_add_phrase ":keyval:" ":other_keyval:" ":lims_keyval:" ":lims2_keyval, MSG_LOW )
+
+	RESERVE ENTRY smidi_phrase_supp, keyval, status
+		assign smidi_phrase_supp.code_group     = self.code_group
+		assign smidi_phrase_supp.defect_class   = self.defect_class
+		assign smidi_phrase_supp.need_text      = flag_set(self.need_text)
+		assign smidi_phrase_supp.do_inv_posting = flag_set(self.do_inv_posting)
+		assign smidi_phrase_supp.quality_score  = self.quality_score
+
+	UPDATE smidi_phrase_supp, status
+
+
+	RESERVE ENTRY phrase, lims_keyval, status
+		assign phrase.order_num   = count
+		assign phrase.phrase_text = self.code_short
+	UPDATE phrase, status
+
+	{  ====================================================================== }
+	{  limit phrase_entry uses code short as the key, so it may not be unique }
+	{  ====================================================================== }
+
+	RESERVE ENTRY limit_phrase_entry, lims2_keyval, status
+
+	IF ( status = EMPTY ) THEN
+
+		assign limit_phrase_entry.order_num = count
+
+		IF self.valuation = "A" THEN
+
+			assign limit_phrase_entry.comparison = "P"
+
+		ELSEIF self.valuation = " " THEN
+
+			assign limit_phrase_entry.comparison = "I"
+
+		ELSE
+
+			assign limit_phrase_entry.comparison = "F"
+
+		ENDIF
+
+		update limit_phrase_entry
+
+	ENDIF   { limit phrase entries }
+
+ENDROUTINE   { qaica_action_add_phrase }
+
+{******************************************************************************}
+
+ROUTINE qaimv_action_get_phrase(self)
+
+	DECLARE phrase_type, r3sys, query_is_sset
+
+	r3_sys        = smidi_lib_get_r3sys()
+	query_is_sset = flag_set( self.cat_1_is_sset )
+
+	IF ( self.cat_1_plant = " " ) THEN
+
+		phrase_type = select smidi_phrase_translate.identity
+				where ( system        = r3_sys                )
+				and   ( entry_is_sset = query_is_sset         )
+				and   ( catalog_type  = self.cat_1_type       )
+				and   ( main_id       = self.cat_1_sset_group )
+	ELSE
+
+		phrase_type = select smidi_phrase_translate.identity
+				where ( system        = r3_sys                )
+				and   ( entry_is_sset = query_is_sset         )
+				and   ( catalog_type  = self.cat_1_type       )
+				and   ( catalog_plant = self.cat_1_plant      )
+				and   ( main_id       = self.cat_1_sset_group )
+	ENDIF
+
+
+	{ ============================================================================ }
+	{ If the phrase is empty then back off on the criteria to allow a source plant }
+	{ ============================================================================ }
+
+	IF phrase_type = EMPTY THEN
+
+		phrase_type = select smidi_phrase_translate.identity
+				where ( system        = r3_sys                )
+				and   ( catalog_type  = self.cat_1_type       )
+				and   ( main_id       = self.cat_1_sset_group )
+
+	ENDIF
+
+	RETURN ( phrase_type )
+
+ENDROUTINE  { qaimv_action_get_phrase }
+
+{******************************************************************************}
+
+GLOBAL ROUTINE translate_phrase( VALUE query_system  ,
+				 VALUE query_is_sset ,
+				 VALUE query_type    ,
+				 VALUE query_plant   ,
+				 VALUE query_catalog )
+	DECLARE phrase_type
+
+	query_is_sset = flag_set( query_is_sset )
+
+	IF ( query_plant = " " ) THEN
+
+		phrase_type = select smidi_phrase_translate.identity
+				where ( system        = query_system  )
+				and   ( entry_is_sset = query_is_sset )
+				and   ( catalog_type  = query_type    )
+				and   ( main_id       = query_catalog )
+
+	ELSE
+
+		phrase_type = select smidi_phrase_translate.identity
+				where ( system        = query_system  )
+				and   ( entry_is_sset = query_is_sset )
+				and   ( catalog_type  = query_type    )
+				and   ( catalog_plant = query_plant   )
+				and   ( main_id       = query_catalog )
+
+	ENDIF
+
+	{ ============================================================================ }
+	{ If the phrase is empty then back off on the criteria to allow a source plant }
+	{ ============================================================================ }
+
+	IF phrase_type = EMPTY THEN
+
+		phrase_type = select smidi_phrase_translate.identity
+				where ( system        = query_system  )
+				and   ( catalog_type  = query_type    )
+				and   ( main_id       = query_catalog )
+
+
+	ENDIF
+
+
+
+	return( phrase_type )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+GLOBAL ROUTINE get_code( VALUE text, VALUE phrase_type )
+
+	DECLARE code, found, looking
+
+	looking = TRUE
+	code = "    "
+	text = strip( text )
+
+	found = select phrase.phrase_text
+			where phrase_type = phrase_type
+
+	WHILE (found <> empty) AND looking DO
+
+		IF strip( found ) = text THEN
+
+			looking = FALSE
+			code = substring((select phrase.phrase_id), 1, 4)
+
+		ELSE
+
+			next phrase
+			found = select phrase.phrase_text
+
+		ENDIF
+
+	ENDWHILE
+	return( code )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+GLOBAL ROUTINE get_code_group( phrase_type, code )
+
+	DECLARE code_group, found
+
+	code_group = "        "
+
+	found = select smidi_phrase_supp.code_group
+			where (phrase_type = phrase_type)
+			and   (phrase_id = pad(code, " ", 10))
+
+	IF found <> empty THEN
+		code_group = found
+	ENDIF
+
+	return( code_group )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+GLOBAL ROUTINE get_posting( phrase_type, code )
+
+	DECLARE posting, found
+
+	found = select smidi_phrase_supp.do_inv_posting
+			where (phrase_type = phrase_type)
+			and   (phrase_id = pad(code, " ", 10))
+
+	IF found <> empty THEN
+		posting = found
+	ELSE
+		posting = " "
+	ENDIF
+
+	return( posting )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+GLOBAL ROUTINE smidi_lib_ud_phrase_table( qaivc, system )
+
+	DECLARE phrase_type
+
+	IF qaivc.selected_set = "        " THEN
+
+		phrase_type = qaivc.get_item ( "QM_DUPL_PHRASETABLE" )
+
+	ELSE
+
+		phrase_type = translate_phrase( system      ,
+						"X"                 ,
+						qaivc.catalog_type  ,
+						qaivc.sel_set_plant ,
+						qaivc.selected_set  )
+
+		{  =============================================================  }
+		{  If the caller has not set plant, then UD's come from any plant }
+		{  check to make sure that the plant needs to be defined          }
+		{  =============================================================  }
+
+		IF ( qaivc.sel_set_plant = " " ) THEN
+
+			qaivc.sel_set_plant = SELECT smidi_phrase_translate.catalog_plant
+
+		ENDIF
+
+	ENDIF
+
+	return( phrase_type )
+
+ENDROUTINE
+
+{******************************************************************************}
+{ $smidi_lib_phrase }

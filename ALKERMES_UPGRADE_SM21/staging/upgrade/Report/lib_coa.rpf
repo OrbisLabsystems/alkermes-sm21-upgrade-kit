@@ -1,0 +1,2861 @@
+{******************************************************************************
+*
+* Module Name          : LIB_COA
+*
+* Purpose              : Certificate of Analysis generation module
+*
+* Portability          : Not Checked
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By             Description
+* -------   -----------  ----------     ---------------------------------------
+* 1.0       31-Oct-2012  Maria Allen    Release Version 
+*
+* 2.0       02-May-2014  Maria Allen    Update to include sample.use_on_coa field 
+* 
+* 3.0       29-May-2014  Liam Dawson    Added SAMP_FIELD code
+*
+* 4.0       02-Feb-2014  Mgt Flattery   CC-ATH-2014-1793 TS Protocol  No. 1600029859  Check rounding results for COA 
+*******************************************************************************}
+
+SET NAME "DISPLAY/"
+ENABLE WINDOWS
+SET COMPILE_OPTION DECLARE
+SET NOTPROTECTED
+
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $PROMPT_IMPRINT
+JOIN LIBRARY $LIB_MLPS 
+JOIN LIBRARY $ROLE_LIB
+JOIN LIBRARY PROMPT_ROUTINES
+
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_STRUCTURE
+JOIN STANDARD_LIBRARY STD_BROWSE
+JOIN STANDARD_LIBRARY STD_TRANSFER
+JOIN STANDARD_LIBRARY STD_CLIENT
+JOIN STANDARD_LIBRARY STD_GENERAL
+JOIN STANDARD_LIBRARY STD_DDE
+JOIN STANDARD_LIBRARY STD_USER_GLOBAL
+
+
+{Fields for COA_TEMPLATE_PARAMETERS}
+GLOBAL CONSTANT NAME_COL                =       1
+GLOBAL CONSTANT DEFL_COL                =       2
+GLOBAL CONSTANT TYPE_COL                =       3
+GLOBAL CONSTANT TBLE_COL                =       4
+GLOBAL CONSTANT FORM_COL                =       4
+GLOBAL CONSTANT PHRS_COL                =       4
+GLOBAL CONSTANT FILD_COL                =       5
+GLOBAL CONSTANT MAND_COL                =       6
+GLOBAL CONSTANT VALU_COL                =       7
+GLOBAL CONSTANT RTAB_COL                =       8
+GLOBAL CONSTANT RFLD_COL                =       9
+GLOBAL CONSTANT ROPR_COL                =       10
+GLOBAL CONSTANT JOBF_COL                =       11
+GLOBAL CONSTANT VALUE_COL               =       12
+
+{Fields for COA_HEADER}
+GLOBAL CONSTANT COL_HEAD_NAME           =       1
+GLOBAL CONSTANT COL_HEAD_VALUE          =       2
+
+coa_generation(0)
+
+ROUTINE coa_generation (VALUE option)
+
+{
+* 
+*    Generate CoA
+*
+*******************************************************************************}
+
+    DECLARE coa,
+            group_checking
+
+    group_checking = GLOBAL ("CHECK_GROUPS")
+
+    SET SECURITY FALSE
+
+    define_coa_class()
+ 
+    CREATE OBJECT "COA", coa
+
+    coa . choose_job() 
+
+    coa . get_template_information()
+
+    coa . coa_form . get_template_parameters()
+
+    coa . coa_form . load()
+
+    coa . get_samples()
+
+    coa . build_results_array()
+
+    coa . get_prompt_fields()
+
+    coa . get_job_fields()
+
+    coa . get_samp_fields()   {3.0}
+
+    IF coa . can_generate() THEN
+
+        coa . create_syntax ()
+
+        coa . write_records ()
+
+    ENDIF
+
+    coa = EMPTY
+
+    SET SECURITY group_checking 
+
+ENDROUTINE { coa_generation }
+
+
+ROUTINE coa_generation_version (VALUE option)
+
+{
+* 
+*    Generate CoA with selected version of CoA Template
+*
+*******************************************************************************}
+
+    DECLARE coa,
+            group_checking
+
+    group_checking = GLOBAL ("CHECK_GROUPS")
+
+    SET SECURITY FALSE
+
+    define_coa_class()
+ 
+    CREATE OBJECT "COA", coa
+
+    coa . choose_version = TRUE            
+    {Allow user to choose version }
+
+    coa . choose_job()       
+
+    coa . get_template_information()
+
+    coa . coa_form . get_template_parameters()
+
+    coa . coa_form . load()
+
+    coa . get_samples()
+
+    coa . build_results_array()
+
+    coa . get_prompt_fields()
+
+    coa . get_job_fields()
+
+    coa . get_samp_fields()     {3.0}
+
+    IF coa . can_generate() THEN
+
+        coa . create_syntax ()
+
+        coa . write_records ()
+
+    ENDIF
+
+    coa = EMPTY
+    
+    SET SECURITY group_checking 
+
+ENDROUTINE { coa_generation_version }
+
+
+ROUTINE define_coa_class 
+
+{
+* 
+*    Define CoA Class  
+*
+*******************************************************************************}
+
+    DEFINE CLASS "COA"
+    
+        INITIALISATION
+        
+        PROPERTIES             
+
+            "job"                    ,   { Job / Batch                              }
+            "market"                 ,   { Market                                   }
+            "material"               ,   { Article/Material Code                    } 
+            "coa_template"           ,   { CoA template to use                  }
+            "language"               ,   { Language Combination                     }
+            "choose_version"         ,   { Choose Version at Generation             }
+            "template_version"       ,   { CoA Template Version                     } 
+            "versions_select_array"  ,   { Select Array for All Versions of template} 
+            "product"                ,   { Product/MLP                              }
+            "jobs_array"             ,   { Selected Jobs                            }
+            "samples_array"          ,   { Selected Samples                         }
+            "parent_job"             ,   { Parent Job                               }
+            "parent_product"         ,   { Parent Product                           }
+            "coa_form"               ,   { Form to enter header information         }
+            "coa_generate_form"      ,   { Form to select batch                     }
+            "header_array"           ,   { CoA Header fields Array                  }
+            "test_array"             ,   { Selected Tests                           }
+            "comp_array"             ,   { Selected Components                      }
+            "result_array"           ,   { Selected Results                         }
+            "coa_result_array"       ,   { CoA Result Array                         }
+            "template_result_array"  ,   { Selected CoA Template Results            }
+            "syntax"                 ,   { Generated CoA ID                         }   
+            "has_rejected_tests"     ,   { Has Rejected Tests                       }   
+            "has_rejected_samples"   ,   { Has Rejected Samples                     }   
+            "has_rejected_jobs"      ,   { Has Rejected Jobs                        }
+            "has_rejected_data"      ,   { Has any rejected data                    }
+            "has_results"            ,   { True if generation returns results       }
+            "batch_array"            ,   { Array containing a list of batches       }
+            "missing_mandatory"      ,   { Indicates coa missing mandatory result   }
+            "product_description"    ,   { Product description                      }
+            "market_text"            ,   { Market                                   }
+            "presentation"               { Presentation                             }
+            
+        ACTIONS
+        
+            "choose_job"                ,   { Prompt for Batch on Generation        }
+            "get_job_information"       ,   { Get Job information once job selected }
+            "get_samples"               ,   { Get the Samples                       }
+            "get_prompt_fields"         ,   { Get prompt fields                     }
+            "get_job_fields"            ,   { Get job fields                        }
+            "get_samp_fields"           ,   { Get job fields                        }  {3.0}
+            "get_template_information"  ,   { Get CoA Template Information          }
+            "build_results_array"       ,   { Get results based on tempalte details }
+            "get_template_result_array" ,   { Get template results                  }
+            "get_test_array"            ,   { Get the tests                         }
+            "get_component_array"       ,   { Get the components                    }
+            "get_result_array"          ,   { Get the results                       }
+            "get_coa_result_array"      ,   { Get CoA results                       }
+            "create_syntax"             ,   { Generates text ID of CoA              }
+            "write_records"             ,   { Write records to database             }
+            "can_generate"              ,   { User Allowed to Generate CoA          }
+            "template_or_material_item"     { Item                                  }
+                       
+    END CLASS
+
+
+ENDROUTINE { define_coa_class }
+
+
+ROUTINE coa_class_initialisation (self)
+
+{
+* 
+*    CoA Class Initialisation
+*
+*******************************************************************************}
+
+    ARRAY self . jobs_array
+    ARRAY self . samples_array
+    ARRAY self . test_array
+    ARRAY self . comp_array
+    ARRAY self . result_array
+    ARRAY self . coa_result_array
+    ARRAY self . template_result_array
+    ARRAY self . header_array
+    ARRAY self . versions_select_array
+    ARRAY self . batch_array
+
+    self . job                  = ""
+    self . market               = ""
+    self . language             = ""    
+    self . choose_version       = FALSE  { Default - Disallow choose version }
+    self . template_version     = ""
+    self . parent_job           = ""
+    self . product              = ""
+    self . parent_product       = ""
+    self . syntax               = ""
+    self . has_rejected_tests   = FALSE
+    self . has_rejected_samples = FALSE
+    self . has_rejected_jobs    = FALSE
+    self . has_rejected_data    = FALSE
+    self . has_results          = TRUE
+    self . missing_mandatory    = FALSE 
+
+    define_coa_form_class()
+
+    CREATE OBJECT "COA_FORM", self . coa_form
+
+    self . coa_form . coa = self
+
+    define_coa_generate_form_class()
+
+    CREATE OBJECT "COA_GENERATE_FORM", self . coa_generate_form
+
+    self . coa_generate_form . coa = self
+
+ENDROUTINE { coa_class_initialisation }
+
+
+GLOBAL ROUTINE define_coa_form_class
+
+{
+*    Defines the COA_FORM Class Properties and Actions.           
+*
+*******************************************************************************}
+
+    DEFINE CLASS "COA_FORM"
+
+        INITIALISATION
+	
+        INHERIT "STD_FORM"
+        
+        PROPERTIES
+
+             "user_library"        ,         { The User VGL Report.             }
+             "valid_routine"       ,         { The Validation Routine.          }
+             "details"             ,         { Prompt Details Array.            } 
+             "test_number"         ,         { Test Number.                     } 
+             "link_number"         ,         { Worksheet Link Number.           } 
+             "worksheet_id"        ,         { Worksheet ID                     }
+             "analysis_id"         ,         { Analysis ID                      }
+             "relative_date"       ,         { Relative date for historical.    }
+             "no_prompts"          ,         { No. of prompts                   }
+             "mode"                ,
+             "text_array"          ,
+             "has_records"         ,
+             "no_display_prompts"  ,
+             "coa"                 ,         { CoA Object}
+             "version"
+
+	ACTIONS
+        
+             "write_wsheet_records"     , { Writes worksheet record to database     }
+             "open_user_template"       , { Opens up the grid for user input        }
+             "get_worksheet_details"    , { Opens up the grid for user input        }
+             "get_template_parameters"  , { Get CoA template parameters             }
+             "get_values"               ,
+             "get_prompt"               ,
+             "get_display"              ,
+             "is_displayable"           ,
+             "load"       
+ 
+	END CLASS
+
+ENDROUTINE { define_coa_form_class }
+
+
+ROUTINE coa_form_class_initialisation ( self ) 
+
+{
+*    COA_FORM Class initialisation routine.                     
+*
+*******************************************************************************}
+
+        ARRAY self . details
+        ARRAY self . text_array
+           
+        self . relative_date      = NOW
+        self . has_records        = FALSE
+        self . no_display_prompts = 0
+        self . user_library       = ""
+        self . valid_routine      = ""
+        
+       
+ENDROUTINE { coa_form_class_initialisation }
+
+
+GLOBAL ROUTINE define_coa_generate_form_class
+
+{
+*    Defines the COA_GENERATE_FORM Class Properties and Actions.           
+*
+*******************************************************************************}
+
+    DEFINE CLASS "COA_GENERATE_FORM"
+
+        INHERIT "STD_FORM"
+        
+        PROPERTIES
+
+             "coa"                          { CoA Object}
+
+    END CLASS
+
+ENDROUTINE { define_coa_generate_form_class }
+
+
+ROUTINE coa_form_action_get_template_parameters ( self )
+
+{
+*    
+*   Loads all of the data from the database
+*              
+*******************************************************************************}
+
+
+    DECLARE field, 
+            count, 
+            def, 
+            dat
+    
+    count = 1
+                                        
+    self . no_prompts         = SELECT COUNT coa_template_parameters WHERE  
+                                       product              = self . coa . coa_template AND     
+                                       product_level        = self . coa . market AND
+                                       coa_template_version = self . coa . template_version
+                                                       
+    self . no_display_prompts = SELECT COUNT coa_template_parameters WHERE  
+                                       product              = self . coa . coa_template AND     
+                                       product_level        = self . coa . market AND
+                                       coa_template_version = self . coa . template_version AND
+	                                 type <> "JOB_FIELD" AND
+                                       type <> "SAMP_FIELD"   {3.0}
+
+    field                     = SELECT coa_template_parameters . identity WHERE                 
+                                       product              = self . coa . coa_template AND
+                                       product_level        = self . coa . market AND
+                                       coa_template_version = self . coa . template_version
+                                       ORDER ON order_number
+
+    WHILE (field <> EMPTY) DO
+            
+        self . details [ NAME_COL, count ] = SELECT coa_template_parameters . description
+        self . details [ DEFL_COL, count ] = SELECT coa_template_parameters . default_value
+        self . details [ TYPE_COL, count ] = SELECT coa_template_parameters . type
+        self . details [ TBLE_COL, count ] = SELECT coa_template_parameters . prompt1
+        self . details [ FILD_COL, count ] = SELECT coa_template_parameters . prompt2
+        self . details [ MAND_COL, count ] = SELECT coa_template_parameters . mandatory
+        self . details [ JOBF_COL, count ] = SELECT coa_template_parameters . field_name
+
+        IF self . details [ MAND_COL, count ] THEN
+
+            self . details [ NAME_COL, count ] = STRIP ( self . details [ NAME_COL, count ] ) 
+
+        ENDIF
+
+        {*****************************************************************}
+        { Just Parse Date Parameters a little bit.                        }
+        {*****************************************************************}
+
+        IF ( SELECT coa_template_parameters . type = "FORMAT" ) AND
+           ( ( SELECT coa_template_parameters . prompt1 = "DATETIME" ) OR
+             ( SELECT coa_template_parameters . prompt1 = "DATE"     ) ) THEN
+
+            def = SELECT coa_template_parameters . default_value
+            dat = self . relative_date             
+
+            IF SELECT coa_template_parameters . prompt1 = "DATE" THEN
+                  
+                SET DATE FORMAT "MZDZYY"
+                dat = STRIP ( dat )
+                RESTORE DATE FORMAT
+                dat = DATE ( dat )
+
+            ENDIF   
+
+            IF NUMTEXT ( def ) THEN 
+           
+                IF (def < 0) THEN
+
+                    def = TODAY - INTERVAL ( TRUNC ( 0 - def ) )
+
+                ELSE
+
+                    def = TODAY  + INTERVAL ( TRUNC ( def ) )
+
+                ENDIF
+
+            ELSEIF def = "EOLM" THEN
+
+                SET DATE FORMAT "MZDZYY"
+                dat = STRIP ( self . relative_date )
+
+                dat = DATE ( dat )
+                RESTORE DATE FORMAT
+
+                SET DATE FORMAT "MZDZYY"
+                def = DATE ( "01" : RIGHTSTRING ( STRIP ( dat ), 4 ) )
+                def = def - INTERVAL ( "0000 00:00:00.01" )
+                RESTORE DATE FORMAT
+
+            ELSEIF def = "SOLM" THEN
+
+                SET DATE FORMAT "MZDZYY"
+                dat = STRIP ( self . relative_date )
+
+                dat = DATE ( dat )
+                RESTORE DATE FORMAT
+
+                SET DATE FORMAT "MZDZYY"
+                def = DATE ( "01" : RIGHTSTRING ( STRIP ( dat ), 4 ) )
+                def = def - INTERVAL ( 1 )
+                def = DATE ( "01" : RIGHTSTRING ( STRIP ( def ), 4 ) )
+                RESTORE DATE FORMAT                   
+
+            ENDIF
+
+            self . details [ DEFL_COL, count ] = def
+                
+        ENDIF
+
+        IF ( SELECT coa_template_parameters . type = "BROWSE" ) THEN
+
+           def = SELECT coa_template_parameters . default_value
+
+           IF ( def = "OPERATOR" ) THEN  
+
+               self . details [ DEFL_COL, count ] = OPERATOR
+
+           ENDIF
+
+        ENDIF
+            
+        NEXT coa_template_parameters
+
+        field = SELECT coa_template_parameters . identity
+
+        count = count + 1
+
+    ENDWHILE
+
+    self . no_prompts = count - 1
+
+    RETURN ( count <> 0 )
+
+ENDROUTINE { coa_form_action_get_template_parameters  }
+
+
+ROUTINE coa_form_action_load ( self )
+
+{
+*
+*    Displays the parameter prompt screen
+*
+*******************************************************************************}
+
+    DECLARE prompt_obj, 
+            display_obj,  
+            count, prompt_line
+                      
+    IF (self . no_display_prompts <> 0) THEN
+
+        count = 1
+
+        self . header             = GET_USER_MESSAGE("COA_GEN_COA_PARAMETERS", 1)
+        self . footer             = ""
+        self . height             = self . no_display_prompts 
+        self . width              = 101
+        self . row                = ( GLOBAL ( "SCREEN_HEIGHT") - self . height) / 2
+        self . column             = ( GLOBAL ( "SCREEN_WIDTH" ) - self . width ) / 2
+        self . border             = TRUE
+        self . active_prompt      = 1
+        self . return_behaviour   = FORM_RETURN_STAY
+        
+        self . validation_routine = "form_validation_routine"
+        
+        self . add_frame ( GET_USER_MESSAGE("COA_GEN_COA_PARAMETERS", 1),
+                               1, 1, self . no_display_prompts, 100 )
+
+	    prompt_line = 0
+
+        WHILE ( count <= self . no_prompts ) DO
+    
+            IF ( self . is_displayable ( count ) ) THEN
+            
+		        prompt_line = prompt_line + 1
+            
+                display_obj = self . get_display ( count , prompt_line )
+                prompt_obj  = self . get_prompt ( count , prompt_line ) 
+
+	            self . add_prompt ( prompt_obj )		
+                self . add_display ( display_obj )                        
+	    
+            ENDIF
+            
+            count = count + 1
+
+        ENDWHILE
+    
+        self . start_prompt()
+        self . wait_prompt()
+        self . end_prompt()
+    
+        IF self . get_lastkey () = "DO" THEN
+                
+            count = 1
+	        prompt_line = 0
+    
+            WHILE ( count <= self . no_prompts) DO       
+    
+	            IF ( (STRIP(self . details [ TYPE_COL, count ]) <> "JOB_FIELD") 
+                       AND (STRIP(self . details [ TYPE_COL, count ]) <> "SAMP_FIELD") ) {3.0}
+			
+			        prompt_line = prompt_line + 1
+            
+                	self . details [ VALUE_COL, count ] = self . prompt_objects[prompt_line] . text     
+		        ENDIF           
+                
+                count = count + 1
+	
+            ENDWHILE
+            
+            RETURN ( TRUE )
+            
+        ELSEIF (self . get_lastkey () <> "DO") THEN
+        
+            EXIT
+            
+        ENDIF
+        
+    ELSE
+    
+        { Do not display the form if there are no parameters to fill in }
+
+        RETURN ( TRUE )
+        
+    ENDIF
+    
+ENDROUTINE { coa_form_action_load }
+
+
+
+ROUTINE coa_form_action_is_displayable ( self, prompt_number ) 
+
+{
+*    
+*     Returns true if field type is to be displayed
+*              
+*******************************************************************************}
+
+        
+    IF ( (self . details [ TYPE_COL, prompt_number ] = "JOB_FIELD") 
+         OR (self . details [ TYPE_COL, prompt_number ] = "SAMP_FIELD") )THEN 
+        
+        RETURN ( FALSE )
+            
+    ENDIF
+            
+    RETURN ( TRUE )
+
+ENDROUTINE { coa_form_action_is_displayable }
+
+
+
+ROUTINE coa_form_action_get_display(self, count, display_line)
+
+{
+*    
+*     Returns the display prompt for each parameter.
+*              
+*******************************************************************************}
+
+    DECLARE display_prompt
+
+    IF self . details [MAND_COL, count] = TRUE THEN
+
+        PROMPT OBJECT display_prompt
+               CLASS "STD_PROMPT_TEXT"
+               ON LINE display_line  FROM 2 TO 39
+               WITH ( VALUE      =  STRIP(self . details [NAME_COL, count]) : ">",
+                      BOLD       =  TRUE     ,
+                      RAISED     =  TRUE )
+
+    ELSE
+
+        PROMPT OBJECT display_prompt
+               CLASS "STD_PROMPT_TEXT"
+               ON LINE display_line  FROM 2 TO 39
+               WITH ( VALUE      =  self . details [NAME_COL, count],
+                      BOLD       =  TRUE     ,
+                      RAISED     =  TRUE )
+
+    ENDIF
+
+    RETURN (display_prompt)
+
+ENDROUTINE { coa_form_action_get_display }
+
+
+ROUTINE coa_form_action_get_prompt ( self, prompt_number, prompt_line ) 
+
+{
+*    
+*     Returns the prompt for each parameter.
+*              
+*******************************************************************************}
+
+    DECLARE count, 
+            prompt_obj, 
+            defl, 
+            table, 
+            field, 
+            form, 
+            phrase
+
+    prompt_obj = ""
+
+    CONSTANT COL = 41
+
+    count = prompt_number
+
+    defl = self . details [ DEFL_COL, count ]
+        
+    IF self . details [ TYPE_COL, count ] = "BROWSE" THEN 
+        
+        table = self . details [ TBLE_COL, count ]
+        field = self . details [ FILD_COL, count ] 
+
+       
+        IF ( valid_table ( table ) ) AND 
+           ( valid_field ( table , field ) ) THEN
+        
+            PROMPT OBJECT prompt_obj
+                   AT COL , prompt_line 
+                   BROWSE ON 'table' . 'field'
+                   WITH ( lowered = TRUE,
+                          value   = defl,
+                          width   = 40, 
+                          vgl_library = GLOBAL ( "CURRENT_LIBRARY" ),
+                          enter_prompt_routine = "param_enter_prompt_routine" )
+
+        ELSE
+                            
+            PROMPT OBJECT prompt_obj
+                   AT COL , prompt_line 
+                   FORMAT TEXT
+                   WITH ( lowered = TRUE,
+                          value   = defl,
+                          width   = 40 ,
+                          vgl_library = GLOBAL ( "CURRENT_LIBRARY" ) ,
+                          enter_prompt_routine = "param_enter_prompt_routine")
+        
+        ENDIF
+
+
+    ELSEIF self . details [ TYPE_COL, count ] = "ROUTINE" THEN
+
+        CALL_ROUTINE self . details [ FILD_COL, count ]
+                     IN LIBRARY self . details [ TBLE_COL, count ]
+                     USING self, count
+                     RETURNING prompt_obj
+            
+        prompt_obj . column = COL 
+        prompt_obj . row = prompt_line 
+        prompt_obj . width  = 40
+
+    ELSEIF self . details [ TYPE_COL, count ] = "PHRASE" THEN 
+        
+        phrase = self . details [ PHRS_COL, count ]
+
+        PROMPT OBJECT prompt_obj
+               AT COL , prompt_line 
+               BROWSE ON valid_phrase . 'phrase'
+               WITH ( lowered = TRUE,
+                      value   = defl,
+                      width   = 40 ,
+                      vgl_library = GLOBAL ( "CURRENT_LIBRARY" ) ,
+                      enter_prompt_routine = "param_enter_prompt_routine" )
+
+    ELSEIF self . details [ TYPE_COL, count ] = "FORMAT" THEN
+
+        form = self . details [ FORM_COL, count ]
+
+        PROMPT OBJECT prompt_obj
+               AT COL , prompt_line 
+               FORMAT 'form'
+               WITH ( lowered = TRUE,
+                      value   = defl,
+                      width   = 40 , 
+                      vgl_library = GLOBAL ( "CURRENT_LIBRARY" ) ,
+                      enter_prompt_routine = "param_enter_prompt_routine" )
+                              
+    ENDIF
+            
+
+    RETURN (prompt_obj)
+
+ENDROUTINE { coa_form_action_get_prompt }
+
+
+ROUTINE param_enter_prompt_routine ( self )
+
+{
+* 
+*     This checks if the prompt will contain a value, if not set the 
+*     form to visible.
+*             
+*******************************************************************************}
+
+    IF NOT GLOBAL ( "PARAM_ACTIVE" ) THEN
+
+        self . parent_prompt . visible = TRUE
+
+    ENDIF
+
+ENDROUTINE { param_enter_prompt_routine }
+
+ROUTINE form_validation_routine ( self  )
+
+{
+*
+* Valdation Routine to ensure that the form is filled in as required.
+*              
+*
+*******************************************************************************}
+
+    DECLARE count,
+            return_val, 
+            message, prompt_line
+
+    return_val = TRUE
+    count      = 1
+    prompt_line = 0
+
+    WHILE (( return_val ) AND ( self . details [ NAME_COL, count ] <> EMPTY )) DO
+               
+        IF ( (STRIP(self . details [ TYPE_COL, count ]) <> "JOB_FIELD")
+             AND (STRIP(self . details [ TYPE_COL, count ]) <> "SAMP_FIELD") ) THEN   {3.0}
+
+	        prompt_line = prompt_line + 1
+
+            IF self . details [ MAND_COL, count ] THEN
+  
+                return_val = NOT BLANK ( self . prompt_objects [ prompt_line ] . text )
+
+            ENDIF
+                
+        ENDIF
+
+        count = count + 1
+
+    ENDWHILE
+
+    IF NOT return_val THEN
+
+        message = GET_USER_MESSAGE ( "COA_GEN_COA_REQ_FIELDS", 1 ) 
+
+        flash_message ( message, TRUE )
+
+        self . visible = TRUE
+
+        self . start_prompt()
+
+    ENDIF
+ 
+    RETURN ( return_val )
+
+ENDROUTINE { form_validation_routine }
+
+
+
+ 
+ROUTINE coa_action_choose_job (self)
+
+    DECLARE display_prompt,
+            prompt_obj
+
+
+    self . coa_generate_form . width  = 87
+    self . coa_generate_form . height = 6
+
+    self . coa_generate_form . header             = GET_USER_MESSAGE("COA_HEADER_1", 1)
+    self . coa_generate_form . footer             = ""
+    self . coa_generate_form . height             = 3
+    self . coa_generate_form . width              = 45
+    self . coa_generate_form . row                = (GLOBAL("SCREEN_HEIGHT") - self . coa_generate_form . height)/2
+    self . coa_generate_form . column             = (GLOBAL("SCREEN_WIDTH" ) - self . coa_generate_form . width )/2
+    self . coa_generate_form . border             = TRUE
+    self . coa_generate_form . active_prompt      = 1
+    self . coa_generate_form . return_behaviour   = FORM_RETURN_STAY
+    self . coa_generate_form . validation_routine = "job_select_validation_routine"
+
+    self . coa_generate_form . add_frame ( GET_USER_MESSAGE("COA_SEL_JOB_MARKET", 1) , 1, 1, 3, 44 )
+
+    PROMPT OBJECT display_prompt
+           CLASS "STD_PROMPT_TEXT"
+           ON LINE 1 FROM 2 TO 18
+           WITH ( VALUE      =  GET_USER_MESSAGE("COA_BATCH", 1),
+                  BOLD       =  TRUE       ,
+                  RAISED     =  TRUE )
+
+    self . coa_generate_form . add_display ( display_prompt )
+ 
+    PROMPT OBJECT prompt_obj
+           BROWSE ON job_header
+           ON LINE 1 FROM 20 to 40
+           WITH ( ALWAYS_VALIDATE = TRUE,
+                  LOWERED = TRUE,
+                  LEAVE_PROMPT_ROUTINE = "job_leave_prompt",
+                  VGL_LIBRARY = GLOBAL( "CURRENT_LIBRARY" ) )
+
+    self . coa_generate_form . add_prompt ( prompt_obj )
+
+    PROMPT OBJECT display_prompt
+           CLASS "STD_PROMPT_TEXT"
+           ON LINE 2 FROM 2 TO 18
+           WITH ( VALUE      =  GET_USER_MESSAGE("COA_MARKET", 1),
+                  BOLD       =  TRUE       ,
+                  RAISED     =  TRUE )
+
+    self . coa_generate_form . add_display ( display_prompt )
+         
+
+    IF (GLOBAL ("COA_SELECT_MARKET")) THEN
+
+        PROMPT OBJECT prompt_obj
+               ON LINE 2 FROM 20 to 40
+               WITH ( BROWSE_ROUTINE = "levels_browse", 
+                      ALWAYS_VALIDATE = TRUE,
+                      LOWERED = TRUE        ,
+                      ENTER_PROMPT_ROUTINE = "enter_level_routine",
+                      LEAVE_PROMPT_ROUTINE = "market_leave_prompt",
+                      VGL_LIBRARY = GLOBAL( "CURRENT_LIBRARY" ) )
+
+    ELSE
+
+        PROMPT OBJECT prompt_obj
+               ON LINE 2 FROM 20 to 40
+               WITH ( BROWSE_ROUTINE = "levels_browse", 
+                      ALWAYS_VALIDATE = TRUE,
+                      LOWERED = TRUE        ,
+                      VGL_LIBRARY = GLOBAL( "CURRENT_LIBRARY" ) ,
+                      ENTER_PROMPT_ROUTINE = "enter_level_routine",
+                      LEAVE_PROMPT_ROUTINE = "market_leave_prompt",
+                      DISPLAY_ONLY = TRUE  )
+
+    ENDIF
+
+
+    self . coa_generate_form . add_prompt ( prompt_obj )
+	
+    { Display only version prompt is choose_version = TRUE }
+
+    IF self . choose_version THEN
+	
+        PROMPT OBJECT display_prompt
+               CLASS "STD_PROMPT_TEXT"
+               ON LINE 3 FROM 2 TO 18
+               WITH ( VALUE      =  GET_USER_MESSAGE("COA_TEMPLATE_VER", 1),
+                      BOLD       =  TRUE       ,
+                      RAISED     =  TRUE )
+
+        self . coa_generate_form . add_display ( display_prompt )
+         
+        PROMPT OBJECT prompt_obj
+               BROWSE ON coa_template . coa_template_version
+               ON LINE 3 FROM 20 to 40
+               WITH ( ALWAYS_VALIDATE      = TRUE,
+                      LOWERED              = TRUE        ,
+                      SELECT_ARRAY         = self . versions_select_array,
+                      ENTER_PROMPT_ROUTINE = "enter_template_version_routine",
+                      VGL_LIBRARY          = GLOBAL( "CURRENT_LIBRARY" ))
+
+        self . coa_generate_form . add_prompt ( prompt_obj )
+
+    ENDIF
+    
+    self . coa_generate_form . start_prompt()
+    self . coa_generate_form . wait_prompt()
+    self . coa_generate_form . end_prompt()
+                
+    IF self . coa_generate_form . get_lastkey () = "DO" THEN
+    
+        self . job    = self . coa_generate_form . prompt_objects[1] . text
+        self . market = self . coa_generate_form . prompt_objects[2] . text
+		
+        self . get_job_information()
+
+        IF (self . choose_version = TRUE) THEN
+	
+            self . template_version = self . coa_generate_form . prompt_objects[3] . text
+
+        ELSE
+
+            self . template_version = SELECT MAX coa_template . coa_template_version WHERE 
+                                                 approval_status = "A" AND
+                                                 product         = self . coa_template AND  
+                                                 product_level   = self . market
+
+            IF (self . template_version = EMPTY) THEN
+
+                flash_message(GET_USER_MESSAGE("COA_GEN_NO_TEMPLATE", 1) : " ": STRIP(self . coa_template):" "  {1.7}
+                                                                              : STRIP(self . market), true)
+ 
+                EXIT
+
+            ENDIF
+
+        ENDIF
+
+    ELSE
+
+        EXIT
+        
+    ENDIF
+
+ENDROUTINE { coa_action_choose_job }
+
+
+ROUTINE job_select_validation_routine (self)
+
+   IF ((STRIP(self . prompt_objects[1] . text) <> "") AND
+       (STRIP(self . prompt_objects[2] . text) <> "")) THEN
+
+       RETURN (TRUE)
+
+   ELSE
+
+       RETURN (FALSE)
+
+   ENDIF 
+   
+
+ENDROUTINE { job_select_validation_routine }
+
+ROUTINE coa_action_get_template_information (self)
+
+    self . language = SELECT coa_template . language WHERE
+                             product              = self . coa_template AND 
+                             product_level        = self . market AND
+                             coa_template_version = self . template_version
+
+    IF self . language = EMPTY THEN
+
+        self . language = ""
+
+    ENDIF 
+
+    self.product_description = SELECT coa_template.l_product_description    
+    self.market_text         = SELECT coa_template.l_market                
+    self.presentation        = SELECT coa_template.presentation             
+
+ENDROUTINE { coa_action_get_template_information }
+
+
+ROUTINE coa_action_get_samples ( self )
+
+{
+*    Populate an array of sample id's for a given array of batches
+*
+*******************************************************************************}
+
+    DECLARE counter, 
+            sample_id,
+            the_job,
+            j_counter,
+            no_jobs,
+            the_batch,
+            job_status,
+            sample_status
+            
+                       
+    j_counter = 1            
+    no_jobs   = 1
+
+    
+    WHILE (j_counter <= size_of_array ( self . batch_array )) DO     
+        
+        the_batch = self . batch_array[j_counter]               
+        
+        IF (STRIP(the_batch) <> "") THEN
+
+            {Job use_on_coa must be TRUE for consideration on CoA}        
+            the_job = SELECT job_header . job_name WHERE 
+                             batch_name     = the_batch AND
+                             ( job_status <> "X" OR 
+                               job_status = "R" ) 
+                                  
+
+            WHILE (the_job <> EMPTY) DO
+	                      
+                self . jobs_array [ no_jobs ] = the_job
+
+                job_status = SELECT job_header . job_status
+ 
+                IF (job_status = "R") THEN
+
+                    self . has_rejected_jobs = TRUE   { Record if any rejected jobs}
+                    self . has_rejected_data = TRUE   
+
+                ENDIF
+                   
+                NEXT job_header
+	        
+                the_job = SELECT job_header . job_name
+ 
+                no_jobs = no_jobs + 1
+	      
+            ENDWHILE
+        
+        ENDIF
+        
+        j_counter = j_counter + 1
+            
+    ENDWHILE
+
+    {Get all the samples for the jobs in the array}
+
+    j_counter = 1    
+    counter   = 1
+    
+    WHILE j_counter <= size_of_array ( self . jobs_array ) DO     
+                    
+        the_job = self . jobs_array[j_counter]                
+        
+        IF (STRIP(the_job) <> "")  THEN
+
+ 
+            sample_id = SELECT sample . id_numeric WHERE 
+                               job_name = the_job AND
+					 use_on_coa = TRUE AND  {2.0}
+                               ( status   = "A" OR
+                                 status   = "R" )
+
+            WHILE (sample_id <> EMPTY) DO
+    
+                self . samples_array [ counter ] = sample_id
+
+                sample_status = SELECT sample . status
+
+                IF (sample_status = "R") THEN
+
+                    self . has_rejected_samples = TRUE   { Record if any rejected samples}
+                    self . has_rejected_data    = TRUE   
+
+                ENDIF 
+    
+                NEXT sample
+    
+                sample_id = SELECT sample . id_numeric
+    
+                counter = counter + 1
+    
+            ENDWHILE
+
+        ENDIF
+    
+        j_counter = j_counter + 1
+        
+    ENDWHILE
+    
+    IF ( size_of_array(self . samples_array) = 0) THEN
+
+        flash_message(GET_USER_MESSAGE("COA_NO_SAMPLES_FOUND",1), true)
+    
+        EXIT
+    
+    ENDIF
+
+ENDROUTINE { coa_action_get_samples }
+
+
+ROUTINE job_leave_prompt ( self )
+
+
+    self . parent_prompt . coa . material   = SELECT job_header . material WHERE
+                                                     job_name = self . text
+
+    self . parent_prompt . coa . product    = SELECT job_header . product
+                                         
+    self . parent_prompt . coa . market     = SELECT materials . market WHERE
+                                                     article_code = self . parent_prompt . coa . material
+
+    self . parent_prompt . coa . coa_template = SELECT materials.coa_template   
+    
+    RETURN ( TRUE )
+
+ENDROUTINE
+
+
+ROUTINE market_leave_prompt ( self )
+                                         
+    self . parent_prompt . coa . market     = self . text
+ 
+    { Create Select Array for Template Versions Browse if Required }
+
+    array_select_add(self . parent_prompt . coa . versions_select_array,
+                     ARRAY_SELECT_EQ    ,
+                     "product"      ,
+                     self . parent_prompt . coa . coa_template )       
+
+    array_select_add(self . parent_prompt . coa . versions_select_array,
+                     ARRAY_SELECT_AND   ,
+                     EMPTY              ,
+                     EMPTY      )
+
+    array_select_add(self . parent_prompt . coa . versions_select_array ,
+                     ARRAY_SELECT_EQ    ,
+                     "product_level"    ,
+                     self . parent_prompt . coa . market)
+
+    { Get current Approved Version of CoA Template to Default in Next prompt if required }
+
+    self . parent_prompt . coa . template_version = SELECT MAX coa_template . coa_template_version WHERE 
+                                                    approval_status = "A" AND
+                                                    product         = self . parent_prompt . coa . coa_template AND 
+                                                    product_level   = self . parent_prompt . coa . market
+
+    IF (self . parent_prompt . coa . template_version  = EMPTY) THEN
+                                               
+        flash_message(GET_USER_MESSAGE("COA_GEN_NO_TEMPLATE", 1) : " ": STRIP(self . parent_prompt . coa . coa_template):" ": 
+                                                                        STRIP(self . parent_prompt . coa . market), true)
+
+        RETURN (FALSE)
+
+    ELSE
+
+        RETURN ( TRUE )
+
+    ENDIF
+
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE enter_level_routine ( level_prompt )
+
+
+    { Set default Market if one specified for the material }
+
+    level_prompt . set_text ("")  {Blank Out Previous Value First}
+
+    IF (STRIP(level_prompt . parent_prompt . coa . market) <> "") THEN
+
+        level_prompt . set_text ( level_prompt . parent_prompt . coa . market)
+
+    ENDIF
+
+    RETURN ( TRUE )
+
+ENDROUTINE { enter_level_routine }
+
+
+ROUTINE enter_template_version_routine ( version_prompt )
+
+
+    IF ((STRIP(version_prompt . text) = "") OR (version_prompt . text = 0)) THEN
+
+        { Get the most recent approved version if not already filled in}
+ 
+        version_prompt . set_text ( version_prompt . parent_prompt . coa . template_version)
+
+    ENDIF
+
+    RETURN ( TRUE )
+
+ENDROUTINE { enter_template_version_routine }
+
+
+ROUTINE levels_browse ( level_prompt )
+
+{
+*    Browse On Levels for which CoA templates have been configured
+*
+*******************************************************************************}
+
+    DECLARE levels_array,
+            level,
+            i
+
+    ARRAY levels_array
+
+    i = 1
+
+    level = SELECT coa_template . product_level WHERE
+                   product = level_prompt . parent_prompt . coa . coa_template AND  
+                   approval_status = "A"
+
+    WHILE (level <> EMPTY) DO
+
+        levels_array[i, 1] = level
+        levels_array[i, 2] = SELECT coa_template . description
+
+        NEXT coa_template
+
+        level = SELECT coa_template . product_level
+
+        i = i + 1
+
+    ENDWHILE
+
+    browse_on_array (20, level_prompt . text, levels_array)
+
+    level_prompt . repaste()
+
+ENDROUTINE { levels_browse  }
+
+
+
+ROUTINE coa_action_get_job_information (self)
+
+
+    { Related Batches}
+ 
+    self . parent_job      = SELECT job_header . parent_batch WHERE 
+                                    job_name = self . job
+
+    self . product         = SELECT job_header . product     
+
+    self . material        = SELECT job_header . material
+                           
+    self . batch_array[1]   = SELECT job_header . batch_name WHERE
+	                                job_name = self . job             
+     
+    IF (STRIP(self . parent_job ) <> "") THEN
+     
+        self . batch_array[2]         = self . parent_job   
+         
+        self . parent_product  = SELECT job_header . product WHERE 
+                                        job_name = self . parent_job
+     
+    ENDIF
+
+
+ENDROUTINE { coa_action_get_job_information }
+
+
+
+ROUTINE coa_action_get_prompt_fields (self)
+
+
+    DECLARE count,
+            i
+                                           
+    count = 1
+    i     = 1
+        
+    WHILE ( count <= self . coa_form . no_prompts ) DO
+    
+        IF ((STRIP(self . coa_form . details [ TYPE_COL, count ]) <> "JOB_FIELD")
+            AND (STRIP(self . coa_form . details [ TYPE_COL, count ]) <> "SAMP_FIELD") ) THEN  {3.0}
+                    
+            self . header_array [i, COL_HEAD_NAME ] = self . coa_form . details [ JOBF_COL, count ]
+            self . header_array [i, COL_HEAD_VALUE] = self . coa_form . details [ VALUE_COL, count ]                        
+
+            i = i + 1
+            
+        ENDIF
+        
+        count = count + 1
+                        
+    ENDWHILE
+
+
+
+ENDROUTINE { coa_action_get_prompt_fields }
+
+
+
+ROUTINE coa_action_get_job_fields ( self ) 
+    
+    DECLARE count,
+            field           
+                    
+    field = SELECT coa_template_parameters . prompt1 WHERE  
+                   product              = self . coa_template AND   
+                   product_level        = self . market AND
+                   coa_template_version = self . template_version AND
+                   type = "JOB_FIELD"
+                                                       
+    count = size_of_array(self . header_array) + 1
+
+    WHILE (field  <> EMPTY) DO
+            
+        self . header_array [count, COL_HEAD_NAME]  = SELECT coa_template_parameters . field_name
+
+
+
+	
+        self . header_array [count, COL_HEAD_VALUE] = SELECT job_header . 'field' WHERE 
+                                                             job_name = self . job
+                      
+
+                      
+        NEXT coa_template_parameters
+        
+        field = SELECT coa_template_parameters . prompt1
+
+        count = count + 1
+            
+    ENDWHILE
+
+ENDROUTINE { coa_action_get_job_fields }            
+
+{3.0}
+ROUTINE coa_action_get_samp_fields ( self ) 
+    
+    DECLARE count,
+            field           
+                    
+    field = SELECT coa_template_parameters . prompt1 WHERE  
+                   product              = self . coa_template AND   
+                   product_level        = self . market AND
+                   coa_template_version = self . template_version AND
+                   type = "SAMP_FIELD"
+                                                       
+    count = size_of_array(self . header_array) + 1
+
+    WHILE (field  <> EMPTY) DO
+            
+        self . header_array [count, COL_HEAD_NAME]  = SELECT coa_template_parameters . field_name
+
+
+        self . header_array [count, COL_HEAD_VALUE] = SELECT sample . 'field' WHERE 
+                                                             job_name = self . job AND
+	                                                       use_on_coa = TRUE 
+                                                             ORDER ON 'field' DESCENDING
+                                       
+        NEXT coa_template_parameters
+        
+        field = SELECT coa_template_parameters . prompt1
+
+        count = count + 1
+            
+    ENDWHILE
+
+ENDROUTINE { coa_action_get_samp_fields }   
+{/3.0}                
+
+
+ROUTINE coa_action_build_results_array ( self ) 
+            
+                
+    self . get_template_result_array()
+    self . get_test_array ()
+    self . get_component_array ()
+    self . get_result_array ()
+    self . get_coa_result_array()
+   
+
+ENDROUTINE { coa_action_build_results_array }
+
+ROUTINE coa_action_get_template_result_array( self )
+
+
+    DECLARE template_result_record, 
+            counter
+    
+    template_result_record = SELECT coa_template_results . product WHERE 
+                                    product              = self . coa_template AND 
+                                    product_level        = self . market AND
+                                    coa_template_version = self . template_version
+
+    counter = 0
+        
+    WHILE (template_result_record <> EMPTY) DO
+        
+        counter = counter + 1
+        
+        self . template_result_array [ counter, 1 ] = SELECT coa_template_results . order_num
+        self . template_result_array [ counter, 2 ] = SELECT coa_template_results . analysis
+        self . template_result_array [ counter, 3 ] = SELECT coa_template_results . component        
+        self . template_result_array [ counter, 4 ] = SELECT coa_template_results . analysis_alias
+        self . template_result_array [ counter, 5 ] = SELECT coa_template_results . component_alias
+        self . template_result_array [ counter, 6 ] = SELECT coa_template_results . result_alias
+        self . template_result_array [ counter, 7 ] = SELECT coa_template_results . standard
+        self . template_result_array [ counter, 8 ] = SELECT coa_template_results . unit
+        self . template_result_array [ counter, 9 ] = SELECT coa_template_results . sig_figs_number
+        self . template_result_array [ counter, 10] = SELECT coa_template_results . flags
+        self . template_result_array [ counter, 11] = SELECT coa_template_results . standard_2
+        self . template_result_array [ counter, 12] = SELECT coa_template_results . bookmark
+        self . template_result_array [ counter, 13] = SELECT coa_template_results . mandatory
+
+        NEXT coa_template_results
+        
+        template_result_record = SELECT coa_template_results . product
+        
+    ENDWHILE
+
+ENDROUTINE { coa_action_get_template_result_array }
+
+
+ROUTINE coa_action_get_test_array ( self )
+
+    DECLARE the_anal, 
+            the_test, 
+            count, 
+            test_count
+    
+    count       = 1
+    test_count  = 1
+    
+    IF ( size_of_array( self . samples_array ) > 0) THEN  {If there are samples continue}
+        
+        WHILE (count <= size_of_array( self . samples_array )) DO    {Loop all samples}
+        
+            the_anal = SELECT test . analysis WHERE 
+                              sample    = self . samples_array[count] AND
+                              test_flag = "INCLUDE" AND
+                              status <> "X"
+        
+            WHILE (the_anal <> EMPTY) DO     {Loop all analysis associated with sample}
+        
+                the_test    = SELECT test . test_number
+
+                self . test_array [test_count, 1] = the_anal   {test.analysis}
+                self . test_array [test_count, 2] = the_test   {test.test_number}
+        
+                test_count = test_count + 1
+        
+                NEXT test
+        
+                the_anal = SELECT test . analysis
+        
+            ENDWHILE
+        
+            count = count + 1
+        
+        ENDWHILE
+                       
+    ENDIF
+    
+ENDROUTINE { coa_action_get_test_array  }
+
+
+ROUTINE coa_action_get_component_array ( self )
+
+    DECLARE the_anal_ver,
+            the_comp,
+            anal_desc,
+            comp_count, 
+            count
+    
+    comp_count = 1
+    count      = 1
+    
+    IF ( size_of_array ( self . test_array ) > 0) THEN
+        
+        WHILE (count <= size_of_array ( self . test_array )) DO
+        
+            the_anal_ver = SELECT test . analysis_version WHERE 
+                                  test_number = self . test_array[count, 2]
+        
+            the_comp     = SELECT versioned_component . name WHERE 
+                                  analysis         = self . test_array[count, 1] AND  
+                                  analysis_version = the_anal_ver
+            
+            anal_desc    = SELECT versioned_analysis . description WHERE 
+                                  identity         = self . test_array [count, 1] AND 
+                                  analysis_version = the_anal_ver     
+        
+            anal_desc    = STRIP(anal_desc)
+                     
+            IF (anal_desc = EMPTY) THEN
+                     
+                anal_desc = SELECT versioned_analysis . identity WHERE 
+                                   identity         = self . test_array [count, 1] AND 
+                                   analysis_version = the_anal_ver 
+        
+            ELSE
+        
+                anal_desc = STRIP(anal_desc)
+        
+            ENDIF
+        
+            WHILE (the_comp <> EMPTY) DO
+                             
+                self . comp_array[comp_count, 1] = the_comp
+                self . comp_array[comp_count, 2] = self . test_array[count,1] {analysis}
+                self . comp_array[comp_count, 3] = self . test_array[count,2] {test}
+                self . comp_array[comp_count, 4] = anal_desc
+
+                self . comp_array[comp_count, 5] = self . test_array [count, 1]
+                self . comp_array[comp_count, 6] = the_anal_ver
+                self . comp_array[comp_count, 7] = the_comp
+
+        
+                comp_count = comp_count + 1
+        
+                NEXT versioned_component
+        
+                the_comp = SELECT versioned_component . name
+        
+             ENDWHILE
+        
+             count = count + 1
+        
+         ENDWHILE                     
+        
+     ENDIF
+     
+ENDROUTINE { coa_action_get_component_array  }
+
+
+ROUTINE coa_action_get_result_array ( self )
+
+    DECLARE the_res, 
+            count, 
+            the_value,
+            test_status
+    
+    count = 1    
+    
+    IF (size_of_array ( self . comp_array ) > 0) THEN
+            
+        WHILE (count <= size_of_array ( self . comp_array )) DO
+
+            test_status = SELECT test . status WHERE 
+                                 test_number = self . comp_array[count, 3]
+
+            IF (test_status = "R") THEN
+
+                self . has_rejected_tests = TRUE   { Record if there are rejected tests }
+                self . has_rejected_data  = TRUE   
+
+            ENDIF
+               
+            the_res = SELECT result.text WHERE 
+                             name        = self . comp_array[count, 1] AND  {component}
+                             test_number = self . comp_array[count, 3]      {test}                            
+            
+
+            the_value = SELECT result . value
+            
+            {Convert any EMPTY values to blank strings}
+
+            {Convert any EMPTY values to blank strings}
+            IF the_res = EMPTY THEN
+                the_res = ""               
+            ELSE
+                the_res = STRIP(the_res)            
+            ENDIF
+            
+            IF the_value = EMPTY THEN
+		        the_value = ""               
+		    ELSE
+		        the_value = STRIP(the_value)            
+            ENDIF
+
+            {Fill the result array}
+
+            self . result_array[count,1] = STRIP(self . comp_array[count, 2]) {analysis                   } 
+            self . result_array[count,2] = STRIP(self . comp_array[count, 1]) {component                  }
+            self . result_array[count,3] = the_res                            {text                       }                        
+            self . result_array[count,4] = STRIP(SELECT result . units)       {units                      }            
+            self . result_array[count,5] = the_value                          {value                      }            
+            self . result_array[count,6] = STRIP(SELECT result . result_type) {type                       }            
+            self . result_array[count,7] = STRIP(SELECT result . calculation) {Phrase ID (or Calculation) }  
+
+            self . result_array [count, 8]  =           self . comp_array[count, 5]
+            self . result_array [count, 9]  =           self . comp_array[count, 6]
+            self . result_array [count, 10] =           self . comp_array[count, 7]
+
+
+            NEXT result        
+    
+            count = count + 1
+            
+            the_res = SELECT result.text
+            
+         ENDWHILE
+         
+     ENDIF
+         
+ENDROUTINE { coa_action_get_result_array }
+
+
+ROUTINE coa_action_get_coa_result_array ( self )
+
+{
+*
+*  Process results based on CoA template results configuration
+*
+*  - If reult alias set, replace result
+*  - Round decimals if required
+*  - Phrase Translation for CoA template language(s)
+*
+************************************************************************************************}
+
+
+            
+    DECLARE count_coa, 
+            count_res, 
+            anal_alias,
+            anal_alias_old,
+            found_comp,
+            the_alias,
+            the_anal,
+            the_comp,
+            the_num_dp,
+            the_prefix,
+            the_prefix_1,
+            the_prefix_2,
+            found,
+            record_no,
+            the_text_result,
+            the_value_result,
+            the_type,
+            the_phrase,
+            translated_result,
+            analysis_id,
+            analysis_id_old
+    
+    count_coa      = 1
+    count_res      = 1
+    anal_alias     = ""
+    anal_alias_old = ""
+    analysis_id    = ""
+    analysis_id_old = ""
+    found_comp     = TRUE
+        
+    array_sort ( self . template_result_array , ARRAY_SORT_ASCENDING )    
+    
+    IF ( size_of_array( self . template_result_array ) > 0) THEN
+                
+        WHILE ((count_res <= size_of_array ( self . template_result_array )) AND (found_comp)) DO                                      
+            
+            {get analysis and component}
+
+            the_anal    = self . template_result_array [count_res,2]
+            the_comp    = self . template_result_array [count_res,3]                          
+            the_alias   = self . template_result_array [count_res,6]
+            the_num_dp  = self . template_result_array [count_res,9]
+            
+            found     = "FALSE"
+            record_no = 1 {record in the template}
+                        
+            WHILE (found <> "TRUE") AND (record_no <= size_of_array (self . result_array)) DO
+                
+                {search for analysis}
+
+                IF the_anal = self . result_array[record_no,1] THEN
+                
+                    {search for component}
+
+                    IF the_comp = self . result_array[record_no,2] THEN
+
+                        found      = "TRUE"
+                        found_comp = "TRUE"                        
+                        anal_alias = self . template_result_array[count_res,4]      
+                        analysis_id = self . template_result_array[count_res,2]                     
+                        
+                    ELSE
+                   
+                       { JON found_comp = "FALSE" }
+                                       
+                    ENDIF
+
+                ELSE
+
+                    { JON found_comp = "FALSE" }
+                    
+                ENDIF
+                
+               record_no = record_no + 1
+            
+            ENDWHILE
+
+            {If a Component is NOT Found, check if it is a mandatory result }
+
+            IF NOT (found) THEN
+
+                IF (self . template_result_array [count_res,13]) THEN
+
+                    self . missing_mandatory = TRUE
+
+                ENDIF
+
+            ENDIF
+            
+
+            IF (analysis_id <> analysis_id_old) THEN
+                            
+                self . coa_result_array[count_coa,1 ] = count_coa  { order_number    }
+	        self . coa_result_array[count_coa,2 ] = "ANALYSIS" { type            }
+		self . coa_result_array[count_coa,3 ] = anal_alias { analysis_alias  }		    
+		self . coa_result_array[count_coa,4 ] = anal_alias { component_alias }
+		self . coa_result_array[count_coa,5 ] = ""         { standard        }
+		self . coa_result_array[count_coa,6 ] = ""         { result          }
+                self . coa_result_array[count_coa,7 ] = ""         { unit            }
+                self . coa_result_array[count_coa,8 ] = ""         { flags           }
+                self . coa_result_array[count_coa,9 ] = ""         { standard_2      }
+                self . coa_result_array[count_coa,10] = ""         { bookmark        }
+
+                self . coa_result_array[count_coa,11] = self . result_array [record_no - 1,8] { Analysis ID}
+                self . coa_result_array[count_coa,12] = self . result_array [record_no - 1,9] { Analysis Version}
+                self . coa_result_array[count_coa,13] = ""                                    { Component Name  }
+
+	
+		anal_alias_old = anal_alias
+                analysis_id_old = analysis_id
+		count_coa      = count_coa + 1		    
+            
+            ENDIF
+            
+            IF found = "TRUE" THEN
+                                          
+                {create coa_result_array entry for COMPONENT}
+
+                self . coa_result_array[count_coa,1 ] = count_coa                                  { order_number    }
+                self . coa_result_array[count_coa,2 ] = "COMPONENT"                                { type            }
+                self . coa_result_array[count_coa,3 ] = anal_alias_old                             { analysis_alias  }
+                self . coa_result_array[count_coa,4 ] = self . template_result_array[count_res,5 ] { component_alias }
+                self . coa_result_array[count_coa,5 ] = self . template_result_array[count_res,7 ] { standard        }
+                self . coa_result_array[count_coa,7 ] = self . template_result_array[count_res,8 ] { unit            }
+                self . coa_result_array[count_coa,8 ] = self . template_result_array[count_res,10] { flags           }
+                self . coa_result_array[count_coa,9 ] = self . template_result_array[count_res,11] { standard_2      }
+                self . coa_result_array[count_coa,10] = self . template_result_array[count_res,12] { bookmark        }
+
+                self . coa_result_array[count_coa,11] = self . result_array [record_no - 1,8] { Analysis ID}
+                self . coa_result_array[count_coa,12] = self . result_array [record_no - 1,9] { Analysis Version}
+                self . coa_result_array[count_coa,13] = self . result_array [record_no - 1,10] { Component Name  }
+                               
+                the_text_result  = self . result_array [record_no - 1,3]
+                the_value_result = self . result_array [record_no - 1,5]
+                the_type         = self . result_array [record_no - 1,6]
+                the_phrase       = self . result_array [record_no - 1,7]
+                
+                {*** Replace result with result alias if one exists ***}
+
+                IF STRIP(the_alias) <> "" THEN
+                
+                    self . coa_result_array[count_coa,6] = the_alias
+
+                {*** If Phrase Result Translate if Necesssary ***}
+
+                ELSEIF STRIP(the_type) = "O" THEN
+
+                   translated_result = ""
+
+                   { get language combination }
+
+                   IF (STRIP(self . language) <> "") THEN
+
+                       { check if field name exists }
+ 
+                       IF valid_field ("PHRASE", self . language) THEN
+
+                           { if it exists, select it }
+
+                           translated_result = SELECT phrase . 'self . language' WHERE
+                                                      phrase_type = the_phrase AND
+                                                      phrase_text = the_text_result
+
+                           IF translated_result = EMPTY THEN
+
+                               translated_result = ""
+
+                           ENDIF
+                           
+                       ENDIF
+
+                   ENDIF
+                           
+                   { if it's not empty, use it}
+                   { otherwise use the actual result text}
+
+                   IF STRIP(translated_result) <> "" THEN
+
+                       self . coa_result_array[count_coa,6] = translated_result
+
+                   ELSE
+                       
+                       self . coa_result_array[count_coa,6] = the_text_result
+
+                   ENDIF 
+                
+                {*** If X for DP use result text ***}
+
+                ELSEIF (the_num_dp = -1) THEN
+                
+                    self . coa_result_array[count_coa,6] = the_text_result
+                
+                {*** If numeric round the value ****}
+		    {***Check if result ending in 5 has been rounded down previously***}
+
+                ELSEIF (the_num_dp <> -1) AND (the_type = "N") THEN
+                
+                    {*** strip inequality from text result ****}
+
+                    the_prefix = ""
+                    the_prefix_2 = SUBSTRING (the_text_result,1,2)
+                    the_prefix_1 = SUBSTRING (the_text_result,1,1)
+                    
+                    IF ((the_prefix_2 = "<=") OR (the_prefix_2 = ">=")) THEN
+                   
+                        the_prefix = the_prefix_2                                     
+                                        
+                    ELSEIF ((the_prefix_1 = "<") OR (the_prefix_1 = ">")) THEN
+                   
+                        the_prefix = the_prefix_1
+                                           
+                    ENDIF
+
+                    self . coa_result_array[count_coa,6] = the_prefix:format_real_value_coa (the_value_result, the_num_dp, the_text_result) {1.6}
+			
+                
+                {*** If result is calculated, round if numeric only ***}
+
+                ELSEIF (the_num_dp <> -1) AND (the_type = "K")THEN
+                
+                    IF (STRIP(the_text_result) = "") OR (NUMTEXT(the_text_result) = FALSE) THEN
+                    
+                        self . coa_result_array[count_coa,6] = the_text_result
+                        
+                    ELSE
+                    
+                        {*** strip inequality from text result ***}
+
+			the_prefix = ""
+			the_prefix_2 = SUBSTRING (the_text_result,1,2)
+                        the_prefix_1 = SUBSTRING (the_text_result,1,1)
+                    
+                        IF ((the_prefix_2 = "<=") OR (the_prefix_2 = ">=")) THEN
+			                     
+			          the_prefix = the_prefix_2                                     
+			                                          
+			      ELSEIF ((the_prefix_1 = "<") OR (the_prefix_1 = ">")) THEN
+			                     
+			          the_prefix = the_prefix_1
+			                                             
+                        ENDIF
+                                   
+                        self . coa_result_array[count_coa,6] = the_prefix:format_real_value_coa (the_value_result, the_num_dp, the_text_result) {1.6}
+                    
+                    ENDIF
+                
+                {*** If none of the above use the text result ***}
+
+                ELSEIF (the_num_dp <> -1) THEN
+                
+                    self . coa_result_array[count_coa,6] = the_text_result
+                                                                                                            
+                ENDIF
+                                                               
+                count_coa = count_coa + 1
+                
+            ENDIF
+                                               
+            count_res = count_res + 1                
+            
+                
+        ENDWHILE
+             
+    ENDIF
+
+    { Set a flag if no results are found } 
+
+    IF (size_of_array (self . coa_result_array) <= 0) THEN
+
+        self . has_results = FALSE
+
+    ENDIF    
+           
+ENDROUTINE { coa_action_get_coa_result_array  }
+
+
+ROUTINE coa_action_can_generate ( self ) 
+    
+    DECLARE can_generate
+
+    can_generate = TRUE
+
+    IF NOT (self . has_results) THEN
+
+        can_generate = FALSE
+
+        flash_message (GET_USER_MESSAGE("COA_NO_RESULTS", 1), true)
+
+        EXIT
+
+    ELSEIF (self . missing_mandatory) THEN
+
+        can_generate = FALSE
+
+        flash_message (GET_USER_MESSAGE("COA_MISSING_MANDATORY", 1), true)
+
+        EXIT
+
+    ELSEIF ( self . has_rejected_data) THEN
+
+        IF ( role_lib_has_privilege( 1135 )) THEN   
+
+            can_generate = TRUE
+
+        ELSE
+
+            can_generate = FALSE
+
+            flash_message (GET_USER_MESSAGE("COA_NO_PRIVILEGE_REJECTED", 1), true)
+
+            EXIT            
+
+        ENDIF
+
+        can_generate = TRUE
+
+    ENDIF
+
+    RETURN (can_generate)
+
+ENDROUTINE { coa_action_has_rejected_data }      
+
+
+
+ROUTINE coa_action_create_syntax (self)
+
+    DECLARE the_syntax_root,
+            the_increment
+
+    the_syntax_root = STRIP(self . job): "-" : STRIP(self . market): "-"
+    the_increment   = RIGHTSTRING("000":STRIP(STRING(INCREMENT(the_syntax_root, "COA_HEADER"))),3)
+    self . syntax   = the_syntax_root : the_increment
+
+
+ENDROUTINE { coa_action_create_syntax }
+
+
+ROUTINE coa_action_write_records (self)
+
+    DECLARE count, 
+            check_ok,
+            field,
+            val,
+            entry_array,
+            parameters_array,
+            the_ident
+
+    ARRAY entry_array
+    ARRAY parameters_array
+    
+    the_ident = PACKED_DECIMAL(INCREMENT("COA_HEADER", "COA_HEADER"))
+
+    {Header data}
+
+    RESERVE ENTRY coa_header, the_ident, check_ok   
+
+    IF check_ok = EMPTY THEN
+
+        check_write_transaction()
+
+        {Mandatory fields}
+
+        ASSIGN coa_header . coa_id_text          = STRIP(self . syntax )
+        ASSIGN coa_header . product              = STRIP(self . material)
+        ASSIGN coa_header . coa_template         = STRIP(self . coa_template)   
+        ASSIGN coa_header . product_level        = STRIP(self . market )
+        ASSIGN coa_header . coa_template_version = PACKED_DECIMAL(self . template_version)
+        ASSIGN coa_header . generated_by         = GLOBAL("OPERATOR")
+        ASSIGN coa_header . generated_on         = NOW
+	  ASSIGN coa_header . accepted_date = SELECT job_header . date_authorised WHERE
+									 job_name = self.job
+	  ASSIGN coa_header . batch_number  =  SELECT job_header . batch_name WHERE
+									 job_name = self.job
+
+
+
+
+
+
+       
+        {Configured fields}
+
+        count = 1 
+	                
+        WHILE (count <= size_of_array ( self . header_array )) DO      
+	        
+            field = self . header_array[count, COL_HEAD_NAME ]
+            val   = self . header_array[count, COL_HEAD_VALUE]
+            
+            ASSIGN coa_header . 'field' = val
+		    	                
+            count = count + 1
+	                
+        ENDWHILE         
+              
+        {1.7/ Update fields if they were not already updated by prompted values }
+        IF ( blank( SELECT coa_header.product_description ) )
+        
+            ASSIGN coa_header.product_description = self.template_or_material_item( "DESCRIPTION", self.product_description )
+            
+        ENDIF
+        
+        IF ( blank( SELECT coa_header.market ) )
+        
+            ASSIGN coa_header.market = self.template_or_material_item( "MARKET_TEXT", self.market_text )
+            
+        ENDIF
+        
+        IF ( blank( SELECT coa_header.presentation ) )
+        
+            ASSIGN coa_header.presentation = self.template_or_material_item( "PRESENTATION", self.presentation )
+            
+        ENDIF
+        
+        {/1.7}
+        
+        UPDATE coa_header               
+
+    ELSE
+
+        flash_message(check_ok, TRUE)        
+
+    ENDIF
+    
+    {Detail data}
+
+    count = 1 
+                
+    WHILE (count <= size_of_array ( self . coa_result_array )) DO      
+                
+        RESERVE ENTRY coa_detail, the_ident : self . coa_result_array[count,1], check_ok
+                
+        IF check_ok = EMPTY THEN
+
+	    ASSIGN coa_detail . type          = self . coa_result_array[count,2 ] { type            }
+	    ASSIGN coa_detail . test          = self . coa_result_array[count,4 ] { component_alias }		    
+	    ASSIGN coa_detail . standard      = self . coa_result_array[count,5 ] { standard        }
+	    ASSIGN coa_detail . result        = self . coa_result_array[count,6 ] { result          }
+            ASSIGN coa_detail . unit          = self . coa_result_array[count,7 ] { unit            }
+            ASSIGN coa_detail . analysis_name = self . coa_result_array[count,3 ] { analysis alias  }
+            ASSIGN coa_detail . flags         = self . coa_result_array[count,8 ] { flags           }
+            ASSIGN coa_detail . standard_2    = self . coa_result_array[count,9 ] { standard_2      }
+            ASSIGN coa_detail . bookmark      = self . coa_result_array[count,10] { bookmark        }
+
+            ASSIGN coa_detail . analysis_id   =  self . coa_result_array[count,11] { Analysis ID}
+            ASSIGN coa_detail . analysis_version =  self . coa_result_array[count,12] { Analysis Version}
+            ASSIGN coa_detail . component_name   =  self . coa_result_array[count,13] { Component Name}
+
+            UPDATE coa_detail
+                    
+        ELSE
+		         
+	      flash_message(check_ok, TRUE)        
+		         
+        ENDIF
+                
+        count = count + 1
+                
+     ENDWHILE                       
+        
+     COMMIT 
+
+     flash_message( GET_USER_MESSAGE("COA_GEN_SUCCESS", 1) : " " : self . syntax : " " :
+	            GET_USER_MESSAGE("COA_GEN_SUCCESS", 2), TRUE)
+
+
+ENDROUTINE { coa_action_write_records }
+
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE coa_action_template_or_material_item
+    (
+            self,
+    VALUE   material_field_name,
+    VALUE   field_value
+    )
+
+    {
+    Description :
+    If value from template is of form MATERIALS.FIELD_NAME then read the
+    value from the materials table
+    }
+
+    IF ( TOUPPER( field_value ) = "MATERIALS." : material_field_name )
+    
+         field_value = SELECT materials.'material_field_name'
+                       WHERE  ( article_code = self.material )
+                       
+    ENDIF
+    
+    RETURN( field_value )
+    
+ENDROUTINE
+
+
+ROUTINE check_write_transaction
+
+    IF NOT transaction_is_write() THEN
+
+       START WRITE TRANSACTION "update record"
+
+    ENDIF
+
+ENDROUTINE { check_write_transaction }
+
+
+
+ROUTINE coa_print (option)
+
+{
+*    Print the COA via from Menu. Prompts user for CoA ID
+*
+*******************************************************************************}
+
+    DECLARE the_coa_id,
+            display_prompt,
+            prompt_obj, 
+            form
+
+		
+    { Build the form }
+
+    PROMPT OBJECT form
+           CLASS PROMPT_CLASS_FORM
+           WITH ( width = 87 ,
+                  height = 6 )
+            
+    form . header = GET_USER_MESSAGE("COA_PRINT_FORM_HEADER", 1)
+    form . footer = ""
+    form . height = 1
+    form . width  = 37
+    form . row    = ( GLOBAL ( "SCREEN_HEIGHT") - form . height) / 2
+    form . column = ( GLOBAL ( "SCREEN_WIDTH" ) - form . width ) / 2
+    form . border = TRUE
+    form . active_prompt = 1
+    form . return_behaviour = FORM_RETURN_STAY    
+    
+    PROMPT OBJECT display_prompt
+           CLASS "STD_PROMPT_TEXT"
+           ON LINE 1 FROM 2 TO 10
+           WITH ( VALUE      =  GET_USER_MESSAGE("COA_PRINT_FORM_COA_ID", 1),
+                  BOLD       =  TRUE       ,
+                  RAISED     =  TRUE )
+    
+    form . add_display ( display_prompt )
+        
+    PROMPT OBJECT prompt_obj
+           BROWSE ON COA_HEADER.COA_ID_TEXT
+           ON LINE 1 FROM 13 to 40
+           WITH ( ALWAYS_VALIDATE = TRUE,
+                  LOWERED = TRUE )
+    
+    form . add_prompt ( prompt_obj )
+	
+    form . start_prompt()
+    form . wait_prompt()
+    form . end_prompt()
+        
+    the_coa_id = SELECT coa_header . coa_id WHERE
+                        coa_id_text = form . prompt_objects[1] . text
+    
+    IF form . get_lastkey () = "DO" THEN
+    
+        print_coa (the_coa_id)
+        
+    ENDIF
+    
+
+ENDROUTINE
+
+
+{******************************************************************************}
+
+GLOBAL ROUTINE print_coa ( VALUE coa_id )
+
+{
+*
+*    COA Print Option Called from Menu
+*
+*******************************************************************************}
+
+    DECLARE coa_obj
+  
+    define_coa_print_class ()
+
+    CREATE OBJECT "COA_PRINT", coa_obj
+
+    coa_obj . no_copies = prompt_integer (GET_USER_MESSAGE("COA_PRINT_NO_COPIES", 1))    
+
+    coa_obj . coa_id = coa_id
+
+    coa_obj . get_coa_details ()    
+
+    IF (STRIP (coa_obj . document_template <> "")) THEN
+    
+        { Print Using the Document Template }
+
+         coa_obj . print_to_word ()
+
+    ELSE
+
+        { Print Using Infomaker }
+
+        define_imprint_class ( )
+ 
+        CREATE OBJECT IMPRINT, coa_obj . imprint_report
+
+        coa_obj . print_to_imprint()
+        
+    ENDIF
+ 
+ENDROUTINE { print_coa }
+
+
+ROUTINE coa_preview (option)
+
+{
+*    Print the COA via from Menu. Prompts user for CoA ID
+*
+*******************************************************************************}
+
+    DECLARE the_coa_id,
+            display_prompt,
+            prompt_obj, 
+            form
+
+		
+    { Build the form }
+
+    PROMPT OBJECT form
+           CLASS PROMPT_CLASS_FORM
+           WITH ( width = 87 ,
+                  height = 6 )
+            
+    form . header = GET_USER_MESSAGE("COA_PREVIEW_FORM_HEADER", 1)
+    form . footer = ""
+    form . height = 1
+    form . width  = 37
+    form . row    = ( GLOBAL ( "SCREEN_HEIGHT") - form . height) / 2
+    form . column = ( GLOBAL ( "SCREEN_WIDTH" ) - form . width ) / 2
+    form . border = TRUE
+    form . active_prompt = 1
+    form . return_behaviour = FORM_RETURN_STAY    
+    
+    PROMPT OBJECT display_prompt
+           CLASS "STD_PROMPT_TEXT"
+           ON LINE 1 FROM 2 TO 10
+           WITH ( VALUE      =  GET_USER_MESSAGE("COA_PREVIEW_FORM_COA_ID", 1),
+                  BOLD       =  TRUE       ,
+                  RAISED     =  TRUE )
+    
+    form . add_display ( display_prompt )
+        
+    PROMPT OBJECT prompt_obj
+           BROWSE ON COA_HEADER.COA_ID_TEXT
+           ON LINE 1 FROM 13 to 40
+           WITH ( ALWAYS_VALIDATE = TRUE,
+                  LOWERED = TRUE )
+    
+    form . add_prompt ( prompt_obj )
+	
+    form . start_prompt()
+    form . wait_prompt()
+    form . end_prompt()
+        
+    the_coa_id = SELECT coa_header . coa_id WHERE
+                        coa_id_text = form . prompt_objects[1] . text
+    
+    IF form . get_lastkey () = "DO" THEN
+    
+        preview_coa (the_coa_id)
+        
+    ENDIF
+    
+
+ENDROUTINE
+
+
+{******************************************************************************}
+
+GLOBAL ROUTINE preview_coa ( VALUE coa_id )
+
+{
+*
+*    COA Preview Option Called from Menu
+*
+*******************************************************************************}
+
+    DECLARE coa_obj
+  
+    define_coa_print_class ()
+
+    CREATE OBJECT "COA_PRINT", coa_obj
+
+    coa_obj . coa_id = coa_id
+
+    coa_obj . get_coa_details ()  
+
+    IF (STRIP (coa_obj . document_template <> "")) THEN
+    
+        { Can Only Preview Infomaker Based CoAs }
+
+        flash_message (GET_USER_MESSAGE ("COA_PREVIEW_ONLY_INFOMAKER", 1), true)
+ 
+    ELSE
+
+        { Preview Using Infomaker }
+
+        define_imprint_class ( )
+ 
+        CREATE OBJECT IMPRINT, coa_obj . imprint_report
+
+        coa_obj . preview = TRUE
+
+        coa_obj . print_to_imprint()
+        
+    ENDIF
+ 
+ENDROUTINE { preview_coa }
+
+
+GLOBAL ROUTINE define_coa_print_class
+
+{
+*
+*    Defines the COA_PRINT Class Properties and Actions.           
+*
+*******************************************************************************}
+
+
+
+    DEFINE CLASS "COA_PRINT"
+
+        INITIALISATION
+        
+        PROPERTIES
+
+             "coa_id"                 ,    { CoA ID                                  }
+             "product"                ,    { Product                                 }
+             "product_level"          ,    { Product Level                           }
+             "coa_template"           ,    { 1.7 CoA template                        }
+             "template_version"       ,    { Template Version                        }
+             "library"                ,    { Infomaker Library                       }
+             "report_name"            ,    { Infomaker Report Name                   }
+             "document_template"      ,    { Word Document Template                  }
+             "field_array"            ,    { Array of table fields                   }
+             "data_array"             ,    { Array holding Merge Data                }
+             "imprint_report"         ,    { Imprint Object                          }
+             "word_doc"               ,    { Word Document Object                    }
+             "csv_file"               ,    { CSV Data File                           }
+             "tempfile"               ,    { Temporary File Name                     } 
+             "document_template_temp" ,    { Word Document Template - Client         }
+             "client_temp_folder"     ,    { Path to Client TEMP folder              }
+             "no_copies"              ,    { Number of copies to print               }
+             "preview"                    { Print Preview                           }
+
+
+	ACTIONS
+        
+             "get_coa_details"  ,          { Get CoA Information                     }
+             "print_to_word"    ,          { Print Using MS Word                     }
+             "print_to_imprint" ,          { Print Using Imprint                     }
+             "do_merge"         ,          { Do merge using MS Word                  }
+             "create_csv"       ,          { Generate CSV File                       }
+             "copy_template_to_client",    { Copy Word Doc Template to Client        }
+             "delete_files"                { Cleanup Files After Merge               }
+ 
+    END CLASS
+
+
+ENDROUTINE { define_coa_print_class }
+
+
+ROUTINE coa_print_class_initialisation ( self ) 
+
+{
+*    COA_PRINT Class initialisation routine.                     
+*
+*******************************************************************************}
+
+    ARRAY self . data_array
+    ARRAY self . field_array
+
+    self . no_copies = 1
+    self . preview   = FALSE
+       
+ENDROUTINE { coa_print_class_initialisation }
+
+
+
+
+ROUTINE coa_print_action_get_coa_details (self)
+
+
+    self . product           = SELECT coa_header . product WHERE 
+                                      coa_id = self . coa_id
+                              
+    self . product_level     = SELECT coa_header . product_level 
+    self . template_version  = SELECT coa_header . coa_template_version
+    
+    self . coa_template      = SELECT coa_header.coa_template           
+
+    self . library           = SELECT coa_template . infomaker_library WHERE 
+                                      product              = self . coa_template AND    
+                                      product_level        = self . product_level AND
+                                      coa_template_version = self . template_version
+                                    
+    self . report_name       = SELECT coa_template . infomaker_report
+    self . document_template = SELECT coa_template . document_template
+
+    { Get Full Path to Library }
+	
+    self . library           = lib_utils_logical_to_string("smp$imprint"):"\":STRIP(self . library)
+
+    self . report_name       = STRIP (self . report_name)    
+
+    { Get Full Path to Document Template}
+
+
+    IF (STRIP(self . document_template) <> "") THEN
+
+        self . document_template = lib_utils_logical_to_string("smp$userfiles"):"\":STRIP(self . document_template)
+    
+    ELSE
+
+        self . document_template = STRIP(self . document_template)
+ 
+    ENDIF
+
+
+
+ENDROUTINE { coa_print_action_get_coa_details  }
+
+
+ROUTINE coa_print_action_print_to_imprint (self)
+
+    self . imprint_report . create_ole_object()
+    self . imprint_report . reset_ole_object()
+
+    self . imprint_report . library  = self . library
+    self . imprint_report . report   = self . report_name
+
+    self . imprint_report . copies   = NUMERIC(self . no_copies)
+
+    self . imprint_report . preview  = self . preview
+
+    self . imprint_report . add_parameter ( self . coa_id ) 
+
+
+
+    self . imprint_report . generate ( )    
+
+    self . imprint_report . ole_object = EMPTY
+
+
+ENDROUTINE { coa_print_action_print_to_imprint }
+
+
+ROUTINE coa_print_action_print_to_word (self)
+
+    DECLARE coa_record,
+            coa_detail_record,
+            i,
+            j
+
+    get_field_names ("COA_HEADER", self . field_array)
+
+    coa_record = SELECT coa_header . coa_id WHERE 
+                        coa_id = self . coa_id
+
+    IF (coa_record <> EMPTY) THEN
+
+        i = 1
+        j = 1
+
+        WHILE (i <= size_of_array(self . field_array)) DO
+
+            IF (self . field_array [i, 2] = FALSE) THEN   { Ignore Alias Fields}       
+
+                self . data_array[1, j] = STRIP(self . field_array [i, 1])
+                self . data_array[2, j] = ASCII(34):STRIP(SELECT coa_header . 'self . field_array[i, 1]'):ASCII(34)
+
+                j = j + 1
+
+            ENDIF 
+
+            i = i + 1
+
+        ENDWHILE     
+
+        { Now Loop through all of the results and bookmarks and add to the array}
+
+        coa_detail_record = SELECT coa_detail . coa_id WHERE 
+                                   coa_id = self . coa_id AND
+                                   type = "COMPONENT"                          
+
+        WHILE (coa_detail_record <> EMPTY) DO
+
+            self . data_array [1, j] = ASCII(34):STRIP(SELECT coa_detail . bookmark):ASCII(34)
+            self . data_array [2, j] = ASCII(34):STRIP(SELECT coa_detail . result):ASCII(34)
+
+            NEXT coa_detail
+
+            coa_detail_record = SELECT coa_detail . coa_id
+
+            j = j + 1
+
+        ENDWHILE
+
+        self . create_csv ()
+
+        self . copy_template_to_client ()
+
+        self . do_merge ()
+
+        self . delete_files()
+
+ 
+    ELSE
+
+        { Error }
+
+    ENDIF
+   
+ENDROUTINE { coa_print_action_print_to_word }
+
+
+
+ROUTINE coa_print_action_create_csv(self)
+
+    DECLARE x,
+            y,
+            fso,
+            textfile,
+            the_date
+
+    x = 1
+    y = 1
+
+    { Generate a Name for the temporary files }
+ 
+    SET DATE FORMAT "MON-DZ-YYYY-H12-MI-SS"
+
+    the_date = NOW
+
+    self . tempfile = LEFTSTRING (the_date, 11 )
+    self . tempfile = self . tempfile : "_": SUBSTRING (the_date, 13, 2)
+    self . tempfile = self . tempfile : "_": SUBSTRING (the_date, 16, 2)
+    self . tempfile = self . tempfile : "_": SUBSTRING (the_date, 19, 2)
+
+    RESTORE DATE FORMAT
+
+
+    CREATE OBJECT "STD_OLE_AUTOMATION" , fso
+
+    fso . Create ("Scripting.FileSystemObject")              { Create Filesystem Object                     }
+
+    self . client_temp_folder = fso . GetSpecialFolder (2)   { Get TEMP folder object}
+
+    self . client_temp_folder = self . client_temp_folder .path
+
+    {*** Create Client Temp CSV File and Write to It ***}
+
+    self . csv_file = self . client_temp_folder : "\" : self . tempfile : ".CSV"
+
+    IF (self . csv_file <> EMPTY) THEN
+
+        textfile =  fso.OpenTextFile (self . csv_file, 2, 1, 0)  { Open CSV File for Editing }
+
+        fso = EMPTY
+
+        {Write Data Rows}
+
+        WHILE (  x  <= size_of_array(self . data_array)) DO
+
+            WHILE ( self . data_array[x,y] <> EMPTY ) DO
+
+                textfile . Write( self . data_array[x, y])
+
+                IF ( self . data_array[x, y + 1] <> EMPTY ) THEN
+
+                    textfile . Write( ",")               { Only write a comma if not end of line  }
+
+                ELSE
+
+                    textfile . WriteLine("")                                
+
+                ENDIF
+
+                y = y + 1
+
+            ENDWHILE
+
+            y = 1
+
+            x  = x + 1
+
+        ENDWHILE
+
+        textfile . Close ()
+
+        textfile = EMPTY
+
+    ELSE
+
+       { Error Creating CSV File }
+
+       EXIT
+
+    ENDIF
+
+
+
+ENDROUTINE { coa_print_action_create_csv }
+
+
+
+ROUTINE coa_print_action_copy_template_to_client(self)
+
+    self . document_template_temp =  self . client_temp_folder : "\" : self . tempfile : ".DOC"
+
+    IF (self . document_template_temp <> EMPTY) THEN
+
+        transfer_binary_from_server( self . document_template, self . document_template_temp)
+
+    ELSE
+
+        { Error Copying Template to Client }
+
+        EXIT
+
+    ENDIF
+    
+
+
+ENDROUTINE { coa_print_action_copy_template_to_client}
+
+
+ROUTINE coa_print_action_do_merge (self)
+
+
+    CREATE OBJECT "STD_OLE_AUTOMATION" , self . word_doc
+
+    self . word_doc . create ( "Word.Application" )
+
+    self . word_doc . visible = 0
+
+    self . word_doc . documents. open (self . document_template_temp)
+
+    self . word_doc . Run ( "GenerateCoA", STRIP( self . csv_file ), self . no_copies)   
+
+    self . word_doc . documents . close (0)
+
+    self . word_doc . quit (0)
+ 
+    self . word_doc = ""
+
+ENDROUTINE { coa_print_action_do_merge }
+
+
+
+ROUTINE coa_print_action_delete_files (self)
+
+    client_delete_file (self . csv_file )
+
+    client_delete_file (self . document_template_temp)
+
+ENDROUTINE { coa_print_action_delete_files }
+
+ROUTINE format_real_value_coa( VALUE real_value ,
+                                  VALUE decimal_places,
+						VALUE text_value )
+
+{1.6}
+DECLARE old_format, check_format, len_val, len_text, check_value, the_prefix_1, the_prefix_2
+
+
+
+     len_val = STRINGLENGTH(STRIP(real_value))
+
+     check_value = SUBSTRING( STRIP(real_value), len_val, 1 )
+
+
+	text_value = STRIP(text_value)
+
+	len_text = STRINGLENGTH(text_value)
+     
+
+    IF (real_value <> " ") AND (decimal_places <> 255) THEN
+        old_format = GLOBAL( "FORMAT_TEXT" )
+
+        set_format( decimal_places )
+
+        IF is_open_ended_limit( real_value ) THEN
+            check_format = STRIP( NUMERIC (real_value # "<" # ">") )
+        ELSE
+            check_format = STRIP( NUMERIC( real_value ) )
+        ENDIF
+
+        IF LEFTSTRING( check_format, 1 ) <> "*" THEN
+            IF is_open_ended_limit( real_value ) THEN
+                real_value = LEFTSTRING( real_value, 1 ) :
+                             STRIP( NUMERIC (real_value # "<" # ">") )
+            ELSE
+                real_value = STRIP( NUMERIC( real_value ) )
+            ENDIF
+        ENDIF
+
+        SET FORMAT old_format
+    
+
+     ELSEIF (real_value = 0) AND (decimal_places <> 255) THEN
+        old_format = GLOBAL( "FORMAT_TEXT" )
+
+        set_format( decimal_places )
+
+        IF is_open_ended_limit( real_value ) THEN
+            check_format = STRIP( NUMERIC (real_value # "<" # ">") )
+        ELSE
+            check_format = STRIP( NUMERIC( real_value ) )
+        ENDIF
+
+        IF LEFTSTRING( check_format, 1 ) <> "*" THEN
+            IF is_open_ended_limit( real_value ) THEN
+                real_value = LEFTSTRING( real_value, 1 ) :
+                             STRIP( NUMERIC (real_value # "<" # ">") )
+            ELSE
+                real_value = STRIP( NUMERIC( real_value ) )
+            ENDIF
+
+
+        ENDIF
+
+            SET FORMAT old_format    
+
+	
+     ENDIF
+
+     {4.0 Start}
+     IF (check_value = 5) 
+
+		
+
+	  IF (real_value = STRIP(NUMERIC(text_value) ) )
+
+		{do nothing}
+	  ELSE
+
+		the_prefix_2 = SUBSTRING (text_value,1,2)
+            the_prefix_1 = SUBSTRING (text_value,1,1)
+                    
+            IF ((the_prefix_2 = "<=") OR (the_prefix_2 = ">=")) THEN
+			                     
+		          text_value = SUBSTRING (text_value, 3, len_text-2 )                                  
+			                                          
+		ELSEIF ((the_prefix_1 = "<") OR (the_prefix_1 = ">")) THEN
+		                     
+			    text_value = SUBSTRING (text_value, 2, len_text-1 )
+		                                             
+            ENDIF
+
+		IF (real_value = STRIP(NUMERIC(text_value) ) )
+
+			{do nothing}
+		
+		ELSE
+			real_value = text_value
+			
+			flash_message ("Result Text used", true)
+
+		ENDIF
+
+
+	  ENDIF
+
+     ELSE
+	{do nothing}
+
+     ENDIF
+
+        
+
+    RETURN( real_value )
+
+ENDROUTINE {format_real_value}
+
+

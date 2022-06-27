@@ -1,0 +1,516 @@
+
+{*******************************************************************************
+*
+* Module Name   : OLS_LIMSML_DOC
+*
+* Purpose       : Sample LIMSML Entity Handling
+*
+* Document Ref  : N/a
+*
+* Version 1.0
+*******************************************************************************} 
+
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_STRUCTURE
+JOIN STANDARD_LIBRARY STD_VGL
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN STANDARD_LIBRARY STD_MESSAGE
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN LIBRARY $LIMSML_LIB
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $BL
+JOIN LIBRARY $BL_IDS_BUILDER
+JOIN LIBRARY $BL_ITEM_DATATABLE
+JOIN LIBRARY $LIMSML_HELPER
+JOIN LIBRARY $LIMSML_PROCESS
+JOIN LIBRARY $BL_ITEM_DATACOLUMN
+JOIN LIBRARY $BL_COLUMN
+JOIN LIBRARY $BL_IDT_FORMATTED
+JOIN LIBRARY $LIMSML_COLUMN_DT
+JOIN LIBRARY $BL_PROMPT_INFO
+
+SET NOTPROTECTED
+SET NAME "DEFER/"
+SET COMPILE_OPTION DECLARE
+ENABLE WINDOWS
+
+CONSTANT STORED_EMPTY = "------!!!!!"
+
+ROUTINE test 
+
+	DECLARE limsml_command_name, entity, action,
+			ols_doc, params_array
+
+	limsml_command_name = "OLS_RESULT_ENTRY"
+	read_limsml_doc ( limsml_command_name, entity, action,
+			 ols_doc, params_array )
+
+ENDROUTINE
+
+
+
+GLOBAL ROUTINE read_stored_limsml_doc (ols_doc, params_array, VALUE filename)
+
+	DECLARE  txt, check_ok , status
+
+	status = EMPTY
+	ARRAY params_array
+
+	FILE OPEN filename, check_ok
+	
+	IF (check_ok = EMPTY) THEN
+
+		{ Header is 1st line, but not used yet }
+		FILE READ filename, txt, check_ok
+
+		{ Actions line }
+		FILE READ filename, txt, check_ok
+
+		IF (check_ok = EMPTY) THEN
+
+			status = parse_actions_line (STRIP(txt), params_array)
+
+			{ Start reading entities }
+
+			FILE READ filename, txt, check_ok
+
+			IF (status=EMPTY) AND (check_ok=EMPTY) THEN
+
+				txt = text_entity_get_type ( STRIP(txt) )
+
+				IF (txt <> EMPTY) THEN
+
+					{ top level }
+					CREATE OBJECT "OLS_LIMSML_DOC", ols_doc
+					status = read_stored_limsml_doc_child (txt, ols_doc, filename)
+
+				ENDIF
+
+			ENDIF
+
+		ENDIF
+
+		FILE CLOSE filename, check_ok
+
+	ELSE
+
+		status = "Error opening file ":STRIP(filename):". ":STRIP(check_ok)
+	ENDIF
+
+	RETURN (status)
+
+ENDROUTINE
+
+ROUTINE read_stored_limsml_doc_child (entity_type_text, ols_doc, filename)
+
+	DECLARE ols_doc_child, txt, check_ok , child_count, status
+
+	status = EMPTY
+
+	{ read type from entity_text }
+     ols_doc.type = entity_type_text
+
+	{ fields }
+
+	FILE READ filename, txt, check_ok
+	status = parse_fields_line (txt, ols_doc)
+
+	IF (status = EMPTY) AND (check_ok <> EMPTY) THEN
+
+		status = "No fields: ":check_ok
+
+	ENDIF
+
+	{ Children }
+	FILE READ filename, txt, check_ok
+
+	child_count = 0
+
+	WHILE (status = EMPTY) AND (check_ok = EMPTY) AND (STRIP(txt)<> "") AND (txt <> EMPTY) DO
+
+		child_count = child_count + 1
+
+		FILE READ filename, txt, check_ok
+
+		IF (check_ok=EMPTY) THEN
+
+			txt = text_entity_get_type ( STRIP(txt) )
+
+			IF (txt <> EMPTY) THEN
+
+				CREATE OBJECT "OLS_LIMSML_DOC", ols_doc_child
+				ols_doc . col_children . insert (ols_doc_child, child_count)
+
+				status = read_stored_limsml_doc_child (txt, ols_doc_child, filename)
+
+			ENDIF
+
+		ENDIF
+
+	ENDWHILE
+
+	RETURN (status)
+
+ENDROUTINE
+
+ROUTINE parse_fields_line (VALUE line, ols_doc)
+
+	DECLARE ndx, i, j, array1, delim, fld, val, ok, status, orig_line
+	
+	ARRAY array1   ARRAYSIZE (0)
+	status = EMPTY
+	ok = FALSE
+	orig_line = line
+
+	IF (STRINGLENGTH(line)>=6) THEN
+		IF (LEFTSTRING(line,6)="FIELDS") THEN
+
+			ok = TRUE
+			line = STRIP ( RIGHTSTRING(line,STRINGLENGTH(line)-6) )
+
+		ENDIF
+	ENDIF
+	
+	IF (NOT ok) THEN
+
+		status = "Invalid Fields line: ":orig_line
+		RETURN (status)
+
+	ENDIF
+
+	delim = ASCII(9)
+
+	{ split the tabs first }
+	REPEAT
+
+		ndx = INDEX (line, delim)
+
+		IF (ndx>0) THEN
+
+			val = LEFTSTRING (line, ndx-1)
+			line = RIGHTSTRING (line, (STRINGLENGTH(line)-STRINGLENGTH(delim))
+					- (ndx-1) )
+		ELSE
+			val = line
+			line = ""
+		ENDIF
+
+		IF (STRIP(val) <> "") THEN
+
+			i = size_of_array (array1) + 1
+			array1 [i] = val
+
+		ENDIF
+
+	UNTIL (line="")
+
+	{ Now parse the fields=values }
+	i = 0
+
+	WHILE (i < size_of_array (array1)) DO
+
+		i = i + 1
+		split_equals_string(array1[i], fld, val)
+		j = size_of_array (ols_doc.fields_array) + 1
+
+		IF (STRIP(fld) <> "") THEN
+			ols_doc.fields_array [j,1] = fld
+			ols_doc.fields_array [j,2] = STRIP(val)
+		ENDIF
+
+	ENDWHILE
+
+	RETURN (status)
+
+ENDROUTINE
+
+ROUTINE parse_actions_line (VALUE line, params_array)
+
+	DECLARE ndx, i, j, array1, delim, fld, val, ok, status
+	
+	ARRAY array1   ARRAYSIZE (0)
+	status = EMPTY
+	ok = FALSE
+
+	IF (STRINGLENGTH(line)>=7) THEN
+		IF (LEFTSTRING(line,7)="ACTIONS") THEN
+
+			ok = TRUE
+			line = STRIP ( RIGHTSTRING(line,STRINGLENGTH(line)-7) )
+
+		ENDIF
+	ENDIF
+	
+	IF (NOT ok) THEN
+
+		status = "Invalid Actions line"
+		RETURN (status)
+
+	ENDIF
+
+	delim = ASCII(9)
+
+	{ split the tabs first }
+	REPEAT
+
+		ndx = INDEX (line, delim)
+
+		IF (ndx>0) THEN
+
+			val = LEFTSTRING (line, ndx-1)
+			line = RIGHTSTRING (line, (STRINGLENGTH(line)-STRINGLENGTH(delim))
+					- (ndx-1) )
+		ELSE
+			val = line
+			line = ""
+		ENDIF
+
+		IF (STRIP(val) <> "") THEN
+
+			i = size_of_array (array1) + 1
+			array1 [i] = val
+
+		ENDIF
+
+	UNTIL (line="")
+
+	{ Now parse the fields=values }
+	i = 0
+
+	WHILE (i < size_of_array (array1)) DO
+
+		i = i + 1
+		split_equals_string(array1[i], fld, val)
+		j = size_of_array (params_array) + 1
+
+		IF (val = STORED_EMPTY) THEN
+			val = EMPTY
+		ENDIF
+
+		IF (STRIP(fld) <> "") THEN
+			params_array [j,1] = fld
+			params_array [j,2] = STRIP(val)
+		ENDIF
+
+	ENDWHILE
+
+	RETURN (status)
+
+ENDROUTINE
+
+GLOBAL ROUTINE write_limsml_doc (ols_doc, params_array, VALUE filename)
+
+	DECLARE i, txt, check_ok, htab , tmp
+
+	htab=ASCII(9)
+
+	FILE CREATE filename, check_ok
+
+	{ Header }
+	txt = "HEADER version=1"
+	FILE WRITE filename, txt, check_ok
+
+	{ Actions  }
+
+	txt = "ACTIONS"
+	i = 0
+
+	WHILE (i < size_of_array (params_array))
+
+		i = i + 1
+		txt = txt:htab
+
+		tmp = params_array [i,2]
+		IF (tmp=EMPTY) THEN
+			tmp = STORED_EMPTY
+		ENDIF
+		txt = txt:params_array [i,1]:"=":tmp
+
+	ENDWHILE
+	FILE WRITE filename, txt, check_ok
+
+	write_limsml_doc_child (ols_doc, filename)
+
+	FILE CLOSE filename, check_ok
+
+ENDROUTINE
+
+ROUTINE write_limsml_doc_child (ols_doc, VALUE filename)
+
+	DECLARE i, ols_doc_child, txt, check_ok, htab
+
+	htab=ASCII(9)
+	txt = "ENTITY":htab:"type=":ols_doc.type
+	FILE WRITE filename, txt, check_ok
+
+	txt = "FIELDS"
+	i = 0
+
+	WHILE (i < size_of_array (ols_doc.fields_array))
+
+		i = i + 1
+		txt = txt:htab
+		txt = txt:ols_doc.fields_array [i,1]:"=":ols_doc.fields_array [i,2]
+
+	ENDWHILE
+	FILE WRITE filename, txt, check_ok
+
+	txt = "CHILDREN"
+	FILE WRITE filename, txt, check_ok
+
+	i = 0
+
+	WHILE (i < ols_doc.col_children.size()) DO
+
+		i = i + 1
+		ols_doc_child = ols_doc.col_children. get_by_number (i)
+		write_limsml_doc_child (ols_doc_child, filename)
+
+	ENDWHILE
+
+	txt = "END"
+	FILE WRITE filename, txt, check_ok
+
+ENDROUTINE
+
+
+ROUTINE text_entity_get_type (VALUE txt)
+
+	DECLARE ret
+	ret = EMPTY
+
+	IF (STRINGLENGTH(txt)>6) THEN
+		IF (LEFTSTRING(txt,6)="ENTITY") THEN
+			txt = TOUPPER (STRIP ( RIGHTSTRING(txt,STRINGLENGTH(txt)-6) ))
+			IF (STRINGLENGTH(txt)>5) THEN
+				IF (LEFTSTRING(txt,5)="TYPE=") THEN
+					txt = STRIP ( RIGHTSTRING(txt,STRINGLENGTH(txt)-5) )
+
+					ret = txt
+
+				ENDIF
+			ENDIF
+		ENDIF
+	ENDIF
+
+	RETURN (ret)
+
+ENDROUTINE
+
+ROUTINE split_equals_string(VALUE all,a,b)
+
+	DECLARE i
+	i = INDEX (all,"=")
+	IF (i<1) THEN
+		a = all
+		b = ""
+	ELSE
+		a = LEFTSTRING (all,i-1)
+		b = RIGHTSTRING (all,STRINGLENGTH(all)-i)
+	ENDIF
+
+ENDROUTINE
+
+GLOBAL ROUTINE read_limsml_doc (VALUE limsml_command_name, entity, action, 
+					ols_doc, params_array)
+
+	DECLARE rec, i
+
+	ARRAY params_array
+
+	CREATE OBJECT "OLS_LIMSML_DOC", ols_doc
+	read_limsml_doc_child (entity, ols_doc)
+
+	rec = SELECT limsml_entity_param . parameter
+              WHERE action = limsml_command_name
+
+	WHILE (rec <> EMPTY) DO
+
+		rec = STRIP (TOUPPER (rec))
+		i = size_of_array (params_array) + 1
+		params_array [i,1] = rec
+		params_array [i,2] = action . get_param_default( params_array [i,1] , EMPTY )
+
+		NEXT limsml_entity_param 
+		rec = SELECT limsml_entity_param . parameter
+
+	ENDWHILE
+
+ENDROUTINE
+
+
+ROUTINE read_limsml_doc_child (entity, ols_doc)
+
+	DECLARE child, child_count, ols_child_doc , field, field_count, i
+
+	ols_doc.type = STRIP (TOUPPER (entity.get_type() ))
+
+	{ fields }
+	field_count = 0
+
+	REPEAT
+
+		field = entity . get_field_by_index( field_count )
+
+		IF (field <> EMPTY) THEN
+
+			i = size_of_array (ols_doc.fields_array) + 1
+			ols_doc.fields_array [i,1] = field . get_name()
+			ols_doc.fields_array [i,2] = field . get_value()
+			field_count = 	field_count + 1
+
+		ENDIF
+
+	UNTIL (field = EMPTY) 
+
+	{ children }
+	child_count = 0
+
+	REPEAT
+
+		child = entity . get_child (child_count)
+
+		IF (child <> EMPTY) THEN
+
+		     CREATE OBJECT "OLS_LIMSML_DOC", ols_child_doc
+			ols_doc . col_children . insert (ols_child_doc, child_count)
+
+			read_limsml_doc_child (child, ols_child_doc)
+			child_count = child_count + 1
+
+		ENDIF
+
+	UNTIL (child = EMPTY) 
+
+ENDROUTINE
+
+
+GLOBAL ROUTINE ols_limsml_doc_define 
+	
+	DEFINE CLASS "OLS_LIMSML_DOC"
+
+		INITIALISATION
+
+	     INHERIT
+
+            "STD_COLLECTED"
+
+		PROPERTIES
+
+			"type" ,
+			"fields_array" ,
+			"col_children"   
+
+
+	END CLASS
+
+
+ENDROUTINE
+
+GLOBAL ROUTINE ols_limsml_doc_class_initialisation (self)
+
+	ARRAY self.fields_array   ARRAYSIZE (0,2)
+     CREATE OBJECT "STD_COLLECTION", self . col_children
+
+ENDROUTINE

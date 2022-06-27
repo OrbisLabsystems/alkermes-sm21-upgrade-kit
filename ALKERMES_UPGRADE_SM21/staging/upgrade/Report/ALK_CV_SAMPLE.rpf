@@ -1,0 +1,267 @@
+{******************************************************************************
+*
+* Module Name	: ALK_CV_SAMPLE
+* Purpose	: Alkermes, manager CV sampleset samples
+*
+* Version	: 1.0
+*
+*******************************************************************************}
+
+ 
+SET COMPILE_OPTION DECLARE
+SET NAME "DEFER/"
+ENABLE WINDOWS
+SET NOTPROTECTED
+
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_GENERAL
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN STANDARD_LIBRARY STD_STRUCTURE
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_CLIENT
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $PROMPT_LIST
+JOIN LIBRARY OR_LOGIN_LIB
+
+
+CONSTANT CV_SAMPLE_TEMPLATE = "ELAN_CV"
+CONSTANT CV_ANALYSIS = "ELAN_CV"
+
+test_routine (0)
+
+
+ROUTINE test_routine (VALUE dummy)
+
+	DECLARE samp, test, array_results
+
+     samp = cv_ensure_sample_exists ("x_proj1", "x_inst1", "x_sset")
+	test = cv_ensure_test_exists (samp, "x_peak1", "x_sset", "x_proj")
+
+	cv_get_all_results ("x_proj1",  "x_inst1",
+				array_results)
+	flashmessage (array_results[2,2]:"/":array_results[2,4], TRUE)
+
+	flashmessage ("complete: ":samp:"/":test, TRUE)
+
+ENDROUTINE
+
+
+GLOBAL ROUTINE cv_ensure_sample_exists (VALUE project, VALUE inst, VALUE sampleset)
+
+	DECLARE samp_id, array_flds
+
+	samp_id = find_sample (project, inst, sampleset)
+
+	IF (samp_id=EMPTY) THEN
+
+		ARRAY array_flds
+		array_flds [1,1] = "description"
+		array_flds [1,2] = make_sample_description (project, inst)
+		array_flds [2,1] = "sample_name"
+		array_flds [2,2] = sampleset
+
+		samp_id = or_create_sample ("", CV_SAMPLE_TEMPLATE, array_flds)
+
+	ENDIF
+
+	RETURN (samp_id)
+
+ENDROUTINE
+
+
+GLOBAL ROUTINE cv_ensure_test_exists (VALUE sample_id, VALUE peak, VALUE sampleset, VALUE project)
+
+	DECLARE test_id, ptr_array, check_ok
+
+	test_id = find_test (sample_id, peak)		
+
+	IF (test_id=EMPTY) THEN
+
+		test_id = NEW_TEST (sample_id, CV_ANALYSIS)
+
+		IF (test_id <> 0) AND (test_id <> ERROR) AND
+		   (test_id <> EMPTY) THEN
+
+			ARRAY ptr_array
+			ptr_array [1,1] = "component_name"
+			ptr_array [1,2] = "text"
+			ptr_array [1,3] = "empower_sampleset"
+			ptr_array [1,4] = "mill_project"
+			ptr_array [2,1] = "Peak"
+			ptr_array [2,2] = STRIP(TOUPPER(peak))
+			ptr_array [2,3] = STRIP(sampleset)
+			ptr_array [2,4] = STRIP(project)
+			PUT_TEST_RESULTS test_id, ptr_array, check_ok
+
+		ENDIF
+
+	ENDIF
+
+	RETURN (test_id)
+
+ENDROUTINE
+
+
+GLOBAL ROUTINE cv_get_all_results (VALUE project,  
+			VALUE inst, array_results)
+
+	DECLARE status, samp,  val, i
+
+	status = EMPTY
+	ARRAY array_results
+
+	samp = find_last_sample (project, inst)
+
+	IF (samp <> EMPTY) THEN
+
+		val = SELECT samp_test_result . result_text
+				WHERE id_numeric = samp
+				AND analysis = CV_ANALYSIS
+				AND component_name <> "Peak"
+				ORDER ON test_number, component_name
+
+		i = 0
+
+		WHILE (val <> EMPTY) DO
+
+			i = i + 1
+			array_results [i,1] = SELECT samp_test_result . component_name
+			array_results [i,2] = SELECT samp_test_result . result_text
+			array_results [i,3] = SELECT samp_test_result . test_number
+			array_results [i,4] = ""
+			array_results [i,5] = ""
+			array_results [i,6] = ""
+
+			NEXT samp_test_result  
+			val = SELECT samp_test_result . result_text
+
+		ENDWHILE
+
+	ENDIF
+
+	i = 0
+
+	WHILE (i < size_of_array(array_results)) DO
+
+		i = i + 1
+
+		IF (i>1) THEN
+
+			IF(array_results [i,3]=array_results [i-1,3]) THEN
+
+				{ here saves database query, for efficiency reasons }
+				array_results [i,4] = array_results [i-1,4]
+				array_results [i,5] = array_results [i-1,5]
+				array_results [i,6] = array_results [i-1,6]
+			ENDIF
+
+		ENDIF
+
+		IF (array_results [i,4]="") THEN
+
+			array_results [i,4] = SELECT result . text
+				WHERE test_number = array_results [i,3]
+				AND name = "Peak"
+
+			IF (array_results [i,4] <> EMPTY) THEN
+
+				array_results [i,5] = SELECT result . empower_sampleset
+				array_results [i,6] = SELECT result . mill_project
+
+			ENDIF
+
+		ENDIF
+
+	ENDWHILE
+
+	RETURN (status)
+
+ENDROUTINE
+
+
+ROUTINE make_sample_description (VALUE project, VALUE inst)
+
+	DECLARE desc
+
+	desc = "P=":STRIP(project):";I=":STRIP(inst)
+
+	RETURN (desc)
+
+ENDROUTINE
+
+ROUTINE find_sample (VALUE project, VALUE inst, VALUE sampleset)
+
+	DECLARE samp, desc, earliest_date
+
+	samp = EMPTY
+	earliest_date = NOW - INTERVAL ("180 00:00:00.0")
+
+	{ include >date and sample template in query for efficiency }
+
+	desc = make_sample_description (project, inst)
+
+	samp = SELECT sample . id_numeric
+			WHERE description = desc
+			AND login_date > earliest_date
+			AND template_id = CV_SAMPLE_TEMPLATE
+			AND sample_name = sampleset
+			AND status <> "X"
+
+	RETURN (samp)
+
+ENDROUTINE
+
+{
+Same as find_sample, but no sampleset check 
+}
+ROUTINE find_last_sample (VALUE project, VALUE inst)
+
+	DECLARE samp, desc, earliest_date, temp
+
+	samp = EMPTY
+	earliest_date = NOW - INTERVAL ("1 00:00:00.0")
+
+	{ include >date and sample template in query for efficiency }
+
+	desc = make_sample_description (project, inst)
+
+	temp = SELECT sample . id_numeric
+			WHERE description = desc
+			AND login_date > earliest_date
+			AND template_id = CV_SAMPLE_TEMPLATE
+			AND status <> "X"
+			ORDER ON login_date
+
+	{ make sure latest }
+
+	WHILE (temp <> EMPTY) DO
+
+		samp = temp
+
+		NEXT sample  
+		temp = SELECT sample . id_numeric
+
+	ENDWHILE
+
+	RETURN (samp)
+
+ENDROUTINE
+
+
+ROUTINE find_test (VALUE samp_id, VALUE peak)
+
+	DECLARE test_id
+
+	test_id = SELECT samp_test_result . test_number
+				WHERE id_numeric = samp_id
+				AND component_name = "Peak"
+			 	AND result_text = TOUPPER(peak) 
+				AND test_status <> "X"
+
+	RETURN (test_id)
+
+ENDROUTINE
+

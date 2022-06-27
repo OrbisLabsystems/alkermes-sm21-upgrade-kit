@@ -1,0 +1,729 @@
+! Messages for the auxillary reports.
+
+MESSAGE GROUP "AUX_LIB_"
+
+MESSAGE         = "STAT_TXT"
+TEXT            = "STATUS ERROR: "
+
+MESSAGE        = "CONFIRM_REACTIVATE"
+TEXT           = "Reactivate all lower entities?"
+TEXT           = "Reactivate for result entry?"
+
+
+MESSAGE GROUP "AUXSETUP_"
+
+MESSAGE         = "MENU_1"
+TEXT            = "Auxiliary Report Setup"
+
+MESSAGE         = "MENU_2"
+TEXT            = "1 Create New Report"
+
+MESSAGE         = "MENU_4"
+TEXT            = "2 Alter old report"
+
+MESSAGE         = "MENU_6"
+TEXT            = "3 Edit Report"
+
+MESSAGE         = "MENU_8"
+TEXT            = "4 Update report"
+
+MESSAGE         = "MENU_10"
+TEXT            = "5 Display Errors"
+
+MESSAGE         = "MENU_12"
+TEXT            = "6 Test Report"
+
+MESSAGE         = "GET_1"
+TEXT            = "Enter Report ID : "
+
+MESSAGE         = "GET_2"
+TEXT            = "Enter Name of Auxiliary Report"
+
+MESSAGE         = "GET_4"
+TEXT            = "Enter Name of New Auxiliary Report"
+
+MESSAGE         = "TOP_MESS"
+TEXT            = "       Creating Auxiliary Report       "
+
+MESSAGE         = "PUT_MESS_1"
+TEXT            = "Compiling Auxiliary Report"
+
+MESSAGE         = "PUT_MESS_2"
+TEXT            = "Creating New Auxiliary Report"
+
+MESSAGE		= "PUT_MESS_3"
+TEXT		= "AUXILIARY"
+
+
+MESSAGE GROUP   "AUX_AJH_"
+
+
+MESSAGE         = "HEAD_1"
+TEXT            = "Authorise Job"
+
+MESSAGE         = "FOOT_1"
+TEXT            = "<DO> to Authorise Job, <EXIT> to quit "
+
+MESSAGE         = "SUCC_1"
+TEXT            = "Job Authorised"
+
+MESSAGE         = "ABORT"
+TEXT            = "Action Aborted"
+
+MESSAGE         = "PROM"
+TEXT            = "Enter Job ID"
+
+MESSAGE         = "DISPLAY_1"
+TEXT            = "Current Job Status"
+
+MESSAGE         = "DISPLAY_2"
+TEXT            = "Enter Authorisation Text"
+
+MESSAGE         = "DISPLAY"
+TEXT            = "Display"
+
+MESSAGE GROUP  "AUX_ASP_"
+
+MESSAGE         = "HEADER_TXT"
+TEXT            = "Authorise Sample"
+
+MESSAGE         = "FOOTER_TXT"
+TEXT            = "<SELECT> Display Results,<DO> Authorise Sample,<EXIT> to quit"
+
+MESSAGE         = "SUCCESS_TXT"
+TEXT            = "Sample Authorised"
+
+MESSAGE         = "ABORT_TXT"
+TEXT            = "Action Aborted"
+
+MESSAGE         = "PROMPT_TXT"
+TEXT            = "Enter Sample ID"
+
+MESSAGE         = "DISPLAY_1"
+TEXT            = "Sample Textual ID"
+
+MESSAGE         = "DISPLAY_2"
+TEXT            = "Sample Status"
+
+MESSAGE         = "DISPLAY_3"
+TEXT            = "Enter Authorisation Text"
+
+MESSAGE		= "INSPECTION"
+TEXT		= "Inspection required, sample status set to I"
+
+MESSAGE         = "RESULTS"
+TEXT            = "Results"
+
+MESSAGE GROUP "AUX_ATP_"
+
+MESSAGE         = "HEADER_TXT"
+TEXT            = "Authorise Test"
+
+MESSAGE         = "FOOTER_TXT"
+TEXT            = "<SELECT> Display Results <DO> Authorise Test <EXIT> to quit"
+
+MESSAGE         = "SUCCESS_TXT"
+TEXT            = "Test Authorised"
+
+MESSAGE         = "ABORT_TXT"
+TEXT            = "Action Aborted"
+
+MESSAGE         = "PROMPT_TXT_1"
+TEXT            = "Enter Sample ID"
+
+MESSAGE         = "PROMPT_TXT_2"
+TEXT            = "Enter Test Name"
+
+MESSAGE         = "DISPLAY_1"
+TEXT            = "Sample Textual ID"
+
+MESSAGE         = "DISPLAY_2"
+TEXT            = "Test Status"
+
+MESSAGE         = "RESULTS"
+TEXT            = "Results"
+
+MESSAGE GROUP "AUX_CPP_"
+
+MESSAGE         = "HEADER_TXT"
+TEXT            = "Completion of Sample Preparation"
+
+MESSAGE         = "FOOTER_TXT"
+TEXT            = "<DO> to Complete Preparation, <EXIT> to quit "
+
+MESSAGE         = "SUCCESS_TXT"
+TEXT            = "Sample Preparation Completed"
+
+MESSAGE         = "ABORT_TXT"
+TEXT            = "Action Aborted"
+
+MESSAGE         = "PROMPT_TXT"
+TEXT            = "Enter Sample ID"
+
+MESSAGE         = "DISPLAY_1"
+TEXT            = "Sample Textual ID"
+
+MESSAGE         = "DISPLAY_2"
+TEXT            = "Sample Preparation ID"
+
+MESSAGE         = "DISPLAY_3"
+TEXT            = "Sample Location"
+
+MESSAGE GROUP "AUX_CPS_"
+
+MESSAGE         = "HEADER_TXT"
+TEXT            = "Change Sample Priority"
+
+MESSAGE         = "FOOTER_TXT"
+TEXT            = "<DO> to Change Priority, <EXIT> to quit "
+
+MESSAGE         = "SUCCESS_TXT"
+TEXT            = "Priority Changed"
+
+MESSAGE         = "ABORT_TXT"
+TEXT            = "Action Aborted"
+
+MESSAGE         = "PROMPT_TXT_1"
+TEXT            = "Enter Sample ID"
+
+MESSAGE         = "DISPLAY_1"
+TEXT            = "Current Sample Priority"
+
+MESSAGE         = "DISPLAY_2"
+TEXT            = "Date Sample Due"
+
+MESSAGE         = "PROMPT_2"
+TEXT            = "New Sample Priority"
+
+MESSAGE         = "PROMPT_3"
+TEXT            = "New Date Required"
+
+MESSAGE GROUP "AUX_CSP_"
+
+MESSAGE         = "HEADER_TXT"
+TEXT            = "Complete Sample"
+
+MESSAGE         = "FOOTER_TXT"
+TEXT            = "<DO> to Complete Sample, <EXIT> to quit"
+
+MESSAGE         = "SUCCESS_TXT"
+TEXT            = "Sample Completed"
+
+MESSAGE         = "ABORT_TXT"
+TEXT            = "Action Aborted"
+
+MESSAGE         = "PROMPT_TXT_1"
+TEXT            = "Enter Sample ID"
+
+MESSAGE         = "DISPLAY_1"
+TEXT            = "Sample Textual ID"
+
+MESSAGE         = "DISPLAY_2"
+TEXT            = "Sample Status"
+
+MESSAGE         = "DISPLAY_3"
+TEXT            = "Job Name"
+
+MESSAGE         = "DISPLAY_4"
+TEXT            = "Date of Sample Login"
+
+MESSAGE GROUP "AUX_CTP_"
+
+MESSAGE         = "HEADER_TXT"
+TEXT            = "Early Completion of Test"
+
+MESSAGE         = "FOOTER_TXT"
+TEXT            = "<DO> to Complete Test, <EXIT> to quit "
+
+MESSAGE         = "SUCCESS_TXT"
+TEXT            = "Test Completed"
+
+MESSAGE         = "ABORT_TXT"
+TEXT            = "Action Aborted"
+
+MESSAGE         = "PROMPT_TXT_1"
+TEXT            = "Enter Sample ID"
+
+MESSAGE         = "PROMPT_TXT_2"
+TEXT            = "Enter Test Name"
+
+MESSAGE         = "DISPLAY_TXT_1"
+TEXT            = "Sample Textual ID"
+
+MESSAGE         = "DISPLAY_TXT_2"
+TEXT            = "Test Status"
+
+MESSAGE GROUP "AUX_FJH_"
+
+MESSAGE         = "HEADER_TXT"
+TEXT            = "Complete Job"
+
+MESSAGE         = "FOOTER_TXT"
+TEXT            = "<SELECT> View Job Header,<DO> to Complete Job,<EXIT> to quit"
+
+MESSAGE         = "SUCCESS_TXT"
+TEXT            = "Job Completed"
+
+MESSAGE         = "ABORT_TXT"
+TEXT            = "Action Aborted"
+
+MESSAGE         = "PROMPT_TXT"
+TEXT            = "Enter Job Name"
+
+MESSAGE         = "DISPLAY_TXT"
+TEXT            = "Job Description"
+
+MESSAGE         = "DISPLAY"
+TEXT            = "Display"
+
+MESSAGE GROUP "AUX_MSP_"
+
+MESSAGE         = "HEADER_TXT"
+TEXT            = "Change Sample Location"
+
+MESSAGE         = "FOOTER_TXT"
+TEXT            = "<DO> to Save, <EXIT> to quit "
+
+MESSAGE         = "SUCCESS_TXT"
+TEXT            = "Sample Location Changed"
+
+MESSAGE         = "ABORT_TXT"
+TEXT            = "Action Aborted"
+
+MESSAGE         = "PROMPT_TXT_1"
+TEXT            = "Enter Sample ID"
+
+MESSAGE         = "DISPLAY_1"
+TEXT            = "Textual Sample ID"
+
+MESSAGE         = "DISPLAY_2"
+TEXT            = "Old Location"
+
+MESSAGE         = "PROMPT_2"
+TEXT            = "New Location"
+
+MESSAGE GROUP "AUX_PTP_"
+
+MESSAGE         = "HEADER_TXT"
+TEXT            = "Complete Test Preparation"
+
+MESSAGE         = "FOOTER_TXT"
+TEXT            = "<DO> to Complete Test Prep, <EXIT> to quit "
+
+MESSAGE         = "SUCCESS_TXT"
+TEXT            = "Test Preparation Completed"
+
+MESSAGE         = "ABORT_TXT"
+TEXT            = "Action Aborted"
+
+MESSAGE         = "PROMPT_TXT_1"
+TEXT            = "Enter Sample ID"
+
+MESSAGE         = "PROMPT_TXT_2"
+TEXT            = "Enter Test Name"
+
+MESSAGE         = "DISPLAY_TXT"
+TEXT            = "Sample Textual ID"
+
+MESSAGE         = "DISPLAY_TXT_2"
+TEXT            = "Test Status"
+
+MESSAGE GROUP "AUX_RAJ_"
+
+MESSAGE         = "HEADER_TXT"
+TEXT            = "Reactivate Authorised Job"
+
+MESSAGE         = "FOOTER_TXT"
+TEXT            = "<DO> to Reactivate Job, <EXIT> to quit "
+
+MESSAGE         = "SUCCESS_TXT"
+TEXT            = "Job Reactivated"
+
+MESSAGE         = "ABORT_TXT"
+TEXT            = "Action Aborted"
+
+MESSAGE         = "PROMPT_TXT"
+TEXT            = "Enter Job ID"
+
+MESSAGE         = "DISPLAY_TXT"
+TEXT            = "Job Status"
+
+MESSAGE GROUP "AUX_RLS_"
+
+MESSAGE         = "HEADER_TXT"
+TEXT            = "Release Sample From Hold"
+
+MESSAGE         = "FOOTER_TXT"
+TEXT            = "<DO> to Release Sample, <EXIT> to quit "
+
+MESSAGE         = "SUCCESS_TXT"
+TEXT            = "Sample Released from Hold"
+
+MESSAGE         = "ABORT_TXT"
+TEXT            = "Action Aborted"
+
+MESSAGE         = "PROMPT_TXT"
+TEXT            = "Enter Sample ID"
+
+MESSAGE         = "DISPLAY_TXT"
+TEXT            = "Sample Textual ID"
+
+MESSAGE GROUP "AUX_RVP_"
+
+MESSAGE         = "HEADER_TXT"
+TEXT            = "Receive Sample"
+
+MESSAGE         = "FOOTER_TXT"
+TEXT            = "<DO> to Receive Sample, <EXIT> to quit "
+
+MESSAGE         = "SUCCESS_TXT"
+TEXT            = "Sample Received"
+
+MESSAGE         = "ABORT_TXT"
+TEXT            = "Action Aborted"
+
+MESSAGE         = "PROMPT_TXT_1"
+TEXT            = "Enter Sample ID"
+
+MESSAGE         = "DISPLAY_TXT_1"
+TEXT            = "Sample Textual ID"
+
+MESSAGE         = "DISPLAY_TXT_2"
+TEXT            = "Date Received"
+
+MESSAGE         = "PROMPT_TXT_2"
+TEXT            = "Sampling Date"
+
+MESSAGE		= "PROMPT_TXT_3"
+TEXT		= "Sampled by"
+
+MESSAGE GROUP  "AUX_STP_"
+
+MESSAGE         = "HEAD"
+TEXT            = "Suspend Test"
+
+MESSAGE         = "FOOT"
+TEXT            = "<DO> to Suspend Test, <EXIT> to quit "
+
+MESSAGE         = "SUCC"
+TEXT            = "Test Suspended"
+
+MESSAGE         = "ABORT"
+TEXT            = "Action Aborted"
+
+MESSAGE         = "PROM_1"
+TEXT            = "Enter Sample ID"
+
+MESSAGE         = "PROM_2"
+TEXT            = "Enter Test Name"
+
+
+MESSAGE         = "DISP_1"
+TEXT            = "Sample Textual ID"
+
+MESSAGE         = "DISP_2"
+TEXT            = "Test Status"
+
+MESSAGE GROUP  "AUX_SUP_"
+
+MESSAGE         = "HEADER_TXT"
+TEXT            = "Suspend Sample"
+
+MESSAGE         = "FOOTER_TXT"
+TEXT            = "<DO> to Suspend Sample, <EXIT> to quit "
+
+MESSAGE         = "SUCCESS_TXT"
+TEXT            = "Sample Suspended"
+
+MESSAGE         = "ABORT_TXT"
+TEXT            = "Action Aborted"
+
+MESSAGE         = "PROMPT_TXT"
+TEXT            = "Enter Sample ID"
+
+MESSAGE         = "DISPLAY_TXT"
+TEXT            = "Sample Textual ID"
+
+MESSAGE GROUP  "AUX_TEM_"
+
+MESSAGE         = "HEADER_TXT"
+TEXT            = "Auxiliary Command"
+
+MESSAGE         = "FOOTER_TXT"
+TEXT            = "<DO> to Save, <EXIT> to quit "
+
+MESSAGE         = "SUCCESS_TXT"
+TEXT            = "Action Successful"
+
+MESSAGE         = "ABORT_TXT"
+TEXT            = "Action Aborted"
+
+MESSAGE         = "PROMPT_TXT"
+TEXT            = "Enter Sample ID"
+
+MESSAGE         = "SELECT"
+TEXT            = "Select"
+
+MESSAGE GROUP  "AUX_URP_"
+
+MESSAGE         = "HEADER_TXT"
+TEXT            = "Reactivate Sample"
+
+MESSAGE         = "FOOTER_TXT"
+TEXT            = "<DO> to Reactivate, <EXIT> to quit "
+
+MESSAGE         = "SUCCESS_TXT"
+TEXT            = "Sample Reactivated"
+
+MESSAGE         = "ABORT_TXT"
+TEXT            = "Action Aborted"
+
+MESSAGE         = "PROMPT_TXT"
+TEXT            = "Enter Sample ID"
+
+MESSAGE         = "DISPLAY_TXT"
+TEXT            = "Sample Textual ID"
+
+MESSAGE  GROUP  "AUX_USP_"
+
+MESSAGE         = "HEADER_TXT"
+TEXT            = "Release Sample From Suspension"
+
+MESSAGE         = "FOOTER_TXT"
+TEXT            = "<DO> to Release Sample, <EXIT> to quit "
+
+MESSAGE         = "SUCCESS_TXT"
+TEXT            = "Sample Released"
+
+MESSAGE         = "ABORT_TXT"
+TEXT            = "Action Aborted"
+
+MESSAGE         = "PROMPT_TXT"
+TEXT            = "Enter Sample ID"
+
+MESSAGE         = "DISPLAY_TXT"
+TEXT            = "Sample Textual ID"
+
+MESSAGE         = "DISPLAY_TXT_2"
+TEXT            = "Old Sample Status"
+
+MESSAGE GROUP "AUX_UTP_"
+
+MESSAGE         = "HEADER_TXT"
+TEXT            = "Reactivate Test"
+
+MESSAGE         = "FOOTER_TXT"
+TEXT            = "<DO> to Reactivate Test, <EXIT> to quit "
+
+MESSAGE         = "SUCCESS_TXT"
+TEXT            = "Test Reactivated"
+
+MESSAGE         = "ABORT_TXT"
+TEXT            = "Action Aborted"
+
+MESSAGE         = "PROMPT_TXT_1"
+TEXT            = "Enter Sample ID"
+
+MESSAGE         = "PROMPT_TXT_2"
+TEXT            = "Enter Test Name"
+
+MESSAGE         = "DISPLAY_TXT"
+TEXT            = "Sample Textual ID"
+
+MESSAGE         = "DISPLAY_TXT2"
+TEXT            = "Current Test Status"
+
+MESSAGE         = "DISPLAY_TXT_3"
+TEXT            = "Old Test Status"
+
+MESSAGE GROUP  "AUX_XJH_"
+
+MESSAGE         = "HEADER_TXT"
+TEXT            = "Cancel Job"
+
+MESSAGE         = "FOOTER_TXT"
+TEXT            = "<DO> to Cancel Job, <EXIT> to quit "
+
+MESSAGE         = "SUCCESS_TXT"
+TEXT            = "Cancellation Successful"
+
+MESSAGE         = "ABORT_TXT"
+TEXT            = "Action Aborted"
+
+MESSAGE         = "PROMPT_TXT"
+TEXT            = "Enter Job Name"
+
+MESSAGE         = "DISPLAY_TXT"
+TEXT            = "Job Description"
+
+MESSAGE         = "DISPLAY_TXT_2"
+TEXT            = "Status"
+
+MESSAGE GROUP  "AUX_XSP_"
+
+MESSAGE         = "HEADER_TXT"
+TEXT            = "Cancel Sample"
+
+MESSAGE         = "FOOTER_TXT"
+TEXT            = "<DO> to Cancel Sample, <EXIT> to quit "
+
+MESSAGE         = "SUCCESS_TXT"
+TEXT            = "Sample Cancelled"
+
+MESSAGE         = "ABORT_TXT"
+TEXT            = "Action Aborted"
+
+MESSAGE         = "PROMPT_TXT"
+TEXT            = "Enter Sample ID"
+
+MESSAGE         = "DISPLAY_TXT"
+TEXT            = "Sample Textual ID"
+
+MESSAGE         = "DISPLAY_TXT2"
+TEXT            = "Sample Status"
+
+MESSAGE         = "DISPLAY_TXT3"
+TEXT            = "Job Name"
+
+MESSAGE         = "DISPLAY_TXT_4"
+TEXT            = "Date Sample Logged"
+
+MESSAGE GROUP  "AUX_XTP_"
+
+MESSAGE         = "HEADER_TXT"
+TEXT            = "Cancel Test"
+
+MESSAGE         = "FOOTER_TXT"
+TEXT            = "<DO> to Cancel Test, <EXIT> to quit "
+
+MESSAGE         = "SUCCESS_TXT"
+TEXT            = "Test Cancelled"
+
+MESSAGE         = "ABORT_TXT"
+TEXT            = "Action Aborted"
+
+MESSAGE         = "PROMPT_TXT_1"
+TEXT            = "Enter Sample ID"
+
+MESSAGE         = "PROMPT_TXT_2"
+TEXT            = "Enter Test Name"
+
+MESSAGE         = "DISPLAY_TXT"
+TEXT            = "Sample Textual ID"
+
+MESSAGE         = "DISPLAY_TXT_2"
+TEXT            = "Test Status"
+
+MESSAGE GROUP  "AUX_SJH_"
+
+MESSAGE		= "HEADER_TXT"
+TEXT		= "Suspend Job"
+
+MESSAGE		= "FOOTER_TXT"
+TEXT            = "<DO> to Suspend Job, <EXIT> to quit "
+
+MESSAGE		= "SUCCESS_TXT"
+TEXT		= "Job Suspended"
+
+MESSAGE		= "ABORT_TXT"
+TEXT		= "Suspension Aborted"
+
+MESSAGE         = "PROMPT_TXT"
+TEXT            = "Enter Job Name"
+
+MESSAGE         = "DISPLAY_TXT"
+TEXT            = "Job Description"
+
+MESSAGE         = "DISPLAY_TXT_2"
+TEXT            = "Status"
+
+MESSAGE         = "EXIT_TXT"
+TEXT            = "Suspend Job not enabled"
+
+MESSAGE GROUP  "AUX_UJH_"
+
+MESSAGE		= "HEADER_TXT"
+TEXT		= "Release Job from Suspension"
+
+MESSAGE		= "FOOTER_TXT"
+TEXT            = "<DO> to Release Job, <EXIT> to quit "
+
+MESSAGE		= "SUCCESS_TXT"
+TEXT		= "Job Released from Suspension"
+
+MESSAGE		= "ABORT_TXT"
+TEXT		= "Action Aborted"
+
+MESSAGE         = "PROMPT_TXT"
+TEXT            = "Enter Job Name"
+
+MESSAGE         = "DISPLAY_TXT"
+TEXT            = "Job Description"
+
+MESSAGE         = "DISPLAY_TXT_2"
+TEXT            = "Old Job Status"
+
+MESSAGE         = "EXIT_TXT"
+TEXT            = "Suspend Job not enabled"
+
+MESSAGE GROUP "AUX_RTP_"
+
+MESSAGE         = "HEADER_TXT"
+TEXT            = "Reactivate Test"
+
+MESSAGE         = "FOOTER_TXT"
+TEXT            = "<SELECT> Display Results <DO> Reactivate Test <EXIT> to quit"
+
+MESSAGE         = "SUCCESS_TXT"
+TEXT            = "Test Reactivated"
+
+MESSAGE         = "ABORT_TXT"
+TEXT            = "Action Aborted"
+
+MESSAGE         = "PROMPT_TXT_1"
+TEXT            = "Enter Sample ID"
+
+MESSAGE         = "PROMPT_TXT_2"
+TEXT            = "Enter Test Name"
+
+MESSAGE         = "DISPLAY_1"
+TEXT            = "Sample Textual ID"
+
+MESSAGE         = "DISPLAY_2"
+TEXT            = "Test Status"
+
+MESSAGE         = "RESULTS"
+TEXT            = "Results"
+
+MESSAGE GROUP "AUX_RCS_"
+
+MESSAGE         = "HEADER_TXT"
+TEXT            = "Receive Controlled Sample"
+
+MESSAGE         = "FOOTER_TXT"
+TEXT            = "<DO> to Receive Sample, <EXIT> to quit "
+
+MESSAGE         = "SUCCESS_TXT"
+TEXT            = "Sample Received"
+
+MESSAGE         = "ABORT_TXT"
+TEXT            = "Action Aborted"
+
+MESSAGE         = "PROMPT_TXT_1"
+TEXT            = "Enter Sample ID"
+
+MESSAGE         = "DISPLAY_TXT_1"
+TEXT            = "Sample Textual ID"
+
+MESSAGE         = "DISPLAY_TXT_2"
+TEXT            = "Date Received"
+
+MESSAGE         = "DISPLAY_TXT_3"
+TEXT            = "Initial Weight"
+
+MESSAGE         = "PROMPT_TXT_2"
+TEXT            = "Gross Weight"
+
+MESSAGE		= "PROMPT_TXT_3"
+TEXT		= "Location"
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     

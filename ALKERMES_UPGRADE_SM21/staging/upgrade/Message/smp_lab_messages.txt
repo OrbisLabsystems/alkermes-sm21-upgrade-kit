@@ -1,0 +1,3978 @@
+! Messages for lab table editors and associated screens.
+
+
+MESSAGE GROUP = "TMPLFIELD_"
+
+MESSAGE       = "SAMPLE_TOP"
+TEXT          = "Fields for Sample Template"
+
+MESSAGE       = "JOB_TOP"
+TEXT          = "Fields for Job Template"
+
+MESSAGE       = "BATCH_TOP"
+TEXT          = "Fields for Batch Template"
+
+MESSAGE       = "LOT_TOP"
+TEXT          = "Fields for Lot Template"
+
+MESSAGE       = "SAMP_TITLE"
+TEXT          = "            Field Name               Prompt Text                    Default Value                   P C D M Type        Report               Routine"
+
+MESSAGE       = "BATCH_TITLE"
+TEXT          = "            Field Name               Prompt Text                    Default Value                   P C D M Type        Report               Routine"
+
+MESSAGE       = "JOB_TITLE"
+TEXT          = "            Field Name               Prompt Text                    Default Value                   P D M Type        Report                Routine"
+
+MESSAGE       = "LOT_TITLE"
+TEXT          = "            Field Name               Prompt Text                    Default Value                   P D M Type        Report                Routine"
+
+MESSAGE       = "LOT_PR_HEAD"
+TEXT          = "Fields for Lot Template"
+
+MESSAGE       = "LOT_PR_TOP"
+TEXT          = "Fields assigned to Lot Template"
+
+MESSAGE       = "SAM_PR_HEAD"
+TEXT          = "Fields for Sample Template"
+
+MESSAGE       = "SAM_PR_TOP"
+TEXT          = "Fields assigned to Sample Template"
+
+MESSAGE       = "JOB_PR_HEAD"
+TEXT          = "Fields for Job Template"
+
+MESSAGE       = "JOB_PR_TOP"
+TEXT          = "Fields assigned to job Template"
+
+MESSAGE       = "BATCH_PR_HEAD"
+TEXT          = "Fields for Batch Template"
+
+MESSAGE       = "BATCH_PR_TOP"
+TEXT          = "Fields assigned to Batch Template"
+
+MESSAGE       = "LIST_BOT_LINE"
+TEXT          = "Use UP/DOWN, REMOVE/INSERT, NEXT/PREVIOUS SCREEN and DO/EXIT"
+
+MESSAGE       = "CONST_1"
+TEXT          = "Mandatory field : Specify Default value or set Prompt/Copy flag"
+
+MESSAGE       = "HEAD_1"
+TEXT          = "Insert Field Into Template"
+
+MESSAGE       = "DISPLAY_1"
+TEXT          = "Enter Field Name : "
+
+MESSAGE       = "DISPLAY_2"
+TEXT          = "Full details for field"
+
+MESSAGE       = "DISPLAY_3"
+TEXT          = "Use Keys UP/DOWN"
+
+MESSAGE       = "SEL_1"
+TEXT          = "Text Prompt     :"
+
+MESSAGE       = "SEL_2"
+TEXT          = "Default Type    :"
+
+MESSAGE       = "SEL_3"
+TEXT          = "Default Value   :"
+
+MESSAGE       = "SEL_4"
+TEXT          = "Library Name    :"
+
+MESSAGE       = "SEL_5"
+TEXT          = "Routine Name    :"
+
+MESSAGE       = "SEL_6"
+TEXT          = "Prompt Flag     :"
+
+MESSAGE       = "SEL_7"
+TEXT          = "Copy Flag       :"
+
+MESSAGE       = "SEL_8"
+TEXT          = "Display Flag    :"
+
+MESSAGE       = "SEL_9"
+TEXT          = "Mandatory Flag  :"
+
+MESSAGE       = "SEL_10"
+TEXT          = "Value"
+TEXT          = "V"
+
+MESSAGE       = "SEL_11"
+TEXT          = "After edit"
+TEXT          = "A"
+
+MESSAGE       = "SEL_12"
+TEXT          = "Before edit"
+TEXT          = "B"
+
+MESSAGE       = "TAB_1"
+TEXT          = "Prompt Text                     Default Value                   P C D M "
+
+MESSAGE       = "JOBTAB_1"
+TEXT          = "Prompt Text                     Default Value                   P D M "
+
+MESSAGE       = "FIELD_NAME_TITLE"
+TEXT          = "Field name"
+
+MESSAGE       = "PROMPT_TITLE"
+TEXT          = "Prompt text"
+
+MESSAGE       = "DEFAULT_TITLE"
+TEXT          = "Default value"
+
+MESSAGE       = "PROMPT_FLAG_TITLE"
+TEXT          = "P"
+
+MESSAGE       = "COPY_FLAG_TITLE"
+TEXT          = "C"
+
+MESSAGE       = "DISPLAY_FLAG_TITLE"
+TEXT          = "D"
+
+MESSAGE       = "MAND_FLAG_TITLE"
+TEXT          = "M"
+
+MESSAGE       = "TYPE_TITLE"
+TEXT          = "Type"
+
+MESSAGE       = "REPORT_TITLE"
+TEXT          = "Report"
+
+MESSAGE       = "ROUTINE_TITLE"
+TEXT          = "Routine"
+
+! Common messages for the test/login schedule editors
+! $LTE_TSTSC and $LTE_LOGSC
+
+MESSAGE GROUP = "SCHEDULE_"
+
+MESSAGE       = "SAVE"
+TEXT          = "Press DO to save, SELECT for schedule entries or EXIT to quit"
+
+MESSAGE       = "DISP_MESS"
+TEXT          = "Press SELECT for schedule entries, or EXIT to quit"
+
+MESSAGE       = "ENTER_ID"
+TEXT          = "Enter Schedule ID"
+
+MESSAGE       = "DESC"
+TEXT          = "Schedule Description"
+
+MESSAGE       = "LIST_BOT_LINE"
+TEXT          = "Use UP/DOWN, REMOVE/INSERT, NEXT/PREVIOUS SCREEN and DO/EXIT"
+
+! Messages for the test schedule editor, $LTE_TSTSC
+
+MESSAGE GROUP = "LTE_TSTSC_"
+
+MESSAGE       = "HEAD_MESS"
+TEXT          = "Test Schedule Data Entry Screen"
+
+MESSAGE       = "DISP_NAME"
+TEXT          = "Test Schedule"
+
+MESSAGE       = "MESS_1"
+TEXT          = "1 Test List"
+
+MESSAGE       = "BUTTON"
+TEXT          = "Test List..."
+
+MESSAGE GROUP = "LTE_JOBT_"
+
+MESSAGE       = "HEADER"
+TEXT          = "Job Template Data Entry Screen"
+
+MESSAGE       = "DISNAM"
+TEXT          = "Job Template"
+
+MESSAGE       = "PROMPT"
+TEXT          = "Enter Job Template ID : "
+
+MESSAGE       = "ACTMENU"
+TEXT          = "Job Template Options"
+
+MESSAGE       = "ACT1"
+TEXT          = "1 Job Creation Control Screen "
+
+MESSAGE       = "ACT2"
+TEXT          = "2 Job Template Fields"
+
+MESSAGE       = "BUTTON_CONT"
+TEXT          = "Control..."
+
+MESSAGE       = "BUTTON_FLDS"
+TEXT          = "Fields..."
+
+MESSAGE       = "MESS_1"
+TEXT          = "Description"
+
+MESSAGE       = "MESS_2"
+TEXT          = "Group Name"
+
+MESSAGE       = "MESS_3"
+TEXT          = "Modifiable Entry"
+
+MESSAGE GROUP = "LTE_SFIGS_"
+
+! Messages for sig figs LTE report
+
+MESSAGE       = "GROUP"
+TEXT          = "Group Name        "
+
+MESSAGE       = "DESCR"
+TEXT          = "Description       "
+
+MESSAGE       = "MFYABLE"
+TEXT          = "Modifiable Entry  "
+
+MESSAGE       = "HEADER"
+TEXT          = "Significant Figure Formats Data Entry Screen"
+
+MESSAGE       = "PROMPT"
+TEXT          = "Enter Sig Figs Identifier : "
+
+MESSAGE       = "FOOTER"
+TEXT          = "SELECT to Edit Format, DO to Save, EXIT to Quit"
+
+MESSAGE       = "RFOOTER"
+TEXT          = "SELECT to View Format, DO or EXIT to Quit"
+
+MESSAGE       = "NOTENABLED"
+TEXT          = "Significant Figure Filtering is not currently enabled"
+
+! Messages for the group_header table editor, $LTE_GROUP
+
+MESSAGE GROUP = "LTE_GROUP_"
+
+MESSAGE       = "SAVE"
+USE           = "STAND_EDIT_MESSAGE"
+
+MESSAGE       = "DESC"
+TEXT          = "Group Description"
+
+MESSAGE       = "PARENT"
+TEXT          = "Parent Group"
+
+MESSAGE       = "OPER"
+TEXT          = "Responsible Operator"
+
+MESSAGE       = "DISP_NAME"
+TEXT          = "Group"
+
+MESSAGE       = "ENTER_ID"
+TEXT          = "Enter Group ID"
+
+MESSAGE       = "HEAD_MESS"
+TEXT          = "Group Data Entry Screen"
+
+! Messages for the personnel table editor, $LTE_PERS
+
+MESSAGE GROUP = "LTE_PERS_"
+
+MESSAGE       = "HEAD_MESS"
+TEXT          = "Personnel Data Entry Screen"
+
+MESSAGE       = "SAVE"
+TEXT          = "Press SELECT for group access, DO to save, or EXIT to quit"
+
+MESSAGE       = "DISP_MESS"
+TEXT          = "Press SELECT for group access, or EXIT to quit"
+
+MESSAGE       = "DEFAULT_GROUP"
+TEXT          = "Default Group"
+
+MESSAGE       = "OPER_NAME"
+TEXT          = "Operator Name"
+
+MESSAGE       = "AUTHORITY"
+TEXT          = "Authority"
+
+MESSAGE       = "LOCATION"
+TEXT          = "Operator Location"
+
+MESSAGE       = "COST_CODE"
+TEXT          = "Cost Code"
+
+MESSAGE       = "DISP_NAME"
+TEXT          = "Personnel"
+
+MESSAGE       = "ENTER_ID"
+TEXT          = "Enter Personnel ID"
+
+MESSAGE       = "INVALID_AUTH"
+TEXT          = "You may not raise an operators authority above your own"
+
+MESSAGE       = "MESS_1"
+TEXT          = "1 Groups"
+
+MESSAGE       = "GROUPS_BUTTON"
+TEXT          = "Groups ..."
+
+MESSAGE       = "ROLES_BUTTON"
+TEXT          = "Roles ..."
+
+MESSAGE       = "EMAIL"
+TEXT          = "Email"
+
+MESSAGE GROUP = "SF_TEST_"
+
+MESSAGE       = "SCRN_ERROR_TOP"
+TEXT          = "Display Significant Figure Compilation Errors"
+
+MESSAGE       = "SCRN_ERROR_BOTTOM"
+TEXT          = "Enter ID then press <DO> or <RETURN> to view errors"
+
+MESSAGE       = "SCRN_ERROR_PROMPT"
+TEXT          = "Enter Sig Figs ID"
+
+MESSAGE       = "TEST_HEADER"
+TEXT          = "Test Significant Figure Routine"
+
+MESSAGE       = "DEBUG_HEADER"
+TEXT          = "Debug Significant Figure Routine"
+
+MESSAGE       = "FOOTER"
+TEXT          = "Press DO to test, SELECT for menu, EXIT to exit"
+
+MESSAGE       = "IDENTITY"
+TEXT          = "Identity"
+
+MESSAGE       = "SAMPLE"
+TEXT          = "Sample ID"
+
+MESSAGE       = "ANALYSIS"
+TEXT          = "Analysis ID"
+
+MESSAGE       = "COMPONENT"
+TEXT          = "Component Name"
+
+MESSAGE       = "NUM_OF_SF"
+TEXT          = "Number of significant figures"
+
+MESSAGE       = "ROUND_BASE"
+TEXT          = "Rounding base"
+
+MESSAGE       = "NUM_OF_DP"
+TEXT          = "Number of decimal places"
+
+MESSAGE       = "RESULT"
+TEXT          = "Result"
+
+MESSAGE       = "FILTERED_RESULT"
+TEXT          = "Filtered result"
+
+MESSAGE       = "BOTT_LINE"
+TEXT          = "Enter required data then press <DO> to test, or <EXIT> to quit"
+
+MESSAGE       = "NO_RESULT"
+TEXT          = "No result value entered"
+
+MESSAGE       = "BLANK_ID"
+TEXT          = "No Filter identity entered"
+
+MESSAGE       = "BLANK_RESULT"
+TEXT          = "No result entered"
+
+MESSAGE       = "SAMPLE_OR_RESULT"
+TEXT          = "Sample information or a result must be entered"
+
+MESSAGE       = "NO_SAMP_DETAILS"
+TEXT          = "Enter full Sample/Test/Component details"
+
+MESSAGE       = "FILTER_BUTTON"
+TEXT          = "Filter"
+
+MESSAGE       = "MODIFY_BUTTON"
+TEXT          = "Modify"
+
+MESSAGE       = "TRANSLATE_BUTTON"
+TEXT          = "Translate"
+
+MESSAGE       = "ERRORS_BUTTON"
+TEXT          = "Errors"
+
+MESSAGE       = "HELP_BUTTON"
+TEXT          = "Help"
+
+MESSAGE       = "CLOSE_BUTTON"
+TEXT          = "Close"
+
+MESSAGE       = "MENU_TITLE"
+TEXT          = "Sig Figures Menu"
+
+MESSAGE       = "MENU"
+TEXT          = "M"
+TEXT          = "Modify filter report"
+TEXT          = "T"
+TEXT          = "Translate filter report"
+TEXT          = "V"
+TEXT          = "View translation errors"
+
+MESSAGE GROUP = "GROUP_"
+
+! Messages for $GROUPLIST
+
+MESSAGE       = "EDIT"
+TEXT          = "Operators Group List Edit Screen"
+
+! Messages for the printer table editor, $LTE_PRINT
+
+MESSAGE GROUP = "LTE_PRINT_"
+
+MESSAGE       = "HEAD_MESS"
+TEXT          = "Printer Definitions Data Entry Screen"
+
+MESSAGE       = "SAVE"
+USE           = "STAND_EDIT_MESSAGE"
+
+MESSAGE       = "DESC"
+TEXT          = "Printer Description"
+
+MESSAGE       = "LOCATION"
+TEXT          = "Location"
+
+MESSAGE       = "LOG_NAME"
+TEXT          = "Queue or Device name"
+
+MESSAGE       = "DEV_TYPE"
+TEXT          = "Printer Device Type"
+
+MESSAGE       = "DISP_NAME"
+TEXT          = "Printer"
+
+MESSAGE       = "ENTER_ID"
+TEXT          = "Enter Printer ID"
+
+MESSAGE       = "INVALID_LOG_NAME"
+TEXT          = "Invalid logical name for device type (Queue/Device does not exist)"
+
+MESSAGE       = "CODE_TYPE"
+TEXT          = "Printer Code Type"
+
+MESSAGE       = "PARAMETER"
+TEXT          = "Printer Parameters"
+
+MESSAGE       = "INVALID_CODE_TYPE"
+TEXT          = "Invalid Printer Code Type"
+
+MESSAGE       = "LIST_TOP_LINE"
+TEXT          = "Distribution List Editor"
+
+MESSAGE       = "LIST_HEAD_LINE"
+TEXT          = "  Destination     Description"
+
+MESSAGE       = "LIST_BOT_LINE"
+TEXT          = "Use UP/DOWN, REMOVE/INSERT, NEXT/PREVIOUS SCREEN and DO/EXIT"
+
+MESSAGE       = "CANNOT_ADD_PRINT"
+TEXT          = "Cannot add current printer to list"
+
+! Messages for printing and listing
+
+MESSAGE       = "LIST_HEAD"
+TEXT          = "SampleManager List of $table_name_________ records"
+
+MESSAGE       = "PRINT_HEAD"
+TEXT          = "SampleManager Printout of $table_name_________ record"
+
+MESSAGE       = "HEAD_END"
+TEXT          = "Page ##"
+
+MESSAGE       = "GEN_BY"
+TEXT          = "Generated by : "
+
+MESSAGE       = "GEN_ON"
+TEXT          = "Generated on : "
+
+MESSAGE       = "GRAPHICS_TYPE"
+TEXT          = "Graphics Type"
+
+MESSAGE GROUP = "LTE_PHRASE_"
+
+MESSAGE       = "LIST_TOP_LINE"
+TEXT          = "Phrase Entries Editor"
+
+MESSAGE       = "LIST_HEAD_LINE"
+TEXT          = "Phrase ID  Description                    Icon"
+
+MESSAGE       = "LIST_BOT_LINE"
+TEXT          = "Use UP/DOWN, REMOVE/INSERT, NEXT/PREVIOUS SCREEN and DO/EXIT"
+
+MESSAGE GROUP = "LTE_INSPECT_"
+
+MESSAGE       = "TABLE_NAME"
+TEXT          = "Inspection Header"
+
+MESSAGE       = "HEADER"
+TEXT          = "Inspection Plan Data Entry Screen"
+
+MESSAGE       = "FOOTER"
+TEXT          = "Press DO to save/EXIT to quit/SELECT for Personnel"
+
+MESSAGE       = "DISP_FOOTER"
+TEXT          = "Press EXIT to quit/SELECT to view Personnel"
+
+MESSAGE       = "DISP_TABLE"
+TEXT          = "Inspection Header"
+
+MESSAGE       = "INPUT_MESS"
+TEXT          = "Enter Inspection ID : "
+
+MESSAGE       = "LIST_TOP_LINE"
+TEXT          = "Inspection Personnel Editor"
+
+MESSAGE       = "LIST_HEAD_LINE"
+TEXT          = "  Personnel_ID        Description"
+
+MESSAGE       = "LIST_BOT_LINE"
+TEXT          = "Use UP/DOWN, REMOVE/INSERT, NEXT/PREVIOUS SCREEN and DO/EXIT"
+
+MESSAGE       = "GROUP_NAME"
+TEXT          = "Group Name"
+
+MESSAGE       = "DESCRIPTION"
+TEXT          = "Description"
+
+MESSAGE       = "MODIFIABLE_ENTRY"
+TEXT          = "Modifiable Entry"
+
+MESSAGE       = "MODIFIED_ON"
+TEXT          = "Modified On"
+
+MESSAGE       = "MODIFIED_BY"
+TEXT          = "Modified By"
+
+MESSAGE       = "INSPECTION_TYPE"
+TEXT          = "Inspection Type"
+
+MESSAGE       = "DUPLICATE_USER"
+TEXT          = "Inspection Plan defines a user twice which is disallowed by the configuration item APPROVAL_UNIQUE_APPROVER."
+
+MESSAGE GROUP = "LTE_CHARGE_"
+
+MESSAGE       = "LIST_TOP_LINE"
+TEXT          = "Charge Entries Editor"
+
+MESSAGE       = "LIST_HEAD_LINE"
+TEXT          = "  Identity    Rate        Quantity1   Disc1  Quantity2   Disc2"
+
+
+MESSAGE       = "LIST_BOT_LINE"
+TEXT          = "Use UP/DOWN, REMOVE/INSERT, NEXT/PREVIOUS SCREEN and DO/EXIT"
+
+MESSAGE GROUP = "LTE_PROJ_"
+
+MESSAGE       = "TOP_LINE"
+TEXT          = "Project Info Data Entry Screen"
+
+MESSAGE       = "DESCRIPTION"
+USE           = "STAND_DESCRIPTION"
+
+MESSAGE       = "MODIFIABLE"
+USE           = "STAND_MODIFIABLE"
+
+MESSAGE       = "GROUP_ID"
+USE           = "STAND_GROUP_ID"
+
+MESSAGE       = "SUPERVISOR"
+TEXT          = "Project Supervisor"
+
+MESSAGE       = "CUSTOMER_ID"
+TEXT          = "Customer Name"
+
+MESSAGE       = "CONTACT"
+TEXT          = "Customer Contact"
+
+MESSAGE       = "NAME"
+TEXT          = "Project Information"
+
+MESSAGE       = "INPUT"
+TEXT          = "Enter Project ID"
+
+MESSAGE GROUP = "LTE_INST_"
+
+MESSAGE       = "TOP_LINE"
+TEXT          = "Instrument Data Entry Screen"
+
+MESSAGE       = "NAME"
+TEXT          = "Instrument"
+
+MESSAGE       = "DESCRIPTION"
+USE           = "STAND_DESCRIPTION"
+
+MESSAGE       = "MODIFIABLE"
+USE           = "STAND_MODIFIABLE"
+
+MESSAGE       = "GROUP_ID"
+USE           = "STAND_GROUP_ID"
+
+MESSAGE       = "TYPE"
+TEXT          = "Instrument Type"
+
+MESSAGE       = "LOCATION"
+TEXT          = "Location"
+
+MESSAGE       = "OPERATOR"
+TEXT          = "Operator"
+
+MESSAGE       = "STATUS"
+TEXT          = "Status"
+
+MESSAGE       = "SERIAL"
+TEXT          = "Serial Number"
+
+MESSAGE       = "SERV_DATE"
+TEXT          = "Service Date"
+
+MESSAGE       = "SERV_INTR"
+TEXT          = "Service Interval"
+
+MESSAGE       = "CALIB_DATE"
+TEXT          = "Calibration Date"
+
+MESSAGE       = "CALIB_INTR"
+TEXT          = "Calibration Interval"
+
+MESSAGE       = "INPUT"
+TEXT          = "Enter Instrument ID"
+
+MESSAGE       = "MESS_1"
+TEXT          = "Operator Approval Required . "
+
+
+MESSAGE GROUP = "TMPLOGIN_"
+
+MESSAGE       = "LIST_TOP_LINE"
+TEXT          = "Supertemplate List Editor"
+
+MESSAGE       = "LIST_HEAD_LINE"
+TEXT          = "Template ID Description"
+
+MESSAGE       = "LIST_BOT_LINE"
+TEXT          = "Use UP/DOWN, REMOVE/INSERT, NEXT/PREVIOUS SCREEN and DO/EXIT"
+
+MESSAGE       = "DISPLAY_1"
+TEXT          = "Cannot include Supertemplate on "
+
+MESSAGE       = "DISPLAY_2"
+TEXT          = "Supertemplate"
+
+MESSAGE       = "DISPLAY_3"
+TEXT          = "Cannot include a template on "
+
+MESSAGE       = "DISPLAY_4"
+TEXT          = "its own template list"
+
+MESSAGE       = "DISPLAY_5"
+TEXT          = "Error Template "
+
+MESSAGE       = "DISPLAY_6"
+TEXT          = "Does Not exist "
+
+MESSAGE       = "HEAD_1"
+TEXT          = "Templates for : "
+
+MESSAGE       = "FIEL_1"
+TEXT          = "Template"
+
+MESSAGE       = "DISPLAY_7"
+TEXT          = "The fields have NOT been updated"
+
+MESSAGE       = "MESS_1"
+TEXT          = "Sample Status     : "
+
+MESSAGE       = "MESS_2"
+TEXT          = "Edit Tests        : "
+
+MESSAGE       = "MESS_3"
+TEXT          = "Test Assignment   : "
+
+MESSAGE       = "MESS_4"
+TEXT          = "Action       Report ID              Printer"
+
+MESSAGE       = "MESS_5"
+TEXT          = "Label     "
+
+MESSAGE       = "MESS_6"
+TEXT          = "Receipt   "
+
+MESSAGE       = "MESS_7"
+TEXT          = "Worksheet "
+
+MESSAGE       = "MESS_8"
+TEXT          = "Action Type       : "
+
+MESSAGE       = "MESS_9"
+TEXT          = "Syntax ID         : "
+
+MESSAGE       = "MESS_10"
+TEXT          = "Sample Worksheet  : "
+
+MESSAGE       = "MESS_11"
+TEXT          = "Template List"
+
+MESSAGE       = "MESS_12"
+TEXT          = "Unavailable"
+
+MESSAGE       = "MESS_13"
+TEXT          = "Available"
+
+MESSAGE       = "MESS_14"
+TEXT          = "On Hold"
+
+MESSAGE       = "MESS_15"
+TEXT          = "Yes"
+
+MESSAGE       = "MESS_16"
+TEXT          = "No"
+
+MESSAGE       = "MESS_17"
+TEXT          = "Interactive"
+
+MESSAGE       = "MESS_18"
+TEXT          = "Background"
+
+MESSAGE       = "MESS_19"
+TEXT          = "None"
+
+MESSAGE       = "MESS_20"
+TEXT          = "Defer"
+
+MESSAGE       = "MESS_21"
+TEXT          = "Immediate"
+
+MESSAGE       = "MESS_22"
+TEXT          = "Press DO to Save Changes / Exit to quit"
+
+MESSAGE       = "MESS_23"
+TEXT          = "Press DO or EXIT to continue"
+
+MESSAGE       = "MESS_24"
+TEXT          = "Login control Screen for Template "
+
+MESSAGE       = "TAB_1"
+TEXT          = "Login Control Parameters for Sample template"
+
+MESSAGE       = "TAB_2"
+TEXT          = "|               | Action          | Report ID            | Printer          |"
+
+MESSAGE       = "TAB_3"
+TEXT          = "Login Control Parameters for Sample supertemplate"
+
+MESSAGE       = "LABEL_LNL"
+TEXT          = "Label Template"
+
+MESSAGE       = "LABEL_VGL"
+TEXT          = "VGL"
+
+MESSAGE       = "ACTION"
+TEXT          = "Action"
+
+MESSAGE       = "REPORT"
+TEXT          = "Report ID"
+
+MESSAGE       = "PRINTER"
+TEXT          = "Printer"
+
+MESSAGE       = "FRAME_LABEL"
+TEXT          = "Label"
+
+MESSAGE       = "FRAME_RECEIPT"
+TEXT          = "Receipt"
+
+MESSAGE       = "FRAME_WORKSHEET"
+TEXT          = "Worksheet"
+
+MESSAGE GROUP = "LAB_"
+
+! Messages for the LAB report
+
+MESSAGE       = "HEADER"
+TEXT          = "Laboratory Table Menu"
+TEXT          = "    Action     "
+TEXT          = "    Table      "
+TEXT          = "Build "
+
+MESSAGE       = "FOOTER"
+TEXT          = "Select an ACTION and TABLE. Press DO to invoke action or EXIT to quit."
+TEXT          = "DO to confirm or EXIT to quit"
+
+MESSAGE       = "ACTIONS_1"
+TEXT          = "Add"
+TEXT          = "Copy"
+TEXT          = "Modify"
+TEXT          = "Display"
+TEXT          = "Print"
+TEXT          = "List"
+TEXT          = "Remove"
+TEXT          = "Restore"
+TEXT          = "Test"
+TEXT          = "Debug"
+
+MESSAGE       = "EXTRA_ACTIONS"
+TEXT          = "Help"
+TEXT          = "Cancel"
+
+MESSAGE       = "INVALID_ACTION"
+TEXT          = "This entry is invalid"
+
+MESSAGE       = "BLANK_INVALID"
+TEXT          = "New Identifier cannot be blank"
+
+MESSAGE       = "VGSM"
+TEXT          = "SampleManager command line"
+TEXT          = "Enter SampleManager command $"
+
+MESSAGE       = "ADD_1"
+TEXT          = "Modify"
+TEXT          = "Display"
+TEXT          = "Print"
+TEXT          = "Add"
+TEXT          = "Copy"
+
+MESSAGE       = "DISPLAY_1"
+TEXT          = "New Identifier  : "
+TEXT          = "Copy Identifier : "
+
+! Messages for $LAB_DEL report
+
+MESSAGE GROUP = "LAB_DEL_"
+
+MESSAGE       = "WINDOW_TEXT"
+TEXT          = "Laboratory Table Deletion"
+TEXT          = "DO for main menu     space/DO toggle *"
+TEXT          = "Table name                Selected"
+TEXT          = "UP/DOWN NEXT/PREV to scroll list   ^"
+
+MESSAGE       = "MENU"
+TEXT          = "Lab Table Delete Menu"
+TEXT          = "A"
+TEXT          = "Select All tables"
+TEXT          = "R"
+TEXT          = "Reset all selections"
+TEXT          = "D"
+TEXT          = "Delete removed entries"
+TEXT          = "X"
+TEXT          = "EXit from Lab Del"
+
+
+MESSAGE       = "DELETE"
+TEXT          = "Delete removed records"
+TEXT          = "Table  : "
+TEXT          = "Record : "
+TEXT          = "Delete it?"
+TEXT          = "End of tables"
+TEXT          = "No Records Removed On Table"
+TEXT          = "Removed Records On"
+TEXT          = "One of the linked tables has a record that cannot be deleted therefore this record cannot be deleted"
+TEXT          = "Linked Tables"
+TEXT          = "Records"
+
+MESSAGE GROUP "LABSETUP_"
+
+MESSAGE       = "MESS_1"
+TEXT          = "        Creating Labtable Report        "
+
+MESSAGE       = "MAIN_1"
+TEXT          = "Labtable setup report"
+
+MESSAGE       = "MAIN_2"
+TEXT          = "1 Create New Report"
+
+MESSAGE       = "MAIN_3"
+TEXT          = "2 Select Old Report"
+
+MESSAGE       = "MAIN_4"
+TEXT          = "3 Edit Report"
+
+MESSAGE       = "MAIN_5"
+TEXT          = "4 Display Errors"
+
+MESSAGE       = "MAIN_6"
+TEXT          = "5 Compile Report"
+
+MESSAGE       = "MAIN_7"
+TEXT          = "6 Test Report"
+
+MESSAGE       = "TEST_1"
+TEXT          = "Labtable Test Menu"
+
+MESSAGE       = "TEST_2"
+TEXT          = "1 Add option"
+
+MESSAGE       = "TEST_3"
+TEXT          = "2 Copy option"
+
+MESSAGE       = "TEST_4"
+TEXT          = "3 Modify option"
+
+MESSAGE       = "TEST_5"
+TEXT          = "4 Display option"
+
+MESSAGE       = "TEST_6"
+TEXT          = "5 Remove option"
+
+MESSAGE       = "TEST_7"
+TEXT          = "6 Restore option"
+
+MESSAGE       = "TEST_8"
+TEXT          = "7 List option"
+
+MESSAGE       = "TEST_9"
+TEXT          = "8 Print option"
+
+MESSAGE       = "GET_1"
+TEXT          = "Enter Report ID : "
+
+MESSAGE       = "GET_2"
+TEXT          = "Enter Name of old Labtable report"
+
+MESSAGE       = "GET_4"
+TEXT          = "Enter Name of new Labtable report"
+
+MESSAGE       = "MESS_2"
+TEXT          = "Creating new Labtable report"
+
+MESSAGE       = "MESS_3"
+TEXT          = "Compiling labtable report"
+
+MESSAGE       = "DISPLAY_2"
+TEXT          = "Error in updated report - Please check list file"
+
+MESSAGE       = "DISPLAY_3"
+TEXT          = "Report has not been compiled successfully"
+
+MESSAGE       = "FATAL_1"
+TEXT          = "Report id "
+
+MESSAGE       = "FATAL_2"
+TEXT          = "doesn't exist"
+
+MESSAGE GROUP "LTE_CALC_"
+
+MESSAGE       = "PROM_1"
+TEXT          = "Group Name"
+
+MESSAGE       = "PROM_2"
+TEXT          = "Hazard Label Text"
+
+MESSAGE       = "PROM_3"
+TEXT          = "Description"
+
+MESSAGE       = "PROM_4"
+TEXT          = "Modifiable Entry"
+
+MESSAGE       = "OPTIONS"
+TEXT          = "Calculation Options"
+
+MESSAGE       = "FORMAT"
+TEXT          = "Format..."
+
+MESSAGE       = "BUILDER"
+TEXT          = "Builder..."
+
+MESSAGE GROUP "LTE_CHARG_"
+
+MESSAGE       = "PROM_1"
+TEXT          = "Description"
+
+MESSAGE       = "PROM_2"
+TEXT          = "Group Name"
+
+MESSAGE       = "PROM_3"
+TEXT          = "Modifiable Entry"
+
+MESSAGE       = "HEAD_1"
+TEXT          = "Charge Editor"
+
+MESSAGE       = "HEAD_2"
+TEXT          = "Charge Header"
+
+MESSAGE       = "HEAD_3"
+TEXT          = "Enter Charge Types : "
+
+MESSAGE       = "SPEC_1"
+TEXT          = "1 Charge List"
+
+MESSAGE GROUP "LABTABLIB_"
+
+MESSAGE        = "MESS_1"
+TEXT           = "Identifier                             : "
+
+MESSAGE        = "MESS_2"
+TEXT           = "Last modified on                       : "
+
+MESSAGE        = "MESS_3"
+TEXT           = "Last modified by                       : "
+
+MESSAGE        = "MESS_4"
+TEXT           = "Identity                     : "
+
+MESSAGE        = "MESS_5"
+TEXT           = "Modified on                  : "
+
+MESSAGE        = "MESS_6"
+TEXT           = "Modified by                  : "
+
+MESSAGE        = "CONFIRM_CHANGE"
+TEXT           = "Do you wish to save the changes?"
+
+MESSAGE        = "DETAILS"
+TEXT           = "Details..."
+
+MESSAGE        = "NOREMOVE"
+TEXT           = "Table [] does not have a remove field"
+
+MESSAGE        = "BADMESSAGE"
+TEXT           = "The message defined for field [] does not exist"
+
+MESSAGE        = "ADD_IDENT"
+TEXT           = " ( Add )"
+
+MESSAGE        = "COPY_IDENT"
+TEXT           = " ( Copy )"
+
+MESSAGE        = "MODIFY_IDENT"
+TEXT           = " ( Modify )"
+
+MESSAGE        = "NEW_VERSION"
+TEXT           = " ( New Version )"
+
+MESSAGE        = "DISPLAY_IDENT"
+TEXT           = " ( Display )"
+
+MESSAGE        = "PRINT_IDENT"
+TEXT           = " ( Print )"
+
+MESSAGE        = "LIST_IDENTS"
+TEXT           = " ( List )"
+
+MESSAGE        = "REMOVE_IDENT"
+TEXT           = " ( Remove )"
+
+MESSAGE        = "RESTORE_IDENT"
+TEXT           = " ( Restore )"
+
+MESSAGE        = "SUBMIT_IDENT"
+TEXT           = " ( Submit )"
+
+MESSAGE        = "APPROVE_IDENT"
+TEXT           = " ( Approve )"
+
+MESSAGE        = "APPR_STAT"
+TEXT           = "Approval Status"
+
+MESSAGE        = "SECURITY"
+TEXT           = "Security"
+
+MESSAGE        = "SUBMIT_NOW"
+TEXT           = "Submit Now?"
+
+MESSAGE        = "AUTO_APPR"
+TEXT           = "Auto Approved"
+
+MESSAGE        = "OP_COMP"
+TEXT           = "Operation completed successfully"
+
+MESSAGE        = "OP_ABOR"
+TEXT           = "Operation aborted"
+
+MESSAGE        = "CONFIRM_REMOVE"
+TEXT           = "Do you wish to remove the record []?"
+
+MESSAGE        = "CONFIRM_RESTORE"
+TEXT           = "Do you wish to restore the record []?"
+
+MESSAGE        = "NAME"
+TEXT           = "Name"
+
+MESSAGE        = "BLANK_NAME"
+TEXT           = "Please specify a Name for this record"
+
+MESSAGE        = "SUBMIT_FAILED"
+TEXT           = "Failed to submit record for inspection. Please check the inspection plan."
+
+
+MESSAGE   GROUP  "COMP_EDIT_"
+
+MESSAGE         = "DISP_1"
+TEXT            = "               REPORT CANNOT BE RUN DIRECTLY"
+
+MESSAGE         = "DISP_2"
+TEXT            = "    $COMP_EDIT cannot be run directly, it is part of the"
+
+MESSAGE         = "DISP_3"
+TEXT            = "          Modify Analysis command in SampleManager."
+
+MESSAGE         = "DISP_4"
+TEXT            = "           Press the space bar to continue....."
+
+MESSAGE         = "SEL_1"
+TEXT            = "Full details for "
+
+MESSAGE         = "SEL_2"
+TEXT            = "Use Keys UP/DOWN, EXIT/DO"
+
+MESSAGE         = "SEL_3"
+TEXT            = "Number of sig figs      :"
+
+MESSAGE         = "SEL_4"
+TEXT            = "Rounding base           :"
+
+MESSAGE         = "SEL_5"
+TEXT            = "Sig figs format         :"
+
+MESSAGE         = "DISPLAY_5"
+TEXT            = "A Result Type must be specified"
+
+MESSAGE         = "DISPLAY_6"
+TEXT            = "A Phrase Header must be specified for an Option result type"
+
+MESSAGE         = "DISPLAY_7"
+TEXT            = "A Report Format must be specified for a calculation  "
+TEXT            = "result type"
+
+MESSAGE         = "DISPLAY_8"
+TEXT            = "The True and False values must be given for a boolean result"
+
+MESSAGE         = "DISPLAY_9"
+TEXT            =  "Valid characters must be specified for a 'C'result type"
+
+MESSAGE         = "DISPLAY_10"
+TEXT            = "Result Type             :"
+
+MESSAGE         = "DISPLAY_11"
+TEXT            = "Flags                   :"
+
+MESSAGE         = "DISPLAY_12"
+TEXT            = "Minimum value           :"
+
+MESSAGE         = "DISPLAY_13"
+TEXT            = "Maximum value           :"
+
+MESSAGE         = "DISPLAY_14"
+TEXT            = "Units                   :"
+
+MESSAGE         = "DISPLAY_15"
+TEXT            = "Decimal Places          :"
+
+MESSAGE         = "DISPLAY_16"
+TEXT            = "PAUSE"
+
+MESSAGE         = "HEAD_1"
+TEXT            = " Component Details for analysis : "
+
+MESSAGE         = "FIEL_1"
+TEXT            = "Component name"
+
+MESSAGE         = "FIEL_2"
+TEXT            = "Result Type"
+
+MESSAGE         = "FIEL_3"
+TEXT            = "Flags"
+
+MESSAGE         = "FIEL_4"
+TEXT            = "Minimum"
+
+MESSAGE         = "FIEL_5"
+TEXT            = "Maximum"
+
+MESSAGE         = "FIEL_6"
+TEXT            = "True Word"
+
+MESSAGE         = "FIEL_7"
+TEXT            = "False Word"
+
+MESSAGE         = "FIEL_8"
+TEXT            = "Allowed Characters"
+
+MESSAGE         = "FIEL_9"
+TEXT            = "Calculation ID"
+
+MESSAGE         = "FIEL_10"
+TEXT            = "Units"
+
+MESSAGE         = "FIEL_11"
+TEXT            = "Decimal Places"
+
+MESSAGE         = "FIEL_12"
+TEXT            = "Component Replicates"
+
+MESSAGE         = "FIEL_13"
+TEXT            = "Number of sig figs"
+
+MESSAGE         = "FIEL_14"
+TEXT            = "Sig figs rounding base"
+
+MESSAGE         = "FIEL_15"
+TEXT            = "Sig figs filter routine"
+
+MESSAGE         = "FIEL_16"
+TEXT            = "Formula"
+
+MESSAGE         = "FIEL_17"
+TEXT            = "Min PQL"
+
+MESSAGE         = "FIEL_18"
+TEXT            = "Max PQL"
+
+MESSAGE         = "FIEL_19"
+TEXT            = "PQL Calculation"
+
+MESSAGE         = "FOOTMESS_1"
+TEXT            = "SELECT for sig figs: DO or EXIT to abort"
+
+MESSAGE         = "FOOTMESS_2"
+TEXT            = "DO or EXIT to abort"
+
+MESSAGE         = "FOOTMESS_3"
+TEXT            = "INSERT / REMOVE component:  DO commit: SELECT sig figs:"
+TEXT            = "Do commit:  EXIT  abort "
+
+MESSAGE         = "FOOTMESS_4"
+TEXT            = "INSERT / REMOVE component:  DO commit: EXIT abort"
+
+MESSAGE         = "TITLE_1"
+TEXT            = "Component Name                RT Flags Range                Units      DP Rep"
+
+MESSAGE         = "TITLE_2"
+TEXT            = "Component Name                RT Flags Range                Units      DP"
+
+MESSAGE         = "DO_CONFIRM_MESSAGE"
+TEXT            = "Update component list for analysis "
+
+MESSAGE         = "EXIT_CONFIRM_MESSAGE"
+TEXT            = "All modifications to component list will be lost"
+
+MESSAGE         = "RT_HEADER"
+TEXT            = "Type"
+
+MESSAGE         = "DP_HEADER"
+TEXT            = "DP"
+
+MESSAGE         = "NUM_SF_HEADER"
+TEXT            = "SF"
+
+MESSAGE         = "SF_ROUND_HEADER"
+TEXT            = "Rnd."
+
+MESSAGE         = "SF_FORMAT_HEADER"
+TEXT            = "Routine"
+
+MESSAGE         = "INVALID_BOOLEAN"
+TEXT            = "Boolean True and False must be different"
+
+MESSAGE         = "INVALID_NUMERIC"
+TEXT            = "Numeric Min should be less than or equal to Max"
+
+MESSAGE         = "IN_LIST"
+TEXT            = "Component name already exists for this analysis"
+
+MESSAGE         = "FORMULA"
+TEXT            = "Formula"
+
+MESSAGE         = "MIN_PQL"
+TEXT            = "Min PQL"
+
+MESSAGE         = "MAX_PQL"
+TEXT            = "Max PQL"
+
+MESSAGE         = "PQL_CALC"
+TEXT            = "PQL Calc"
+
+MESSAGE         = "CAT_HEAD"
+TEXT            = "Insert Category Component"
+
+MESSAGE         = "CAT_FOOT"
+TEXT            = "Insert to toggle all/Remove to clear all"
+
+MESSAGE         = "CAT_NAME"
+TEXT            = "Name"
+
+MESSAGE         = "CAT_OK"
+TEXT            = "OK"
+
+MESSAGE         = "CAT_SET_ALL"
+TEXT            = "Set All"
+
+MESSAGE         = "CAT_CLEAR_ALL"
+TEXT            = "Clear All"
+
+MESSAGE         = "CAT_CANCEL"
+TEXT            = "Cancel"
+
+MESSAGE         = "PROP_HEAD"
+TEXT            = "Propagate Column"
+
+MESSAGE         = "PROP_FOOT"
+TEXT            = "Press DO to Propagate"
+
+MESSAGE         = "PROP_NAME"
+TEXT            = "Name"
+
+MESSAGE         = "PROP_FIELD"
+TEXT            = "Field"
+
+MESSAGE         = "PROP_VALUE"
+TEXT            = "Value"
+
+MESSAGE         = "PROP_DOWN"
+TEXT            = "Down Only"
+
+MESSAGE         = "PROP_TYPE"
+TEXT            = "Type ([]) Only"
+
+MESSAGE         = "PROP_CAT"
+TEXT            = "Category ([]) Only"
+
+MESSAGE         = "PROP_BUTTON"
+TEXT            = "Propagate"
+
+
+MESSAGE  GROUP "GROUPLINK_"
+
+MESSAGE         = "DISPLAY_1"
+TEXT            = "No groups accessable by user"
+
+MESSAGE         = "DISPLAY_2"
+TEXT            = "Modify Operators Group Access"
+
+MESSAGE         = "PROMPT_1"
+TEXT            = "Enter operator ID :"
+
+MESSAGE         = "DISPLAY_3"
+TEXT            = "Can't reserve "
+
+MESSAGE         = "DISPLAY_4"
+TEXT            = "You have insufficient authority to access group information for this operator"
+
+MESSAGE         = "TEXT_1"
+TEXT            = "Operators Group List Setup Screen"
+
+MESSAGE         = "TEXT_2"
+TEXT            = "Operators Group List Display Screen"
+
+MESSAGE         = "TEXT_3"
+TEXT            = "Group Selection Screen"
+
+MESSAGE         = "TEXT_4"
+TEXT            = "Selected Groups Display"
+
+MESSAGE         = "DISPLAY_5"
+TEXT            = "Press RETURN to select group, DO to save, EXIT to quit"
+
+MESSAGE         = "DISPLAY_6"
+TEXT            = "DO or EXIT to leave"
+
+MESSAGE         = "CAPTION_1"
+TEXT            = "Assign >"
+
+MESSAGE         = "CAPTION_2"
+TEXT            = "Assign >>"
+
+MESSAGE         = "CAPTION_3"
+TEXT            = " < Remove"
+
+MESSAGE         = "CAPTION_4"
+TEXT            = "<< Remove"
+
+MESSAGE         = "LEFT_GRID"
+TEXT            = "Available Groups"
+
+MESSAGE         = "RIGHT_GRID"
+TEXT            = "Assigned Groups"
+
+MESSAGE         = "LEFT_GRID_2"
+TEXT            = "Non Group Members"
+
+MESSAGE         = "RIGHT_GRID_2"
+TEXT            = "Group Members"
+
+MESSAGE         = "FORM_TITLE_1"
+TEXT            = "Personnel Setup Screen"
+
+MESSAGE         = "FORM_TITLE_2"
+TEXT            = "Group Setup Screen"
+
+MESSAGE         = "ASSIGN_OPTIONS_TITLE"
+TEXT            = "Assign Option"
+
+MESSAGE         = "REMOVE_OPTIONS_TITLE"
+TEXT            = "Remove Option"
+
+MESSAGE GROUP "MLPS_"
+
+MESSAGE         = "VERSIONS_CREATE_HEADER"
+TEXT            = "Specify First Version"
+
+MESSAGE         = "VERSIONS_CREATE_FOOTER"
+TEXT            = "Press DO to Create Version"
+
+MESSAGE         = "VERSIONS_CREATE_PROMPT"
+TEXT            = "Enter First Version : "
+
+MESSAGE         = "COMPONENT_ANALYSIS"
+TEXT            = "Analysis"
+
+MESSAGE         = "COMPONENT_NAME"
+TEXT            = "Component Name"
+
+MESSAGE         = "COMPONENT_TYPE"
+TEXT            = "Type"
+
+MESSAGE         = "COMPONENT_UNITS"
+TEXT            = "Units"
+
+MESSAGE         = "COMPONENT_TYPICAL"
+TEXT            = "Typical"
+
+MESSAGE         = "COMPONENT_AMOUNT"
+TEXT            = "Amount"
+
+MESSAGE         = "COMPONENT_DP"
+TEXT            = "D.P."
+
+MESSAGE         = "COMPONENT_HEADER"
+TEXT            = "MLP Components"
+
+MESSAGE         = "COMPONENT_STANDARDS_HEADER"
+TEXT            = "Standard Components"
+
+MESSAGE         = "COMPONENT_FOOTER"
+TEXT            = "DO to Close, INSERT to add row, REMOVE to delete row, SELECT for limits"
+
+MESSAGE         = "NO_COMP_FOOTER"
+TEXT            = "DO to Close, INSERT to add all comps, REMOVE to delete row"
+
+
+MESSAGE         = "VERSION_VERSION"
+TEXT            = "Version"
+
+MESSAGE         = "VERSION_CREATED_DATE"
+TEXT            = "Creation Date"
+
+MESSAGE         = "VERSION_COMMENT"
+TEXT            = "Version Comment"
+
+MESSAGE         = "BUTTON_LIMITS"
+TEXT            = "Limits"
+
+MESSAGE         = "ERROR_RECURSIVE"
+TEXT            = "Cannot include a MLP on its own schedule"
+
+MESSAGE         = "ERROR_MLP_GONE"
+TEXT            = "Error MLP [] does not exist"
+
+MESSAGE         = "SCHEDULE_PRINT_HEADER"
+TEXT            = "Sub Schedules for []"
+
+MESSAGE         = "SCHEDULE_TOP_LINE"
+TEXT            = "MLP Schedule List Editor"
+
+MESSAGE         = "SCHEDULE_HEAD_LINE"
+TEXT            = "MLP ID      MLP Version Description"
+
+MESSAGE         = "SCHEDULE_BOT_LINE"
+TEXT            = "Use UP/DOWN, REMOVE/INSERT, NEXT/PREVIOUS SCREEN and DO/EXIT"
+
+MESSAGE         = "VERSION_SCHEDULE_PRINT_HEADER"
+TEXT            = "Schedules for version []"
+
+MESSAGE         = "ANALYSIS_PRINT_HEADER"
+TEXT            = "Analysis for []"
+
+MESSAGE         = "ANALYSIS_TOP_LINE"
+TEXT            = "MLP Analysis List Editor"
+
+MESSAGE         = "ANALYSIS_HEAD_LINE"
+TEXT            = "Analysis   Sampling Insp. Level Inspection Level"
+
+MESSAGE         = "ANALYSIS_BOT_LINE"
+TEXT            = "Use UP/DOWN, REMOVE/INSERT, NEXT/PREVIOUS SCREEN and DO/EXIT"
+
+MESSAGE         = "VERSION_CALLMENU_HEADER"
+TEXT            = "MLP Versions Options"
+
+MESSAGE         = "VERSION_CALLMENU_1"
+TEXT            = "1 MLP Components"
+TEXT            = "1"
+
+MESSAGE         = "VERSION_CALLMENU_2"
+TEXT            = "2 MLP Limits"
+TEXT            = "2"
+
+MESSAGE         = "VERSION_CALLMENU_3"
+TEXT            = "3 MLP Schedules"
+TEXT            = "3"
+
+MESSAGE         = "VERSION_BUTTON_CLOSE"
+TEXT            = "Close"
+
+MESSAGE         = "VERSION_BUTTON_INSERT"
+TEXT            = "New Version"
+
+MESSAGE         = "VERSION_BUTTON_COMPONENT"
+TEXT            = "Comp's"
+
+MESSAGE         = "VERSION_BUTTON_LIMITS"
+TEXT            = "Limits"
+
+MESSAGE         = "VERSION_BUTTON_SCHEDULE"
+TEXT            = "Schedule"
+
+MESSAGE         = "VERSION_HEADER_DISPLAY"
+TEXT            = "MLP versions"
+
+MESSAGE         = "VERSION_FOOTER_DISPLAY"
+TEXT            = "Select to view MLP information"
+
+MESSAGE         = "VERSION_HEADER_MODIFY"
+TEXT            = "MLP versions"
+
+MESSAGE         = "VERSION_FOOTER_MODIFY"
+TEXT            = "Press Insert for new version, Select to modify MLP information"
+
+MESSAGE         = "PRODUCT_PRINT_HEADER"
+TEXT            = "Levels for Product []"
+
+MESSAGE         = "PRODUCT_PRINT_1"
+TEXT            = "Version [] of Product []"
+
+MESSAGE         = "PRODUCT_PRINT_2"
+TEXT            = "Creation Date   : []"
+
+MESSAGE         = "PRODUCT_PRINT_3"
+TEXT            = "Version Comment : []"
+
+
+
+MESSAGE GROUP "MT_FIELDS_"
+
+MESSAGE       = "LIST_BOT_LINE"
+TEXT          = "Use UP/DOWN, REMOVE/INSERT, NEXT/PREVIOUS and DO/EXIT"
+
+MESSAGE         = "DISPLAY_1"
+TEXT            = "You do not have the authority to modify the Master Template table"
+
+MESSAGE         = "HEAD_1"
+TEXT            = "Master Template Fields Utility"
+
+MESSAGE         = "FOOT_1"
+TEXT            = "SPACEBAR toggle ID | DO to choose | EXIT aborts"
+
+MESSAGE         = "DISPLAY_2"
+TEXT            = "Edit Master Template for the SAMPLE table"
+
+MESSAGE         = "DISPLAY_3"
+TEXT            = "S"
+TEXT            = "Edit Master Template for the SAMPLE table"
+TEXT            = "SAMPLE"
+
+MESSAGE         = "DISPLAY_4"
+TEXT            = "J"
+TEXT            = "Edit Master Template for the JOB table"
+TEXT            = "JOB_HEADER"
+
+MESSAGE         = "DISPLAY_7"
+TEXT            = "I"
+TEXT            = "Edit Master Template for the INCIDENTS table"
+TEXT            = "INCIDENTS"
+
+MESSAGE         = "DISPLAY_8"
+TEXT            = "B"
+TEXT            = "Edit Master Template for the BATCH table"
+TEXT            = "BATCH_HEADER"
+
+MESSAGE         = "DISPLAY_9"
+TEXT            = "L"
+TEXT            = "Edit Master Template for the LOT table"
+TEXT            = "LOT_DETAILS"
+
+MESSAGE         = "DO_CONF_TEXT"
+TEXT            = "Save changes to Master Template fields"
+
+MESSAGE         = "EXIT_CONF_TEXT"
+TEXT            = "Abandon changes to Master Template fields"
+
+MESSAGE         = "SEL_1"
+TEXT            = "Full details for field"
+
+MESSAGE         = "SEL_2"
+TEXT            = "Use Keys UP/DOWN"
+
+MESSAGE         = "SEL_3"
+TEXT            = "Text Prompt     :"
+
+MESSAGE         = "SEL_4"
+TEXT            = "Default Type    :"
+
+MESSAGE         = "SEL_5"
+TEXT            = "Default Value   :"
+
+MESSAGE         = "SEL_6"
+TEXT            = "Library Name    :"
+
+MESSAGE         = "SEL_7"
+TEXT            = "Routine Name    :"
+
+MESSAGE         = "SEL_8"
+TEXT            = "Prompt Flag     :"
+
+MESSAGE         = "SEL_9"
+TEXT            = "Copy Flag       :"
+
+MESSAGE         = "SEL_10"
+TEXT            = "Display Flag    :"
+
+MESSAGE         = "SEL_11"
+TEXT            = "Mandatory Flag  :"
+
+MESSAGE         = "HEAD_2"
+TEXT            = "Field Name                     Prompt Text                    P C D M Hidden Value Type   Default Value                  Library Name         Routine Name        "
+
+MESSAGE         = "LIST_1"
+TEXT            = "Master Template Fields editor for table "
+
+MESSAGE         = "DISPLAY_5"
+TEXT            = "[] is not a field in the [] table"
+
+MESSAGE         = "DISPLAY_6"
+TEXT            = "Cannot delete Field [] as it is used on template []"
+
+MESSAGE         = "DEF_1"
+TEXT            = "Value"
+
+MESSAGE         = "DEF_2"
+TEXT            = "After edit"
+
+MESSAGE         = "DEF_3"
+TEXT            = "Before edit"
+
+MESSAGE         = "FIL_2"
+TEXT            = "! Prompt messages for "
+
+MESSAGE         = "FIL_3"
+TEXT            = "! This file was generated by $MT_FIELDS on "
+
+MESSAGE         = "FIL_5"
+TEXT            = "You must specify both table ID and field ID in the Default Value"
+
+MESSAGE         = "FIL_6"
+TEXT            = "[] is not a valid field in the [] table"
+
+MESSAGE         = "FIL_8"
+TEXT            = "Specify a Routine to call from the Library []"
+
+MESSAGE         = "FIL_9"
+TEXT            = "Specify the Library which contains the Routine []"
+
+MESSAGE         = "FIL_11"
+TEXT            = "The [].[] field does not link to another table"
+
+MESSAGE         = "FIL_12"
+TEXT            = "Type [] is invalid"
+
+MESSAGE         = "FIL_13"
+TEXT            = "Routine [] can not be found in Library []"
+
+MESSAGE         = "DISPLAY_TIDY"
+TEXT            = "D"
+TEXT            = "Delete fields no longer in structure"
+TEXT            = ""
+
+MESSAGE         = "DELETE_TRANS"
+TEXT            = "Delete unused MT_FIELDS records"
+
+MESSAGE         = "DELETE_RECORD"
+TEXT            = "Delete field [] from table []?"
+
+MESSAGE         = "RUN_TIDY_TABLE"
+TEXT            = "Field [].[] not found. Run $MT_FIELDS and select the 'Delete fields no longer in structure' option."
+
+MESSAGE GROUP "RPT_FILES_"
+
+MESSAGE         = "DISPLAY_1"
+TEXT            = "                      Modify Report                       "
+
+MESSAGE         = "DISPLAY_2"
+TEXT            = "                      Display Report                      "
+
+MESSAGE         = "DISPLAY_3"
+TEXT            = "                       Print Report                       "
+
+MESSAGE         = "DISPLAY_5"
+TEXT            = "              Press DO to Enter, Exit to Quit             "
+
+MESSAGE         = "DISPLAY_6"
+TEXT            = "Enter Report ID : "
+
+MESSAGE GROUP "SYNTAX_"
+
+MESSAGE          = "DISPLAY_1"
+TEXT             = "Validating Syntax and Creating Syntax Report"
+
+MESSAGE          = "FOOTER"
+TEXT             = "Press <EXIT> to quit"
+
+MESSAGE          = "DISPLAY_2"
+TEXT             = "Enter Syntax ID :"
+
+MESSAGE          = "DISPLAY_3"
+TEXT             = "User written routine - cannot use syntax string"
+
+MESSAGE          = "FILE_ERROR"
+TEXT             = "A Filing Error Has Occured"
+
+MESSAGE          = "SYN_ERROR"
+TEXT             = "An Error Has Been Detected in the Syntax"
+
+MESSAGE          = "ERR_1"
+TEXT             = "Item expected"
+
+MESSAGE          = "ERR_2"
+TEXT             = "Unknown Symbol"
+
+MESSAGE          = "ERR_3"
+TEXT             = "Only one argument required"
+
+MESSAGE          = "ERR_4"
+TEXT             = "Incorrect argument - 2 or 3 expected"
+
+MESSAGE          = "FIL_1"
+TEXT             = "Monday"
+
+MESSAGE          = "FIL_2"
+TEXT             = "Tuesday"
+
+MESSAGE          = "FIL_3"
+TEXT             = "Wednesday"
+
+MESSAGE          = "FIL_4"
+TEXT             = "Thursday"
+
+MESSAGE          = "FIL_5"
+TEXT             = "Friday"
+
+MESSAGE          = "FIL_6"
+TEXT             = "Saturday"
+
+MESSAGE          = "FIL_7"
+TEXT             = "Sunday"
+
+MESSAGE          = "ERR_5"
+TEXT             = "Only one argument required"
+
+MESSAGE          = "ERR_6"
+TEXT             = "Incorrect argument - 2 or 4 expected"
+
+MESSAGE          = "ERR_7"
+TEXT             = "2 arguments required"
+
+MESSAGE          = "ERR_8"
+TEXT             = "First argument not integer <=10"
+
+MESSAGE          = "ERR_9"
+TEXT             = "Unrecognised increment director"
+
+MESSAGE          = "ERR_10"
+TEXT             = ") expected"
+
+MESSAGE          = "ERR_11"
+TEXT             = "Null argument"
+
+MESSAGE          = "ERR_12"
+TEXT             = ") missing"
+
+MESSAGE          = "ERR_13"
+TEXT             = " + expected"
+
+MESSAGE          = "ERR_14"
+TEXT             = "Too many arguments"
+
+MESSAGE          = "DISPLAY_5"
+TEXT             = "Syntax"
+
+MESSAGE          = "DISPLAY_6"
+TEXT             = "Error"
+
+MESSAGE GROUP "TEST_SCH_"
+
+MESSAGE          = "DISPLAY_1"
+TEXT             = "Cannot include a test schedule within itself"
+
+MESSAGE          = "DISPLAY_2"
+TEXT             = "Analysis assigned to Test Schedule : "
+
+MESSAGE          = "FIEL_1"
+TEXT             = "Analysis ID"
+
+MESSAGE          = "FIEL_2"
+TEXT             = "Instrument ID"
+
+MESSAGE          = "FIEL_3"
+TEXT             = "Standard Test"
+
+MESSAGE          = "FIEL_4"
+TEXT             = "Replicate Count"
+
+MESSAGE          = "FIEL_5"
+TEXT             = "Is analysis"
+
+MESSAGE          = "FIEL_6"
+TEXT             = "List"
+
+MESSAGE          = "DISPLAY_3"
+TEXT             = "Test Schedule Entries"
+
+MESSAGE          = "DISPLAY_ANAL"
+TEXT             = "Anal/Sched"
+
+MESSAGE          = "DISPLAY_4"
+TEXT             = " Is analysis  Instrument  Standard  Replicate Cnt"
+
+MESSAGE          = "DISPLAY_5"
+TEXT             = " Is analysis   List         Instrument  Standard  Replicate Cnt"
+
+MESSAGE          = "AS_ANAL"
+TEXT             = "Analysis"
+
+MESSAGE          = "AS_SCHED"
+TEXT             = "Schedule"
+
+MESSAGE          = "ADD_ENTRY"
+TEXT             = "Add Analysis / Schedule"
+
+MESSAGE          = "ENTRY_TYPE"
+TEXT             = "New Entry Type"
+
+MESSAGE          = "ENTRY_ANAL"
+TEXT             = "Analysis ID"
+
+MESSAGE          = "ENTRY_SCHED"
+TEXT             = "Test Schedule ID"
+
+MESSAGE GROUP "LTE_LSCH_"
+
+MESSAGE           = "MESS_1"
+TEXT              = "Login Entries"
+
+MESSAGE GROUP "LTE_PHRSE_"
+
+MESSAGE           = "MESS_1"
+TEXT              = "Phrase Description"
+
+MESSAGE           = "MESS_2"
+TEXT              = "1 Phrase List"
+
+MESSAGE GROUP "LTE_PREP_"
+
+MESSAGE            = "MESS_1"
+TEXT               = "Operator Approval Required"
+
+MESSAGE GROUP "LTE_STDS_"
+
+MESSAGE            = "MESS_1"
+TEXT               = "Minimum lifetime for a standard is : "
+
+MESSAGE            = "MESS_2"
+TEXT               = "Negative intervals cannot be entered at this prompt"
+
+MESSAGE            = "SUBSTANCE"
+TEXT               = "Substance"
+
+MESSAGE GROUP "PHRASE_"
+
+MESSAGE       = "FIELD_1"
+TEXT          = "Phrase ID"
+
+MESSAGE       = "FIELD_2"
+TEXT          = "Phrase text"
+
+MESSAGE       = "FIELD_3"
+TEXT          = "Phrase icon"
+
+MESSAGE GROUP "CALCSYNT_"
+
+MESSAGE       = "SYNTAX"
+TEXT          = "Syntax ID"
+
+MESSAGE       = "SAMPLE_ID"
+TEXT          = "Enter test sample ID"
+
+MESSAGE       = "JOB_ID"
+TEXT          = "Enter test job name"
+
+MESSAGE       = "CALCULATION"
+TEXT          = "Calculation ID"
+
+MESSAGE       = "SAMP_ID"
+TEXT          = "Enter test sample ID"
+
+MESSAGE       = "ANAL_ID"
+TEXT          = "Enter test analysis"
+
+MESSAGE =       "SYNTAX_RESULT"
+TEXT =          "Generated value"
+
+MESSAGE =       "INVCOMBIN"
+TEXT =          "Cannot specify both sample and job"
+
+MESSAGE =       "INVSAMJOB"
+TEXT =          "Must specify either sample or job"
+
+MESSAGE =       "CALC_RESULT"
+TEXT =          "Calculated value"
+
+MESSAGE =       "INVSAMPANAL"
+TEXT =          "Invalid sample/analysis combination specified"
+
+MESSAGE =       "TEST_CALC_HEADER"
+TEXT =          "Test Calculation Format"
+
+MESSAGE =       "DEBUG_CALC_HEADER"
+TEXT =          "Debug Calculation Format"
+
+MESSAGE =       "CALC_FOOTER"
+TEXT =          "Press DO to calculate, SELECT for menu, EXIT to exit"
+
+MESSAGE =       "TEST_SYNTAX_HEADER"
+TEXT =          "Test Syntax Definition"
+
+MESSAGE =       "DEBUG_SYNTAX_HEADER"
+TEXT =          "Debug Syntax Definition"
+
+MESSAGE =       "SYNTAX_FOOTER"
+TEXT =          "Press DO generate syntax, SELECT for menu, EXIT to exit"
+
+MESSAGE =       "BLANK_ID"
+TEXT =          "The identity cannot be left blank"
+
+MESSAGE =       "DEBUG_BUTTON"
+TEXT =          "Debug"
+
+MESSAGE =       "GENERATE_BUTTON"
+TEXT =          "Generate"
+
+MESSAGE =       "CALCULATE_BUTTON"
+TEXT =          "Calculate"
+
+MESSAGE =       "MODIFY_BUTTON"
+TEXT =          "Modify"
+
+MESSAGE =       "TRANSLATE_BUTTON"
+TEXT =          "Translate"
+
+MESSAGE =       "ERRORS_BUTTON"
+TEXT =          "View errors"
+
+MESSAGE =       "HELP_BUTTON"
+TEXT =          "Help"
+
+MESSAGE =       "CLOSE_BUTTON"
+TEXT =          "Close"
+
+MESSAGE =       "SYNTAX_MENU_TITLE"
+TEXT =          "Syntax Menu"
+
+MESSAGE =       "CALC_MENU_TITLE"
+TEXT =          "Calculation Menu"
+
+MESSAGE =       "MENU"
+TEXT =          "M"
+TEXT =          "Modify"
+TEXT =          "T"
+TEXT =          "Translate"
+TEXT =          "E"
+TEXT =          "Display Errors"
+
+MESSAGE GROUP "CALC_FORMULA_"
+
+MESSAGE = "CONFIRM_EXTRACT"
+TEXT    = "Do you want to extract the formula : []?"
+
+MESSAGE = "FORMULA_WARNING"
+TEXT    = "Format has been modified."
+TEXT    = "Do you want to lose format changes?"
+
+MESSAGE = "FUNCTION_TYPES"
+TEXT    = "Functions"
+TEXT    = "Operators"
+TEXT    = "Result Sets"
+TEXT    = "Current Analysis"
+TEXT    = "Analyses"
+
+MESSAGE = "NONE_SELECTED"
+TEXT    = "Select the value you want to get"
+
+MESSAGE = "RETURNS"
+TEXT    = "returns"
+
+MESSAGE = "DATA_MISMATCH_WARNING"
+TEXT    = "[] has datatype [] which does not match []"
+
+MESSAGE = "FOOTER_TEXT"
+TEXT    = "Do to save / EXIT to quit"
+
+MESSAGE = "HEADER_TEXT"
+TEXT    = "Calculation builder"
+
+MESSAGE = "DO_CONFIRM"
+TEXT    = "Save current calculation format"
+
+MESSAGE = "EXIT_BUILDER"
+TEXT    = "Exit formula builder"
+TEXT    = "Save changes to the formula?"
+
+MESSAGE = "EXIT_CONFIRM"
+TEXT    = "Keep this formula?"
+
+MESSAGE = "FRAME_FUNCTION_TYPES"
+TEXT    = "Types"
+
+MESSAGE = "FRAME_VALUES"
+TEXT    = "Values"
+
+MESSAGE = "BUTTON_GET"
+TEXT    = "Get"
+
+MESSAGE = "BUTTON_VALIDATE"
+TEXT    = "Validate"
+
+MESSAGE = "BUTTON_TEST"
+TEXT    = "Test"
+
+MESSAGE = "FRAME_FORMULA"
+TEXT    = "Formula"
+
+MESSAGE = "FRAME_DESCRIPTION"
+TEXT    = "Description"
+
+MESSAGE = "ANALYSIS_TEXT"
+TEXT    = "Analysis for calculation"
+
+MESSAGE = "FILE_EXISTS_ERROR"
+TEXT    = "File [] does not exist"
+
+MESSAGE = "FILE_OPEN_ERROR"
+TEXT    = "Error opening file []"
+
+MESSAGE = "FILE_CLOSE_ERROR"
+TEXT    = "Error closing file []"
+
+MESSAGE GROUP "LTE_CALC_FUNCTION_"
+
+MESSAGE = "HEADER"
+TEXT    = "Calculation Functions"
+
+MESSAGE = "DESC"
+TEXT    = "Description"
+
+MESSAGE = "FUNC_TYPE"
+TEXT    = "Function Type"
+
+MESSAGE = "DATA_TYPE"
+TEXT    = "Return Data Type"
+
+MESSAGE = "LIBRARY"
+TEXT    = "Library"
+
+MESSAGE = "ROUTINE"
+TEXT    = "Routine"
+
+MESSAGE = "PROMPT"
+TEXT    = "Enter Calculation ID : "
+
+MESSAGE = "PARAMETERS"
+TEXT    = "Parameters"
+
+MESSAGE = "INVALID_LIB_ROUTINE"
+TEXT    = "The function does not have a valid library and routine"
+
+MESSAGE = "INVALID_ID"
+TEXT    = "Function name must start with an alphabetic character"
+
+MESSAGE GROUP "CALC_FUNCTION_"
+
+MESSAGE = "PARAMETER"
+TEXT    = "Parameter"
+
+MESSAGE = "PARAMETER_ORDER"
+TEXT    = "Order"
+
+MESSAGE = "DATA_TYPE"
+TEXT    = "Data Type"
+
+MESSAGE = "HEADER"
+TEXT    = "Calculation Function Parameter List"
+
+MESSAGE = "COL_HEADERS"
+TEXT    = "Parameter           Order               Data Type           Description                   "
+
+MESSAGE GROUP "CALC_BUILD_"
+
+MESSAGE = "FILE_EXISTS_ERROR"
+TEXT    = "File [] does not exist"
+
+MESSAGE = "FILE_OPEN_ERROR"
+TEXT    = "Error opening file []"
+
+MESSAGE = "FILE_CLOSE_ERROR"
+TEXT    = "Error closing file []"
+
+MESSAGE = "DO_CONFIRM"
+TEXT    = "Save current calculation format"
+
+MESSAGE = "EXIT_CONFIRM"
+TEXT    = "Lose all modifications to current calculation format"
+
+MESSAGE = "BUTTON_TEST"
+TEXT    = "Test"
+
+MESSAGE = "BUTTON_COMPILE"
+TEXT    = "Compile"
+
+MESSAGE = "FOOTER_TEXT"
+TEXT    = "Do to save / EXIT to quit"
+
+MESSAGE = "HEADER_TEXT"
+TEXT    = "Calculation builder"
+
+MESSAGE = "ANALYSIS_TEXT"
+TEXT    = "Analysis for calculation : "
+
+MESSAGE = "CALCULATION_RETURN"
+TEXT    = "Return value for calculation : "
+
+MESSAGE = "CALCULATION_ERROR"
+TEXT    = "An error has occured in the calculation"
+
+MESSAGE GROUP "LTE_ANAL_"
+
+MESSAGE           = "ALLOW_CATEGORY"
+TEXT              = "Allow Category Components"
+
+MESSAGE           = "APPROVAL_STATUS"
+TEXT              = "Approval Status"
+
+MESSAGE           = "AUTO_VAL"
+TEXT              = "Auto-Validate"
+
+MESSAGE           = "BUTTON_COMP"
+TEXT              = "Components"
+
+MESSAGE           = "COMP_LIST"
+TEXT              = "3 Component Lists"
+
+MESSAGE           = "COMP_LIST_GUI"
+TEXT              = "Lists"
+
+MESSAGE           = "COMP_REPS"
+TEXT              = "Component Replicates"
+
+MESSAGE           = "INSP_PLAN"
+TEXT              = "Inspection Plan"
+
+MESSAGE           = "OPER_APPR"
+TEXT              = "Operator Approval Required"
+
+MESSAGE           = "SAMP_PLAN"
+TEXT              = "Sampling plan type"
+
+MESSAGE           = "VERSION"
+TEXT              = "Version"
+
+
+MESSAGE GROUP "LTE_TEMPL_"
+
+MESSAGE           = "BUTTON_CONT"
+TEXT              = "Control..."
+
+MESSAGE           = "BUTTON_FLDS"
+TEXT              = "Fields..."
+
+MESSAGE GROUP "LTE_SYNT_"
+
+MESSAGE           = "BUTTON"
+TEXT              = "Source..."
+
+MESSAGE GROUP   = "LTE_UNIT_"
+
+MESSAGE         = "TITLE"
+TEXT            = "Units Data Entry Screen"
+
+MESSAGE         = "FOOTER"
+TEXT            = "Press SELECT to edit full entry / DO to Save / EXIT to Quit"
+TEXT            = "Press SELECT to view full entry / EXIT to Quit"
+
+MESSAGE         = "INPUT_MESS"
+TEXT            = "Enter Unit ID : "
+
+MESSAGE         = "ALIAS_HEAD_LINE"
+TEXT            = " Alias Value "
+
+MESSAGE         = "ALIAS_BOT_LINE"
+TEXT            = "Use UP/DOWN, REMOVE/INSERT and DO/EXIT"
+
+MESSAGE         = "ALIAS_TOP_LINE"
+TEXT            = "Unit Alias List Editor"
+
+MESSAGE         = "OPTIONS"
+TEXT            = "Unit Options"
+
+MESSAGE         = "ALIAS_OPT"
+TEXT            = "Unit Alias"
+TEXT            = "Alias"
+
+MESSAGE         = "DETAILS_OPT"
+TEXT            = "Unit Description"
+TEXT            = "Details"
+
+MESSAGE         = "IDENTITY"
+TEXT            = "Unit Symbol"
+
+MESSAGE         = "DESCRIPTION"
+TEXT            = "Common Name"
+
+MESSAGE         = "BAD_BASE_VALUE"
+TEXT            = "The derivation of a base type must be 1"
+
+MESSAGE         = "ALIAS_NOT_UNIQUE"
+TEXT            = "The specified alias name is not unique"
+
+MESSAGE GROUP "COMP_LIST_"
+
+MESSAGE            = "NO_COMPONENTS"
+TEXT               = "There are no components for list []"
+
+MESSAGE            = "WRITE_TRANSACTION"
+TEXT               = "Component List Write Transaction"
+
+MESSAGE            = "TITLE1"
+TEXT               = "Component lists for []"
+
+MESSAGE            = "TITLE2"
+TEXT               = "Description"
+
+MESSAGE            = "NO_LISTS"
+TEXT               = "There are no components lists for []"
+
+MESSAGE            = "NAME_TITLE"
+TEXT               = "Name"
+
+MESSAGE            = "DEFAULT"
+TEXT               = "Default Value"
+
+MESSAGE            = "REPORTING"
+TEXT               = "Reporting Name"
+
+MESSAGE            = "COMPONENT_LIST"
+TEXT               = "Component List"
+
+MESSAGE            = "LIST_DESCRIPTION"
+TEXT               = "Description"
+
+MESSAGE            = "NO_LIST_COMPONENTS"
+TEXT               = "There are no components assigned to list []"
+
+MESSAGE            = "HEADER_TOP"
+TEXT               = "Component Lists for []"
+
+MESSAGE            = "HEADER_FOOTER"
+TEXT               = "Press Insert/Remove to add/delete Lists, Select to modify "
+
+MESSAGE            = "ENTRY_HEADER"
+TEXT               = "Component List [] for Analysis []"
+
+MESSAGE            = "ENTRY_FOOTER"
+TEXT               = "Toggle Create Flag to add/remove component"
+
+MESSAGE            = "COMPONENT_TITLE"
+TEXT               = "Component"
+
+MESSAGE            = "CREATE_TITLE"
+TEXT               = "Create"
+
+MESSAGE            = "REPLICATE_TITLE"
+TEXT               = "Replicates"
+
+MESSAGE            = "DEFAULT_TITLE"
+TEXT               = "Default Value"
+
+MESSAGE            = "IDENTITY_TITLE"
+TEXT               = "Identity"
+
+MESSAGE            = "DESCRIPTION_TITLE"
+TEXT               = "Description"
+
+MESSAGE            = "LIST_BUTTON"
+TEXT               = "List..."
+
+MESSAGE            = "NO_EXIST"
+TEXT               = "The component list [] does not exist for the analysis []"
+
+MESSAGE            = "SURE_DELETE_HEADER"
+TEXT               = "Component [] appears on following component lists"
+
+MESSAGE            = "SURE_DELETE_FOOTER"
+TEXT               = "Press DO to confirm deletion/Exit to cancel"
+
+MESSAGE GROUP "MLP_TO_TEST_"
+
+MESSAGE            = "HEADER"
+TEXT               = "Create Test Schedule from MLP"
+
+MESSAGE            = "FOOTER"
+TEXT               = "Enter Details and press DO to create schedule"
+
+MESSAGE            = "MLP_ID"
+TEXT               = "Product Name"
+
+MESSAGE            = "MLP_VERSION"
+TEXT               = "Product Version"
+
+MESSAGE            = "TEST_SCHEDULE_ID"
+TEXT               = "Test Schedule"
+
+
+MESSAGE            = "UPDATE_MLP_HEADER"
+TEXT               = "Update MLP Header"
+
+MESSAGE            = "DELETE_EXISTING_DATA"
+TEXT               = "Delete Existing Data"
+
+MESSAGE            = "NO_PRODUCT"
+TEXT               = "No Product specified"
+
+MESSAGE            = "NO_SCHEDULE"
+TEXT               = "No Test Schedule specified"
+
+MESSAGE            = "CONVERT_BUTTON"
+TEXT               = "Convert"
+
+MESSAGE            = "CREATED"
+TEXT               = "Test Schedule created"
+
+MESSAGE            = "FAILED"
+TEXT               = "Failed to create Test Schedule []"
+
+MESSAGE            = "TITLE1"
+TEXT               = "Sub Product"
+
+MESSAGE            = "TITLE2"
+TEXT               = "Sub Test Schedule"
+
+MESSAGE            = "NO_SUB"
+TEXT               = "Not all sub test schedules have been entered"
+
+MESSAGE            = "NO_SUCH_VERSION"
+TEXT               = "Given Version does not exist for Product"
+
+MESSAGE            = "SCHED_DESCRIPTION"
+TEXT               = "Automatically created for Product [] on []"
+
+MESSAGE            = "LIST_DESCRIPTION"
+TEXT               = "Automatically created for Test Schedule [] on []"
+
+MESSAGE            = "LOCKED"
+TEXT               = "Record locked cannot create test schedule"
+
+MESSAGE GROUP "LTE_LIMIT_PHRASE_"
+
+MESSAGE            = "HEADER_MESS"
+TEXT               = "Limit Phrase Editor"
+
+MESSAGE            = "DESCRIPTION_MESS"
+TEXT               = "Phrase Description"
+
+MESSAGE            = "BASE_PHRASE_MESS"
+TEXT               = "Base Phrase"
+
+MESSAGE            = "DEFAULT_MESS"
+TEXT               = "Default Comparison"
+
+MESSAGE            = "DISPLAY_NAME"
+TEXT               = "Limit Phrase"
+
+MESSAGE            = "SPECIAL_ACTION_1"
+TEXT               = "1"
+
+MESSAGE            = "SPECIAL_ACTION_2"
+TEXT               = "1 Phrase List"
+
+MESSAGE            = "PRINT_HEADER"
+TEXT               = "Limit Phrases for []"
+
+MESSAGE            = "PRINT_TITLE1"
+TEXT               = "Result Value"
+
+MESSAGE            = "PRINT_TITLE2"
+TEXT               = "Comparison"
+
+MESSAGE            = "LIST_HEADER_LINE"
+TEXT               = "  Result Value                    Comparison"
+
+MESSAGE            = "LIST_TOP_LINE"
+TEXT               = "Limit Phrase Entries Editor"
+
+MESSAGE            = "LIST_BOT_LINE"
+TEXT               = "Use UP/DOWN, REMOVE/INSERT, NEXT/PREVIOUS SCREEN and DO/EXIT"
+
+
+MESSAGE GROUP "LIMIT_PHRASE_"
+
+MESSAGE            = "HEADER"
+TEXT               = "Create Limit Phrase From Phrase"
+
+MESSAGE            = "FOOTER"
+TEXT               = "Press DO to create / EXIT to quit"
+
+MESSAGE            = "PHRASE_ID"
+TEXT               = "Phrase             "
+
+MESSAGE            = "LIMIT_PHRASE_ID"
+TEXT               = "Limit Phrase       "
+
+MESSAGE            = "DEFAULT_ID"
+TEXT               = "Default Comparison "
+
+MESSAGE            = "DESCRIPTION"
+TEXT               = "Automatically created for Phrase []"
+
+MESSAGE            = "ERROR_TEST_HEADER"
+TEXT               = "Error creating LIMIT_PHRASE_HEADER"
+
+MESSAGE            = "ERROR_TEST_ENTRY"
+TEXT               = "Error creating LIMIT_PHRASE_ENTRY"
+
+MESSAGE            = "ID_EXISTS"
+TEXT               = "[] already exists as a limit phrase"
+
+MESSAGE            = "NO_PHRASE"
+TEXT               = "No Phrase Identity supplied"
+
+MESSAGE            = "NO_LIMIT_PHRASE"
+TEXT               = "No Limit Phrase Identity supplied"
+
+MESSAGE            = "WRITE_TRANSACTION"
+TEXT               = "Build Limit Phrase"
+
+MESSAGE            = "SUCCESS"
+TEXT               = "Limit Phrase [] has been successfully created"
+
+
+MESSAGE GROUP   = "LTE_LIMIT_CALC_"
+
+MESSAGE         = "TITLE"
+TEXT            = "Limit Calculation Data Entry Screen"
+
+MESSAGE         = "FOOTER"
+TEXT            = "Press SELECT to edit calculation / DO to Save / EXIT to Quit"
+TEXT            = "Press SELECT to view calculation / DO to Quit"
+
+MESSAGE         = "DISPLAY_TABLE"
+TEXT            = "Limit Calculation"
+
+MESSAGE         = "INPUT_MESS"
+TEXT            = "Enter Calculation ID : "
+
+MESSAGE         = "DESCRIPTION"
+TEXT            = "Description"
+
+MESSAGE         = "MODIFIABLE"
+TEXT            = "Modifiable"
+
+MESSAGE GROUP   = "LEVEL_MOD_"
+
+MESSAGE         = "HEADER"
+TEXT            = "Level Modification Screen"
+
+MESSAGE         = "FOOTER"
+TEXT            = "Press DO to Close screen"
+
+MESSAGE         = "LEVEL"
+TEXT            = "Level"
+
+MESSAGE         = "CC"
+TEXT            = "CC"
+
+MESSAGE         = "LEVEL_TYPE"
+TEXT            = "Level Type"
+
+MESSAGE         = "LEVEL_DESCRIPTION"
+TEXT            = "Level Description"
+
+
+MESSAGE GROUP   = "LIMIT_MOD_"
+
+MESSAGE         = "COMPONENT_TITLE"
+TEXT            = "Component"
+
+MESSAGE         = "PROPERTY_TITLE"
+TEXT            = " "
+
+MESSAGE         = "UNKNOWN_TYPE"
+TEXT            = "Unknown Limit Type"
+
+MESSAGE         = "TEXT_AND_PHRASE"
+TEXT            = "Cannot combine a text limit and a phrase"
+
+MESSAGE         = "NO_MINIMUM"
+TEXT            = "No minimum value supplied"
+
+MESSAGE         = "NO_MAXIMUM"
+TEXT            = "No maximum value supplied"
+
+MESSAGE         = "NO_LEVELS"
+TEXT            = "No levels have been defined"
+
+MESSAGE         = "NO_COMPONENTS"
+TEXT            = "No Components have been defined"
+
+MESSAGE         = "PROPERTY_MIN"
+TEXT            = "Min  "
+
+MESSAGE         = "PROPERTY_MAX"
+TEXT            = "Max  "
+
+MESSAGE         = "PROPERTY_CALC"
+TEXT            = "Calc "
+
+MESSAGE         = "PROPERTY_AQL"
+TEXT            = "AQL  "
+
+MESSAGE         = "PROPERTY_TEXT"
+TEXT            = "Text"
+
+MESSAGE         = "PROPERTY_PHRASE"
+TEXT            = "Phrase"
+
+MESSAGE         = "PROPERTY_PASS"
+TEXT            = "Pass"
+
+MESSAGE         = "PROPERTY_FAIL"
+TEXT            = " "
+
+MESSAGE         = "CHOOSE_PROP_HEADER"
+TEXT            = "Propagate"
+
+MESSAGE         = "CHOOSE_PROP_ALL"
+TEXT            = "A"
+TEXT            = "All"
+
+MESSAGE         = "CHOOSE_PROP_DOWN"
+TEXT            = "D"
+TEXT            = "Down"
+
+MESSAGE         = "CHOOSE_PROP_RIGHT"
+TEXT            = "R"
+TEXT            = "Right"
+
+MESSAGE         = "CHOOSE_PROP_UP"
+TEXT            = "U"
+TEXT            = "Up"
+
+MESSAGE         = "CHOOSE_PROP_LEFT"
+TEXT            = "L"
+TEXT            = "Left"
+
+MESSAGE         = "TOOLBOX_HEADER"
+TEXT            = "Propagate"
+
+MESSAGE         = "TOOLBOX_ALL"
+TEXT            = "Propagate All"
+
+MESSAGE         = "TOOLBOX_UP"
+TEXT            = "Propagate Up"
+
+MESSAGE         = "TOOLBOX_DOWN"
+TEXT            = "Propagate Down"
+
+MESSAGE         = "TOOLBOX_LEFT"
+TEXT            = "Propagate Left"
+
+MESSAGE         = "TOOLBOX_RIGHT"
+TEXT            = "Propagate Right"
+
+MESSAGE         = "HEADER_MODIFY"
+TEXT            = "Limit Value Modification Screen"
+
+MESSAGE         = "FOOTER_MODIFY"
+TEXT            = "Press DO to Close, SELECT to Propagate"
+
+MESSAGE         = "HEADER_DISPLAY"
+TEXT            = "Limit Value Display Screen"
+
+MESSAGE         = "FOOTER_DISPLAY"
+TEXT            = "Press DO to Close"
+
+MESSAGE         = "NO_BOOLEAN"
+TEXT            = " "
+
+MESSAGE         = "PASS_BOOLEAN"
+TEXT            = "When True"
+
+MESSAGE         = "FALSE_BOOLEAN"
+TEXT            = "When False"
+
+MESSAGE GROUP   = "MLPS_CALC_"
+
+MESSAGE         = "FORM_HEADER"
+TEXT            = "Limit Calculation Test Screen"
+
+MESSAGE         = "FORM_FOOTER"
+TEXT            = "Press SELECT for options"
+
+MESSAGE         = "CALCULATION_ID"
+TEXT            = "Identity"
+
+MESSAGE         = "MLP_IDENTITY_ID"
+TEXT            = "MLP Identity"
+
+MESSAGE         = "MLP_VERSION_ID"
+TEXT            = "MLP Version"
+
+MESSAGE         = "ANALYSIS_ID"
+TEXT            = "Analysis"
+
+MESSAGE         = "COMPONENT_ID"
+TEXT            = "Component"
+
+MESSAGE         = "SAMPLE_ID"
+TEXT            = "Sample"
+
+MESSAGE         = "TEST_ID"
+TEXT            = "Test"
+
+
+MESSAGE         = "RESULT"
+TEXT            = "Result"
+
+MESSAGE         = "MODE"
+TEXT            = "Mode"
+
+MESSAGE         = "LIMIT_TITLE1"
+TEXT            = " "
+
+MESSAGE         = "LIMIT_TITLE2"
+TEXT            = " "
+
+MESSAGE         = "LIMIT_TITLE3"
+TEXT            = " "
+
+MESSAGE         = "RESULT_TITLE1"
+TEXT            = "Return Value"
+
+MESSAGE         = "RESULT_TITLE2"
+TEXT            = " "
+
+MESSAGE         = "RESULT_TITLE3"
+TEXT            = " "
+
+MESSAGE         = "DEBUG_BUTTON"
+TEXT            = "Debug"
+
+MESSAGE         = "GENERATE_BUTTON"
+TEXT            = "Generate"
+
+MESSAGE         = "CALCULATE_BUTTON"
+TEXT            = "Calculate"
+
+MESSAGE         = "MODIFY_BUTTON"
+TEXT            = "Modify"
+
+MESSAGE         = "TRANSLATE_BUTTON"
+TEXT            = "Translate"
+
+MESSAGE         = "ERRORS_BUTTON"
+TEXT            = "View errors"
+
+MESSAGE         = "MENU_TITLE"
+TEXT            = "Options"
+
+MESSAGE         = "MENU"
+TEXT            = "M"
+TEXT            = "Modify"
+TEXT            = "T"
+TEXT            = "Translate"
+TEXT            = "C"
+TEXT            = "Calculate"
+TEXT            = "D"
+TEXT            = "Debug"
+TEXT            = "E"
+TEXT            = "Display Errors"
+
+MESSAGE         = "MODE_FORMAT"
+TEXT            = "Format"
+
+MESSAGE         = "MODE_COMPARE"
+TEXT            = "Compare"
+
+MESSAGE         = "MODE_UPDATE"
+TEXT            = "Update"
+
+MESSAGE         = "INCORRECT_RETURN"
+TEXT            = "Incorrect Return Value <[]>"
+
+MESSAGE         = "RETURN_EMPTY"
+TEXT            = "EMPTY"
+
+MESSAGE         = "RETURN_ERROR"
+TEXT            = "EMPTY"
+
+MESSAGE         = "RETURN_UNASSIGNED"
+TEXT            = "Unassigned"
+
+MESSAGE         = "ERROR_NO_MLP_IDENTITY"
+TEXT            = "Error No MLP Identity Specified"
+
+MESSAGE         = "ERROR_NO_MLP_VERSION"
+TEXT            = "Error No MLP Version Specified"
+
+MESSAGE         = "ERROR_NO_ANALYSIS"
+TEXT            = "Error No Analysis Specified"
+
+MESSAGE         = "ERROR_NO_COMPONENT"
+TEXT            = "Error No Component Specified"
+
+MESSAGE         = "ERROR_NO_MODE"
+TEXT            = "Error No Mode Specified"
+
+MESSAGE         = "ERROR_NO_SAMPLE"
+TEXT            = "Error No Sample Specified"
+
+MESSAGE         = "ERROR_NO_TEST"
+TEXT            = "Error No Test Specified"
+
+MESSAGE         = "ERROR_INVALID_VERSION"
+TEXT            = "Specified Version does not exist on MLP"
+
+MESSAGE GROUP   = "LTE_MLP_"
+
+MESSAGE         = "HEADER"
+TEXT            = "MLP Header Data Entry Screen"
+
+MESSAGE         = "FOOTER_MODIFY"
+TEXT            = "Press Select to modify Versions and Levels"
+
+MESSAGE         = "FOOTER_DISPLAY"
+TEXT            = "Press Select to view Versions and Levels"
+
+MESSAGE         = "TITLE"
+TEXT            = "Versioned MLP"
+
+MESSAGE         = "MESSAGE_DESCRIPTION"
+TEXT            = "Description"
+
+MESSAGE         = "MESSAGE_PRODUCT_CODE"
+TEXT            = "Product Code"
+
+MESSAGE         = "MESSAGE_PRODUCT_GROUP"
+TEXT            = "Product Group"
+
+MESSAGE         = "MESSAGE_VERSION_COMMENT"
+TEXT            = "Version Comment"
+
+MESSAGE         = "MESSAGE_TEST_SCHEDULE"
+TEXT            = "Test Schedule"
+
+{SP / }
+MESSAGE         = "MESSAGE_TEST_SCHEDULE_MICRO"
+TEXT            = "Micro Test Schedule"
+{SP / ENDMOD}
+
+MESSAGE         = "MESSAGE_MODIFIABLE"
+TEXT            = "Modifiable"
+
+MESSAGE         = "MESSAGE_GROUP_ID"
+TEXT            = "Group"
+
+MESSAGE         = "MESSAGE_INSP_PLAN"
+TEXT            = "Inspection Plan"
+
+MESSAGE         = "DISPLAYED_NAME"
+TEXT            = "Product"
+
+MESSAGE         = "INPUT_MESS"
+TEXT            = "Enter Product"
+
+MESSAGE         = "MENU_HEADER"
+TEXT            = "MLP Options"
+
+MESSAGE         = "MENU_LEVELS"
+TEXT            = "1 Levels"
+
+MESSAGE         = "MENU_ANALS"
+TEXT            = "2 Analyses"
+
+MESSAGE         = "MENU_COMPS"
+TEXT            = "3 Components"
+
+MESSAGE         = "MENU_LIMITS"
+TEXT            = "4 Limits"
+
+MESSAGE         = "MENU_SCHED"
+TEXT            = "5 Schedule"
+
+MESSAGE         = "MESSAGE_ANALID"
+TEXT            = "Analysis Id"
+
+MESSAGE         = "MESSAGE_ANALVERS"
+TEXT            = "Analysis Version"
+
+MESSAGE         = "MESSAGE_NO_ELEM"
+TEXT            = "No of Elements"
+
+MESSAGE         = "MESSAGE_SAMP_INSP"
+TEXT            = "Sampling Inspection Level"
+
+MESSAGE         = "MESSAGE_INSP_LEV"
+TEXT            = "Inspection Level"
+
+MESSAGE         = "MESSAGE_SUBSTANCE"
+TEXT            = "Substance"
+
+MESSAGE GROUP   = "LTE_LIST_RES_"
+
+MESSAGE         = "TABLE_NAME"
+TEXT            = "LIST_RESULT_FORMAT"
+
+MESSAGE         = "HEADER"
+TEXT            = "List Result Data Entry Screen"
+
+MESSAGE         = "FOOTER"
+TEXT            = "Press DO to Save/EXIT to Quit/SELECT for List Result"
+
+MESSAGE         = "ENTER_ID"
+TEXT            = "Enter List Result ID: "
+
+MESSAGE         = "DISPLAY_FOOTER_MESS"
+TEXT            = "Press EXIT to Quit/SELECT to view code"
+
+MESSAGE         = "LIST_RESULT_OPTIONS"
+TEXT            = "List Result Options"
+
+MESSAGE         = "FORMAT_OPTION"
+TEXT            = "Format..."
+
+MESSAGE         = "GROUP"
+TEXT            = "Group Name"
+
+MESSAGE         = "DESCRIPTION"
+TEXT            = "Description"
+
+MESSAGE         = "MODIFIABLE"
+TEXT            = "Modifiable Entry"
+
+MESSAGE         = "FORM_TITLE"
+TEXT            = "Form Title"
+
+MESSAGE         = "REPLICATE_TITLE"
+TEXT            = "Replicate Column Title"
+
+MESSAGE         = "VALUE_TITLE"
+TEXT            = "Value Column Title"
+
+MESSAGE         = "MAX_REPLICATES"
+TEXT            = "Maximum Number of Values"
+
+MESSAGE         = "CALLBACK"
+TEXT            = "Replicate CallBack Routine"
+
+MESSAGE         = "LIBRARY"
+TEXT            = "Replicate Library"
+
+MESSAGE GROUP   = "LR_DEBUG_TEST_"
+
+MESSAGE         = "DEBUG"
+TEXT            = "List Report Debug Screen"
+
+MESSAGE         = "TEST"
+TEXT            = "List Report Test Screen"
+
+MESSAGE         = "ID"
+TEXT            = "List Result ID"
+
+MESSAGE         = "VALUE"
+TEXT            = "Returned Value"
+
+MESSAGE         = "FOOTER"
+TEXT            = "Press DO to execute, SELECT for menu, EXIT to exit"
+
+MESSAGE         = "CAP_DEBUG"
+TEXT            = "Debug"
+
+MESSAGE         = "CAP_TEST"
+TEXT            = "Test"
+
+MESSAGE         = "CAP_MODIFY"
+TEXT            = "Modify"
+
+MESSAGE         = "CAP_TRANSLATE"
+TEXT            = "Translate"
+
+MESSAGE         = "CAP_ERRORS"
+TEXT            = "View Errors"
+
+MESSAGE         = "CAP_HELP"
+TEXT            = "Help"
+
+MESSAGE         = "CAP_CLOSE"
+TEXT            = "Close"
+
+MESSAGE         = "DEBUG_OPTIONS"
+TEXT            = "Debug Options"
+
+MESSAGE         = "TEST_OPTIONS"
+TEXT            = "Test Options"
+
+
+MESSAGE GROUP   = "LIB_LIST_RESULT_"
+
+MESSAGE        = "ENFORCE_DP_1"
+TEXT           = "Please enter a minimum of "
+
+MESSAGE        = "ENFORCE_DP_2"
+TEXT           = " decimal places"
+
+MESSAGE         = "FORM"
+TEXT            = "List Result"
+
+MESSAGE         = "COMP_NAME"
+TEXT            = "Component Name  "
+
+MESSAGE         = "ACCEPT"
+TEXT            = "Acceptable Value"
+
+MESSAGE         = "REPLICATE"
+TEXT            = "Replicate"
+
+MESSAGE         = "VALUE"
+TEXT            = "Value"
+
+MESSAGE         = "FOOTER"
+TEXT            = "DO to accept, EXIT to quit"
+
+MESSAGE         = "CAP_DO"
+TEXT            = "OK"
+
+MESSAGE         = "CAP_ACCEPT"
+TEXT            = "Accept"
+
+MESSAGE         = "CAP_CANCEL"
+TEXT            = "Cancel"
+
+MESSAGE         = "NO_RESULTS"
+TEXT            = "No results were provided by result string"
+
+MESSAGE         = "TOO_MANY_RESULTS"
+TEXT            = "Number of result values exceeds max replicates"
+
+MESSAGE GROUP = "WORK_PROFILE_"
+
+MESSAGE       = "TYPE_TITLE"
+TEXT          = "Type"
+
+MESSAGE       = "ANAL_COMP_TITLE"
+TEXT          = "Analysis/Component"
+
+MESSAGE       = "REPEAT_TITLE"
+TEXT          = "Repeat"
+
+MESSAGE       = "CREATE_TITLE"
+TEXT          = "Create"
+
+MESSAGE       = "RES_ENTRY_TITLE"
+TEXT          = "Res Entry"
+
+MESSAGE       = "COMP_TYPE_TITLE"
+TEXT          = "Ty"
+
+MESSAGE       = "DP_TITLE"
+TEXT          = "DP"
+
+MESSAGE       = "LEVEL_TITLE"
+TEXT          = "Level"
+
+MESSAGE       = "LOWER_TITLE"
+TEXT          = "Lower"
+
+MESSAGE       = "UPPER_TITLE"
+TEXT          = "Upper"
+
+MESSAGE       = "UNITS_TITLE"
+TEXT          = "Units"
+
+MESSAGE       = "REPORT_NAME_TITLE"
+TEXT          = "Reporting Name"
+
+MESSAGE       = "DEFAULT_VALUE_TITLE"
+TEXT          = "Default Value"
+
+MESSAGE       = "SPIKE_TITLE"
+TEXT          = "Spike"
+
+MESSAGE       = "LIMIT_CALC_TITLE"
+TEXT          = "Limit Calc"
+
+MESSAGE       = "STANDARD_TITLE"
+TEXT          = "Standard"
+
+MESSAGE       = "INSTRUMENT_TITLE"
+TEXT          = "Instrument"
+
+MESSAGE       = "NO_LEVELS"
+TEXT          = "Work Profile must have at least one Level"
+
+MESSAGE       = "ANAL_TYPE"
+TEXT          = "Anal"
+
+MESSAGE       = "SCHD_TYPE"
+TEXT          = "Prof"
+
+MESSAGE       = "ANALYSIS_ON"
+TEXT          = "Analysis [] is already on this work profile"
+
+MESSAGE       = "SCHEDULE_ON"
+TEXT          = "Work Profile [] is already on this work profile"
+
+MESSAGE       = "NESTED_PROFILE"
+TEXT          = "Cannot include profile [] inside itself"
+
+MESSAGE       = "UNITS_INCOM"
+TEXT          = "Units [] are not compatable with the component units []"
+
+MESSAGE       = "TEXTUAL_EXISTS"
+TEXT          = "[] is already in the list for this level"
+
+MESSAGE       = "COMPONENT_EXISTS"
+TEXT          = "Component [] is already present for this analysis"
+
+MESSAGE       = "INV_COMPONENT"
+TEXT          = "Component [] does not exist on analysis []"
+
+MESSAGE       = "INV_PROFILE_POINT"
+TEXT          = "Cannot insert a Work Profile at this point"
+
+MESSAGE       = "INSERT_TITLE"
+TEXT          = "Work Profile Insert What?"
+
+MESSAGE       = "INSERT_SCHEDULE"
+TEXT          = "Profile"
+
+MESSAGE       = "INSERT_ANALYSIS"
+TEXT          = "Analysis"
+
+MESSAGE       = "INSERT_COMPONENT"
+TEXT          = "Component"
+
+MESSAGE       = "INSERT_TEXTUAL"
+TEXT          = "Textual"
+
+MESSAGE       = "INSERT_ALL_CATS"
+TEXT          = "Insert all Categories"
+
+MESSAGE       = "INSERT_READ_CAT"
+TEXT          = "Insert Reading Category"
+
+MESSAGE       = "DELETE_TITLE"
+TEXT          = "Delete Component or Textual Limit"
+
+MESSAGE       = "DELETE_COMPONENT"
+TEXT          = "Component     : "
+
+MESSAGE       = "DELETE_TEXTUAL"
+TEXT          = "Textual Limit : "
+
+MESSAGE       = "PROPAGATE_TITLE"
+TEXT          = "Propagate Options"
+
+MESSAGE       = "PROPAGATE_FIELD"
+TEXT          = "Propagate Field"
+
+MESSAGE       = "PROPAGATE_VALUE"
+TEXT          = "Propagate Value"
+
+MESSAGE       = "PROPAGATE_BLANK"
+TEXT          = "Blank Values Only"
+
+MESSAGE       = "PROPAGATE_DOWN"
+TEXT          = "Down Only"
+
+MESSAGE       = "PROPAGATE_TYPE"
+TEXT          = "Only to Type ([])"
+
+MESSAGE       = "PROPAGATE_CATEGORY"
+TEXT          = "Only to Category ([])"
+
+MESSAGE       = "BUTTON_PROPAGATE"
+TEXT          = "Propagate"
+
+MESSAGE       = "BUTTON_LEVELS"
+TEXT          = "Levels..."
+
+
+MESSAGE       = "MOD_HEADER"
+TEXT          = "Work Profile Modification Screen []"
+
+MESSAGE       = "DISP_HEADER"
+TEXT          = "Work Profile Display Screen []"
+
+MESSAGE       = "MOD_FOOTER"
+TEXT          = "INSERT to add, DELETE to remove, SELECT for options, DO / EXIT to close"
+
+MESSAGE       = "DISP_FOOTER"
+TEXT          = "SELECT for level list, DO / EXIT to close"
+
+MESSAGE       = "LOCKED"
+TEXT          = "The work profile cannot be edited due to locked rows"
+
+MESSAGE       = "BATCH_NO_ANALYSIS"
+TEXT          = "Must specify an Analysis on the batch template before entering this screen"
+
+MESSAGE       = "PRINT_REPLICATE"
+TEXT          = "Replicate"
+
+MESSAGE       = "PRINT_PROFILE"
+TEXT          = "Profile"
+
+MESSAGE       = "PRINT_ANALYSIS"
+TEXT          = "Analysis"
+
+MESSAGE       = "PRINT_DP"
+TEXT          = "Decimal Places"
+
+MESSAGE       = "PRINT_DATATYPE"
+TEXT          = "Datatype"
+
+MESSAGE       = "PRINT_LEVEL_N"
+TEXT          = "Level       Lower Limit        Upper Limit"
+TEXT          = "-----       -----------        -----------"
+
+MESSAGE       = "PRINT_LEVEL_T"
+TEXT          = "Level    Textual Result         Comparison Result"
+TEXT          = "-----    --------------         -----------------"
+
+MESSAGE       = "MENU_OPTIONS"
+TEXT          = "Work Profile Options"
+
+MESSAGE       = "OPTION_PROPAGATE"
+TEXT          = "1"
+TEXT          = "1 Propagate"
+
+MESSAGE       = "OPTION_LEVELS"
+TEXT          = "2"
+TEXT          = "2 Levels"
+
+MESSAGE       = "ANAL_LOCK"
+TEXT          = "The Analysis [] is locked by another user"
+
+MESSAGE       = "NO_ANALYSIS"
+TEXT          = "Unable to locate analysis []"
+
+MESSAGE       = "NO_PRODUCT"
+TEXT          = "Unable to locate MLP []"
+
+
+MESSAGE GROUP = "LTE_WORK_PROFILE_"
+
+MESSAGE       = "HEADER"
+TEXT          = "Work Profile Data Entry Screen"
+
+MESSAGE       = "FOOTER"
+TEXT          = "Press SELECT to modify Work Profile"
+
+MESSAGE       = "DISPLAY_FOOTER"
+TEXT          = "Press SELECT to view Work Profile"
+
+MESSAGE       = "DISPLAYED_TABLE"
+TEXT          = "Work Profile"
+
+MESSAGE       = "INPUT_MESS"
+TEXT          = "Enter Work Profile ID :"
+
+MESSAGE       = "OPTION1"
+TEXT          = "1"
+TEXT          = "1 Profile"
+
+MESSAGE GROUP = "INSPECTION_HISTORY_"
+
+MESSAGE       = "GRID_TITLES"
+TEXT          = "Version"
+TEXT          = "Insp Type"
+TEXT          = "User ID"
+TEXT          = "Role ID"
+TEXT          = "Status"
+TEXT          = "Comment"
+TEXT          = "Old Status"
+TEXT          = "Insp. User"
+TEXT          = "Actual User"
+TEXT          = "Date inspected"
+
+MESSAGE       = "FORM_TEXT"
+TEXT          = "Inspection History"
+TEXT          = "Press <Exit> to Exit"
+
+MESSAGE       = "DISPLAY_TEXT"
+TEXT          = "Sample ID      "
+TEXT          = "Inspection Plan"
+TEXT          = "Inspection Type"
+TEXT          = "ID Text        "
+
+MESSAGE GROUP = "INSPECT_"
+
+MESSAGE       = "FIELD_DETAILS"
+TEXT          = "OPERATOR_ID"
+TEXT          = "INSPECTION_TEXT"
+
+MESSAGE GROUP = "SAMP_INSPECT_"
+
+MESSAGE       = "FORM"
+TEXT          = "Sample Inspection"
+TEXT          = "Press <EXIT> to exit/<SELECT> for options/<DO> to authorise"
+TEXT          = "Select Personnel_ID"
+TEXT          = "<DO> to Finish"
+TEXT          = "Personnel ID "
+TEXT          = "Sample ID           "
+TEXT          = "Sample Id Text      "
+TEXT          = "Inspection Version  "
+TEXT          = "Inspection Status   "
+TEXT          = "Inspection Required "
+
+
+MESSAGE       = "CHOOSE"
+TEXT          = "Inspection Menu"
+TEXT          = "Display Sample Results"
+TEXT          = "Compare with MLP's"
+TEXT          = "Display Sample"
+TEXT          = "Authorise Inspection"
+TEXT          = "Fail Inspection"
+TEXT          = "Quit"
+
+MESSAGE       = "WINDOW"
+TEXT          = "Enter Inspection Text"
+TEXT          = "Inspection Text"
+TEXT          = "Reason For Failure"
+
+MESSAGE       = "BUTTON"
+TEXT          = "Fail"
+TEXT          = "Authorise"
+TEXT          = "Close"
+TEXT          = "Display Results"
+TEXT          = "Display Sample"
+TEXT          = "Compare MLP's"
+
+MESSAGE       = "FAIL_SAMP"
+TEXT          = "Unable to locate sample record for inspection"
+SEVERITY      = "ERROR"
+
+MESSAGE GROUP = "CGI_"
+
+MESSAGE     = "TITLE"
+TEXT        = "CGI Scripts Data Entry Screen"
+
+MESSAGE     = "FOOTER"
+TEXT        = "Press DO to save / EXIT to quit"
+
+MESSAGE     = "DISPLAY_FOOTER"
+TEXT        = "Press EXIT to quit"
+
+MESSAGE     = "DESCRIPTION"
+TEXT        = "Description"
+
+MESSAGE     = "REPORT"
+TEXT        = "Script Library"
+
+MESSAGE     = "ROUTINE"
+TEXT        = "Script Routine"
+
+MESSAGE     = "SECURITY_LEVEL"
+TEXT        = "Security Level"
+
+MESSAGE     = "SECURITY_AREA"
+TEXT        = "Security Area"
+
+MESSAGE     = "MODIFIABLE"
+TEXT        = "Modifiable Entry"
+
+MESSAGE     = "TABLE"
+TEXT        = "CGI Script"
+
+MESSAGE     = "PROMPT"
+TEXT        = "Enter CGI Script ID :"
+
+MESSAGE     = "NO_LIBRARY"
+TEXT        = "Must supply a valid library name"
+
+MESSAGE     = "NO_ROUTINE"
+TEXT        = "Must supply a valid routine name"
+
+MESSAGE     = "ROUTINE_NOT_FOUND"
+TEXT        = "Routine [] does not exist in the library []"
+
+MESSAGE GROUP "LTE_CALENDAR_"
+
+MESSAGE = "CALENDAR"
+TEXT    = "Calendar"
+
+MESSAGE = "DESC"
+TEXT    = "Description"
+
+MESSAGE = "DETAILS_BUTTON"
+TEXT    = "Details ..."
+
+MESSAGE = "ENT_CAL_ID"
+TEXT    = "Enter Calendar ID"
+
+MESSAGE = "GROUP_NAME"
+TEXT    = "Group Name"
+
+MESSAGE = "HEADER"
+TEXT    = "Calendar Setup Data Entry Screen"
+
+MESSAGE GROUP "GEN_APPR_"
+
+MESSAGE = "INSP_HIST"
+TEXT    = "Inspection History"
+
+MESSAGE = "NO_INSP_HIST"
+TEXT    = "No inspection history available for "
+
+MESSAGE = "DETAILS"
+TEXT    = "Details"
+
+MESSAGE = "NO_INSP_FIELD"
+TEXT    = "No inspection field on "
+
+MESSAGE = "NO_APPR_STAT"
+TEXT    = "No approval status on "
+
+MESSAGE = "UNKNOWN_METHOD"
+TEXT    = " - unknown method."
+
+MESSAGE = "CANT_LOCATE"
+TEXT    = "Unable to locate inspector records"
+
+MESSAGE = "UNKNOWN_TYPE"
+TEXT    = "Unknown inspection type in inspection header"
+
+MESSAGE = "APPR_CONF"
+TEXT    = "Approval Confirmation"
+
+MESSAGE = "COMMENT"
+TEXT    = "Comment"
+
+MESSAGE = "REJECT"
+TEXT    = "Reject"
+
+MESSAGE = "APPROVE"
+TEXT    = "Approve"
+
+MESSAGE = "NO_CONF"
+TEXT    = "You have not approved or rejected this analysis."
+TEXT    = "Are you sure you wish to cancel this operation?"
+
+MESSAGE = "MUST_COMMENT"
+TEXT    = "Must enter a rejection comment"
+
+MESSAGE = "FOR_ANY"
+TEXT    = "Approve for any user"
+
+MESSAGE = "ON_BEHALF_DOTS"
+TEXT    = "Approve on behalf of ... "
+
+MESSAGE = "AS"
+TEXT    = "Approve as "
+
+MESSAGE = "ON_BEHALF"
+TEXT    = "Approve on behalf of"
+
+MESSAGE  = "MUST_GIVE_PLAN"
+TEXT     = "Must provide an inspection plan."
+SEVERITY = "WARNING"
+
+MESSAGE  = "NOT_BELONG"
+TEXT     = "You have specified an inspection plan that you belong to. Please choose another."
+SEVERITY = "ERROR"
+
+MESSAGE  = "NO_INSP_ANOTHER"
+TEXT     = "Inspection plan defines no inspectors. Please choose another."
+SEVERITY = "ERROR"
+
+MESSAGE  = "NO_INSP_CONT"
+TEXT     = "Inspection plan defines no inspectors. Continue anyway ?"
+SEVERITY = "WARNING"
+
+MESSAGE = "USER_IN_PLAN_MULTIPLE"
+TEXT     = "User is part of Approval plan more than once"
+
+MESSAGE = "AS_ROLE"
+TEXT     = "Approve as role:"
+
+MESSAGE GROUP "INST_COMM_"
+
+MESSAGE = "P_INST_ID"
+TEXT    = "Instrument ID"
+
+MESSAGE = "H_MOD_SETTINGS"
+TEXT    = "Modify Communication Settings"
+
+MESSAGE = "H_DISP_SETTINGS"
+TEXT    = "Display Communication Settings"
+
+MESSAGE = "WARN_NOT_CALIB"
+TEXT    = "Instrument is not calibrated. Continue?"
+
+MESSAGE = "ERR_NO_RESPONSE"
+TEXT    = "There was no response from the instrument within the time-out period of "
+TEXT    = " seconds"
+TEXT    = "Please check the following:"
+TEXT    = "    1. Is the instrument switched on?"
+TEXT    = "    2. Is the instrument connected to the correct port on your machine?"
+TEXT    = "    3. Are the communication settings correct?"
+TEXT    = "    4. Is the time-out period long enough to allow the instrument to respond?"
+
+MESSAGE = "ERR_COM_OBJECT"
+TEXT    = "Could not create 'MSCOMMLib.MSComm' object. Is the class registered?"
+TEXT    = "Error: "
+
+MESSAGE = "ERR_RESULT_PARSE"
+TEXT    = "The instrument responded but a result could not be correctly interpreted."
+TEXT    = "Please check the following communication settings are correct:"
+TEXT    = "  1. The Message Prefix and Message Suffix."
+TEXT    = "  2. The 'Bits per Second', 'Parity' and 'Data bits' values."
+
+MESSAGE = "H_ERR_INTERPRETATION"
+TEXT    = "Interpretation Error"
+
+MESSAGE = "H_ERR_CONNECTION"
+TEXT    = "Connection Error"
+
+MESSAGE = "H_CONNECTING"
+TEXT    = "Instrument Connection"
+
+MESSAGE = "CONNECTING"
+TEXT    = "Connecting to "
+
+MESSAGE = "TIMEOUT_REMAIN"
+TEXT    = "Timeout in "
+TEXT    = " second."
+TEXT    = " seconds."
+
+MESSAGE = "H_INST_COMM"
+TEXT    = "Instrument Communication"
+
+MESSAGE = "H_CONN"
+TEXT    = "Connection"
+
+MESSAGE = "S_WORKSTATION"
+TEXT    = "Workstation Details"
+TEXT    = "This instrument is connected to:"
+
+MESSAGE = "MACHINE"
+TEXT    = "Workstation Name"
+
+MESSAGE = "S_PORT"
+TEXT    = "Port Settings"
+
+MESSAGE = "PORT"
+TEXT    = "COM Port"
+
+MESSAGE = "BAUD"
+TEXT    = "Bits per Second"
+
+MESSAGE = "PARITY"
+TEXT    = "Parity"
+
+MESSAGE = "DATABITS"
+TEXT    = "Data Bits"
+
+MESSAGE = "STOPBITS"
+TEXT    = "Stop Bits"
+
+MESSAGE = "H_RESULTS"
+TEXT    = "Result Acquisition"
+
+MESSAGE = "S_INIT"
+TEXT    = "1. Initialisation"
+TEXT    = "Enter string to be sent to instrument to request result"
+
+MESSAGE = "SEND_STRING"
+TEXT    = "Send String"
+
+MESSAGE = "TIMEOUT"
+TEXT    = "Timeout (Secs)"
+
+MESSAGE = "S_OUTPUT"
+TEXT    = "2. Instrument Output"
+TEXT    = "Click 'Read Instrument' button when ready"
+
+MESSAGE = "B_READ"
+TEXT    = "Read Instrument"
+TEXT    = "Sends 'Send String' to the instrument and reads response"
+
+MESSAGE = "RAW"
+TEXT    = "Raw Output"
+
+MESSAGE = "S_PARSING"
+TEXT    = "3. Result Parsing"
+TEXT    = "Highlight the result above then click 'Determine Delimiters'"
+
+MESSAGE = "B_DELIMIT"
+TEXT    = "Determine Delimiters"
+TEXT    = "Determines the message prefix and postfix from the selected text in the raw output"
+
+MESSAGE = "PREAMBLE"
+TEXT    = "Message Prefix"
+
+MESSAGE = "RESULT"
+TEXT    = "Result String"
+
+MESSAGE = "POSTAMBLE"
+TEXT    = "Message Suffix"
+
+MESSAGE = "ERR_PARSING"
+TEXT    = "Error: Message Prefix and/or Suffix could not be found in output"
+
+MESSAGE = "ERR_CONNECT"
+TEXT    = "Connection Status"
+
+MESSAGE = "ERR_NOT_DEFINE"
+TEXT    = "The current test does not specify an instrument or instrument type."
+TEXT    = "(Your configuration prevents manual selection. See config item 'INST_UNSPECIFIED_ALLOW_ANY')"
+
+MESSAGE = "ERR_NOT_FOUND"
+TEXT    = "The current test specifies an instrument or instrument type that cannot be found on your machine."
+TEXT    = "(Your configuration prevents manual selection. See config item 'INST_NOT_FOUND_ALLOW_ANY')"
+
+MESSAGE GROUP "LTE_TAB_GUI_"
+
+MESSAGE = "NEW_TAB_HEADER"
+TEXT    = "New Tabular Report..."
+
+MESSAGE = "GEN_TAB_HEADER"
+TEXT    = "Generate Tabular Report"
+
+MESSAGE = "MOD_TAB_HEADER"
+TEXT    = "Calendar"
+
+MESSAGE = "SAVE_TAB_HEADER"
+TEXT    = "Save Tabular Report"
+
+MESSAGE = "LOAD_TAB_HEADER"
+TEXT    = "Load Tabular Report"
+
+MESSAGE = "PREV_TAB_HEADER"
+TEXT    = "Tabular Report Preview"
+
+MESSAGE = "SM_TAB_HEADER"
+TEXT    = "Tabular Report"
+
+MESSAGE = "TAB_HEADER"
+TEXT    = "Sample Criteria"
+TEXT    = "Test Criteria"
+TEXT    = "Result Criteria"
+TEXT    = "Output Columns"
+TEXT    = "Options"
+
+MESSAGE = "HTML_MESS"
+TEXT    = "Right click on HTML window to view print and other explorer options..."
+
+MESSAGE = "MENU"
+TEXT    = "Criteria Fields"
+TEXT    = "Select All"
+TEXT    = "Deselect All"
+TEXT    = "Invert"
+
+MESSAGE = "BUTTONS"
+TEXT    = "< Back"
+TEXT    = "Next >"
+TEXT    = "Finish"
+TEXT    = "New"
+TEXT    = "Load"
+TEXT    = "Save"
+TEXT    = "Auto Populate"
+TEXT    = "Auto Select"
+
+MESSAGE = "ERRORS"
+TEXT    = "No columns, or analysis have been defined! Please add them to the criteria."
+TEXT    = "Overwrite Existing Tab?"
+TEXT    = "Not enough parameters passed to property sheet menu option"
+TEXT	= "Analysis not found!"
+TEXT	= "Analysis already inserted on this screen!"
+TEXT	= "Not Specified"
+TEXT	= "This will overwrite existing analysis! Continue?"
+TEXT	= "You are about to created a report with " 
+TEXT	= " samples.  Large reports may take time to build! Continue?"
+
+MESSAGE = "SORT_COL"
+TEXT    = "Type"
+TEXT    = "Title"
+TEXT    = "Width"
+TEXT 	= "Use"
+TEXT 	= "Include?"
+TEXT 	= "Condition"
+TEXT 	= "Operator"
+TEXT 	= "Value"
+
+MESSAGE = "CHOOSE_OPTION"
+TEXT    = "Type"
+
+
+MESSAGE = "REPORT_EXIST"
+TEXT    = "A tabular report of the same name is already open within this session."
+
+MESSAGE = "SEARCH"
+TEXT    = "Searching Committed Tablespace..."
+TEXT    = "Searching Active Tablespace..."
+TEXT    = "Processing Sample "
+TEXT    = "Creating preview "
+TEXT    = "row "
+TEXT    = "column "
+TEXT    = "Creating report "
+
+MESSAGE = "SORT"
+TEXT    = "Order List..."
+TEXT    = "Move Items Up && Down..."
+
+
+MESSAGE = "TOOLBAR"
+TEXT    = "ASCII Output"
+TEXT    = "HTML Output"
+TEXT    = "CSV Output"
+
+MESSAGE = "REPORT_MESSAGE"
+TEXT    = "Criteria on table:"
+TEXT    = "Report produced by "
+TEXT    = "On "
+
+MESSAGE = "OPTION_REPORTTITLE"
+TEXT    = "Report Title"
+
+MESSAGE = "OPTION_GROUPINGFIELD"
+TEXT    = "Grouping Field"
+
+MESSAGE = "OPTION_TABLESET"
+TEXT    = "Tableset(s)"
+
+MESSAGE = "OPTION_COMMITTED"
+TEXT    = "Committed"
+
+MESSAGE = "OPTION_ACTIVE"
+TEXT    = "Active"
+
+MESSAGE = "OPTION_NORESULTS"
+TEXT    = "Report Samples with no Results?"
+
+MESSAGE = "OPTION_INCLUDEAUDITS"
+TEXT    = "Include Audits?"
+
+MESSAGE = "OPTION_DATE"
+TEXT    = "Include User and Date?"
+
+MESSAGE = "OPTION_SHOW_REPLICATES"
+TEXT    = "Include Test Replicates?"
+
+MESSAGE = "OPTION_SORTCOLUMNS"
+TEXT    = "Sort Columns?"
+
+MESSAGE = "OPTION_PREVIEW"
+TEXT    = "Preview selection?"
+
+MESSAGE = "OPTION_REPORTTYPE"
+TEXT    = "Report Type"
+
+MESSAGE = "OPTION_OUTPUT"
+TEXT    = "Output"
+
+MESSAGE = "OPTION_FILENAME"
+TEXT    = "File Name"
+
+MESSAGE = "OPTION_MARKOFF"
+TEXT    = "Mark Off-Spec Results"
+
+MESSAGE = "OPTION_SYMBOL"
+TEXT    = "Symbol"
+
+MESSAGE = "OPTION_COLOUROFF"
+TEXT    = "Colour Off-Spec Result (HTML)"
+
+MESSAGE = "OPTION_COLOUR"
+TEXT    = "Colour"
+
+MESSAGE = "OPTION_STRIKETHROUGH"
+TEXT    = "Strikethrough (HTML)"
+
+MESSAGE = "OPTION_BOLD"
+TEXT    = "Bold (HTML)"
+
+MESSAGE = "OPTION_ITALIC"
+TEXT    = "Italic (HTML)"
+
+MESSAGE = "OPTION_UNDERLINED"
+TEXT    = "Underlined (HTML)"
+
+MESSAGE = "OPTION_OFFSPEC_FRM"
+TEXT    = "Off-Spec Options"
+
+MESSAGE = "OPTION_GENERAL_FRM"
+TEXT    = "General Options"
+
+MESSAGE = "OPTION_REPORTRUN_FRM"
+TEXT    = "Report Run Defaults"
+
+MESSAGE = "REPORT_CHOOSE"
+TEXT    = "Html"
+TEXT    = "Ascii"
+TEXT    = "Csv"
+
+MESSAGE = "OUTPUT_CHOOSE"
+TEXT    = "Display"
+TEXT    = "File"
+
+MESSAGE = "MAX_SAMPLES"
+TEXT    = "Tabular report contains [] samples. Please refine your sample/test selection criteria, to contain under [] samples."
+
+MESSAGE GROUP "COLOUR_TEXT_"
+
+MESSAGE = "BLUE"
+TEXT    = "Blue"
+
+MESSAGE = "CYAN"
+TEXT    = "Cyan"
+
+MESSAGE = "GREEN"
+TEXT    = "Green"
+
+MESSAGE = "GREY"
+TEXT    = "Grey"
+
+MESSAGE = "MAGENTA"
+TEXT    = "Magenta"
+
+MESSAGE = "RED"
+TEXT    = "Red"
+
+MESSAGE = "WHITE"
+TEXT    = "White"
+
+MESSAGE = "YELLOW"
+TEXT    = "Yellow"
+
+
+MESSAGE GROUP "LTE_MASTER_MNU_"
+
+MESSAGE        = "NO_ROLES"
+TEXT           = "You have not selected any roles! Continue to Save?"
+
+MESSAGE        = "PARAM_ACTION"
+TEXT           = "Before command line parameters"
+TEXT           = "After command line parameters"
+TEXT           = "Replace command line parameters"
+
+MESSAGE GROUP "INFOMAKER_LINK_"
+
+MESSAGE        = "LTE_DISP_FOOTER"
+TEXT           = "Press EXIT to Quit."
+
+MESSAGE        = "LTE_INFO_LIB"
+TEXT           = "Infomaker Library"
+
+MESSAGE        = "LTE_USER_LIB"
+TEXT           = "User Library"
+
+MESSAGE        = "LTE_PRINT_PREV"
+TEXT           = "Print Preview"
+
+MESSAGE        = "LTE_MODIFIABLE"
+TEXT           = "Modifiable"
+
+MESSAGE        = "LTE_ENTER_REP"
+TEXT           = "Enter Report Identity:"
+
+MESSAGE        = "LTE_INFO_FIELDS"
+TEXT           = "Fields"
+
+MESSAGE        = "LTE_INFO_OPTIONS"
+TEXT           = "Infomaker Options"
+
+MESSAGE        = "LTE_DISP_NAME"
+TEXT           = "Management Report"
+
+MESSAGE        = "LTE_COPIES"
+TEXT           = "Copies"
+
+MESSAGE        = "LTE_VALID_ROUTINE"
+TEXT           = "Validation Routine"
+
+MESSAGE        = "LTE_INFO_REPORT"
+TEXT           = "Infomaker Report"
+
+MESSAGE        = "LTE_DESC"
+TEXT           = "Description"
+
+MESSAGE        = "LTE_FOOTER"
+TEXT           = "Press Do to Save / Exit to Quit"
+
+MESSAGE        = "LTE_INFO_REPORTS"
+TEXT           = "Infomaker Reports"
+
+MESSAGE        = "LTE_PRIM_TABLE"
+TEXT           = "Primary Table"
+
+MESSAGE        = "LTE_2_DESCRIPTION"
+TEXT           = "Description"
+
+MESSAGE        = "LTE_2_TYPE"
+TEXT           = "Type"
+
+MESSAGE        = "LTE_2_PROMPT2"
+TEXT           = "Prompt 2"
+
+MESSAGE        = "LTE_2_MANDATORY"
+TEXT           = "Mandatory"
+
+MESSAGE        = "LTE_2_PROMPT1"
+TEXT           = "Prompt 1"
+
+MESSAGE        = "LTE_2_DEFAULT"
+TEXT           = "Default"
+
+MESSAGE        = "LTE_2_IDENTITY"
+TEXT           = "Identity"
+
+MESSAGE        = "LTE_2_HEADER"
+TEXT           = "Infomaker Report Parameters"
+
+MESSAGE        = "LTE_2_POPULATE_BUTTON"
+TEXT           = "Populate arguments"
+
+MESSAGE        = "LTE_2_ARG_PREFIX"
+TEXT           = "ARG_"
+
+MESSAGE        = "LTE_2_DESC_PREFIX"
+TEXT           = "Enter "
+
+MESSAGE        = "LTE_INFO_FATAL_ERROR"
+TEXT           = "This report cannot be run directly"
+
+MESSAGE        = "REQ_FIELDS"
+TEXT           = "You Must fill in all the required fields."
+
+MESSAGE        = "REP_TO_RUN"
+TEXT           = "Report To Run"
+
+MESSAGE        = "ERROR_INVALID_REPORT"
+TEXT           = "Invalid library or report"
+
+MESSAGE        = "ERROR_NO_PARAMETERS"
+TEXT           = "No parameters for selected report."
+
+MESSAGE        = "ERROR_NO_DATA"
+TEXT           = "No data selected."
+
+MESSAGE        = "ERROR_BROWSE_SMW"
+TEXT           = "Browse only available from SMW"
+
+MESSAGE        = "SELECT_PBL"
+TEXT           = "Select pbl:"
+
+MESSAGE        = "HEADER_PBL"
+TEXT           = "Create Infomaker records"
+
+MESSAGE        = "CREATE_MENU_HEADER"
+TEXT           = "Create master menu"
+
+MESSAGE        = "MENU_NUM_PROMPT"
+TEXT           = "Menu number"
+
+MESSAGE        = "MENU_RMB"
+TEXT           = "Reports"
+
+MESSAGE        = "REPORT_REMOVED"
+TEXT           = "Report does not exist in database or has been removed."
+
+MESSAGE        = "INFOMAKER_RECORDS"
+TEXT           = " Infomaker Link records have been created."
+
+MESSAGE        = "USER_LIB_NOT_DEFINED"
+TEXT           = "User Library not defined, on Infomaker Link."
+
+MESSAGE        = "LINKRECORD_FOUND"
+TEXT           = "Infomaker Link Record Found! Overwrite Report:"
+
+MESSAGE        = "TYPE_BROWSE"
+TEXT           = "Browse"
+
+MESSAGE        = "TYPE_PHRASE"
+TEXT           = "Phrase"
+
+MESSAGE        = "TYPE_FORMAT"
+TEXT           = "Format"
+
+MESSAGE        = "TYPE_ROUTINE"
+TEXT           = "Custom"
+
+MESSAGE        = "TYPE_DEFAULT"
+TEXT           = "Default Value"
+
+MESSAGE        = "PROMPT_TABLE"
+TEXT           = "Table"
+
+MESSAGE        = "PROMPT_FIELD"
+TEXT           = "Field"
+
+MESSAGE        = "PROMPT_LENGTH"
+TEXT           = "Length"
+
+MESSAGE        = "PROMPT_VGL"
+TEXT           = "Vgl Library"
+
+MESSAGE        = "PROMPT_PHRASE"
+TEXT           = "Phrase Id"
+
+MESSAGE        = "PROMPT_ROUTINE"
+TEXT           = "Routine"
+
+MESSAGE        = "PROMPT_DESCRIPTION"
+TEXT           = "Prompt Description"
+
+MESSAGE        = "HEADER_BUILD_PROMPT"
+TEXT           = "Define Prompt"
+
+
+MESSAGE        = "FOOTER_BUILD_PROMPT"
+TEXT           = "Select the prompt type, then its behaviour."
+
+MESSAGE        = "PROMPT_TEXT"
+TEXT           = "Define prompt, press F2 or double click..."
+TEXT           = "Prompt using "
+TEXT           = "Prompt for "
+
+MESSAGE GROUP "LTE_APPR_"
+
+MESSAGE        = "DISPLAY_RECORD"
+TEXT           = "Display Record"
+
+MESSAGE        = "APPROVE"
+TEXT           = "Approve"
+
+MESSAGE        = "APPROVAL"
+TEXT           = "Approval - [] - as []"
+
+MESSAGE  GROUP  "WT_CHECK_"
+
+MESSAGE         = "DISPLAY_1"
+TEXT            =  "Add Weight Check to Controlled Sample"
+
+MESSAGE         = "DISPLAY_2"
+TEXT            = "Press EXIT to abort"
+
+MESSAGE         = "DISPLAY_3"
+TEXT            = "Enter the Sample ID"
+
+MESSAGE         = "INVALID_SAMPLE"
+TEXT            = "Sample ID [] is invalid."
+

@@ -1,0 +1,1243 @@
+{ ===============================  SAR_COA.RPF  ==============================}
+{                                                                             }
+{ Created by : J O'Doherty                                                    }
+{ Date       : 21-OCT-1997                                                    }
+{                                                                             }
+{ Purpose    : Certificate of Analysis          (c)  TENSOR Technologies      }
+{              P97705                                                         }
+{                                                                             }
+{ Description: This is a modified version of the Standard SAR Report to do    }
+{              a Certificate of Analysis.                                     }
+{                                                                             }
+{=============================================================================}
+{                                                                             }
+{  Modification History                                                       }
+{                                                                             }
+{  Ver.     Date        By          Description                               }
+{  ----     ----        --          -----------                               }
+{  1.0      22/10/97    JOD         Release Version based on SAR 1.01         }
+{  1.1      07/01/98    JOD         Cosmetic changes as per fax 17/12/97      }
+{  1.2      15/01/98    JOD         Changes as per fax 14/01/1998             }
+{  1.3      28/01/98    JOD         No QC_LIR.. analyses to appear on the     }
+{                                   report                                    }
+{  1.4      05/10/99    DMcN        The header modified to print /Batch Number}
+{                                   after Lot Number to match SAP system      }   
+{  1.5      14/07/05    MF          Ref CC no 05D-0558                        }
+{  1.6      14/04/07    AF          SM 901 upgrade. Tidy up code              }
+{=============================================================================}
+
+SET NOTPROTECTED
+ENABLE WINDOWS
+
+SET NAME "DEFER/"
+
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_MESSAGE
+JOIN STANDARD_LIBRARY STD_TRANSFER
+
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $LIB_CSMLP
+JOIN LIBRARY $LIB_MLPS
+
+JOIN LIBRARY DDE_LIB
+
+level_id = "SPEC"
+
+setup_program_constants ()
+main ()
+
+{==============================================================================}
+{                                                                              }
+{ ROUTINE main                                  Controls main flow of the      }
+{                                               program .                      }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  24/4/96      JMWHYTE         Created                                        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE main
+
+    lib_mlps_initialise ()
+
+    got_sample = browse_single_sample ("A")
+
+    IF got_sample = "" THEN 
+
+        EXIT 
+
+    ENDIF
+
+    sample_id = SELECT SAMPLE  . id_numeric
+                WHERE id_numeric = got_sample
+
+    { 1.6 tidy up }
+
+    CONSTANT WORD_DDE_CLASS   = "STD_WORD_DDE"
+    CONSTANT WORD_FONT_CLASS  = "STD_WORD_FONT"
+    word_initialise ()
+
+    DECLARE word, font
+    CREATE OBJECT WORD_DDE_CLASS, word
+    CREATE OBJECT WORD_FONT_CLASS, font
+
+    get_results ( sample_id )
+    order_array_by_test_schedule ( res_arr )
+    get_word_res_array ()
+    output_gui_report ()
+
+ENDROUTINE
+
+
+{==============================================================================}
+{                                                                              }
+{ ROUTINE setup_program_constants               sets up constants used in the  }
+{                                               program .                      }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  24/4/96      JMWHYTE         Created                                        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE setup_program_constants
+
+{ Elan }
+
+CONSTANT WORD_FOR_WINDOWS = "C:\Program Files\Microsoft Office\Office\Winword.exe"
+CONSTANT LOGO_DIR         = "J:\VALIDATE\TEMPLATE\"
+
+
+ARRAY res_arr        ARRAYSIZE ( 0 , 10 )
+ARRAY word_res_array
+ARRAY qa_res_array
+ARRAY line_1_array   ARRAYSIZE ( 1 , 2 )
+ARRAY line_2_array   ARRAYSIZE ( 1 , 2 )
+ARRAY line_3_array   ARRAYSIZE ( 1 , 2 )
+ARRAY line_4_array   ARRAYSIZE ( 1 , 2 )
+ARRAY line_5_array   ARRAYSIZE ( 1 , 2 )
+ARRAY line_6_array   ARRAYSIZE ( 1 , 2 )
+ARRAY line_disp_array   ARRAYSIZE ( 1 , 2 )
+
+
+ARRAY line_qa_array  ARRAYSIZE ( 1 , 2 )
+
+ARRAY bm_array ARRAYSIZE ( 1, 2 )
+
+AR0  = "AR0"
+AR1  = "AR1"
+AR2  = "AR2"
+
+CONSTANT TEST_NAME  = 1
+CONSTANT RES_VAL    = 2
+CONSTANT TEST_UNIT  = 3
+CONSTANT TEST_STAT  = 4
+CONSTANT SMP_NAME   = 5
+CONSTANT SMP_STAT   = 6
+CONSTANT ANL_NAME   = 7
+CONSTANT SPC_VALUE  = 8
+CONSTANT TEST_NUMB  = 9
+
+CONSTANT MET_FREE_ANAL  = "MET_FREE"
+
+CONSTANT BM_MSG         = "Batch Metal Free"
+CONSTANT DISP_PERSON    = "Qualified Person"
+CONSTANT BM_SIGN        = "Signature             ________________________________"
+CONSTANT BM_DATED       = "Date                     ________________________________"
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{ ROUTINE output_gui_report                     sends report data to a         }
+{                                               specified template in MS Word  }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  24/4/96      JMWHYTE         Created                                        }
+{  22/10/97     JOD             Changed for Certificate of Analysis            }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+
+ROUTINE output_gui_report
+
+    word . connect ()
+
+    status = word . file_open ( LOGO_DIR : "sar_coa.dot" )
+    IF  status <> EMPTY THEN
+        flash_message ( LOGO_DIR:"SAR_COA.DOT Template cannot be found, " :
+                        "status = ":status, TRUE )
+        EXIT
+    ENDIF
+
+    IF ( word . End_of_document () <> EMPTY ) THEN EXIT ENDIF
+
+    get_form_data ()
+
+    word . send ( "StartOfDocument")
+    word . send ( "EndOfDocument 1")
+    word . send ( "EditClear")
+
+    word . left_paragraph ()
+
+    word . insert_paragraph ()
+    font . points = 12
+    word . set_font ( font )
+
+    word . insert_array ( line_1_array , 1, 2, 0 , TRUE )
+    word . insert_paragraph ()
+
+    word . insert_array ( line_2_array , 1, 2, 0 , TRUE )
+    word . insert_paragraph ()
+
+    word . insert_array ( word_res_array, k, 3, 16 , FALSE )
+    word . insert_paragraph ()
+    word . insert_paragraph ()
+
+                                    { ===================================== }
+                                    { #JOD - 07-JAN-1998                    }
+                                    {                                       }
+                                    { Change font to match rest of document }
+                                    { ===================================== }
+    i = 1
+    WHILE i <= j - 1
+        line_qa_array [ 1, 1 ] = qa_res_array [ i, TEST_NAME ]
+        line_qa_array [ 1, 2 ] = qa_res_array [ i, RES_VAL ]
+
+        word . insert_array ( line_qa_array , 1, 2, 0 , TRUE )
+        word . insert_paragraph ()
+        i = i + 1
+
+    ENDWHILE
+                                    { ===================================== }
+                                    { #JOD - 07-JAN-1998                    }
+                                    {                                       }
+                                    { Insert disposition                    }
+                                    { ===================================== }
+    font . bold = TRUE
+    word . set_font ( font )
+
+    IF met_free
+        word . insert_array ( bm_array , 1, 1, 0 , TRUE )
+        word . insert_paragraph ()
+
+        word . insert_text ( BM_SIGN )
+        word . insert_paragraph ()
+        word . insert_paragraph ()
+        word . insert_text ( BM_DATED )
+
+        word . insert_paragraph ()
+        word . insert_paragraph ()
+
+    ENDIF
+
+    word . insert_array ( line_disp_array , 1, 1, 0 , TRUE )
+    word . insert_paragraph ()
+    word . insert_paragraph ()
+
+
+    font . reset ( )
+    word . set_font ( font )
+
+
+    word . send ( "ViewHeader" )
+    word . send ( "GoToHeaderFooter" )
+
+    font . points = 12
+    word . set_font ( font )
+
+    word . insert_array ( line_3_array , 1, 2, 16 , FALSE )
+    word . insert_array ( line_4_array , 1, 2, 16 , FALSE )
+
+    word . insert_array ( line_5_array , 1, 2, 16 , FALSE )
+    word . insert_array ( line_6_array , 1, 2, 16 , FALSE )
+
+    word . send ( "EditSelectAll" )
+    word . send ( "FormatParagraph .After = 6" )
+    word . send ( "LineDown 1" )
+    word . send ( "LineUp 5" )
+
+
+    word . send ( "LineDown 1, 1" )
+    word . send ( "CharRight 1, 1" )
+
+    word . send ( "FormatBordersAndShading .HorizBorder = 0, .VertBorder = 1" )
+    word . send ( "LineDown 1" )
+    word . send ( "LineDown 1, 1" )
+    word . send ( "CharRight 1, 1" )
+    word . send ( "FormatBordersAndShading .HorizBorder = 0, .VertBorder = 1" )
+
+
+    word . send ( "GoToHeaderFooter" )
+    word . send ( "EditSelectAll" )
+    word . send ( "UpdateFields" )
+
+    word . send ( "CloseViewHeaderFooter" )
+
+    word . send ( "Beep" )
+    word . disconnect ()
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{ ROUTINE get_word_res_array                    Puts headings in the first row }
+{                                               of word_res_array and selects  }
+{                                               all data required from         }
+{                                               res_array and puts it into     }
+{                                               word_res_array. Only data that }
+{                                               appears on the analysis report }
+{                                               is selected.                   }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  24/4/96      JMWHYTE         Created                                        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE get_word_res_array
+
+DECLARE i
+i = 1
+j = 1
+k = 1
+end_of_array = SIZE_OF_ARRAY ( res_arr )
+
+word_res_array [ k , 1 ] = "TEST"
+word_res_array [ k , 2 ] = "SPECIFICATIONS"
+word_res_array [ k , 3 ] = "RESULT"
+
+WHILE ( i < end_of_array + 1 )
+
+    i = i + 1
+
+    IF LEFTSTRING ( STRIP ( res_arr [ i - 1 , ANL_NAME ] ), 2 ) = "QA" THEN
+        qa_res_array [ j , 1 ] = STRIP ( res_arr [ i - 1 , TEST_NAME ] )
+        qa_res_array [ j , 2 ] = STRIP ( res_arr [ i - 1, RES_VAL ] )
+        j = j + 1
+
+                                    { ===================================== }
+                                    { #JOD : 28-JAN-1998 P98766             }
+                                    {                                       }
+                                    { No qc_lir.. analyses to appear        }
+                                    { ===================================== }
+
+    ELSEIF ( LEFTSTRING ( STRIP ( res_arr [ i - 1 , ANL_NAME ] ), 6 ) <> "QC_LIR" ) THEN
+        k = k + 1
+        word_res_array [ k , 1 ] = STRIP ( res_arr [ i - 1 , TEST_NAME ] )
+        word_res_array [ k , 3 ] = STRIP ( res_arr [ i - 1 , RES_VAL   ] )
+        word_res_array [ k , 2 ] = STRIP ( res_arr [ i - 1 , SPC_VALUE ] )
+
+    ENDIF
+
+ENDWHILE
+
+
+ENDROUTINE
+
+
+{==============================================================================}
+{                                                                              }
+{ ROUTINE create_prompt_form            Creates a form for user input          }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  24/4/96      JMWHYTE         Created                                        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+
+ROUTINE create_prompt_form (       prompt_form   ,
+                             VALUE window_width  ,
+                             VALUE window_height ,
+                                   window_header ,
+                                   window_footer )
+
+        CREATE OBJECT PROMPT_CLASS_FORM , prompt_form
+
+        prompt_form . height = window_height
+        prompt_form . width  = window_width
+        prompt_form . row    = 11
+        prompt_form . column = ROUND ( ( GLOBAL ( "SCREEN_WIDTH" ) -
+                                        window_width  ) / 2 )
+        prompt_form . border = TRUE
+        prompt_form . header = window_header
+        prompt_form . footer = window_footer
+        prompt_form . proportional = TRUE
+        prompt_form . return_behaviour = FORM_RETURN_LEAVE
+
+ENDROUTINE
+
+
+{==============================================================================}
+{                                                                              }
+{ ROUTINE browse_single_sample                browses on samples and adds      }
+{                                             prompt to prompt_form            }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  24/4/96      JMWHYTE         Created                                        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  mode                   value                sample status                   }
+{==============================================================================}
+
+ROUTINE browse_single_sample ( VALUE mode )
+
+        DECLARE sample_id , sample_text , samp_numeric_string , tsr_header ,
+                tsr_footer , samp_text_string , window_width , prompt_form ,
+                title_width , samp_text_title , samp_id_title , button
+
+        IF mode = "A" THEN
+                set sample_status "A"
+        ELSEIF mode = "CA" THEN
+                set sample_status "CA"
+        ELSEIF mode = "AC" THEN
+                set sample_status "CA"
+        ELSEIF mode = "VCA" THEN
+                set sample_status "VCA"
+        ELSEIF mode = "ACV" THEN
+                set sample_status "VCA"
+        ELSEIF mode = "CAV" THEN
+                set sample_status "VCA"
+        ELSE
+                set sample_status "A"
+        ENDIF
+
+        tsr_header = " Certificate of Analysis Report v1.3"
+        message_fetch ( "RES_ENTRY_FOOT_1", tsr_footer )
+
+        message_fetch ( "RES_ENTRY_DISPLAY_1", samp_numeric_string )
+        message_fetch ( "RES_ENTRY_DISPLAY_2", samp_text_string )
+
+        IF stringlength ( samp_numeric_string ) >
+           stringlength ( samp_text_string ) THEN
+
+                title_width = stringlength ( samp_numeric_string )
+        ELSE
+                title_width = stringlength ( samp_text_string )
+        ENDIF
+
+        window_width = 31 + title_width
+
+        create_prompt_form ( prompt_form  ,
+                             window_width ,
+                             2            ,
+                             tsr_header   ,
+                             tsr_footer   )
+
+        PROMPT OBJECT samp_id_title
+                FORMAT TEXT
+                ON LINE 1 FROM 1
+                WITH ( bold   = TRUE                ,
+                       width  = title_width         ,
+                       value  = samp_numeric_string )
+
+        prompt_form . add_display ( samp_id_title )
+
+        PROMPT OBJECT samp_text_title
+                FORMAT TEXT
+                ON LINE 2 FROM 1
+                WITH ( bold   = TRUE             ,
+                       width  = title_width      ,
+                       value  = samp_text_string )
+
+        prompt_form . add_display ( samp_text_title )
+
+        PROMPT OBJECT sample_id
+                BROWSE ON sample
+                THEN select
+                ON LINE 1 FROM title_width + 2 {TO title_width + 30}
+
+        prompt_form . add_prompt ( sample_id )
+
+        PROMPT OBJECT sample_text
+                BROWSE ON sample . id_text
+                ON LINE 2 FROM title_width + 2
+                WITH ( lowered = TRUE )
+
+        prompt_form . add_display ( sample_text )
+
+        IF GLOBAL ( "TERMTYPE" ) = "GUI" THEN
+
+                prompt_form . button_style = FORM_BUTTON_NONE
+
+                prompt_form . height = 5
+                prompt_form . width  = 48
+
+                samp_id_title . column = 2
+                samp_id_title . row = 1
+
+                samp_text_title . column = 2
+                samp_text_title . row = 3
+
+                sample_id . column = 2
+                sample_id . row = 2
+
+                sample_text . column = 2
+                sample_text . row = 4
+
+                prompt_form . add_frame ( "" , 1 , 1 , 4 , prompt_form . width - 13 )
+
+                PROMPT OBJECT button
+                        CLASS "STD_PROMPT_BUTTON"
+                        ON LINE 1
+                        FROM    prompt_form . width - 10
+                        WITH ( caption      =
+                               get_user_message ( "SMP_PROMPT_BUTTON_OK" , 1 ) ,
+                               enabled      = TRUE    ,
+                               width        = 10 ,
+                               send_lastkey = "DO"  )
+
+                prompt_form . add_prompt ( button )
+
+                PROMPT OBJECT button
+                        CLASS "STD_PROMPT_BUTTON"
+                        ON LINE 3
+                        FROM    prompt_form . width - 10
+                        WITH ( caption      =
+                             get_user_message ( "SMP_PROMPT_BUTTON_CANCEL" , 1 ) ,
+                               enabled      = TRUE      ,
+                               width        = 10  ,
+                               send_lastkey = "EXIT"  )
+
+                prompt_form . add_prompt ( button )
+
+        ENDIF
+
+        prompt_form . start_prompt ()
+        prompt_form . wait_prompt ()
+        prompt_form . end_prompt ()
+
+RETURN ( prompt_form . prompt_objects [ 1 ] . value  )
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{ ROUTINE get_results                Gets tests and results for sample, only   }
+{                                    components marked with the flag AR0, AR1  }
+{                                    and AR2. The result type of each          }
+{                                    component determines how the specification}
+{                                    is held.                                  }
+{                                                                              }
+{                                    If text the textual specification is      }
+{                                    stored.                                   }
+{                                                                              }
+{                                    If Numeric then: (1) if the spec is       }
+{                                    MIN/MAX the the MIN/MAX is stored.        }
+{                                    (2) if the spec is open ended the MIN is  }
+{                                    stored.                                   }
+{                                                                              }
+{                                    If Boolean TRUE or FALSE value is stored. }
+{                                                                              }
+{                                    Each result is compared with the          }
+{                                    specification. If the component flag is   }
+{                                    set to ARO the actual result is displayed.}
+{                                    If the component flag is set to AR1 then  }
+{                                    COMPLIES or DOES NOT COMPLY is held in    }
+{                                    place of the result. If the component flag}
+{                                    is set to AR2 then  <result> COMPLIES or  }
+{                                    <result> DOES NOT COMPLY is held in place }
+{                                    of the result.                            }
+{                                                                              }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  24/4/96      JMWHYTE         Created                                        }
+{  27/06/97     JMWHYTE         Modified for Dissolution ( see Program Header )}
+{  14/01/98     JOD             check for MET_FREE analysis                    }
+{  31/01/98     DMcN            Modified to move fix outspc initialisation bug }
+{                               and to install modified report as per change   }
+{                               LIMS-98-01.                                    }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  sample_id              value                sample identifier               }
+{                                              is in the test schedule         }
+{==============================================================================}
+
+ROUTINE get_results ( VALUE sample_id )
+
+DECLARE outspc, result_found, test_found, component_found, the_units
+
+met_free        = FALSE
+result_found    = FALSE
+component_found = FALSE
+test_found      = FALSE
+the_units       = EMPTY
+
+
+samp_txt = SELECT SAMPLE . id_text
+           WHERE id_numeric = sample_id
+
+test_no  = SELECT TEST . test_number
+           WHERE    ( sample = sample_id  )
+           AND      ( status <> "X"       )
+           ORDER ON order_num
+i = 1
+
+IF  test_no = EMPTY  THEN
+    res_arr [ i , TEST_NAME ] = "No Test Assigned"
+    res_arr [ i , RES_VAL   ] = " "
+    res_arr [ i , TEST_UNIT ] = " "
+    res_arr [ i , TEST_STAT ] = " "
+    res_arr [ i , SMP_NAME  ] = STRIP ( sample_id )
+    res_arr [ i , SMP_STAT  ] = SELECT SAMPLE . status
+    res_arr [ i , SPC_VALUE ] = " "
+    res_arr [ i , TEST_NUMB ] = test_no
+    i = i + 1
+ENDIF
+
+WHILE ( test_no <> EMPTY ) DO
+
+    test_found = TRUE
+
+    product_id = SELECT sample . product_name
+
+    IF product_id = EMPTY
+        product_id = ""
+    ENDIF
+
+    version     = SELECT sample . product_version
+    anal_id     = SELECT test . analysis_id
+    test_status = SELECT test . status
+
+                                    { ===================================== }
+                                    { #JOD : 14-JAN-1998                    }
+                                    {                                       }
+                                    { Check for MET_FREE analysis           }
+                                    { ===================================== }
+
+    IF STRIP ( anal_id ) = met_free_anal
+        met_free = TRUE
+
+    ENDIF
+
+    IF ( test_status <> "A" ) THEN
+        flash_message ( "Test, ":anal_id:" is not Authorised", TRUE )
+    ENDIF
+
+    comp = SELECT result . component_name
+           WHERE   ( test_number = test_no )
+           AND     ( order_number <> 0     )
+           ORDER ON order_number
+
+    WHILE comp <> EMPTY DO
+
+        component_found = TRUE
+        res_status = SELECT result . status
+        res        = SELECT result . text
+
+        outspc = "N/A"             {Moved from outside loop, DMcN 31/01/98}
+                                   {ref change control LIMS-98-02         }
+        IF res <> EMPTY
+           result_found = TRUE
+           res = STRIP ( res )
+        ENDIF
+
+        flag = SELECT component . rep_control
+               WHERE ( analysis_id = anal_id )
+               AND   ( name        = comp    )
+
+
+{
+
+        IF TOUPPER ( LEFTSTRING ( anal_id, 4 )) = "DISS"
+
+            IF ( INDEX ( comp, "% Released" )  > 0 ) OR
+               ( INDEX ( comp, "Mean %VHCL" ) > 0 ) THEN
+
+                flag = AR0
+                outspc = ""
+
+            ENDIF
+        ENDIF
+}
+
+        IF ( flag = AR0 ) OR ( flag = AR1 ) OR ( flag = AR2 ) THEN
+
+            result_type = SELECT component . result_type
+
+            comp_entry_code =
+                      SELECT mlp_components . entry_code
+                      WHERE ( product_id      = product_id )
+                      AND   ( product_version = version    )
+                      AND   ( analysis_id     = anal_id    )
+                      AND   ( component_name  = comp       )
+
+            IF comp_entry_code <> EMPTY THEN
+
+                in_spec = FALSE
+                CSMLP_result ( product_id, version, anal_id, comp, level_id,
+                               res, in_spec )
+
+                IF res = EMPTY THEN
+                    res = "No Result Entered"
+                ELSE
+                                         {====================================}
+                                         { JMW, 01/05/96, Modification        }
+                                         { Include the Units in the Result    }
+                                         {====================================}
+
+                    the_units = SELECT RESULT . units
+                    IF the_units <> EMPTY THEN
+                        res = res : " " : the_units
+                    ENDIF
+
+                                         {====================================}
+                                         { End of Modification                }
+                                         {====================================}
+
+                    IF NOT in_spec THEN
+                        IF flag = AR1 THEN
+                            res = "Does Not Comply"
+                        ELSEIF flag = AR2 THEN
+                            res = STRIP ( res ) : " - " : "Does Not Comply"
+                        ENDIF
+                    ELSE
+                        IF flag = AR1 THEN
+                            res = "Complies"
+                        ELSEIF flag = AR2 THEN
+                            res = STRIP ( res ) : " - " : "Complies"
+                        ENDIF
+                    ENDIF
+                ENDIF { res = EMPTY }
+                                                  { JOD 18/08/1997     }
+
+                level_id = PAD ( level_id, " ", 10 )
+
+                IF ( result_type = "N" ) OR ( result_type = "K" ) THEN
+
+                                                  { JOD 18/08/1997     }
+                    min = SELECT mlp_values . min_limit
+                          WHERE ( entry_code = comp_entry_code )
+                            AND ( level_id   = level_id        )
+
+                                                  { JOD 18/08/1997     }
+                    max = SELECT mlp_values . max_limit
+                          WHERE ( entry_code = comp_entry_code )
+                            AND ( level_id   = level_id        )
+
+                    IF ( max = EMPTY ) OR ( STRIP ( max ) = "" ) THEN
+                                                  { JMW, 31/05/96 }
+                        outspc = min
+                        outspc = substr ( outspc, "<", "<" )
+                        outspc = substr ( outspc, ">", "> " )
+                        outspc = substr ( outspc, "<=", "<= " )
+                        outspc = substr ( outspc, ">=", ">=" )
+
+                    ELSE
+                        outspc = STRIP ( min ) : " to " : STRIP ( max )
+                    ENDIF
+
+                ELSEIF ( result_type = "B" ) THEN
+                    outspc = STRIP ( SELECT mlp_values . boolean_pass )
+
+                ELSE
+                    outspc = SELECT mlp_values . text_spec
+                               WHERE entry_code = comp_entry_code
+
+                ENDIF
+
+                IF outspc = EMPTY THEN outspc = "N/A" ENDIF
+
+            ENDIF
+                                         {====================================}
+                                         { JMW, 01/05/96, Modification        }
+                                         { Include the Units in the Spec.     }
+                                         {====================================}
+
+            IF ( the_units <> EMPTY ) AND ( outspc <> "N/A" )THEN
+                 outspc = outspc : " " : the_units
+            ENDIF
+                                        { JOD, 28/10/1997 }
+
+            IF ( result_type = "D" ) AND ( ( res <> EMPTY ) AND
+                NOT ( BLANK ( res ) ) ) THEN
+
+                res = LEFTSTRING ( res, 11 )
+
+            ENDIF
+                                         {====================================}
+                                         { End of Modification                }
+                                         {====================================}
+
+            res_arr [ i , ANL_NAME ]  = anal_id
+            res_arr [ i , SMP_NAME ]  = STRIP ( sample_id )
+            res_arr [ i , SMP_STAT ]  = SELECT SAMPLE . status
+            res_arr [ i , TEST_NAME]  = comp
+            res_arr [ i , RES_VAL  ]  = res
+            res_arr [ i , TEST_UNIT]  = SELECT RESULT . units
+            res_arr [ i , TEST_STAT]  = " "
+            res_arr [ i , SPC_VALUE]  = outspc
+            res_arr [ i , TEST_NUMB] = test_no
+
+            i = i + 1
+
+        ENDIF
+        NEXT result
+        comp = SELECT result . component_name
+
+    ENDWHILE  { While t_comp }
+
+    NEXT test
+    test_no = SELECT test . test_number
+ENDWHILE
+
+
+
+IF     NOT test_found
+
+   flash_message ( " No Reportable Tests Found for this Sample " , TRUE )
+   EXIT
+
+ELSEIF NOT component_found
+
+   flash_message ( " No components found for Reportable Tests " , TRUE )
+   EXIT
+
+ELSEIF NOT result_found  THEN
+
+   flash_message ( " No results found for Reportable Tests " , TRUE )
+   EXIT
+
+ENDIF
+
+ENDROUTINE
+
+
+
+{==============================================================================}
+{                                                                              }
+{ ROUTINE get_form_data             Gets data that is to be output to the      }
+{                                   report                                     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  24/4/96      JMWHYTE         Created                                        }
+{  22/10/97     JOD             Changed for Certificate of Analysis            }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+
+ROUTINE get_form_data
+
+    product_id = SELECT SAMPLE . product_name
+    prod_ver   = SELECT SAMPLE . product_version
+  
+    IF (product_id <> EMPTY) AND (product_id <> "") THEN {MR, added product_id <>""}
+        prod_desc = SELECT MLP_HEADER . description
+                    WHERE (identity = product_id)
+		AND (product_version = prod_ver) {MF 14/07/05 Added this lime to SELECT clause}		
+    ELSE
+        flash_message ( "No Material Description Found", TRUE )
+        prod_desc = ""
+    ENDIF
+
+    lot_number = SELECT SAMPLE . batch_name
+    IF lot_number = EMPTY THEN lot_number = "" ELSE
+        lot_number = STRIP ( lot_number )
+    ENDIF
+
+    auth_by   = SELECT sample . authoriser
+
+    get_person ( auth_by )
+    auth_date = SELECT sample . date_authorised
+
+    IF ( auth_date <> EMPTY ) AND NOT BLANK ( auth_date ) THEN
+        auth_date = LEFTSTRING ( auth_date, 11 )
+
+    ELSE
+        auth_date = ""
+
+    ENDIF
+
+                                    { ===================================== }
+                                    { #JOD : 15-JAN-1998                    }
+                                    {                                       }
+                                    { Remove coa_by                         }
+                                    { ===================================== }
+
+{    coa_by = OPERATOR ( )
+    get_person ( coa_by )
+}
+    line_1_array [ 1 , 1 ] = "Product : "         : prod_desc
+    line_1_array [ 1 , 2 ] = ""
+
+    line_2_array [ 1 , 1 ] = "Lot Number/Batch Number : "      : lot_number
+    line_2_array [ 1 , 2 ] = " Date : " : LEFTSTRING ( NOW, 11 )
+
+                                { ==========================================}
+                                { DMcN 05/10/1999  Ref. 99-043              }
+                                { '/Batch Number' has been added for SAP    }
+                                { ========================================= }
+
+    line_3_array [ 1 , 1 ] = " COA Generated By : "
+    line_3_array [ 1 , 2 ] = " Date : "
+
+                                    { ===================================== }
+                                    { #JOD - 07-JAN-1998                    }
+                                    {                                       }
+                                    { Remove dates to be entered manually   }
+                                    { ===================================== }
+
+    line_4_array [ 1 , 1 ] = PAD ( "", "", 20 ) { coa_by }
+    line_4_array [ 1 , 2 ] = PAD ( "", "", 20 ) {: LEFTSTRING ( NOW, 11 )}
+
+    line_5_array [ 1 , 1 ] = " Approved By : "
+    line_5_array [ 1 , 2 ] = " Date : "
+
+    line_6_array [ 1 , 1 ] = PAD ( "", "", 20 ) : DISP_PERSON
+    line_6_array [ 1 , 2 ] = PAD ( "", "", 20 ) {: auth_date}
+
+    line_disp_array [ 1 , 1 ] = "Disposition of Batch : "     : " Approved"
+
+    bm_array [ 1, 1 ] = BM_MSG
+
+ENDROUTINE
+
+
+{==============================================================================}
+{                                                                              }
+{ ROUTINE order_array_by_test_schedule          orders array based on the order}
+{                                               in the test_schedule           }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  24/05/96     JMWHYTE         Created to reorder analysis array              }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  res_arr                REFERENCE            Results Array                   }
+{==============================================================================}
+
+ROUTINE order_array_by_test_schedule ( res_arr )
+
+DECLARE i, order_num, size_arr, comp_order_num, composite_order
+i = 0
+order_num = 1
+
+test_sched = SELECT SAMPLE . test_schedule
+IF test_sched = EMPTY THEN RETURN ENDIF
+
+
+CREATE OBJECT "STD_COLLECTION", collection
+DEFINE CLASS "TEST_RECORD"
+   INHERIT "STD_COLLECTED"
+   PROPERTIES "TEST_NAME",
+              "RES_VAL"  ,
+              "TEST_UNIT",
+              "TEST_STAT",
+              "SMP_NAME" ,
+              "SMP_STAT" ,
+              "ANL_NAME" ,
+              "SPC_VALUE",
+              "TEST_NUMB",
+              "TEST_SCHED_ORDER"
+   INITIALISATION
+END CLASS
+
+size_arr = size_of_array ( res_arr )
+
+WHILE ( i < size_arr ) DO
+
+   i = i + 1
+
+   CREATE OBJECT "TEST_RECORD", test_object
+
+   test_object . test_name = res_arr [ i , TEST_NAME ]
+   test_object . res_val   = res_arr [ i , RES_VAL   ]
+   test_object . test_unit = res_arr [ i , TEST_UNIT ]
+   test_object . test_stat = res_arr [ i , TEST_STAT ]
+   test_object . smp_name  = res_arr [ i , SMP_NAME  ]
+   test_object . smp_stat  = res_arr [ i , SMP_STAT  ]
+   test_object . anl_name  = res_arr [ i , ANL_NAME  ]
+   test_object . spc_value = res_arr [ i , SPC_VALUE ]
+   test_object . test_numb = res_arr [ i , TEST_NUMB ]
+
+
+   order_num = SELECT test_sched_entry . order_num
+               WHERE ( identity    = SELECT SAMPLE . test_schedule )
+                 AND ( analysis_id = res_arr [ i, ANL_NAME ]     )
+
+                                     { Need Secondary Component Index        }
+                                     { As Get by Index on Test Schedule      }
+                                     { ignores component order               }
+
+
+   comp_order_num = SELECT COMPONENT . order_number
+                    WHERE ( analysis = res_arr [ i , ANL_NAME ] )
+                      AND ( name     = res_arr [ i , TEST_NAME] )
+
+
+   IF order_num = EMPTY THEN
+        order_num = 9999
+
+   ENDIF 
+					{DMcN, 03/02/98                 }    
+					{Bug fix as per Change control  }
+                                        {LIMS-98-03                     }
+  { ELSE }
+
+
+   composite_order = pad_str ( order_num ) :
+                     pad_str ( comp_order_num )
+
+ { ENDIF }
+
+   test_object . test_sched_order = composite_order
+   collection . add ( test_object )
+
+ENDWHILE
+
+collection . add_index ( "TEST_SCHED_ORDER" )
+
+i = 0
+WHILE ( i < size_arr ) DO
+
+    i = i + 1
+    test_object = collection . get_by_index_number ( "TEST_SCHED_ORDER", i )
+
+    res_arr [ i , TEST_NAME ] = test_object . test_name
+    res_arr [ i , RES_VAL   ] = test_object . res_val
+    res_arr [ i , TEST_UNIT ] = test_object . test_unit
+    res_arr [ i , TEST_STAT ] = test_object . test_stat
+    res_arr [ i , SMP_NAME  ] = test_object . smp_name
+    res_arr [ i , SMP_STAT  ] = test_object . smp_stat
+    res_arr [ i , ANL_NAME  ] = test_object . anl_name
+    res_arr [ i , SPC_VALUE ] = test_object . spc_value
+    res_arr [ i , TEST_NUMB ] = test_object . test_numb
+
+ENDWHILE
+ENDROUTINE
+
+
+{==============================================================================}
+{                                                                              }
+{ ROUTINE test_record_class_initialisation  Object Initialisation              }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  31/05/96     JMWHYTE         Created                                        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  self                   REFERENCE            Object                          }
+{==============================================================================}
+
+ROUTINE test_record_class_initialisation ( self )
+
+   self . test_name = ""
+   self . res_val   = ""
+   self . test_unit = ""
+   self . test_stat = ""
+   self . smp_name  = ""
+   self . smp_stat  = ""
+   self . anl_name  = ""
+   self . spc_value = ""
+   self . test_numb = ""
+
+ENDROUTINE
+
+
+{==============================================================================}
+{                                                                              }
+{ ROUTINE substr                          String Substitution Function         }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  31/05/96     JMWHYTE         Created                                        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  str                    VALUE                String                          }
+{  inp_str                VALUE                Search String                   }
+{  out_str                VALUE                Substitute String               }
+{==============================================================================}
+
+ROUTINE substr ( VALUE str, VALUE inp_str, VALUE out_str )
+
+IF ( INDEX ( str, inp_str ) > 0 )
+                                    { Accounts for length of <= and >= }
+    len_inp_str = LENGTH ( STRIP ( inp_str ) )
+    len_str     = LENGTH ( STRIP ( str     ) )
+    str = SUBSTRING ( str, len_inp_str+1, len_str )
+    str = out_str : str
+
+ENDIF
+RETURN ( str )
+ENDROUTINE
+
+
+{==============================================================================}
+{                                                                              }
+{ ROUTINE padstr                          Pads the String                      }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  31/05/96     JMWHYTE         Created                                        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  str                    VALUE                String                          }
+{==============================================================================}
+
+ROUTINE padstr ( VALUE str )
+
+DECLARE len_str, padded_str
+CONSTANT four_zeroes = 4
+
+
+    str        = STRIP ( str )
+    len_str    = LENGTH ( str )
+    padded_str = PAD ( "", "0", four_zeroes - len_str )
+    str        = padded_str : str
+
+RETURN ( str )
+ENDROUTINE
+
+
+{==============================================================================}
+{                                                                              }
+{ ROUTINE get_person                          Gets info from personnel table   }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  29/10/1997   JOD             Created                                        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE get_person ( id_person )
+
+    IF ( id_person <> EMPTY ) AND ( NOT ( BLANK ( id_person ) ) ) THEN
+        pers_desc = SELECT personnel . description
+                     WHERE identity = id_person
+
+        IF ( pers_desc <> EMPTY ) AND ( NOT ( BLANK ( pers_desc ) ) ) THEN
+            id_person = STRIP ( pers_desc )
+
+        ENDIF
+    ELSE
+        id_person = ""
+
+    ENDIF
+
+ENDROUTINE
+
+
+

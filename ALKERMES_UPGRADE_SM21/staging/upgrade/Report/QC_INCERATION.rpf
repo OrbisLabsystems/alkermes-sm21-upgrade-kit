@@ -1,0 +1,423 @@
+{------------------------------------------------------------------------------}
+{                                                                              }
+{       ELAN - Template Label Program.                                         }
+{                                                                              }
+{       Filename     :  Q_NAP_Sample( based on $SAMPLABEL.RPF )                }
+{       Version      :  0.00                                                   }
+{       Author       :  Tony Mc Donagh                                           }
+{       Date Created :	5/6/96                                                }
+{                       Intermec 3400 barcode printer Sample Label Report      }
+{------------------------------------------------------------------------------}
+{                                                                              }
+{       Modification History                                                   }
+{                                                                              }
+{       Ver     Date    By       Description                                   }
+{       ---     ----    --       ---------------------------------------       }
+{       0.00	5/6/96 TMD      First Version                                 }
+{	1.0	15/08/11  MA	 Change name from Elan to Alkermes	       }
+{                                                                              }
+{------------------------------------------------------------------------------}
+
+SET PRINTERCODES TRUE
+
+JOIN STANDARD_LIBRARY std_utils
+JOIN LIBRARY $lib_utils
+
+ENABLE WINDOWS
+
+SET FORMAT "9999999999"
+
+SET COMPILE_OPTION DECLARE
+
+{ Notes on paramaters passed in.
+  =============================
+Check to see if any parameters have been passed to the routine.
+
+Parameter 1 - Sample id, either numeric or text.
+Parameter 2 - Printer id, since when called from sample login there will
+	      always be two parameters.
+
+If there is one parameter the assumption made is that the reports output is to be directed to
+the default label printer.
+
+No parameters and the destination box is called.
+}
+
+{ Start of processing }
+
+DECLARE passed_wks_name, wks_name, printer_id
+
+{ See if a sample parameter has been passed in }
+
+IF GLOBAL ("PARAM_ACTIVE") THEN
+
+  	PROMPT FOR passed_wks_name
+  	wks_name = passed_wks_name
+
+  	IF NUMTEXT ( wks_name ) THEN
+    		wks_name = RIGHTSTRING ( PAD (" ", " ", 10) : STRIP (wks_name),
+					 10 )
+
+    		wks_name = SELECT sample . id_numeric
+               			WHERE id_numeric = wks_name
+	ELSE
+
+    		wks_name = SELECT sample . id_numeric
+               			WHERE id_text = wks_name
+  	ENDIF
+
+	{ See if a printer parameter has been passed in }
+
+  	IF GLOBAL ("PARAM_ACTIVE") THEN
+
+    		PROMPT FOR printer_id
+
+    		IF printer_id = " " THEN
+      			SET NAME "DEFAULT_LABEL/"
+			printer_id = GLOBAL ( "LABEL_ID" )
+    		ELSE
+      			SET NAME "PRINTER/" : STRIP ( printer_id )
+    		ENDIF
+
+	ELSE
+
+    		IF ( wks_name = EMPTY ) THEN
+      			wks_name = " "
+    		ENDIF
+
+      		SET NAME "DEFAULT_LABEL/"
+		printer_id = GLOBAL ( "LABEL_ID" )
+
+  	ENDIF
+
+ELSE
+	wks_name = ""
+	printer_id = ""
+	passed_wks_name = ""
+
+ENDIF
+
+{ If the printer is blank then after all that stuff, just prompt for it }
+
+IF ( printer_id = "" ) THEN
+	SET NAME "DEFER/"
+ENDIF
+
+sample_label ( passed_wks_name, wks_name, printer_id )
+
+EXIT
+
+{------------------------------------------------------------------------------}
+{                                                                              }
+{  ROUTINE sample_label   Analyse the sample name given.  If none provided     }
+{                         then prompt the user . If it could not be found      }
+{                         tell the user and teminate, otherwise print the      }
+{                         label as requested                                   }
+{                                                                              }
+{------------------------------------------------------------------------------}
+
+ROUTINE sample_label ( VALUE passed_wks_name,
+		       VALUE wks_name,
+		       VALUE printer_id )
+
+	DECLARE job_id, form
+
+	initialise_screen ( form, wks_name, printer_id )
+
+	IF ( wks_name = " " ) THEN
+
+  		IF get_sample_id ( wks_name, form ) THEN
+
+    			IF get_job_id ( wks_name, job_id ) THEN
+
+      				print_label ( wks_name )
+
+    			ENDIF
+
+  		ENDIF
+
+	ELSEIF ( wks_name <> EMPTY ) THEN
+
+  		IF get_job_id ( wks_name, job_id ) THEN
+
+    			print_label ( wks_name )
+
+		ENDIF
+
+	ELSE
+
+		flash_message ( GET_USER_MESSAGE ( "SAMPLABEL_DISPLAY_1" ,1 ) :
+				STRIP ( passed_wks_name ) :
+          		   	GET_USER_MESSAGE ( "SAMPLABEL_DISPLAY_2" ,1 ),
+				TRUE )
+
+	ENDIF
+
+	{ Send the label to the printer }
+
+	FLUSH_LITERAL
+
+	form . end_prompt ()
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+{                                                                              }
+{   ROUTINE initialise_screen  	Routine to set up windows                      }
+{                                                                              }
+{------------------------------------------------------------------------------}
+
+ROUTINE initialise_screen ( form,
+			    VALUE wks_name,
+			    VALUE printer_id )
+
+	DECLARE id_prompt, prompt_col, prompt_1, prompt_2, prompt_3,
+		separator, prompt_len, form_height
+
+	IF ( printer_id = "" ) THEN
+		form_height = 3
+	ELSE
+		form_height = 4
+	ENDIF
+
+	PROMPT OBJECT form
+		CLASS PROMPT_CLASS_FORM
+		WITH  ( column       = 21,
+			row          = 10,
+			height       = form_height,
+			width        = 40,
+			border       = TRUE,
+			proportional = TRUE,
+                	help_context = "$SAMPLABEL_SCREEN",
+			button_style = FORM_BUTTON_NONE,
+			header 	     = GET_USER_MESSAGE ("SAMPLABEL_DISPLAY_3"
+							 ,1 ) )
+
+	prompt_1 = GET_USER_MESSAGE ( "SAMPLABEL_DISPLAY_4", 1 )
+	prompt_2 = GET_USER_MESSAGE ( "SAMPLABEL_DISPLAY_5", 1 )
+	prompt_3 = GET_USER_MESSAGE ( "SAMPLABEL_DISPLAY_6", 1 )
+
+	{ Get the max length of all the prompts }
+
+	prompt_len = find_max_number ( LENGTH ( prompt_1 ),
+				       find_max_number( LENGTH ( prompt_2 ),
+							LENGTH ( prompt_3 ) ) )
+	separator = ""
+
+	{ Put colon separators on the character cell to make the prompts
+	  look nice. }
+
+	IF ( GLOBAL ( "TERMTYPE" ) <> "GUI" ) THEN
+		separator = " :"
+	ENDIF
+
+	prompt_1 = PAD ( prompt_1, " ", prompt_len ) : separator
+	prompt_2 = PAD ( prompt_2, " ", prompt_len ) : separator
+	prompt_3 = PAD ( prompt_3, " ", prompt_len ) : separator
+
+	prompt_col = prompt_len + STRINGLENGTH ( separator ) + 1
+
+	form . add_display ( prompt_1,
+			     1, 1,
+			     PROMPT_RENDITION_RAISED + PROMPT_RENDITION_BOLD )
+
+	form . add_display ( prompt_2,
+			     1, 2,
+			     PROMPT_RENDITION_RAISED + PROMPT_RENDITION_BOLD )
+
+	prompt_col = prompt_col + 1
+
+	IF ( wks_name = " " ) THEN
+
+		PROMPT OBJECT id_prompt
+ 			ON LINE 1 FROM prompt_col TO prompt_col + 30
+			BROWSE ON sample
+
+		form . add_prompt ( id_prompt )
+
+	ELSE
+		form . add_display ( PAD( wks_name, " ", 30 ),
+			     	     prompt_col, 1,
+			     	     PROMPT_RENDITION_LOWERED )
+	ENDIF
+
+	form . add_display ( PAD ( GLOBAL ( "CURRENT_LIBRARY" ), " ", 20 ),
+			     prompt_col, 2,
+			     PROMPT_RENDITION_LOWERED )
+
+	{ If a printer has been specified then display it on the form }
+
+	IF ( printer_id <> "" ) THEN
+
+		form . add_display ( PAD( printer_id, " ", 10 ),
+			     	     prompt_col, 3,
+			     	     PROMPT_RENDITION_LOWERED )
+
+		form . add_display ( prompt_3,
+				     1, 3,
+				     PROMPT_RENDITION_RAISED +
+							PROMPT_RENDITION_BOLD )
+	ENDIF
+
+	form . start_prompt ()
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+{                                                                              }
+{ ROUTINE get_sample_id 	Get the sample to print a label for            }
+{                                                                              }
+{------------------------------------------------------------------------------}
+
+ROUTINE get_sample_id ( wks_name, form )
+
+	
+
+	REPEAT
+
+		form . wait_prompt ()
+
+		wks_name = form . prompt_objects [ 1 ] . value
+
+	UNTIL ( ( wks_name <> " " ) OR
+		( form . get_lastkey () = "EXIT" ) )
+
+	RETURN ( form . get_lastkey () <> "EXIT" )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+{                                                                              }
+{ ROUTINE get_job_id 		Get the job_id for the current sample          }
+{                                                                              }
+{------------------------------------------------------------------------------}
+
+ROUTINE get_job_id ( VALUE wks_name,
+		       job_id )
+
+	job_id = SELECT sample . job_name
+                   	WHERE id_numeric = wks_name
+
+	job_id = STRIP ( job_id )
+
+	RETURN ( job_id <> EMPTY )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+{                                                                              }
+{	ROUTINE print_label ()			DESCRIPTION                    }
+{	----------------------			-------------------------      }
+{						This routine is for outputing  }
+{						labels to an Intermec 3400 .   }
+{                                                                              }
+{------------------------------------------------------------------------------}
+{                                                                              }
+{	PARAMETRES 	PASSED BY	DESCRIPTION                            }
+{	----------	---------	-----------------------------------    }
+{	samp_id		VALUE		the id_numeric of a sample             }
+{                                                                              }
+{------------------------------------------------------------------------------}
+
+ROUTINE print_label ( VALUE samp_id )
+
+    DECLARE sampled_date, material_id, product_name, comments,
+            supplier_lot_no, batch_name, taker, 
+            STX, ETX, CR, ETB, CAN, ESC
+
+    STX = ASCII(2)
+    ETX = ASCII(3)
+    CR  = ASCII(13)
+    ETB = ASCII(23)
+    CAN = ASCII(24)
+    ESC = ASCII(27)
+
+    sampled_date = STRIP ( SUBSTRING ( SELECT sample . sampled_date, 1, 11 ) )
+    
+	comments    = STRIP (             SELECT sample . description ) 
+
+    
+    product_name = SELECT SAMPLE . product_name
+    IF ( product_name = EMPTY ) OR ( STRIP ( product_name = "" )) THEN
+        material_id = "No Material ID"
+    ELSE
+        material_id = SELECT MLP_HEADER . description
+                      WHERE ( identity = product_name )
+        IF material_id = EMPTY THEN
+            material_id = "No description"
+        ENDIF
+    ENDIF
+
+
+    supplier_lot_no = SELECT SAMPLE . supplier_lot_no
+    IF ( supplier_lot_no = EMPTY ) OR ( STRIP ( supplier_lot_no = "" )) THEN
+        supplier_lot_no = "No Supplier Lot No."
+    ENDIF
+
+    batch_name  = SELECT SAMPLE . batch_name
+    IF ( batch_name = EMPTY ) OR ( STRIP ( batch_name = "" )) THEN
+        batch_name = "No Batch No."
+    ENDIF
+
+    taker  = SELECT SAMPLE . sample_taker
+    IF ( taker = EMPTY ) OR ( STRIP ( taker = "" )) THEN
+        taker = " "
+    ENDIF
+
+    
+
+    send_line(STX : ESC : "C"                                : ETX )
+    send_line(STX : ESC : "P"                                : ETX )
+    send_line(STX : ESC : "E4;F4"                            : ETX )
+    send_line(STX : "H0;o02,80;   f0;c20;h1;w0;d0,45;"      : ETX )
+    send_line(STX : "H1;o10,120;  f0;c20;h1;w1;d0,30;"      : ETX )
+    send_line(STX : "H2;o10,160;  f0;c20;h1;w1;d0,30;"      : ETX )
+    send_line(STX : "H3;o10,200;  f0;c20;h1;w1;d0,30;"      : ETX )
+    send_line(STX : "H4;o10,240;  f0;c20;h1;w1;d0,30;"      : ETX )
+    send_line(STX : "H5;o10,280;  f0;c20;h1;w1;d0,30;"      : ETX )
+    send_line(STX : "H6;o10,320;  f0;c20;h1;w1;d0,30;"      : ETX )
+    send_line(STX : "B7;o10,360;  f0;c0,0;h60;w1;i2;d1,11;p@": ETX )
+
+    send_line(STX:"H8;o70,20;f0;c20; h1; w2;r0;b0;d3,Alkermes":
+									 ETX)
+    send_line(STX:"H9;o180,430; f0;c20; h1; w0;r0;b0;d3,INCERATION SAMPLE": ETX)
+					
+    send_line(STX : "R ": ETX )
+    send_line(STX : ESC : "E4" :ETX )
+    send_line(STX : CAN : ETX )
+
+    send_line(STX : "" : material_id  : CR : ETX )
+    send_line(STX : "Lot No.         : " : batch_name   : CR : ETX )
+    send_line(STX : " " : comments     : CR : ETX )
+    send_line(STX : "Stage           : " : supplier_lot_no : CR : ETX )
+    send_line(STX : "Sampled Date    : " : sampled_date : CR : ETX )
+    send_line(STX : "Part Code       : " : product_name     : CR : ETX )
+    send_line(STX : "Sample (IP No.) : " : samp_id      : CR : ETX )
+    send_line(STX :  STRIP ( samp_id ): CR : ETX )
+
+    send_line(STX : ETB : ETX )
+
+                                        { puts information into the printer 
+                                          fields }
+    
+    RETURN ( TRUE )
+    
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+{                                                                              }
+{  ROUTINE send_line ()			accepts the variable to be outputted   }
+{                                       from print_label                       }
+{                                                                              }
+{------------------------------------------------------------------------------}
+{                                                                              }
+{  VARIABLE line	STRING		string to be outputted to the intermec }
+{                                       containing the label information       }
+{                                                                              }
+{------------------------------------------------------------------------------}
+
+ROUTINE send_line (VALUE line)
+LITERAL
+$line_______________________________________________________________________
+$ENDLITERAL
+ENDROUTINE

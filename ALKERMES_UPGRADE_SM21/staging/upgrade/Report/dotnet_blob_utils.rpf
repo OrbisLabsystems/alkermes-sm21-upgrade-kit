@@ -1,0 +1,271 @@
+{******************************************************************************
+*
+* Module Name          : DOTNET_BLOB_UTILS
+*
+* Purpose              : Library of routines to manage blob files from C# code
+*
+* Portability          : Not Checked
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By             Description
+* -------   -----------  ----------     ---------------------------------------
+* 1.0       07-Oct-2015  H. Bryan       Release Version 
+*******************************************************************************}
+
+SET NOTPROTECTED
+SET NAME "DISPLAY/"
+SET COMPILE_OPTION DECLARE
+
+ENABLE WINDOWS
+
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_CLIENT
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_TRANSFER
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN STANDARD_LIBRARY STD_DDE
+
+JOIN LIBRARY $lib_utils
+JOIN LIBRARY $lib_text
+
+
+save_file_to_blob("STOCK_BATCH",
+                  "STOCK_BATCH_ID",
+                  "STOCK1/1",
+                  "COA_FILE",
+                  "C:\\Documents and Settings\\Administrator\\My Documents\\coa_retrieved.doc")
+
+{
+read_file_from_blob("STOCK_BATCH",
+                  "STOCK_BATCH_ID",
+                  "STOCK2/3",
+                  "COA_FILE",
+                  "C:\Documents and Settings\Administrator\My Documents\HAM.DOCX")
+
+}
+
+EXIT
+
+
+{*****************************************************************************}
+
+    GLOBAL
+    
+    ROUTINE retrieve_batch_record_blob_rmb ( rmb_object, 
+                                             object, 
+                                             data)
+
+{
+* Saves the file identified by file_path to the database
+*
+******************************************************************************}
+
+DECLARE rec_id, current_file_path, client_temp_file, server_file, status,
+        prog_path, file_ext, dot, dot_pos, ext_len
+
+    dot = "."
+    
+    data . set_first ()
+
+    IF ( ( data . size() = 1 ) AND ( data . current_position <> 0 ) ) THEN
+
+        rec_id            = SELECT stock_batch . stock_batch_id IN OBJECT data . current
+        current_file_path = SELECT stock_batch . coa_link IN OBJECT data . current
+        
+        IF ( NOT ( BLANK ( current_file_path ) ) ) THEN
+        
+            server_file = read_file_from_blob ( "STOCK_BATCH"     ,
+                                                "STOCK_BATCH_ID"  ,
+                                                rec_id            ,
+                                                "COA_FILE"        ,
+                                                current_file_path )
+
+            IF (     ( NOT   ( BLANK ( server_file ) )     )
+                 AND ( INDEX ( server_file, "ERROR:" ) = 0 ) ) THEN
+
+                CALL_ROUTINE "prompt_file_last_occurrence"
+                IN LIBRARY "$prompt_file"
+                USING server_file, dot
+                RETURNING dot_pos
+
+                file_ext = ""
+                
+                IF ( dot_pos > 0 ) THEN
+                
+                    ext_len  = LENGTH ( server_file ) - dot_pos
+                    file_ext = RIGHTSTRING ( server_file, ext_len )
+
+                ENDIF
+                
+                client_temp_file = client_temporary_file ( ) : dot : file_ext
+            
+                IF ( client_temp_file <> EMPTY ) THEN
+            
+                    status = transfer_binary_from_server ( server_file      ,
+                                                           client_temp_file )
+
+                    IF status <> EMPTY THEN
+                        flash_message ( "Failed to transfer file to client : " : status, TRUE )
+                    ELSE
+
+                        prog_path = client_get_file_association ( client_temp_file )
+
+                        dde_winexec ( prog_path : " " : client_temp_file, "SW_SHOW", status )
+
+                        IF status <> EMPTY THEN
+                            flash_message ( "Failed to show file : " : status , TRUE )
+                        ENDIF
+
+                    ENDIF
+                    
+                ENDIF
+            
+                FILE DELETE server_file, status
+                
+                IF ( status <> EMPTY ) THEN
+                    flash_message ( "Failed to delete server file: " : status, TRUE )
+                ENDIF
+                
+            ELSEIF ( INDEX ( server_file, "ERROR:" ) > 0 ) THEN
+                flash_message ( server_file , TRUE )
+            ENDIF
+            
+        ELSE
+            flash_message ( "The selected stock batch does not have a stored COA", TRUE )
+        ENDIF
+    
+    ELSE
+        flash_message ( "Multiple record selection not supported", TRUE )
+    ENDIF
+    
+ENDROUTINE
+
+
+{*****************************************************************************}
+
+    GLOBAL
+    
+    ROUTINE save_file_to_blob ( VALUE table      ,
+                                VALUE rec_field  ,
+                                VALUE rec_id     ,
+                                VALUE blob_field ,
+                                VALUE file_path  )
+
+{
+* Saves the file identified by file_path to the database
+*
+******************************************************************************}
+
+DECLARE rec, ret_val, server_file, status
+
+    START WRITE TRANSACTION "Save file to blob"
+
+    ret_val   = ""
+    rec       = SELECT 'table' . 'rec_field'
+                    FOR UPDATE
+                    WHERE 'rec_field' = rec_id
+   
+    IF ( rec <> EMPTY ) THEN
+
+        file_path = lib_text_replace ( file_path, "\\", "\" )
+
+        server_file = get_server_file_name ( file_path )
+        
+        status = blob_from_file_binary ( table, blob_field, server_file )
+        
+        IF ( status = EMPTY ) THEN
+
+            UPDATE 'table'
+
+            COMMIT
+
+            FILE DELETE server_file, status
+                
+        ENDIF
+
+    ELSE
+        ret_val = "Failed to lock " : rec_id : " for table " : table
+    ENDIF
+    
+    IF ( status <> EMPTY ) THEN
+        ret_val = "File error: " : status
+    ENDIF
+
+    RETURN ( ret_val )
+    
+ENDROUTINE
+
+
+{*****************************************************************************}
+
+    GLOBAL
+    
+    ROUTINE read_file_from_blob ( VALUE table      ,
+                                  VALUE rec_field  ,
+                                  VALUE rec_id     ,
+                                  VALUE blob_field ,
+                                  VALUE file_path  )
+
+{
+* Reads a file from the database and prompts for the file location. File path
+* is the original file location.
+*
+******************************************************************************}
+
+DECLARE rec, server_file, status
+
+    rec = SELECT 'table' . 'rec_field'
+             WHERE 'rec_field' = rec_id
+              
+    IF ( rec <> EMPTY ) THEN
+
+        file_path = lib_text_replace ( file_path, "\\", "\" )
+        
+        server_file = get_server_file_name ( file_path )
+        status = blob_to_file ( table, blob_field, server_file )
+        
+        IF ( status <> EMPTY ) THEN
+            flash_message ( "File retrieve error: " : status, TRUE )
+        ENDIF
+        
+    ELSE
+        server_file = "ERROR: Could not find " : rec_id : " for table " : table
+    ENDIF
+
+    RETURN ( server_file )
+    
+ENDROUTINE
+
+{*****************************************************************************}
+
+    ROUTINE get_server_file_name ( VALUE file_path )
+{
+* Gets a temporary server file name
+*
+******************************************************************************}
+
+DECLARE backslash, server_file, backslash_pos
+
+    backslash   = "\"
+    server_file = ""
+
+    CALL_ROUTINE "prompt_file_last_occurrence"
+        IN LIBRARY "$prompt_file"
+        USING file_path, backslash
+        RETURNING backslash_pos
+
+    IF ( backslash_pos > 0 ) THEN
+
+        server_file = SUBSTRING ( file_path                            ,
+                                  backslash_pos + 1                    ,
+                                  LENGTH ( file_path ) - backslash_pos )
+    ELSE
+        server_file = file_path
+    ENDIF
+        
+    RETURN ( lib_utils_logical_to_string ( "SMP$USERFILES" ) : "\" : server_file )
+
+ENDROUTINE

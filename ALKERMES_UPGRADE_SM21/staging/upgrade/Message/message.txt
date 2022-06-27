@@ -1,0 +1,163 @@
+! Standard messages for SampleManager.
+
+INCLUDE "smp_general_messages.txt"
+INCLUDE "smp_aux_messages.txt"
+INCLUDE "smp_background_messages.txt"
+INCLUDE "smp_dbtab_messages.txt"
+INCLUDE "smp_demo_messages.txt"
+INCLUDE "smp_ews_messages.txt"
+INCLUDE "smp_install_messages.txt"
+INCLUDE "smp_lab_messages.txt"
+INCLUDE "smp_login_messages.txt"
+INCLUDE "smp_reporting_messages.txt"
+INCLUDE "smp_vgl_tools_messages.txt"
+INCLUDE "smp_worksheet_messages.txt"
+INCLUDE "smp_incidents_messages.txt"
+
+INCLUDE "rsf_user_message.txt"
+
+INCLUDE "cal_messages.txt"
+INCLUDE "chstat_messages.txt"
+INCLUDE "date_messages.txt"
+INCLUDE "db_messages.txt"
+INCLUDE "lex_messages.txt"
+INCLUDE "prn_messages.txt"
+INCLUDE "rpc_messages.txt"
+INCLUDE "sig_messages.txt"
+INCLUDE "smp_array_messages.txt"
+INCLUDE "smp_class_messages.txt"
+INCLUDE "smp_compiler_messages.txt"
+INCLUDE "smp_config_messages.txt"
+INCLUDE "smp_debug_messages.txt"
+INCLUDE "smp_esig_messages.txt"
+INCLUDE "smp_explorer_messages.txt"
+INCLUDE "smp_graph_messages.txt"
+INCLUDE "smp_help_messages.txt"
+INCLUDE "smp_increment_messages.txt"
+INCLUDE "smp_io_messages.txt"
+INCLUDE "smp_lock_messages.txt"
+INCLUDE "smp_lot_messages.txt"
+INCLUDE "smp_k_messages.txt"
+INCLUDE "smp_keyboard_messages.txt"
+INCLUDE "smp_matrix_messages.txt"
+INCLUDE "smp_message_messages.txt"
+INCLUDE "smp_network_messages.txt"
+INCLUDE "smp_pipe_messages.txt"
+INCLUDE "smp_prompt_messages.txt"
+INCLUDE "smp_server_messages.txt"
+INCLUDE "smp_signal_messages.txt"
+INCLUDE "smp_struct_messages.txt"
+INCLUDE "smp_tcpip_messages.txt"
+INCLUDE "smp_window_messages.txt"
+INCLUDE "smp_sse_messages.txt"
+INCLUDE "smp_createmenu_messages.txt"
+INCLUDE "smp_list_box_messages.txt"
+INCLUDE "smp_reporter_messages.txt"
+INCLUDE "smp_daemon_messages.txt"
+INCLUDE "smp_batch_messages.txt"
+INCLUDE "smp_formula_messages.txt"
+INCLUDE "xcl_messages.txt"
+INCLUDE "daemon_checker_messages.txt"
+
+! Messages for Result Entry
+INCLUDE "result_entry_messages.txt"
+
+! Messages for structure.txt
+
+INCLUDE "structure_messages.txt"
+
+! Messages for the squirrel conversion utility
+
+INCLUDE "convert_squirrel_messages.txt"
+
+! Include messages for data manager
+! INCLUDE "smp$messages:dm_user_message.prn"
+
+! Include messages for Result Pipe
+! INCLUDE "smp$messages:rp_user_message.prn"
+
+! Messages for the Result Pipe part of PLASS. Must follow rp_user_messages.prn
+!INCLUDE "smp$messages:plass_user_message.prn"
+
+! INCLUDE "smp$messages:supertab_messages.prn"
+! INCLUDE "smp$messages:lab_user_messages.prn"
+! INCLUDE "smp$messages:aux_user_message.prn"
+
+! INCLUDE "smp$messages:ms_user_message.prn"
+! INCLUDE "smp$messages:rsf_user_message.prn"
+
+!* Include language dependant OLE message files *
+
+INCLUDE "smp_english_ole_messages.txt"
+! INCLUDE "smp_spanish_ole_messages.txt"
+
+INCLUDE "smp_efm_install_messages.txt"
+
+INCLUDE "aql.txt"
+INCLUDE "column_set.txt"
+INCLUDE "database_browse.txt"
+INCLUDE "expanding_tree.txt"
+INCLUDE "lib_db.txt"
+INCLUDE "lib_text.txt"
+INCLUDE "login.txt"
+INCLUDE "lte_col_set_head.txt"
+INCLUDE "lte_rule.txt"
+INCLUDE "lte_sampling_proc.txt"
+INCLUDE "recursive.txt"
+INCLUDE "rule_count.txt"
+INCLUDE "rule_counter_list.txt"
+INCLUDE "sample_plan.txt"
+INCLUDE "sp_login.txt"
+INCLUDE "sp_trigger_path.txt"
+INCLUDE "smp_role_messages.txt"
+
+! INCLUDE messages for test validation
+INCLUDE "smp_test_validation.txt"
+
+INCLUDE "role_assign_messages.txt"
+INCLUDE "option_config_messages.txt"
+INCLUDE "web_server_messages.txt"
+
+INCLUDE "data_pipe_messages.txt"
+
+INCLUDE "smp_pi_messages.txt"
+
+INCLUDE "smp_desktop_messages.txt"
+INCLUDE "smp_messaging_messages.txt"
+
+INCLUDE "tips.txt"
+
+INCLUDE "smp_bl_messages.txt"
+INCLUDE "smp_interface_messages.txt"
+INCLUDE "smp_limsml_messages.txt"
+INCLUDE "smp_web_messages.txt"
+INCLUDE "smp_vgl_unit_tester_messages.txt"
+INCLUDE "smp_certificate_messages.txt"
+
+
+INCLUDE "sqcwin_messages.txt"
+INCLUDE "smidi_messages.txt"
+INCLUDE "inventory_messages.txt"
+INCLUDE "smp_schedule_messages.txt"
+INCLUDE "stab_messages.txt"
+
+! INCLUDE "yukon_messages.txt"
+
+INCLUDE "lib_messages.txt"
+INCLUDE "instrument_calibration_messages.txt"
+INCLUDE "user_trend_messages.txt"
+INCLUDE "resource_manager_messages.txt"
+
+! SM10 upgrade
+
+INCLUDE "coa_messages.txt"
+INCLUDE "customer_messages.txt"
+INCLUDE "retain_messages.txt"
+INCLUDE "worksheet_checks.txt"
+INCLUDE "worksheet_messages.txt"
+
+! IM EMPOWER
+INCLUDE "ols_lhsm_messages.txt"
+ 
+INCLUDE "print_event_messages.txt"
+

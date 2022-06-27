@@ -1,0 +1,1422 @@
+{******************************************************************************
+*
+* Module Name   : $LIB_RE_PROMPT
+*
+* Purpose       : Generic prompt / display / authorise code for Result Entry.
+*		  The appropriate routine for the given result type is called
+*		  by these routines.
+*
+* Document Ref. : SE/T/TVGL-WORK-RESENTO/1/5
+*
+* Specification :
+*
+* Portability   : Not Checked
+*
+* Re-entrant    : Yes
+********************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By             Description
+* -------   -----------  ----------     ---------------------------------------
+* 1.1       17-Apr-12  J. O'Neill     Added check to see if all mandatory
+*                                       worksheet fields are filled in before
+*                                       allowing result entry. Makes a call 
+*                                       to wsheet_filled_in in WSHEET_INFO.
+* 1.2       17-Apr-12  Vincent Molloy Implemented worksheet header screen call
+*                                       for Result entry by Sample Worksheet 
+*
+* 1.3       13-SEP-2012 Ken Jacobs      Add check for STDRESULTGRID object which
+*                                       is by most spreadsheets
+*
+* 1.4       02-OCT-2012 Ken Jacobs      Add REJOBLISTGRID
+*
+* 1.5       10-OCT-2012 Ken Jacobs      Check status of current test before
+*                                       allowing modify
+*
+*******************************************************************************}
+
+SET COMPILE_OPTION DECLARE
+
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_MESSAGE
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_WINDOW
+
+JOIN LIBRARY $LIB_RE_AD_HOC
+JOIN LIBRARY $LIB_RE_AUDIT
+JOIN LIBRARY $LIB_RE_BOOLEAN
+JOIN LIBRARY $LIB_RE_CALCULATED
+JOIN LIBRARY $LIB_RE_CHAR
+JOIN LIBRARY $LIB_RE_DATE
+JOIN LIBRARY $LIB_RE_FILE
+JOIN LIBRARY $LIB_RE_INCIDENT
+JOIN LIBRARY $LIB_RE_INTERVAL
+JOIN LIBRARY $LIB_RE_MATRIX
+JOIN LIBRARY $LIB_RE_MLP
+JOIN LIBRARY $LIB_RE_NUMERIC
+JOIN LIBRARY $LIB_RE_OPTION
+JOIN LIBRARY $LIB_RE_TEXT
+JOIN LIBRARY $LIB_RE_UNKNOWN
+JOIN LIBRARY $LIB_RE_GLOBALS
+JOIN LIBRARY $LIB_RE_LIST_RESULT
+JOIN LIBRARY $LIB_RE_ENTITY
+JOIN LIBRARY $LIB_UTILS
+
+{JON 1.1}
+JOIN LIBRARY WSHEET_INFO
+{/JON 1.1}
+
+{------------------------------------------------------------------------------}
+
+GLOBAL CONSTANT LIB_RE_VALID_RESULT_TYPES = "BCDEFIKMNOTL"
+GLOBAL CONSTANT LIB_RE_AD_HOC_RESULT_TYPE = "?"
+
+GLOBAL CONSTANT LIB_RE_RESULT_AUTH_STATUS    = "ARX"
+GLOBAL CONSTANT LIB_RE_RESULT_ENTERED_STATUS = "EM"
+
+CONSTANT FOR_EDIT    = FALSE
+CONSTANT FOR_DISPLAY = TRUE
+
+{------------------------------------------------------------------------------}
+
+GLOBAL
+ROUTINE lib_re_prompt_initialise
+
+        lib_re_ad_hoc_initialise ( )
+        lib_re_boolean_initialise ( )
+        lib_re_calculated_initialise ( )
+        lib_re_char_initialise ( )
+        lib_re_date_initialise ( )
+        lib_re_file_initialise ( )
+        lib_re_interval_initialise ( )
+        lib_re_matrix_initialise ( )
+        lib_re_numeric_initialise ( )
+        lib_re_option_initialise ( )
+        lib_re_text_initialise ( )
+        lib_re_list_result_initialise ( )
+        lib_re_entity_initialise ( )
+
+        { A catch all result class for unknown result types }
+        lib_re_unknown_initialise ( )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE lib_re_prompt_lock_result ( result_object         ,
+                                    result_context_object ,
+                                    sample_was_upgraded   ,
+                                    test_was_upgraded     ,
+                                    do_edit               ,
+                                    status_text           ,
+                                    cell_column           ,
+                                    cell_row              ,
+                                    window                )
+
+        DECLARE result_reselected,
+                test_reselected,
+                sample_reselected,
+                result_upgrade,
+                test_upgrade,
+                sample_upgrade,
+                do_display,
+                authorise_lock,
+                modify_lock,
+                record_lock_state,
+                process_name,
+                user_id,
+                user_name,
+                mode_name
+
+	user_id = EMPTY
+
+	sample_was_upgraded = FALSE
+	test_was_upgraded   = FALSE
+
+	authorise_lock =
+		( result_context_object . re_mode = RE_AUTHORISE ) AND
+		( INDEX ( LIB_RE_RESULT_AUTH_STATUS,
+			result_object . initial_status ) > 0 )
+
+	modify_lock =
+		( result_context_object . re_mode <> RE_AUTHORISE  ) AND
+		( NOT result_object . modify_allowed )
+
+	IF authorise_lock THEN
+
+		do_edit    = FALSE
+		do_display = TRUE
+
+		status_text = GET_USER_MESSAGE ( "RESULT_ENTRY_AUTH_RESULT", 1 )
+
+	ELSEIF modify_lock THEN
+
+		do_edit    = FALSE
+		do_display = TRUE
+
+		status_text = result_object . modify_allowed_message
+
+	ELSE
+
+		IF result_context_object . single_result_commit THEN
+
+			result_upgrade = lock_upgrade_object ( "RESULT",
+			                                         result_object,
+			                                         result_reselected )
+
+			IF NOT result_upgrade THEN
+
+				lock_get_information_object ( "RESULT"      ,
+				                              result_object ,
+				                              process_name  ,
+				                              user_id       ,
+				                              mode_name     )
+
+			ENDIF
+
+			sample_upgrade = TRUE
+			test_upgrade = TRUE
+
+		ELSE
+
+			IF NOT GLOBAL ( "RES_OPT_SAMPLE" ) THEN
+
+				record_lock_state = lock_state_object ( "SAMPLE"                                    ,
+				                                        result_object . test_object . sample_object )
+
+				IF ( record_lock_state <> "SELECTED_WRITE" ) AND
+				   ( record_lock_state <> "RESERVED_WRITE" ) THEN
+
+					sample_upgrade = result_context_object .
+					                    lock_upgrade_object (
+					                       "SAMPLE"                                     ,
+					                        result_object . test_object . sample_object ,
+					                        sample_reselected                           )
+
+					sample_was_upgraded = sample_upgrade
+
+					IF NOT sample_upgrade THEN
+
+						lock_get_information_object ( "SAMPLE"                                    ,
+						                              result_object . test_object . sample_object ,
+						                              process_name                                ,
+						                              user_id                                     ,
+						                              mode_name                                   )
+
+					ENDIF
+
+				ELSE
+					sample_upgrade = TRUE
+				ENDIF
+
+			ELSE
+				sample_upgrade = TRUE
+			ENDIF
+
+			IF sample_upgrade THEN
+
+				record_lock_state = lock_state_object ( "TEST"                      ,
+				                                        result_object . test_object )
+
+				IF ( record_lock_state <> "SELECTED_WRITE" ) AND
+				   ( record_lock_state <> "RESERVED_WRITE" ) THEN
+
+					test_upgrade = result_context_object .
+					                  lock_upgrade_object (
+					                     "TEST"                       ,
+					                      result_object . test_object ,
+					                      test_reselected             )
+
+					test_was_upgraded = test_upgrade
+
+					IF NOT test_upgrade THEN
+
+						lock_get_information_object ( "TEST"                      ,
+						                              result_object . test_object ,
+						                              process_name                ,
+						                              user_id                     ,
+						                              mode_name                   )
+
+					ENDIF
+
+				ELSE
+					test_upgrade = TRUE
+				ENDIF
+
+			ELSE
+				test_upgrade = FALSE
+			ENDIF
+
+			IF test_upgrade THEN
+
+				result_upgrade = result_context_object .
+				                    lock_upgrade_object (
+				                       "RESULT"           ,
+				                        result_object     ,
+				                        result_reselected )
+
+				IF NOT result_upgrade THEN
+
+					lock_get_information_object ( "RESULT"      ,
+					                              result_object ,
+					                              process_name  ,
+					                              user_id       ,
+					                              mode_name     )
+
+				ENDIF
+
+			ELSE
+
+				result_upgrade = FALSE
+				result_reselected =  NOT lock_validate_object ( "RESULT"       ,
+				                                                 result_object )
+
+				IF result_reselected THEN
+					result_object . reselect_result ( result_context_object ,
+					                                  FALSE                 )
+				ENDIF
+
+			ENDIF
+
+		ENDIF
+
+		IF result_reselected THEN
+
+			result_object . result_str     = SELECT result . text
+			                                   IN OBJECT result_object
+			result_object . result_raw_str = SELECT result . raw_result
+			                                   IN OBJECT result_object
+			result_object . result_val     = SELECT result . value
+			                                   IN OBJECT result_object
+			result_object . result_unit    = SELECT result . units
+			                                   IN OBJECT result_object
+
+			result_object . initial_status = SELECT result . status
+			                                   IN OBJECT result_object
+
+			do_edit    = FALSE
+			do_display = FALSE
+			SET GLOBAL ( "LASTKEY" ) TO "CONTINUE"
+
+			result_context_object . update_display ( cell_column ,
+			                                         cell_row    ,
+			                                         TRUE        ,
+			                                         TRUE        ,
+			                                         TRUE        )
+
+			result_object . rebuild_graph     ( result_context_object )
+			result_object . rebuild_audits    ( result_context_object )
+			result_object . rebuild_incidents ( result_context_object )
+			result_object . check_modify_allowed ( FALSE )
+
+		ELSEIF result_upgrade AND test_upgrade AND sample_upgrade THEN
+
+			do_edit    = TRUE
+			do_display = FALSE
+
+		ELSE
+
+			IF ( user_id <> EMPTY ) AND
+			   ( NOT GLOBAL ( "SECURE_LOCK_INFO" ) ) THEN
+
+				message_fetch ( "RESULT_ENTRY_LOCKED_USER" ,
+				                status_text                )
+
+				user_name = SELECT personnel . name
+				            WHERE identity = user_id
+
+				IF user_name <> EMPTY THEN
+					message_add_parameter ( status_text,
+					         STRIP ( user_id ) : ", " : STRIP ( user_name ))
+				ELSE
+					message_add_parameter ( status_text, STRIP ( user_id ))
+				ENDIF
+
+				message_add_parameter ( status_text,
+				                        STRIP ( mode_name ) : " [" :
+				                           STRIP ( process_name ) : "]" )
+
+				status_text = message_get_text ( status_text, 1 )
+
+			ELSE
+
+				status_text = GET_USER_MESSAGE ( "RESULT_ENTRY_LOCKED", 1 )
+
+			ENDIF
+
+			screen_beep ( )
+
+			do_edit    = FALSE
+			do_display = TRUE
+
+		ENDIF
+
+	ENDIF
+
+	IF do_edit OR ( result_context_object . re_mode <> RE_MODIFY  ) THEN
+
+		result_context_object . toolbox . enable_buttons (
+			result_context_object . toolbox_or_buttons )
+
+	ELSEIF do_display THEN
+
+		result_context_object . toolbox . disable_buttons (
+			result_context_object . toolbox_or_buttons )
+
+	ENDIF
+
+	RETURN ( do_display )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE lib_re_prompt_unlock_result ( result_object       ,
+                                      sample_was_upgraded ,
+                                      test_was_upgraded   )
+
+	IF sample_was_upgraded THEN
+		lock_downgrade_object ( "SAMPLE"                                    ,
+		                        result_object . test_object . sample_object )
+	ENDIF
+
+	IF test_was_upgraded THEN
+		lock_downgrade_object ( "TEST"                      ,
+		                        result_object . test_object )
+	ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE lib_re_prompt_lock_validate ( result_object         ,
+                                      result_context_object ,
+                                      cell_column           ,
+                                      cell_row              )
+
+	IF NOT lock_validate_object ( "RESULT", result_object ) THEN
+
+		result_object . reselect_result ( result_context_object, FALSE )
+
+		result_context_object . update_display ( cell_column ,
+		                                         cell_row    ,
+		                                         TRUE        ,
+		                                         TRUE        ,
+		                                         TRUE        )
+
+		result_context_object . redisplay_cell ( cell_column ,
+		                                         cell_row    )
+
+	ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE lib_re_prompt_post_edit_lock_validate ( result_object )
+
+	DECLARE testno ,
+	        test_object ,
+	        sampid ,
+	        sample_object ,
+	        jobnam ,
+	        job_object
+
+	{ Ensure that all the locks are valid }
+
+	test_object   = result_object . test_object
+	sample_object = test_object . sample_object
+	job_object    = sample_object . job_object
+
+	IF NOT lock_validate_object ( "TEST" , test_object ) THEN
+
+		testno = SELECT test . test_number FOR READ_LOCK
+		         WHERE  test_number = SELECT test . test_number
+		                                  IN OBJECT test_object
+
+		IF testno <> EMPTY THEN
+			object_copy_current_table ( test_object, "TEST" )
+			lock_retain_object ( "TEST", test_object )
+		ENDIF
+
+	ENDIF
+
+	IF NOT lock_validate_object ( "SAMPLE" , sample_object ) THEN
+
+		sampid = SELECT sample . id_numeric FOR READ_LOCK
+		         WHERE  id_numeric = SELECT sample . id_numeric
+		                                 IN OBJECT sample_object
+
+		IF sampid <> EMPTY THEN
+			object_copy_current_table ( sample_object, "SAMPLE" )
+			lock_retain_object ( "SAMPLE", sample_object )
+		ENDIF
+
+	ENDIF
+
+	IF SELECT job_header . job_name IN OBJECT job_object <> EMPTY THEN
+
+		IF NOT lock_validate_object ( "JOB_HEADER" , job_object ) THEN
+
+			jobnam = SELECT job_header . job_name FOR READ_LOCK
+			         WHERE  job_name = SELECT job_header . job_name
+			                                 IN OBJECT job_object
+
+			IF jobnam <> EMPTY THEN
+				object_copy_current_table ( job_object, "JOB_HEADER" )
+				lock_retain_object ( "JOB_HEADER", job_object )
+			ENDIF
+
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE lib_re_prompt_build_status_array ( result_object )
+
+	ARRAY result_object . status_array ARRAYSIZE ( 0, 2 )
+
+	IF ( result_object . initial_status = "E" ) OR
+	   ( result_object . initial_status = "M" ) THEN
+
+		{ First element is initial status }
+
+		result_object . status_array [ 1, 1 ] =
+					result_object . initial_status
+		result_object . status_array [ 1, 2 ] =
+					result_object . initial_status
+
+		{ Second element is authorised status }
+
+		result_object . status_array [ 2, 1 ] = "A"
+		result_object . status_array [ 2, 2 ] = "A"
+
+		{ Third element is rejected status }
+
+		result_object . status_array [ 3, 1 ] = "R"
+		result_object . status_array [ 3, 2 ] = "R"
+
+	ELSE
+
+		result_object . status_array [ 1, 1 ] =
+					result_object . result_status
+		result_object . status_array [ 1, 2 ] =
+					result_object . result_status
+
+	ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+GLOBAL
+
+ROUTINE lib_re_prompt_get_rendition_settings ( result_object         ,
+                                               result_context_object ,
+                                               blink_mode            ,
+                                               foreground_colour     ,
+                                               background_colour     )
+
+	foreground_colour = PROMPT_COLOUR_BLACK
+	background_colour = PROMPT_COLOUR_NOTSET
+
+	blink_mode = SELECT result . out_of_range
+	                    IN OBJECT result_object
+
+	IF blink_mode THEN
+
+		IF result_object .
+		      get_level_failure_colour ( result_context_object ,
+		                                 SELECT result . out_of_range_level
+		                                        IN OBJECT result_object ,
+		                                 foreground_colour ,
+		                                 background_colour )
+
+			blink_mode = FALSE
+
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE lib_re_prompt_prompt_for_value (       result_object,
+                                               result_context_object,
+                                         VALUE cell_column,
+                                         VALUE cell_row,
+                                               window,
+                                         VALUE column,
+                                         VALUE row,
+                                         VALUE cell_width,
+                                         VALUE cell_height )
+
+	DECLARE result_entered,
+		ok_to_leave,
+		status,
+		bold_mode,
+		blink_mode,
+		field_value,
+		do_edit,
+		result_status,
+		status_text,
+		changed_unit,
+		changed_text,
+		changed_val,
+		changed_status,
+		sample_was_upgraded,
+		test_was_upgraded,
+		foreground_colour,
+		background_colour
+
+{JON 1.1}
+
+    IF (GLOBAL("WSHEET_INFO_FORCE_ENTRY") = TRUE ) THEN       
+                        	                  	                                                                              
+        IF wsheet_filled_in ( result_object.test_number ) = FALSE THEN
+	   
+            DECLARE display_only, 
+                    test_array,
+                    multi_test,
+                    analysis_array,
+                    validTestStatus                                     {1.5}
+
+            ARRAY test_array
+            ARRAY analysis_array
+
+            {1.3/}
+            {1.5/}
+
+            display_only = result_context_object . display_only
+
+            IF ( object_get_class_name (result_context_object) = "RETSRGRID" )
+            OR ( object_get_class_name (result_context_object) = "RETTRGRID" )
+            OR ( object_get_class_name (result_context_object) = "RERSWGRID" ) {1.2}
+            OR ( object_get_class_name (result_context_object) = "REJOBLISTGRID" ) {1.4}
+  
+                multi_test     = TRUE
+                analysis_array = EMPTY
+                CALL_ROUTINE "getTestsForSameAnalysis" IN LIBRARY "$lib_tsr_toolbox" USING result_object, result_context_object.result_array, test_array, multi_test
+
+                IF ( NOT display_only )
+
+                    CALL_ROUTINE "validTestStatus" IN LIBRARY "$lib_tsr_toolbox" USING result_object.test_object RETURNING validTestStatus
+                    display_only = ( NOT validTestStatus )
+                    
+                ENDIF
+                
+            ELSE    {spreadsheet}
+  
+                CALL_ROUTINE "getAllTests" IN LIBRARY "$lib_twr_toolbox" USING result_context_object, result_context_object.current_column, test_array
+
+                IF ( NOT display_only )
+
+                    CALL_ROUTINE "validTestStatus" IN LIBRARY "$lib_twr_toolbox" USING result_object.test_object RETURNING validTestStatus
+                    display_only = ( NOT validTestStatus )
+                    
+                ENDIF
+
+                CALL_ROUTINE "checkStatusAllTests" IN LIBRARY "$lib_twr_toolbox" USING test_array RETURNING multi_test
+                analysis_array = EMPTY
+ 
+            ENDIF
+            
+            {/1.3}
+            {/1.5}
+            
+            CALL_ROUTINE "WSHEET_INFO_RECORDS"
+            IN LIBRARY "WSHEET_INFO"
+            USING result_object.test_number, display_only, test_array, multi_test, analysis_array
+            NEW TRANSACTION
+
+		ENDIF
+
+    ENDIF
+
+	{/JON 1.1}
+
+	changed_unit = TRUE
+	changed_text = TRUE
+	changed_status = TRUE
+
+	result_status = SELECT result . status IN OBJECT result_object
+
+	status_text = ""
+
+	result_object . display_audits    ( result_context_object )
+	result_object . display_incidents ( result_context_object )
+	result_object . mlp_paste         ( result_context_object )
+	result_object . display_graph     ( result_context_object )
+
+	lib_re_prompt_get_rendition_settings ( result_object         ,
+	                                       result_context_object ,
+	                                       blink_mode            ,
+	                                       foreground_colour     ,
+	                                       background_colour     )
+{JON 1.1}
+	IF (GLOBAL("WSHEET_INFO_FORCE_ENTRY") = TRUE ) THEN
+		IF wsheet_filled_in ( result_object.test_number ) = FALSE THEN
+	
+			field_value = SELECT result . text
+					IN OBJECT result_object
+
+			status = SELECT result . status
+					IN OBJECT result_object
+
+			bold_mode = ( status = "A" ) OR
+					( status = "X" ) OR
+					( status = "R" )
+
+			screen_end_update ( )
+
+			PROMPT FOR field_value
+				ON LINE row FROM column TO column + cell_width - 1
+				IN WINDOW window
+				WITH ( display_only = TRUE       ,
+					blinking     = blink_mode ,
+					bold         = bold_mode  ,
+					inverse      = TRUE       ,
+					status_text  =
+					strip ( result_object . get_browse_string ()))
+		
+			DISPLAY field_value
+				ON LINE row FROM column TO column + cell_width - 1
+				IN WINDOW window
+				BLINKING = blink_mode
+				BOLD     = bold_mode
+		
+			screen_begin_update ( )
+
+			result_context_object . display_message (
+							"RESULT_ENTRY_LOCKED" ,
+							FALSE                 )
+
+		ENDIF
+	ENDIF
+	{/JON 1.1}
+
+	IF lib_re_prompt_lock_result ( result_object         ,
+	                               result_context_object ,
+	                               sample_was_upgraded   ,
+	                               test_was_upgraded     ,
+	                               do_edit               ,
+	                               status_text           ,
+	                               cell_column           ,
+	                               cell_row              ,
+	                               window                ) THEN
+
+		{ Result is locked }
+
+		IF result_context_object . prompt_using_raw THEN
+			field_value = SELECT result . raw_result
+			                IN OBJECT result_object
+		ELSE
+			field_value = result_object . get_display_text ( )
+		ENDIF
+
+		status = SELECT result . status
+		           IN OBJECT result_object
+
+		bold_mode = ( status = "A" ) OR
+			    ( status = "X" ) OR
+			    ( status = "R" )
+
+		IF BLANK ( status_text ) THEN
+			status_text = strip ( result_object . get_browse_string ( ))
+		ENDIF
+
+		result_context_object . display_message ( status_text, TRUE )
+
+		screen_end_update ( )
+
+		PROMPT FOR field_value
+		       ON LINE row FROM column TO column + cell_width - 1
+		       IN WINDOW window
+		       WITH ( foreground_colour = foreground_colour ,
+			      background_colour = background_colour ,
+			      display_only      = TRUE              ,
+			      blinking          = blink_mode        ,
+			      bold              = bold_mode         ,
+			      inverse           = TRUE              ,
+			      status_text       = ""                )
+
+		IF result_object . test_object . needs_instrument ( ) THEN
+
+			IF (( lastkey = "FIND" ) OR ( lastkey = "RETURN" )) AND
+			   ( result_context_object . re_mode = RE_MODIFY )  THEN
+
+				IF result_context_object . prompt_instrument ( result_object . test_object ) THEN
+
+				ENDIF
+
+				SET GLOBAL ( "LASTKEY" ) TO "CONTINUE"
+
+			ENDIF
+
+		ENDIF
+
+		screen_begin_update ( )
+
+		result_context_object . display_message ( "RESULT_ENTRY_LOCKED" ,
+		                                          FALSE                 )
+
+	{JON 1.1}
+	IF (GLOBAL("WSHEET_INFO_FORCE_ENTRY") = TRUE ) THEN
+		IF wsheet_filled_in ( result_object.test_number ) = FALSE THEN
+			do_edit = FALSE
+		ENDIF
+	ENDIF
+	{/JON 1.1}
+
+	IF do_edit THEN
+
+		screen_end_update ( )
+
+		REPEAT
+
+			result_object . prompt_for_type ( cell_column           ,
+			                                  cell_row              ,
+			                                  window                ,
+			                                  column                ,
+			                                  row                   ,
+			                                  cell_width            ,
+			                                  cell_height           ,
+			                                  FOR_EDIT              ,
+			                                  blink_mode            ,
+			                                  foreground_colour     ,
+			                                  background_colour     ,
+			                                  result_context_object )
+
+			changed_unit = ( result_object . result_unit <>
+			                 ( SELECT result . units
+			                          IN OBJECT result_object ))
+
+			IF NOT result_object . uses_raw_result THEN
+
+				{ Raw result has not been set for this result type }
+				result_object . result_raw_str = result_object . result_str
+
+			ENDIF
+
+			IF GLOBAL ( "RES_ROUND_RESULTS" ) THEN
+
+				IF ( result_object . result_str <>
+				     ( SELECT result . text
+				              IN OBJECT result_object )) THEN
+
+					changed_text = TRUE
+
+				ELSEIF NOT result_object . uses_raw_result THEN
+
+					changed_text = FALSE
+
+				ELSE
+
+					changed_text = ( result_object . result_raw_str <>
+					                 ( SELECT result . raw_result
+					                          IN OBJECT result_object ))
+
+				ENDIF
+
+			ELSE
+
+				changed_text = ( result_object . result_str <>
+				                 ( SELECT result . text
+				                          IN OBJECT result_object ))
+
+			ENDIF
+
+			changed_val  = ( result_object . result_val <>
+			                 ( SELECT result . value
+			                          IN OBJECT result_object ))
+
+			IF ( lastkey = "EXIT" ) AND
+			   ( NOT result_object . is_calculation ) THEN
+
+				ok_to_leave = TRUE
+				result_entered = FALSE
+
+			ELSEIF changed_unit OR
+			       changed_text OR
+			       changed_val  THEN
+
+				{ Blank out the instrument used }
+
+				result_object . instrument_used = ""
+
+				IF changed_unit THEN
+					result_context_object .
+						update_display ( cell_column ,
+								 cell_row    ,
+								 TRUE        ,
+								 FALSE       ,
+								 FALSE       )
+				ENDIF
+
+				ok_to_leave = result_object . store_result (
+				                        result_context_object )
+
+				{ if ok_to_leave returns false then
+				  out of mlp range - no result entered.
+				  result should be reset - but do not
+				  leave }
+
+				IF ok_to_leave THEN
+
+					result_object . result_str =
+					       SELECT result . text
+					       IN OBJECT result_object
+					result_object . result_raw_str =
+					       SELECT result . raw_result
+					       IN OBJECT result_object
+					result_object . result_val =
+					       SELECT result . value
+					       IN OBJECT result_object
+					result_object . result_unit =
+					       SELECT result . units
+					       IN OBJECT result_object
+
+					{ Force screen refresh }
+
+					changed_unit = TRUE
+					changed_text = TRUE
+
+					result_entered = TRUE
+
+				ELSE
+
+					IF result_object . store_pending THEN
+
+						result_object . result_str =
+						       SELECT result . text
+						       IN OBJECT result_object
+						result_object . result_raw_str =
+						       SELECT result . raw_result
+						       IN OBJECT result_object
+						result_object . result_val =
+						       SELECT result . value
+						       IN OBJECT result_object
+						result_object . result_unit =
+						       SELECT result . units
+						       IN OBJECT result_object
+
+					ELSE
+
+						result_object . reselect_result (
+						       result_context_object ,
+						       TRUE                  )
+
+					ENDIF
+
+					result_context_object . update_display (
+					         cell_column    ,
+					         cell_row       ,
+					         TRUE           ,
+					         TRUE           ,
+					         FALSE          )
+
+					result_entered = FALSE
+
+				ENDIF
+
+			ELSE
+
+				ok_to_leave = TRUE
+				result_entered = FALSE
+
+			ENDIF
+
+		UNTIL ok_to_leave
+
+		screen_begin_update ( )
+
+	ELSE
+
+		result_entered = FALSE
+
+	ENDIF
+
+	lib_re_prompt_post_edit_lock_validate ( result_object )
+
+	IF NOT result_entered AND NOT result_object . store_pending THEN
+
+		lock_downgrade_object ( "RESULT"      ,
+		                        result_object )
+
+		lib_re_prompt_unlock_result ( result_object       ,
+		                              sample_was_upgraded ,
+		                              test_was_upgraded   )
+
+	ELSE
+		result_context_object .
+		        lock_downgrade_object ( "RESULT"      ,
+		                                result_object )
+	ENDIF
+
+	result_object . mlp_unpaste ( )
+
+	result_object . remove_audits ( result_context_object )
+
+	changed_status = ( result_status <>
+	                   ( SELECT result . status IN OBJECT result_object ) )
+
+	{ Always re-display out of range as the
+	  prompt removes the flash attribute      }
+
+	changed_text = TRUE { Ensures proper display rendition }
+
+	result_context_object . update_display ( cell_column    ,
+	                                         cell_row       ,
+	                                         changed_unit   ,
+	                                         changed_text   ,
+	                                         changed_status )
+
+	RETURN ( result_entered )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE lib_re_prompt_prompt_for_status (       result_object,
+                                                result_context_object,
+                                          VALUE cell_column,
+                                          VALUE cell_row,
+                                                window,
+                                          VALUE column,
+                                          VALUE row,
+                                          VALUE cell_width,
+                                          VALUE cell_height )
+
+
+	DECLARE status_entered,
+		do_edit,
+		status,
+		status_text,
+		bold_mode,
+		blink_mode,
+		sample_was_upgraded,
+		test_was_upgraded
+
+	status_text = strip ( result_object . get_browse_string ( ))
+
+        result_object . display_audits    ( result_context_object )
+        result_object . display_incidents ( result_context_object )
+        result_object . mlp_paste         ( result_context_object )
+        result_object . display_graph     ( result_context_object )
+
+	IF lib_re_prompt_lock_result ( result_object         ,
+	                               result_context_object ,
+	                               sample_was_upgraded   ,
+	                               test_was_upgraded     ,
+                                       do_edit               ,
+                                       status_text           ,
+                                       cell_column           ,
+                                       cell_row              ,
+                                       window                ) THEN
+
+		blink_mode = SELECT result . out_of_range
+				IN OBJECT result_object
+
+		status = SELECT result . status
+				IN OBJECT result_object
+
+		bold_mode = ( status = "A" ) OR
+			    ( status = "X" ) OR
+			    ( status = "R" )
+
+		result_context_object . display_message ( status_text, TRUE )
+
+		screen_end_update ( )
+
+		DISPLAY status
+			ON LINE row FROM column TO column + cell_width - 1
+			IN WINDOW window
+			BLINKING = blink_mode
+			BOLD     = bold_mode
+			INVERSE
+
+		PROMPT IN WINDOW window ON LINE row FROM column
+
+		DISPLAY status
+			ON LINE row FROM column TO column + cell_width - 1
+			IN WINDOW window
+			BLINKING = blink_mode
+			BOLD     = bold_mode
+
+		screen_begin_update ( )
+
+		result_context_object . display_message (
+							"RESULT_ENTRY_LOCKED" ,
+							FALSE                 )
+
+	ENDIF
+
+	IF do_edit THEN
+
+		screen_end_update ( )
+
+		lib_re_prompt_build_status_array ( result_object )
+
+		bold_mode = ( result_object . result_status = "A" ) OR
+			    ( result_object . result_status = "X" ) OR
+			    ( result_object . result_status = "R" )
+
+		PROMPT FOR result_object . result_status
+		        ON LINE row FROM column TO ( column + cell_width - 1 )
+		        IN WINDOW window
+		        CHOOSE OUTOF result_object . status_array
+		        WITH ( bold        = bold_mode   ,
+		               status_text = status_text )
+
+		IF result_object . result_status <> ( SELECT result . status
+	                                      IN OBJECT result_object ) THEN
+
+			result_object . store_status ( result_context_object )
+			status_entered = TRUE
+
+		ELSE
+
+			status_entered = FALSE
+
+		ENDIF
+
+		screen_begin_update ( )
+
+	ELSE
+
+		status_entered = FALSE
+
+	ENDIF
+
+	IF NOT status_entered AND NOT result_object . store_pending THEN
+
+		lock_downgrade_object ( "RESULT"      ,
+		                        result_object )
+
+		lib_re_prompt_unlock_result ( result_object       ,
+		                              sample_was_upgraded ,
+		                              test_was_upgraded   )
+
+	ELSE
+		result_context_object .
+			lock_downgrade_object ( "RESULT"      ,
+			                        result_object )
+	ENDIF
+
+        result_object . mlp_unpaste ( )
+
+        result_object . remove_audits ( result_context_object )
+
+	result_context_object . update_display ( cell_column    ,
+                                                 cell_row       ,
+						 FALSE          ,
+						 FALSE          ,
+						 status_entered )
+	RETURN ( status_entered )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE lib_re_prompt_prompt_for_status_bar (       result_object,
+					            result_context_object,
+                                              VALUE cell_column,
+                                              VALUE cell_row,
+                                                    window,
+                                              VALUE column,
+                                              VALUE row,
+                                              VALUE cell_width,
+                                              VALUE cell_height )
+
+
+	DECLARE status_entered,
+		do_edit,
+		do_display,
+		status,
+		status_text,
+		bold_mode,
+		blink_mode,
+		field_value,
+		sample_was_upgraded,
+		test_was_upgraded,
+		foreground_colour,
+		background_colour
+
+	status_text = strip ( result_object . get_browse_string ( ))
+
+        result_object . display_audits    ( result_context_object )
+        result_object . display_incidents ( result_context_object )
+        result_object . mlp_paste         ( result_context_object )
+        result_object . display_graph     ( result_context_object )
+
+	do_display = lib_re_prompt_lock_result ( result_object         ,
+		                                 result_context_object ,
+	                                         sample_was_upgraded   ,
+	                                         test_was_upgraded     ,
+	                                         do_edit               ,
+	                                         status_text           ,
+	                                         cell_column           ,
+	                                         cell_row              ,
+	                                         window                )
+
+	IF do_display OR do_edit THEN
+
+		field_value = result_object . get_display_text ( )
+
+		lib_re_prompt_get_rendition_settings ( result_object         ,
+		                                       result_context_object ,
+		                                       blink_mode            ,
+		                                       foreground_colour     ,
+		                                       background_colour     )
+
+		status = SELECT result . status
+				IN OBJECT result_object
+
+		bold_mode = ( status = "A" ) OR
+			    ( status = "X" ) OR
+			    ( status = "R" )
+
+		result_context_object . display_message ( status_text, TRUE )
+
+		screen_end_update ( )
+
+		PROMPT FOR field_value
+		       ON LINE row FROM column TO column + cell_width - 1
+		       IN WINDOW window
+		       WITH ( foreground_colour = foreground_colour ,
+			      background_colour = background_colour ,
+			      display_only      = TRUE              ,
+			      blinking          = blink_mode        ,
+			      bold              = bold_mode         ,
+			      inverse           = TRUE              ,
+			      status_text       = ""                )
+
+		DISPLAY field_value
+			ON LINE row FROM column TO column + cell_width - 1
+			IN WINDOW window
+			BLINKING = blink_mode
+			BOLD     = bold_mode
+
+		screen_begin_update ( )
+
+		result_context_object . display_message (
+							"RESULT_ENTRY_LOCKED" ,
+							FALSE                 )
+
+        ENDIF
+
+	IF do_edit AND ( lastkey = "RETURN" ) THEN
+
+                { Attempt to modify status }
+
+                IF INDEX ( LIB_RE_RESULT_ENTERED_STATUS,
+                           result_object . result_status ) > 0 THEN
+
+                        { original status E or M, change to A }
+
+                        result_object . result_status = "A"
+
+                ELSEIF INDEX ( LIB_RE_RESULT_AUTH_STATUS,
+                           result_object . result_status ) > 0 THEN
+
+                        { Change status back to initial }
+
+                        result_object . result_status =
+                                result_object . initial_status
+
+                ENDIF
+
+
+                IF result_object . result_status <>
+                 ( SELECT result . status IN OBJECT result_object ) THEN
+
+                        result_object . store_status
+                                        ( result_context_object )
+
+                        status_entered = TRUE
+
+                ELSE
+
+                        status_entered = FALSE
+
+                ENDIF
+	ELSE
+
+		status_entered = FALSE
+
+	ENDIF
+
+	IF NOT status_entered AND NOT result_object . store_pending THEN
+
+		lock_downgrade_object ( "RESULT"      ,
+		                        result_object )
+
+		lib_re_prompt_unlock_result ( result_object       ,
+		                              sample_was_upgraded ,
+		                              test_was_upgraded   )
+
+	ELSE
+		result_context_object .
+			lock_downgrade_object ( "RESULT"      ,
+			                        result_object )
+	ENDIF
+
+        result_object . mlp_unpaste ( )
+
+        result_object . remove_audits ( result_context_object )
+
+	result_context_object . update_display ( cell_column    ,
+                                                 cell_row       ,
+						 FALSE          ,
+						 FALSE          ,
+						 status_entered )
+	RETURN ( status_entered )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE lib_re_prompt_prompt_gui_select (       result_object         ,
+                                                result_context_object ,
+                                          VALUE cell_column           ,
+                                          VALUE cell_row              ,
+                                                window                ,
+                                          VALUE column                ,
+                                          VALUE row                   ,
+                                          VALUE cell_width            ,
+                                          VALUE cell_height           )
+
+
+	DECLARE field_value,
+	        blink_mode,
+	        foreground_colour,
+	        background_colour
+
+	result_object . display_audits    ( result_context_object )
+	result_object . display_incidents ( result_context_object )
+	result_object . mlp_paste         ( result_context_object )
+	result_object . display_graph     ( result_context_object )
+
+	field_value = result_object . get_display_text ( )
+
+	{ Refresh the display in case a mouse click select has occurred }
+	result_context_object . update_display ( cell_column    ,
+						 cell_row       ,
+						 FALSE          ,
+						 TRUE           ,
+						 FALSE          )
+
+	{ Reposition the user at the value prompt }
+	result_context_object . redisplay_cell ( cell_column ,
+						 cell_row    )
+
+	screen_end_update ( )
+
+	lib_re_prompt_get_rendition_settings ( result_object         ,
+	                                       result_context_object ,
+	                                       blink_mode            ,
+	                                       foreground_colour     ,
+	                                       background_colour     )
+
+	PROMPT FOR field_value
+	       BROWSE ON DISPLAY
+	       ON LINE row FROM column TO column + cell_width - 1
+	       IN WINDOW window
+	       BLINKING = blink_mode
+	       BOLD     = TRUE
+	       INVERSE  = ( NOT result_object . selected )
+	       WITH ( foreground_colour = foreground_colour ,
+	              background_colour = background_colour ,
+	              status_text = strip ( result_object . get_browse_string ()))
+
+	IF lastkey = "RETURN" THEN
+
+		result_object . selected = NOT result_object . selected
+		SET GLOBAL "LASTKEY" TO "CONTINUE"
+
+	ENDIF
+
+	{ Refresh the display }
+
+	result_context_object . update_display ( cell_column    ,
+						 cell_row       ,
+						 FALSE          ,
+						 TRUE           ,
+						 FALSE          )
+
+	screen_begin_update ( )
+
+	result_object . mlp_unpaste ( )
+
+	result_object . remove_audits ( result_context_object )
+
+ENDROUTINE
+
+{----------------------------------------------------------------------------}
+
+ROUTINE lib_re_prompt_display_result (       result_object,
+                                             result_context_object,
+                                       VALUE cell_column,
+                                       VALUE cell_row,
+                                             window,
+                                       VALUE column,
+                                       VALUE row,
+                                       VALUE cell_width,
+                                       VALUE cell_height )
+
+	DECLARE blink_mode ,
+	        foreground_colour ,
+	        background_colour
+
+
+	lib_re_prompt_lock_validate ( result_object         ,
+	                              result_context_object ,
+	                              cell_column           ,
+	                              cell_row              )
+
+	result_object . display_audits    ( result_context_object )
+	result_object . display_incidents ( result_context_object )
+	result_object . mlp_paste         ( result_context_object )
+	result_object . display_graph     ( result_context_object )
+
+	screen_end_update ( )
+
+	lib_re_prompt_get_rendition_settings ( result_object         ,
+	                                       result_context_object ,
+	                                       blink_mode            ,
+	                                       foreground_colour     ,
+	                                       background_colour     )
+
+	result_object . prompt_for_type ( cell_column           ,
+	                                  cell_row              ,
+	                                  window                ,
+	                                  column                ,
+	                                  row                   ,
+	                                  cell_width            ,
+	                                  cell_height           ,
+	                                  FOR_DISPLAY           ,
+	                                  blink_mode            ,
+	                                  foreground_colour     ,
+	                                  background_colour     ,
+	                                  result_context_object )
+
+	result_context_object . update_display ( cell_column    ,
+	                                         cell_row       ,
+	                                         FALSE          ,
+	                                         TRUE           ,
+	                                         FALSE          )
+
+	screen_begin_update ( )
+
+	result_object . mlp_unpaste ( )
+
+	result_object . remove_audits ( result_context_object )
+
+ENDROUTINE
+
+{----------------------------------------------------------------------------}

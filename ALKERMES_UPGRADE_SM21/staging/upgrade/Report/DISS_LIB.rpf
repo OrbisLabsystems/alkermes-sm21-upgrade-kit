@@ -1,0 +1,665 @@
+{ ============================== DISS_LIB=====================================}
+{                                                                             }
+{ Modified by: D. KELLY                          Date: 22-APR-1998            }
+{                                                                             }
+{ Purpose    : Library of Routines for          (c) TENSOR Technologies       }
+{              Dissolution Testing.                                           }
+{                                                                             }
+{ Description: Calculated Component for Dissolution Testing                   }
+{                                                                             }
+{ Document   : 98795                                                          }
+{                                                                             }
+{ ============================================================================}
+{ Modification History                                                        }
+{ --------------------                                                        }
+{ Date    By      Description                                                 }
+{ 100898  DK      Add other values array as additional parameter, permits     }
+{                 return of RANGE value which is Elan requirement.            }
+{ ============================================================================}
+
+
+JOIN STANDARD_LIBRARY std_utils
+JOIN LIBRARY $LIB_UTILS
+JOIN STANDARD_LIBRARY STD_ARRAY
+
+
+GLOBAL ROUTINE DISSOLUTION ( id_num,
+                             current_test_number,
+                             current_component_name,
+                             anal_arr,
+                             mean_arr,
+                             spec_arr,
+                             test_sch,
+                             overall_msg,
+                             mean,
+                             level,
+                             other_values     )
+
+
+
+DECLARE test_stat, mean_val, msg, range
+ARRAY test_stat
+ARRAY mean_val
+overall_msg = ""
+msg         = ""
+range       = ""
+mean = ""
+
+other_values [ 1 ] = ""
+
+i = 1
+
+no_timepoints = SIZE_OF_ARRAY ( anal_arr )
+
+
+                                      { Cycle through all timepoints as def- }
+                                      { ined in array anal_arr.              }
+
+WHILE ( i <= no_timepoints ) DO
+
+
+
+                                     { Tests_completed returns msg and level}
+
+    test_stat [ i ]  = tests_completed ( id_num, anal_arr [ i ], level )
+
+    overall_msg = overall_msg : test_stat [ i ]
+
+                                      { Calculate Summary Statistics only if }
+                                      { testing is completed.                }
+                                     
+
+    IF INDEX ( test_stat [ i ] , "Completed" ) > 0 THEN
+
+        get_results_and_stats ( i, level, id_num, anal_arr [ i ], mean, msg,
+                                range        ) { added   range,  JMW, 090698}
+
+        mean_val [ i ] = mean
+
+
+
+        other_values [ 1 ] = range
+
+                                    { build message to include info       }
+
+        overall_msg = overall_msg : msg
+
+                                      { If Testing has failed then Check if  }
+                                      { sample will pass higher level testing}
+                                      { a message is posted indicating result}
+
+        IF INDEX ( msg, "Failed" ) > 0 THEN
+
+             check_for_extended_testing ( i, level, id_num, anal_arr [i], msg1)
+
+             IF INDEX ( msg1, "Pass" ) > 0 THEN
+                 diss_message ( current_component_name,
+                                "Assign Test Schedule ": test_sch [ level +1]:
+                                " for further testing. " : msg )
+             ELSE
+                 diss_message ( current_component_name,
+                                "Further Testing should not be assigned as " :
+                                "the sample " : msg   )
+             ENDIF
+
+        ENDIF
+    ENDIF
+    i = i + 1
+
+ENDWHILE
+
+                                            { All relevant calculations have}
+                                            { now been completed. The value }
+                                            { that will be returned will    }
+                                            { depend on the current compon- }
+                                            { ent name. Defined component   }
+                                            { names include the text        }
+                                            { "Outcome", "Level" or "Mean"  }
+
+                                            { Add "L" to the level          }
+
+level = "L" : STRIP ( level )
+                                            { Pass back the value of the    }
+                                            { mean only if the test is      }
+                                            { completed otherwise blank     }
+i = 1
+size_mean_arr = SIZE_OF_ARRAY ( mean_arr )
+WHILE ( i <= size_mean_arr ) DO
+    IF current_component_name = mean_arr [ i ] THEN
+        IF INDEX ( test_stat [ i ] ,"Completed" ) > 0 THEN
+            mean = mean_val [ i ]          
+					    
+					   
+        ENDIF
+    ENDIF
+    i = i + 1
+ENDWHILE
+
+ENDROUTINE
+
+{===========================================================================}
+{ ROUTINE get_results_and_stats  ( timepoint, the_level, samp_id,           }
+{                                  analysis_root, mean, message)            }
+{                                                                           }
+{ Author      : JMW                                                         }
+{ Date Created: 15-FEB-1998                                                 }
+{ Description : This routine checks whether the component results are       }
+{               within the specification limits defined in the arrays       }
+{               in the previous routine.                                    }
+{                                                                           }
+{===========================================================================}
+{ Parameters         Passed by       Description                            }
+{ ----------         ---------       -----------                            }
+{ timepoint          VALUE           The Time point for a particular test   }
+{ the_level          VALUE           The test level                         }
+{ samp_id            VALUE           The sample ID                          }
+{ analysis_root      VALUE           The current analysis                   }
+{ mean               RETURNED        The mean value of the results          }
+{ message            RETURNED        The returned message                   }
+{ range              RETURNED        For Range value                        }
+{===========================================================================}
+
+GLOBAL ROUTINE get_results_and_stats ( VALUE timepoint,
+                                       VALUE the_level,
+                                       VALUE samp_id,
+                                       VALUE analysis_root,
+                                             mean,
+                                             message,
+                                             range
+                                     )
+DECLARE total, no_results, result, msg_indiv, msg_mean, msg_L3, min, max
+msg_indiv  = ""
+msg_mean   = ""
+msg_L3     = ""
+total      = 0
+no_results = 0
+oos_indiv  = 0
+oos_L3     = 0
+min        = 99999999
+max        = -9999999
+
+                                            { Find all the components for   }
+                                            { the Analysis Root ( e.g. H1_ )}
+                                            { that have a component name    }
+                                            { with the first few characters }
+                                            { of %Released that don't have  }
+                                            { Mean% in the name. Only read  }
+                                            { completed or authorised tests.}
+
+{DK Orbis 3 May 2000:: Removed Select on SAMP_TEST_RESULT to improve speed of calc 
+
+    comp_id = SELECT SAMP_TEST_RESULT . component_name
+              WHERE ( id_numeric = samp_id )
+                AND ( component_name LIKE "%Released%" )
+                AND ( component_name NOT LIKE "Mean%" )
+                AND ( analysis LIKE analysis_root : "%" )
+                AND (( test_status = "C" ) OR ( test_status = "A" )) 
+		   
+}
+
+
+
+{DK Orbis 3 May 2000: : Added New code to Select from Test and Result Table to improve
+                        Calculation Speed                                             }
+{
+    DECLARE the_test_no
+
+    the_test_no = SELECT MAX test . test_number 
+                   WHERE ( sample = samp_id )
+                   AND   ( analysis LIKE analysis_root : "%" )
+                   AND   ( status <> "X" )
+
+    comp_id = SELECT RESULT . name
+               WHERE ( test_number = the_test_no )
+                AND  ( name LIKE "%Released%" )
+                AND  ( name NOT LIKE "Mean%" )
+                AND  ( status <> EMPTY )
+}
+{ DK Orbis 3 May 2000: end of mods}
+		
+{gf , Orbis 15 May 2000 : : Mods to code }
+
+        the_test_no = SELECT test . test_number 
+                   WHERE ( sample = samp_id )
+                   AND   ( analysis LIKE analysis_root : "%" )
+                   AND   ( status <> "X" )
+
+        WHILE (the_test_no <> EMPTY)
+        
+             comp_id = SELECT RESULT . name
+               WHERE ( test_number = the_test_no )
+                AND  ( name LIKE "%Released%" )
+                AND  ( name NOT LIKE "Mean%" )
+                AND  ( status <> EMPTY )
+
+{gf, Orbis 15 May 2000 : :End of Mods}
+                    
+                    WHILE ( comp_id <> EMPTY ) DO
+
+{DK Orbis 3 May 2000: Replaced select on SAMP_TEST_RESULT with Select on RESULT 
+
+        result = SELECT SAMP_TEST_RESULT . result_value
+
+}
+
+        result = SELECT RESULT . value 
+
+{DK Orbis 3 May 2000: end of mod }
+
+
+                                            { This is the key part of the   }
+                                            { report that checks against the}
+                                            { specifications. Note that if  }
+                                            { the level is L1, the check    }
+                                            { is against spec array values  }
+                                            { 1&2, L2 is against 3&4 etc.   }
+
+       
+         
+        IF ( result < spec_arr [ timepoint, (( 2 * the_level ) - 1 ) ] ) OR
+           ( result > spec_arr [ timepoint, (( 2 * the_level ) )     ] ) THEN
+
+            oos_indiv = oos_indiv + 1
+            build_message ( oos_indiv, comp_id, msg_indiv )
+
+        ENDIF
+        
+                                            { For L3, we also need to check }
+                                            { all units against the "L1"    }
+                                            { levels. If more than two fail }
+                                            { this level, then the level    }
+                                            { test fails                    }
+					    {Edited 04/03/99 by MK to alter }
+					    {reference to "L1" to "L2".     }
+        IF the_level = 3 THEN
+
+            IF ( result < spec_arr [ timepoint, 3 ] ) OR
+               ( result > spec_arr [ timepoint, 4 ] ) THEN
+
+                oos_L3 = oos_L3 + 1
+                build_message ( oos_L3, comp_id, msg_L3 )
+
+            ENDIF
+        ENDIF
+
+        total = total + result
+
+					    {===============================}
+				          {  DK 10/08/98                  }
+					    {===============================}
+                                  { Added for Min Max calculation }
+					    {===============================}
+
+        IF result < min THEN min = result ENDIF
+        IF result > max THEN max = result ENDIF
+
+        no_results = no_results + 1
+
+{DK Orbis 3 May 2000: Replaced Select on SAMP_TEST_RESULT with RESULT
+
+        NEXT SAMP_TEST_RESULT
+        comp_id = SELECT SAMP_TEST_RESULT . component_name
+}
+
+        NEXT RESULT
+        comp_id = SELECT RESULT . name
+
+    ENDWHILE
+
+                                            { Get Mean Value                }
+
+{gf, ORBIS  15 May 2000 : :start of mods}
+
+    NEXT TEST
+    the_test_no = SELECT test . test_number
+
+    ENDWHILE
+
+{gf, ORBIS 15 May 2000 : :end of mods}
+
+    IF ( no_results > 0 ) THEN mean = total / no_results ENDIF
+
+
+                                            { For L2&L3, we also need to    }
+                                            { check the mean, the mean      }
+                                            { of all tested units must lie  }
+                                            { within the L1 specification   }
+                                            { for the individual units.     }
+
+    IF ( the_level = 2 ) OR ( the_level = 3 ) THEN
+        IF ( mean < spec_arr [ timepoint, 1 ] ) OR
+           ( mean > spec_arr [ timepoint, 2 ] ) THEN
+
+            msg_mean = "Failed :- Mean for " : analysis_root : ". "
+        ENDIF
+    ENDIF
+
+                                          { Build the messages for indiv  }
+                                          { ( L1 ), two out of (L3 ) and  }
+                                          { mean ( L2, L3 )               }
+    IF ( oos_indiv > 0 ) THEN
+        msg_indiv = "Failed :- Individual " : STRIP ( msg_indiv ): ". "
+    ENDIF
+
+    IF ( oos_L3    > 2 ) THEN
+        msg_L3    = "Failed :- 2 Out Of "   : STRIP ( msg_L3 )   : ". "
+    ELSE
+        msg_L3    = "" { Wipe L3 Messages if not > 2 }
+    ENDIF
+
+    message = msg_indiv : msg_mean : msg_L3
+
+    IF ( message = "" ) THEN
+         message = "Passed at L" : STRIP ( the_level ) :
+                   " " : STRIP ( anal_arr [ timepoint ] ) : ". "
+    ENDIF
+
+                                          { Build the Range message       }
+
+    SET FORMAT "99999.99"
+    range = STRIP ( min ) : " - " : STRIP ( max )
+    SET FORMAT "9"
+
+ENDROUTINE
+
+{===========================================================================}
+{ ROUTINE build_message    ( no_oos, comp_id, msg )                         }
+{                                                                           }
+{ Author      : JMW                                                         }
+{ Date Created: 15-FEB-1998                                                 }
+{ Description : This routine builds the message                             }
+{                                                                           }
+{                                                                           }
+{===========================================================================}
+{ Parameters         Passed by       Description                            }
+{ ----------         ---------       -----------                            }
+{ no_oos             VALUE           The number of out of specification     }
+{ comp_id            VALUE           The component ID                       }
+{ msg                RETURNED        The returned message                   }
+{                      							    }
+{===========================================================================}
+
+GLOBAL ROUTINE  build_message ( VALUE no_oos,
+                                VALUE comp_id,
+                                      msg )
+
+    IF     no_oos > 1 THEN
+           msg = STRIP ( msg ) : "," : STRIP ( comp_id )
+    ELSEIF no_oos = 1
+           msg = STRIP ( comp_id )
+    ENDIF
+
+ENDROUTINE
+
+{===========================================================================}
+{ ROUTINE tests_completed  ( id_num, analysis_root, no_tests )              }
+{                                                                           }
+{ Author      : JMW                                                         }
+{ Date Created: 15-FEB-1998                                                 }
+{ Description : This routine determines what messages to return depending   }
+{               on whether a test has been assigned, completed or is in     }
+{               progress.                                                   }
+{                                                                           }
+{===========================================================================}
+{ Parameters         Passed by       Description                            }
+{ ----------         ---------       -----------                            }
+{ id_num             VALUE           The Sample numeric ID                  }
+{ analysis_root      VALUE           The root of the timepoint analysis     }
+{ no_tests           VALUE           The number of tests                    }
+{                      							    }
+{===========================================================================}
+
+GLOBAL ROUTINE tests_completed ( VALUE id_num,
+                                 VALUE analysis_root,
+                                       no_tests )
+
+DECLARE msg_assigned, msg_completed, msg_in_progress, current_analysis
+msg_assigned    = " Assigned but not started for "
+msg_completed   = " Completed for "
+msg_in_progress = " In Progress for "
+
+{DK Orbis 3 May 2000: Removed Select on SAMP_TEST_RESULT
+
+    no_results = SELECT COUNT SAMP_TEST_RESULT
+                 WHERE ( id_numeric = id_num )
+                   AND ( component_name LIKE "%Released%" )
+                   AND ( component_name NOT LIKE "Mean%" )
+                   AND ( analysis LIKE analysis_root : "%" )
+				Modification entered 170699
+				MK LIMS-99-18              
+		   AND ( test_status <> "X" )
+}
+{DK Orbis 3 May 2000: Added new code to select from test and component tables
+                      to improve efficiency and remove errors                }
+
+    DECLARE tests_assigned, anal_count, curr_no_results, the_anals
+
+    ARRAY the_anals
+    no_results = 0
+    curr_no_results = 0
+    anal_count = 1
+
+    tests_assigned = SELECT test . analysis
+                         WHERE sample = id_num AND
+                               status <> "X"
+
+    WHILE tests_assigned <> EMPTY DO
+
+        the_anals[anal_count] = tests_assigned
+
+        anal_count = anal_count + 1
+
+        NEXT TEST
+        tests_assigned = SELECT test . analysis
+
+    ENDWHILE
+
+    current_analysis = SELECT TEST . analysis
+                       WHERE ( test_number = current_test_number )
+        
+    anal_count = 1
+
+    WHILE anal_count <= SIZE_OF_ARRAY(the_anals) DO
+
+        curr_no_results = SELECT COUNT COMPONENT 
+                           WHERE ( analysis = the_anals [ anal_count ])
+                           AND   ( analysis LIKE analysis_root :"%"  ) 
+                           AND   ( analysis NOT LIKE current_analysis )
+                           AND   ( name LIKE "%Released%" )
+                           AND   ( name NOT LIKE "Mean%" )
+
+        the_test_no = SELECT TEST . test_number 
+                       WHERE ( sample = id_num )
+                       AND   ( analysis = the_anals [ anal_count ]) 
+                       AND   ( status <> "X")  
+                       AND   ( status <> "A" )
+
+        the_test_stat = SELECT TEST . status
+
+        IF the_anals[ anal_count] = current_analysis THEN
+
+            no_results = no_results
+
+        ELSEIF the_test_stat = "C" THEN
+
+            no_results = curr_no_results + no_results
+
+        ELSEIF the_test_stat = "V" THEN
+
+            no_results = no_results
+
+        ELSEIF the_test_stat = "P" THEN
+
+            no_new_results = SELECT COUNT RESULT
+                              WHERE test_number = the_test_no
+
+            no_results = no_results + no_new_results
+                              
+        ELSE
+
+            flashmessage("Test Status : ":the_test_stat:", New Condition Required", TRUE)
+
+        ENDIF
+
+        anal_count = anal_count + 1
+        
+
+    ENDWHILE
+
+
+
+{ DK Orbis 3 May 2000: END OF MODS }
+
+{ DK Orbis 3 May 2000: Comment out code as it is elected above
+
+    current_analysis = SELECT TEST . analysis
+                       WHERE ( test_number = current_test_number )
+
+   
+}
+    no_tests = SELECT COUNT TEST
+                WHERE ( sample   = id_num   )
+                  AND ( analysis LIKE analysis_root :"%"  )
+                  AND ( analysis NOT LIKE current_analysis )
+                                {Modification entered170699}
+				{MK LIMS-99-18             }
+		  AND (status <> "X" )
+
+
+    IF ( no_tests = 1 ) AND ( no_results = 0 ) THEN
+        RETURN ( "L1" : msg_assigned : analysis_root : ". " )
+
+    ELSEIF ( no_tests = 1 ) AND ( no_results < 6 ) THEN
+        RETURN ( "L1": msg_in_progress : analysis_root : ". " )
+
+    ELSEIF ( no_tests = 1 ) AND ( no_results = 6 ) THEN
+        RETURN ( "L1" : msg_completed : analysis_root : ". " )
+
+    ELSEIF ( no_tests = 2 ) AND ( no_results = 0 ) THEN
+        RETURN ( "L1,L2" : msg_assigned : analysis_root : ". " )
+
+    ELSEIF ( no_tests = 2 ) AND ( no_results = 6 ) THEN
+        RETURN ( "L2" : msg_assigned : analysis_root : ". " )
+
+    ELSEIF ( no_tests = 2 ) AND ( no_results > 6 ) AND ( no_results < 12 ) THEN
+        RETURN ( "L2" : msg_in_progress : analysis_root : ". " )
+
+    ELSEIF ( no_tests = 2 ) AND ( no_results = 12 ) THEN
+        RETURN ( "L2" : msg_completed : analysis_root : ". " )
+
+    ELSEIF ( no_tests = 3 ) AND ( no_results = 0 ) THEN
+        RETURN ( "L1,L2,L3" : msg_assigned : analysis_root : ". " )
+
+    ELSEIF ( no_tests = 3 ) AND ( no_results = 12 ) THEN
+        RETURN ( "L3" : msg_assigned : analysis_root : ". " )
+
+    ELSEIF ( no_tests = 3 ) AND ( no_results > 12 ) AND ( no_results < 24) THEN
+        RETURN ( "L3" : msg_in_progress : analysis_root : ". " )
+
+    ELSEIF ( no_tests = 3 ) AND ( no_results = 24 )
+        RETURN ( "L3" : msg_completed : analysis_root : ". " )
+
+    ELSE
+        diss_message ( current_component_name,  "Unknown Condition" )
+        RETURN ( "ERROR" )
+    ENDIF
+
+
+ENDROUTINE
+
+{===========================================================================}
+{ ROUTINE check_for_extended_testing  ( tpt, level, samp_id,                }
+{                                       anal_root, msg )                    }
+{                                                                           }
+{ Author      : JMW                                                         }
+{ Date Created: 15-FEB-1998                                                 }
+{ Description : This routine, on failure of a test, checks whether or not   }
+{               the failed component will pass or fail subsequent testing   }
+{               with reference to the specification limits.                 }
+{                                                                           }
+{===========================================================================}
+{ Parameters         Passed by       Description                            }
+{ ----------         ---------       -----------                            }
+{ tpt                VALUE           The Time point for a particular test   }
+{ level              VALUE           The test level                         }
+{ samp_id            VALUE           The sample ID                          }
+{ anal_root          VALUE           The current analysis                   }
+{ msg                RETURNED        The returned message                   }
+{                      							    }
+{===========================================================================}
+
+GLOBAL ROUTINE check_for_extended_testing ( VALUE tpt,
+                                            VALUE level,
+                                            VALUE samp_id,
+                                            VALUE anal_root,
+                                                  msg
+                                           )
+
+DECLARE msg_L2, msg_L3
+msg_L2 = ""
+msg_L3 = ""
+msg = ""
+
+IF ( level = 1 ) THEN
+                                         { Check against L2                }
+
+    get_results_and_stats ( tpt, level + 1, samp_id, anal_root, mean, msg_L2,
+                            {dk} range )
+
+    IF INDEX ( msg_L2, "Passed" ) > 0
+       msg = "Can Pass L2. "
+    ELSE
+       msg = "Will Fail L2. "
+    ENDIF
+
+                                         { Check against L3                }
+
+    get_results_and_stats ( tpt, level + 2, samp_id, anal_root, mean, msg_L3,
+                            {dk} range )
+
+    IF INDEX ( msg_L3, "Passed" ) > 0 THEN
+       msg = msg : "Can Pass L3. "
+    ELSE
+       msg = msg : "Will Fail L3. "
+    ENDIF
+
+ELSEIF ( level = 2 ) THEN
+                                         { Check against L3                }
+
+    get_results_and_stats ( tpt, level + 1, samp_id, anal_root, mean, msg_L3,
+                            {dk} range )
+
+    IF INDEX ( msg_L3, "Passed" ) > 0 THEN
+        msg = "Can Pass L3. "
+    ELSE
+        msg = "Will Fail L3. "
+    ENDIF
+
+ENDIF
+
+ENDROUTINE
+
+{===========================================================================}
+{ ROUTINE diss_message    ( current_component_name, message )               }
+{                                                                           }
+{ Author      : JMW                                                         }
+{ Date Created: 15-FEB-1998                                                 }
+{ Description : This routine outputs messages to the screen if there is     }
+{               information in the Outcome field                            }
+{                                                                           }
+{===========================================================================}
+{ Parameters         Passed by       Description                            }
+{ ----------         ---------       -----------                            }
+{ current_component  value           Name of the current component          }
+{ _name                							    }
+{ message            VALUE           message to be displayed                }
+{===========================================================================}
+
+GLOBAL ROUTINE diss_message ( VALUE current_component_name, VALUE message )
+
+IF INDEX ( current_component_name , "Outcome" ) > 0 THEN
+     flash_message ( message, TRUE )
+ENDIF
+
+ENDROUTINE
+

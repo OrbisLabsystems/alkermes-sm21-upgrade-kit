@@ -1,0 +1,497 @@
+{************************************************************************************************
+*
+* Module Name  : imprint_cal_reports.rpf
+*
+* Purpose      : Contains routines used to generate the various calibration
+*                          module infomaker reports (labels, CSR and history)
+*
+* Document Ref : 
+*
+* Portability  : Not Checked
+*
+* Re-entrant   : Not Checked
+*
+*
+
+Modification History
+------------------------------
+
+ SM      Module   Reference                          Date        Name           Description
+-------  -------  -----------------------------      ----------  ----------     ----------------------
+2000R1   V1.0     Elan-Calibration SDS 0-1.doc       29/11/02    A Finnerty     Created Report
+2000R1   V1.1     Change Control 2004-240            11/11/04    E Henry         Addition of new label type 'Do not use Maintenance Required'
+901      V1.2     SM9 upgrade	                     16/04/07    AF             SM9 updates (different PBL name, remove vgl warnings)
+9.2	 V1.3	  CC-ATH-2012-0923		     11/09/11	 M Flattery     Add CSR_GROUP report to include group
+
+*********************************************************************************************}
+
+
+SET COMPILE_OPTION DECLARE
+SET NOTPROTECTED
+SET NAME "DEFER/"
+ENABLE WINDOWS
+
+
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN LIBRARY $lib_utils
+JOIN LIBRARY $PROMPT_IMPRINT
+
+
+
+CONSTANT CON_PBL = "elan_custom.pbl"     { 1.2 }
+
+{----------------------------------------------------------------------------------------------------}
+
+
+
+
+
+
+
+{******************************************************************************
+*                                                                              
+*  Routine Name     :  imprint_print_cal_label
+*                                                                             
+* Description      :  Generates imprint label and brings up imprint print screen to print it
+*                                                                                                                                                            
+* Parameters       :  
+*         inst - the instrument identity
+*         type - the calibration type
+*        cal_no - the calibration sequence number
+*                                                                              
+* Return Value     :  none
+*                                                                                                                                                            
+*******************************************************************************}
+GLOBAL ROUTINE imprint_print_cal_label ( inst, type, cal_no)
+
+    DECLARE imprint_report
+    DECLARE  report, path
+
+
+        path = LOGICAL ("smp$imprint")
+
+        IF ( INDEX (path , ";") > 0)  THEN
+
+            path = LEFTSTRING (path, INDEX(path, ";") - 1 )
+
+        ENDIF
+
+
+    {    the report name is in database    }
+    report = SELECT inst_calib_types.cal_label
+                    WHERE (identity = type)
+      
+    IF ( report = EMPTY)
+
+        flash_message ("No calibration label report name set for this calibration type", TRUE)
+        RETURN
+
+    ENDIF
+ 
+
+    report = STRIP (report)
+
+    { Define the class, then create an instance }
+
+    define_imprint_class ( )
+
+    CREATE OBJECT IMPRINT, imprint_report
+
+	
+    { Generate a report }
+
+    imprint_report . create_ole_object( )
+
+    imprint_report . reset_ole_object( )
+
+
+
+    imprint_report . add_parameter ( inst )
+    imprint_report . add_parameter ( type )
+      
+    cal_no=justify( pad(cal_no," ",10), "RIGHT")
+    imprint_report . add_parameter ( cal_no )
+
+    imprint_report . add_parameter ( GLOBAL("OPERATOR") )      
+
+    imprint_report . library  = path : "\" : CON_PBL        { 1.2 }
+    imprint_report . report  = report
+
+    imprint_report . generate ( )
+
+    imprint_report . ole_object = EMPTY 
+
+
+ENDROUTINE  {  imprint_print_cal_label  }
+
+
+
+
+
+
+{******************************************************************************
+*                                                                              
+*  Routine Name     :  imprint_print_dont_use_label
+*                                                                             
+* Description      :  Generates imprint 'do not use' label and
+*                                 brings up imprint print screen to print it
+*                                                                                                                                                            
+* Parameters       :  
+*         inst - the instrument identity
+*         type - the calibration type
+*        cal_no - the calibration sequence number
+*                                                                              
+* Return Value     :  none
+*                                                                                                                                                            
+*******************************************************************************}
+GLOBAL ROUTINE imprint_print_dont_use_label ( inst, type, cal_no )
+
+    DECLARE imprint_report
+    DECLARE  report, path
+
+        path = LOGICAL ("smp$imprint")
+
+        IF ( INDEX (path , ";") > 0)  THEN
+
+            path = LEFTSTRING (path, INDEX(path, ";") - 1 )
+
+        ENDIF
+
+    {    the report name is in database    }
+    report = SELECT inst_calib_types.dnu_label
+                    WHERE (identity = type)
+      
+    IF ( report = EMPTY)
+
+        flash_message ("No 'Do Not Use' label report name set for this calibration type", TRUE)
+        RETURN
+
+    ENDIF
+
+
+    report = STRIP (report)
+
+
+    { Define the class, then create an instance }
+
+    define_imprint_class ( )
+
+    CREATE OBJECT IMPRINT, imprint_report
+
+	
+    { Generate a report }
+
+    imprint_report . create_ole_object( )
+    imprint_report . reset_ole_object( )
+
+
+    imprint_report . add_parameter ( inst )
+    imprint_report . add_parameter ( type )
+      
+    cal_no=justify( pad(cal_no," ",10), "RIGHT")
+    imprint_report . add_parameter ( cal_no )
+
+    imprint_report . add_parameter ( GLOBAL("OPERATOR") )  
+
+
+    imprint_report . preview = TRUE
+    imprint_report . library  = path : "\" : CON_PBL        { 1.2 }
+    imprint_report . report  = report
+
+    imprint_report . generate ( )
+
+    imprint_report . ole_object = EMPTY 
+
+ENDROUTINE   {  imprint_print_dont_use_label  }
+
+
+{New routine for Do Not use - maintenance required label}
+{vb HA002061 25-Aug-04}
+{******************************************************************************
+*                                                                              
+*  Routine Name     :  imprint_print_dont_use_label_main_req
+*                                                                             
+* Description      :  Generates imprint 'do not use' label and
+*                                 brings up imprint print screen to print it
+*                                                                                                                                                            
+* Parameters       :  
+*         inst - the instrument identity
+*         type - the calibration type
+*        cal_no - the calibration sequence number
+*                                                                              
+* Return Value     :  none
+*                                                                                                                                                            
+*******************************************************************************}
+GLOBAL ROUTINE imprint_print_dont_use_label_main_req ( inst, type, cal_no )
+
+    DECLARE imprint_report
+    DECLARE report, path
+
+
+
+        path = LOGICAL ("smp$imprint")
+
+        IF ( INDEX (path , ";") > 0)  THEN
+
+            path = LEFTSTRING (path, INDEX(path, ";") - 1 )
+
+        ENDIF
+
+    {    the report name is in database    }
+    report = "dnu_lab_main_req"
+      
+    {IF ( report = EMPTY)
+
+        flash_message ("No 'Do Not Use' label report name set for this calibration type", TRUE)
+        RETURN
+
+    ENDIF}
+
+
+    report = STRIP (report)
+
+
+    { Define the class, then create an instance }
+
+    define_imprint_class ( )
+
+    CREATE OBJECT IMPRINT, imprint_report
+
+	
+    { Generate a report }
+
+    imprint_report . create_ole_object( )
+    imprint_report . reset_ole_object( )
+
+
+    imprint_report . add_parameter ( inst )
+    imprint_report . add_parameter ( type )
+      
+    cal_no=justify( pad(cal_no," ",10), "RIGHT")
+    imprint_report . add_parameter ( cal_no )
+
+    imprint_report . add_parameter ( GLOBAL("OPERATOR") )  
+
+
+    imprint_report . preview = TRUE
+    imprint_report . library  = path : "\" : CON_PBL        { 1.2 }
+    imprint_report . report  = report
+
+    imprint_report . generate ( )
+
+    imprint_report . ole_object = EMPTY 
+
+ENDROUTINE   {  imprint_print_dont_use_label_main_req  }
+
+
+
+{vb HA002061 25-Aug-04 End of mods}
+
+
+
+{******************************************************************************
+*                                                                              
+*  Routine Name     :  imprint_history_report 
+*                                                                             
+* Description      :  generates history report
+*                                                                                                                                                            
+* Parameters       :  
+*         instrument - the instrument identity
+*         start_date - the earliest date for calibration records in the report
+*         end_date - the latest date for calibration records in the report
+*                                                                              
+* Return Value     :  none
+*                                                                                                                                                            
+*******************************************************************************}
+GLOBAL ROUTINE imprint_history_report ( instrument, start_date, end_date )
+
+    DECLARE imprint_report
+    DECLARE  report
+    DECLARE end_date_real, path
+
+
+    report = "history"
+
+        path = LOGICAL ("smp$imprint")
+
+        IF ( INDEX (path , ";") > 0)  THEN
+
+            path = LEFTSTRING (path, INDEX(path, ";") - 1 )
+
+        ENDIF
+
+    { Because the start & end dates are inclusive, have to modify end_date
+      to be a day later, otherwise it will be treated as 0:00 on the date, which
+      is wrong
+    }
+    end_date_real = end_date + INTERVAL ("1 00:00:00")
+
+
+    { Define the class, then create an instance }
+
+    define_imprint_class ( )
+
+    CREATE OBJECT IMPRINT, imprint_report
+	
+    { Generate a report }
+
+    imprint_report . create_ole_object( )
+    imprint_report . reset_ole_object( )
+
+    imprint_report . add_parameter ( instrument )
+    imprint_report . add_parameter ( start_date )
+    imprint_report . add_parameter ( end_date_real )      
+    imprint_report . add_parameter ( end_date )      
+
+     
+    imprint_report . library  = path : "\" : CON_PBL        { 1.2 }
+    imprint_report . report  = report
+
+    imprint_report . generate ( )
+
+    imprint_report . ole_object = EMPTY 
+
+ENDROUTINE   {  imprint_history_report  }
+
+
+
+
+
+
+{******************************************************************************
+*                                                                              
+*  Routine Name     :  imprint_csr_report 
+*                                                                             
+* Description      :  generates CSR report
+*                                                                                                                                                            
+* Parameters       :  
+*         start_date - the earliest date due for calibration records in the report
+*         end_date - the latest date due for calibration records in the report
+*                                                                              
+* Return Value     :  none
+*                                                                                                                                                            
+*******************************************************************************}
+GLOBAL ROUTINE imprint_csr_report ( start_date, end_date )
+
+    DECLARE imprint_report
+    DECLARE report
+    DECLARE end_date_real, path
+
+
+    report = "csr"
+
+    { 1.2 }
+
+    path = LOGICAL ("smp$imprint")
+
+    IF ( INDEX (path , ";") > 0)  THEN
+
+            path = LEFTSTRING (path, INDEX(path, ";") - 1 )
+
+    ENDIF
+
+
+    { Because the start & end dates are inclusive, have to modify end_date
+      to be a day later, otherwise it will be treated as 0:00 on the date, which
+      is wrong
+    }
+    end_date_real = end_date + INTERVAL ("1 00:00:00")
+
+
+    { Define the class, then create an instance }
+
+    define_imprint_class ( )
+
+    CREATE OBJECT IMPRINT, imprint_report
+
+	
+    { Generate a report }
+
+    imprint_report . create_ole_object( )
+    imprint_report . reset_ole_object( )
+
+    imprint_report . add_parameter ( start_date )
+    imprint_report . add_parameter ( end_date_real )      
+    imprint_report . add_parameter ( GLOBAL("OPERATOR") )      
+    imprint_report . add_parameter ( end_date )      
+
+
+    imprint_report . library  = path : "\" : CON_PBL        { 1.2 }
+    imprint_report . report  = report
+
+    imprint_report . generate ( )
+
+    imprint_report . ole_object = EMPTY 
+
+ENDROUTINE   {  imprint_csr_report  }
+
+
+{******************************************************************************
+*                                                                              
+*  Routine Name     :  imprint_csr_group_report 
+*                                                                             
+* Description      :  generates CSR_GROUP report
+*                                                                                                                                                            
+* Parameters       :  
+*         start_date - the earliest date due for calibration records in the report
+*         end_date - the latest date due for calibration records in the report
+*                                                                              
+* Return Value     :  none
+*                                                                                                                                                            
+*******************************************************************************}
+GLOBAL ROUTINE imprint_csr_group_report ( start_date, end_date, group )
+
+    DECLARE imprint_report
+    DECLARE report
+    DECLARE end_date_real, path
+
+
+    report = "csr_group"
+
+    
+
+    path = LOGICAL ("smp$imprint")
+
+    IF ( INDEX (path , ";") > 0)  THEN
+
+            path = LEFTSTRING (path, INDEX(path, ";") - 1 )
+
+    ENDIF
+
+
+    { Because the start & end dates are inclusive, have to modify end_date
+      to be a day later, otherwise it will be treated as 0:00 on the date, which
+      is wrong
+    }
+    end_date_real = end_date + INTERVAL ("1 00:00:00")
+
+
+    { Define the class, then create an instance }
+
+    define_imprint_class ( )
+
+    CREATE OBJECT IMPRINT, imprint_report
+
+	
+    { Generate a report }
+
+    imprint_report . create_ole_object( )
+    imprint_report . reset_ole_object( )
+
+    imprint_report . add_parameter ( start_date )
+    imprint_report . add_parameter ( end_date_real )      
+    imprint_report . add_parameter ( GLOBAL("OPERATOR") )      
+    imprint_report . add_parameter ( end_date )     
+    imprint_report . add_parameter ( group )          
+
+
+    imprint_report . library  = path : "\" : CON_PBL        { 1.2 }
+    imprint_report . report  = report
+
+    imprint_report . generate ( )
+
+    imprint_report . ole_object = EMPTY 
+
+ENDROUTINE   {  imprint_csr_group_report  }
+

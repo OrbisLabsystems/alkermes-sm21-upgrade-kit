@@ -18,37 +18,17 @@
                 lot or run in batch mode.
 *******************************************************************************}
 
-
-{
-
-MODIFICATION HISTORY
-====================
-
-SM      Ref.    Change  Date        Name                Description
-------- ------- ------- ----------- ------------------- -------------------------------------------------------
-        1.1             24-FEB-1999 Ken Jacobs          Compile reports, calculations, syntax's, limit calculations
-                                                        and list_result
-        1.2             23-AUG-1999 Ken Jacobs          Add options to read compile list from file
-        1.3             17-MAR-2000 Ken Jacobs          Increase size of identity field in log file to 20
-2001-R1 2002-1          29-APR-2002 Ken Jacobs          Release
-2002-R1 2003-1          19-SEP-2003 Ken Jacobs          Set read time to 0 to stop messages when compiling calculations etc.
-                                                        Correct error in lsit result constants
-                                                        Add support for sig figs
-                                                        All use of ! character to indicate comment lines
-                                                        If compiling all reports give option to delete all smp$code files
-                                                        to ensure all are compiled in the correct order
-2002-R1 2003-3          24-OCT-2003 Ken Jacobs          Release
-2004-R1 2004-1          29-APR-2004 Ken Jacobs          Correct handling of calculations using formula
-2002-R1         SM95    12-NOV-2004 Ken Jacobs          Abbott implementation
-                                                        Always write log file
-                                                        Do not compile calculations that use formulae
-10.2                    04-MAR-2013 Vincent Molloy      Modification to avoid problems with CVS hidden
-                                                        folders that are read-only and cause a file
-                                                        could not be accessed error message
-
-}
-
-{ ----------------------------------------------------------------------------------------------- }
+{*******************************************************************************
+                        MODIFICATION HISTORY
+                        ====================
+Vers    Date        Author         Ref      Description
+----    ----------- -------------- -------- ------------------------------------------------------------
+1.1     24-FEB-1999 Ken Jacobs              Compile reports, calculations, syntax's, limit calculations
+                                            and list_result
+1.2     23-AUG-1999 Ken Jacobs              Add options to read compile list from file
+1.3     17-MAR-2000 Ken Jacobs              Increase size of identity field in log file to 20
+1.4     01-SEP-2000 Ken Jacobs              Allow optional input file in batch mode
+*******************************************************************************************************}
 
 JOIN STANDARD_LIBRARY std_utils
 JOIN STANDARD_LIBRARY std_vgl
@@ -59,24 +39,17 @@ SET COMPILE_OPTION DECLARE
 
 ENABLE WINDOWS
 
-CONSTANT COMMENT_CHARACTER      = "!"
-CONSTANT COMPILE_DIRECTORY      = "smp$userfiles"
-CONSTANT COMPILE_EXTENSION      = "compile"
-
-
 CONSTANT DIR_report             = "smp$reports:"
 CONSTANT DIR_calculation        = "smp$calculations:"
 CONSTANT DIR_syntax             = "smp$syntaxes:"
 CONSTANT DIR_limit_calculation  = "smp$limit_calculations:"
-CONSTANT DIR_list_result_format = "smp$list_results:"
-CONSTANT DIR_sig_figs           = "smp$sig_figs:"
+CONSTANT DIR_list_results       = "smp$list_results:"
 
 CONSTANT EXT_report             = ".rpf"
 CONSTANT EXT_calculation        = ".caf"
 CONSTANT EXT_syntax             = ".sxf"
 CONSTANT EXT_limit_calculation  = ".laf"
-CONSTANT EXT_list_result_format = ".lrf"
-CONSTANT EXT_sig_figs           = ".sff"
+CONSTANT EXT_list_results       = ".lrf"
 
 
 { ---------------------------------------------------------------------------- }
@@ -86,72 +59,87 @@ DECLARE form
 DECLARE table_id
 DECLARE filename
 DECLARE i
-DECLARE finished
 
 initialise_menu( menu )
 initialise_form( form )
 
 IF ( GLOBAL( "mode" ) = "INTERACTIVE" )
 
-    setup_install_window_class()
-    finished = FALSE
+        setup_install_window_class()
 
-    REPEAT
 
-        CHOOSE table_id OUT_OF menu AT 10,10
+        REPEAT
 
-        IF ( LASTKEY <> "EXIT" )
+                CHOOSE table_id OUT_OF menu AT 10,10
 
-            form . header = "Compile " : TOUPPER( table_id )
-            form . start_prompt()
-            form . prompt_objects[1] . set_text( "" )
-            form . wait_prompt()
-            form . end_prompt()
+                IF ( LASTKEY <> "EXIT" )
 
-            IF ( form . get_lastkey() = "DO" )
+                    form . start_prompt()
+                    form . prompt_objects[1] . set_text( "" )
+                    form . wait_prompt()
+                    form . end_prompt()
 
-                filename = form . prompt_objects[1] . value
-                compile( table_id, filename )
+                    IF ( form . get_lastkey() = "DO" )
 
-            ENDIF
+                        filename = form . prompt_objects[1] . value
+                        compile( table_id, filename )
 
-        ELSE
+                    ENDIF
 
-            finished = TRUE
+                ENDIF
 
-        ENDIF
-
-    UNTIL ( finished )
+        UNTIL ( LASTKEY = "EXIT" )
 
 ELSE
 
-    IF ( GLOBAL( "param_active" ) )
+        IF ( GLOBAL( "param_active" ) )
 
-        PROMPT FOR table_id
-        table_id = TOLOWER( table_id )
+                PROMPT FOR table_id
+                table_id = TOLOWER( table_id )
 
-        i = 1
-        REPEAT
+                IF ( GLOBAL( "param_active" ) )
 
-            i = i + 1
+                    PROMPT FOR filename     { Optional }
 
-        UNTIL ( ( menu[i,3] = EMPTY ) OR ( menu[i,3] = table_id ) )
+                ELSE
 
-        IF ( menu[i,3] = table_id )
+                    filename = ""
 
-            compile( table_id, "" )
+                ENDIF
+
+                i = 1
+                REPEAT
+
+                        i = i + 1
+
+                UNTIL ( ( menu[i,3] = EMPTY ) OR ( menu[i,3] = table_id ) )
+
+                IF ( menu[i,3] = table_id )
+
+
+                    IF ( FILE EXISTS( filename ) )
+                    OR ( filename = "" )
+                    
+                        compile( table_id, filename )
+
+                    ELSE
+
+                        
+                        flash_message( "File not found " : filename, FALSE )
+
+                    ENDIF
+
+                ELSE
+
+                    flash_message( "Specified table not recognised", FALSE )
+
+                ENDIF
 
         ELSE
 
-            flash_message( "Specified table not recognised", FALSE )
+                flash_message( "No value for table to compile", FALSE )
 
         ENDIF
-
-    ELSE
-
-        flash_message( "No value for table to compile", FALSE )
-
-    ENDIF
 
 ENDIF
 
@@ -160,45 +148,40 @@ EXIT
 { ---------------------------------------------------------------------------- }
 
 ROUTINE initialise_menu
-    (
-            menu
-    )
+        (
+                menu
+        )
 
-    DECLARE i
+        DECLARE i
 
-    i = 1
-    menu[i,1] = "*"
-    menu[i,2] = "Compile Options"
+        i = 1
+        menu[i,1] = "*"
+        menu[i,2] = "Compile Options"
 
-    i = i + 1
-    menu[i,1] = "R"
-    menu[i,2] = "Reports"
-    menu[i,3] = "report"
+        i = i + 1
+        menu[i,1] = "R"
+        menu[i,2] = "Reports"
+        menu[i,3] = "report"
 
-    i = i + 1
-    menu[i,1] = "C"
-    menu[i,2] = "Calculations"
-    menu[i,3] = "calculation"
+        i = i + 1
+        menu[i,1] = "C"
+        menu[i,2] = "Calculations"
+        menu[i,3] = "calculation"
 
-    i = i + 1
-    menu[i,1] = "S"
-    menu[i,2] = "Syntax's"
-    menu[i,3] = "syntax"
+        i = i + 1
+        menu[i,1] = "S"
+        menu[i,2] = "Syntax's"
+        menu[i,3] = "syntax"
 
-    i = i + 1
-    menu[i,1] = "L"
-    menu[i,2] = "Limit Calculations"
-    menu[i,3] = "limit_calculation"
+        i = i + 1
+        menu[i,1] = "L"
+        menu[i,2] = "Limit Calculations"
+        menu[i,3] = "limit_calculation"
 
-    i = i + 1
-    menu[i,1] = "R"
-    menu[i,2] = "List Results"
-    menu[i,3] = "list_result_format"
-
-    i = i + 1
-    menu[i,1] = "F"
-    menu[i,2] = "Sig Figs"
-    menu[i,3] = "sig_figs"
+        i = i + 1
+        menu[i,1] = "R"
+        menu[i,2] = "List Results"
+        menu[i,3] = "list_result_format"
 
 ENDROUTINE
 
@@ -218,7 +201,9 @@ ROUTINE initialise_form
             width       = 60,
             row     = 8,
             column  = 2,
-            border  = TRUE
+            border  = TRUE,
+            header  = "VGL Compilation",
+            footer  = "Enter filename, or leave blank to compile all"
             )
 
     form . status_text = form . footer
@@ -232,8 +217,8 @@ ROUTINE initialise_form
         WITH    (
             vgl_library     = GLOBAL( "current_library" ),
             validation_routine = "validate_file",
-            file_directory  = COMPILE_DIRECTORY,
-            file_extension  = COMPILE_EXTENSION
+            file_directory  = "smp$userfiles",
+            file_extension  = "compile"
             )
 
     form . add_prompt( prompt_file )
@@ -271,29 +256,27 @@ ENDROUTINE
 { ---------------------------------------------------------------------------- }
 
 ROUTINE compile
-    (
-    VALUE   table_id,
-    VALUE   filename
-    )
+        (
+        VALUE   table_id,
+      VALUE   filename
+        )
 
-    DECLARE identity
-    DECLARE status
-    DECLARE counter
-    DECLARE count_pass
-    DECLARE count_fail
-    DECLARE logfile
-    DECLARE directory
-    DECLARE extension
-    DECLARE source_file
-    DECLARE use_file
-    DECLARE lines     ARRAY lines ARRAY_SIZE(0)
-    DECLARE i
-    DECLARE saved_read_time
-    DECLARE message
+        DECLARE identity
+        DECLARE status
+        DECLARE counter
+        DECLARE count_pass
+        DECLARE count_fail
+      DECLARE logfile
+      DECLARE directory
+      DECLARE extension
+      DECLARE source_file
+      DECLARE use_file
+      DECLARE lines     ARRAY lines ARRAY_SIZE(0)
+      DECLARE i
 
-    use_file = NOT blank( filename )
+      use_file = NOT blank( filename )
 
-    IF ( use_file )
+      IF ( use_file )
 
         IF read_file( filename, lines )
 
@@ -305,244 +288,174 @@ ROUTINE compile
 
         ENDIF
 
-    ELSE
+      ENDIF
 
-        IF ( table_id = "report" )
-
-            IF ( GLOBAL( "mode" ) <> "INTERACTIVE" )
-            OR ( confirm_with_text( "Delete contents of smp$code to ensure correct order of compilation" ) )
-
-                FILE DELETE "smp$code:*.rpc"     {VM}
-                FILE DELETE "smp$code:*.inc"     {VM}
-
-            ENDIF
-
-        ENDIF
-
-    ENDIF
-
-    directory = GET CONSTANT ( "Dir_" : table_id )
-    extension = GET CONSTANT ( "Ext_" : table_id )
+      directory = GET CONSTANT ( "Dir_" : table_id )
+      extension = GET CONSTANT ( "Ext_" : table_id )
 
 
-    count_pass = 0
-    count_fail = 0
+        count_pass = 0
+        count_fail = 0
 
-    IF ( GLOBAL( "mode" ) = "INTERACTIVE" )
+        IF ( GLOBAL( "mode" ) = "INTERACTIVE" )
 
-        CREATE OBJECT install_window_class, counter
+                SET NAME "defer/"
 
-        counter . header = TOUPPER( table_id ) : " Compilation"
-        counter . footer = ""
-        counter . row = 15
-        counter . start_value = 0
+                CREATE OBJECT install_window_class, counter
 
-        IF ( use_file )
+                counter . header = TOUPPER( table_id ) : " Compilation"
+                counter . footer = ""
+                counter . row = 15
+                counter . start_value = 0
 
-            counter . end_value = size_of_array( lines )
+            IF ( use_file )
 
-        ELSE
-
-            IF ( table_id = "calculation" )
-
-                counter . end_value = SELECT COUNT 'table_id'
-                                      WHERE  ( removeflag = FALSE )
-                                      AND    ( formula = NULL )
+                counter . end_value = size_of_array( lines )
 
             ELSE
 
-                counter . end_value = SELECT COUNT 'table_id'
-                                      WHERE  ( removeflag = FALSE )
-
+                        counter . end_value = SELECT COUNT 'table_id'
+                                        WHERE removeflag = FALSE
             ENDIF
+
+                counter . start_install()
+
+        ELSE
+
+                logfile = "SMP$LOGFILES:COMPILE_" : TOUPPER( table_id ) : ".LOG"
+                SET NAME logfile
 
         ENDIF
 
-        counter . start_install()
+        SET PAUSE FALSE
+        SET HEADER   PAD( " ", " ", 20 )
+                   : PAD( TOUPPER( table_id ) : " Compilation", " ", 40 )
+                   : LEFTSTRING( NOW, 17 )
 
-    ENDIF
-
-    logfile = "SMP$LOGFILES:COMPILE_" : TOUPPER( table_id ) : ".LOG"
-    SET NAME logfile
-
-
-    SET PAUSE FALSE
-    saved_read_time = GLOBAL( "read_time" )
-    SET GLOBAL "read_time" TO 0
-    SET LENGTH 0
-
-    message = PAD( TOUPPER( table_id ) : " Compilation", " ", 40 )
-            : LEFTSTRING( NOW, 17 )
-
-LITERAL
-$message___________________________________________________
-
-$ENDLITERAL
-
-    IF ( use_file )
+      IF ( use_file )
 
         i = 1
         identity = lines[i]
 
-    ELSE
-
-        IF ( table_id = "calculation" )
+      ELSE
 
             identity = SELECT 'table_id'.identity
-                       WHERE  ( removeflag = FALSE )
-                       AND    ( formula = NULL )
-                       ORDER ON identity
+                        WHERE removeflag = FALSE
+                        ORDER ON identity
 
-        ELSE
+      ENDIF
 
-            identity = SELECT 'table_id'.identity
-                       WHERE  ( removeflag = FALSE )
-                       ORDER ON identity
+        WHILE ( identity <> EMPTY )
 
-        ENDIF
+                IF ( GLOBAL( "mode" ) = "INTERACTIVE" )
 
-    ENDIF
-
-    WHILE ( identity <> EMPTY )
-
-        IF ( GLOBAL( "mode" ) = "INTERACTIVE" )
-
-            counter . increase_one()
-
-        ENDIF
-
-        source_file = directory : STRIP( identity ) : extension
-
-        IF ( FILE EXISTS ( source_file ) )
-
-            IF ( table_id = "report" )
-
-                IF ( GLOBAL( "termtype" ) = "GUI" )
-
-                    status = vgl_compile_report_silent( identity )
-
-                ELSE
-
-                    status = vgl_compile_report( identity )
+                        counter . increase_one()
 
                 ENDIF
 
-            ELSEIF ( table_id = "calculation" )
+            source_file = directory : STRIP( identity ) : extension
 
-                status = vgl_compile_calculation( identity )
+            IF ( FILE EXISTS ( source_file ) )
 
-            ELSEIF ( table_id = "syntax" )
+                    IF ( table_id = "report" )
 
-                SET PAUSE FALSE
-                status = vgl_compile_syntax( identity )
-                SET PAUSE TRUE
+                        IF ( GLOBAL( "termtype" ) = "GUI" )
 
-            ELSEIF ( table_id = "limit_calculation" )
+                                        status = vgl_compile_report_silent( identity )
 
-                status = vgl_compile_limit_calculation( identity )
+                        ELSE
 
-            ELSEIF ( table_id = "list_result_format" )
+                                status = vgl_compile_report( identity )
 
-                status = vgl_compile_list_result( identity )
+                        ENDIF
 
-            ELSEIF ( table_id = "sig_figs" )
+                    ELSEIF ( table_id = "calculation" )
 
-                status = vgl_compile_sig_figs( identity )
+                        status = vgl_compile_calculation( identity )
 
-            ENDIF
+                    ELSEIF ( table_id = "syntax" )
 
-        ELSE
+                        status = vgl_compile_syntax( identity )
 
-            IF ( table_id = "calculation" )
-            AND ( NOT blank( SELECT 'table_id'.formula ) )
+                    ELSEIF ( table_id = "limit_calculation" )
 
-                status = "Formula"
+                        status = vgl_compile_limit_calculation( identity )
+
+                    ELSEIF ( table_id = "list_result_format" )
+
+                        status = vgl_compile_list_result( identity )
+
+                    ENDIF
 
             ELSE
 
-                status = ERROR
+            status = ERROR
 
             ENDIF
 
-        ENDIF
+            IF ( status = ERROR )
 
-        IF ( status = ERROR )
+                status = "Source File Missing"
+                        count_fail = count_fail + 1
 
-            status = "Source File Missing"
-                    count_fail = count_fail + 1
+                ELSEIF ( status = TRUE )
 
-        ELSEIF ( status = "Formula" )
+                        status = "Compiled"
+                        count_pass = count_pass + 1
 
-            count_pass = count_pass + 1
+                ELSEIF ( status = FALSE )
 
-        ELSEIF ( status = TRUE )
+                        status = "Failed Compilation"
+                        count_fail = count_fail + 1
 
-            status = "Compiled"
-            count_pass = count_pass + 1
+                ENDIF
 
-        ELSEIF ( status = FALSE )
+                IF ( GLOBAL( "mode" ) <> "INTERACTIVE" )
 
-            status = "Failed Compilation"
-            count_fail = count_fail + 1
+                        flash_message( PAD( identity, " ", 20 ) : " " : status, FALSE )
 
-        ENDIF
-
-        IF ( GLOBAL( "mode" ) <> "INTERACTIVE" )
-
-            flash_message( identity : " " : status, FALSE )
-
-        ENDIF
+                ENDIF
 
 LITERAL
 $identity___________ $status________________________
 $ENDLITERAL
 
-        IF ( use_file )
+            IF ( use_file )
 
-            i = i + 1
-            identity = lines[i]
+                    i = i + 1
+                identity = lines[i]
 
-        ELSE
+            ELSE
 
-            NEXT 'table_id'
-            identity = SELECT 'table_id'.identity
+                        NEXT 'table_id'
+                        identity = SELECT 'table_id'.identity
+
+            ENDIF
+
+        ENDWHILE
+
+        SET PAUSE TRUE
+
+        IF ( GLOBAL( "mode" ) = "INTERACTIVE" )
+
+                counter . end_install()
 
         ENDIF
 
-    ENDWHILE
+        flash_message( "Compiled "
+                        : STRIP( count_pass )
+                        : ",    Failed Compilation "
+                        : STRIP( count_fail )
+                        , TRUE
+                        )
 
-    SET PAUSE TRUE
-    SET GLOBAL "read_time" TO saved_read_time
+        IF ( GLOBAL( "mode" ) <> "INTERACTIVE" )
 
-    IF ( GLOBAL( "mode" ) = "INTERACTIVE" )
+                flash_message( "Logfile written to " : logfile, FALSE )
 
-        counter . end_install()
+        ENDIF
 
-    ENDIF
-
-    message = "Compiled "
-            : STRIP( count_pass )
-            : ",    Failed "
-            : STRIP( count_fail )
-
-    flash_message( message, TRUE )
-
-LITERAL
-
-$message___________________________________________________
-$ENDLITERAL
-
-    FLUSH_LITERAL
-
-    IF ( GLOBAL( "mode" ) = "INTERACTIVE" )
-
-        FILE SEND logfile, "defer/"
-
-    ELSE
-
-        flash_message( "Logfile written to " : logfile, FALSE )
-
-    ENDIF
+        FLUSH_LITERAL
 
 ENDROUTINE
 
@@ -557,7 +470,6 @@ ROUTINE read_file
     DECLARE status
     DECLARE line
     DECLARE i
-    DECLARE comment
 
     i = 0
 
@@ -569,20 +481,8 @@ ROUTINE read_file
 
         WHILE ( status = EMPTY )
 
-            comment = INDEX( line, COMMENT_CHARACTER )
-
-            IF ( comment > 0 )
-
-                line = LEFTSTRING( line, ( comment - 1 ) )
-
-            ENDIF
-
-            IF ( NOT blank( line ) )
-
-                i = i + 1
-                lines[i] = line
-
-            ENDIF
+            i = i + 1
+            lines[i] = line
 
             FILE READ filename, line, status
 
@@ -601,4 +501,6 @@ ROUTINE read_file
     RETURN( status = EMPTY )
 
 ENDROUTINE
+
+
 

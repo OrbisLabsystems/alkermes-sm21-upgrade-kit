@@ -1,0 +1,160 @@
+{*******************************************************************************
+*
+* Module Name   : $LIMSML_RESULT
+*
+* Purpose       : Result LIMSML Entity Handling
+*
+* Document Ref  : N/a
+*
+*******************************************************************************}
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_VGL
+JOIN STANDARD_LIBRARY STD_MESSAGE
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN LIBRARY $LIMSML_LIB
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $BL
+JOIN LIBRARY $BL_IDS_BUILDER
+JOIN LIBRARY $BL_ITEM_DATATABLE
+JOIN LIBRARY $LIMSML_HELPER
+JOIN LIBRARY $LIMSML_PROCESS
+JOIN LIBRARY $BL_ITEM_DATACOLUMN
+
+JOIN LIBRARY $BL_COLUMN
+JOIN LIBRARY $BL_IDT_FORMATTED
+JOIN LIBRARY $LIMSML_COLUMN_DT
+JOIN LIBRARY $BL_PROMPT_INFO
+JOIN LIBRARY $LIB_MLPS
+
+SET NOTPROTECTED
+SET NAME "DEFER/"
+SET COMPILE_OPTION DECLARE
+ENABLE WINDOWS
+
+GLOBAL CONSTANT	BUILDER_ASSEMBLY = "Thermo.SM.BL.Data"
+GLOBAL CONSTANT BUILDER_CLASS    = "Thermo.SM.BL.Data.DataSetBuilder"
+
+{*******************************************************************************
+*                          M A I N   C O D E
+*******************************************************************************}
+
+EXIT
+
+{*******************************************************************************
+*                               R O U T I N E S
+*******************************************************************************}
+
+ROUTINE result_get_audits ( processor, entity, action, response )
+
+{ Login a Sample using a specified Template.
+*
+*
+* Note: The type of response class depends on what the response_type is within
+*       the request. Example if response_type is DATA, little initial xml is
+*       needed. Therefore HELPER_DOCUMENT class is used.
+*
+*       If it is SYSTEM, header xml is needed and build functionality is needed.
+*       Therefore HELPER_RICHDOCUMENT class is used.
+*       (See $limsml_process.rpf action create_system/create_data for more info)
+*
+*
+* Parameters   : Processor ,[LIMSML_PROCESS] Controls and validates xml input.
+*                Entity,[HELPER_ENTITY] Helper Entity Class
+*                Action ,[HELPER_ACTIONML] Helper Action Class
+*                Response,[HELPER_RICHDOCUMENT,HELPER_DOCUMENT] Class to help
+*                build xml response.
+*
+* Return Value : [Text], (Optional)If only one return value is needed, this
+*                will override any response.
+*                Works by copying request entity information and adding
+*                a field call 'RETURN', with the return value as its value.
+*
+*******************************************************************************}
+
+	DECLARE test_id, component_name, audit_data_type, audit_event_type, result_type,
+	        result_key, audit_event_criteria, audit_data_criteria, audit_event_items,
+	        audit_event_enum, audit_event_item, audit_data_items, audit_trans_type,
+	        dataset_builder, col1_title, col2_title, col3_title, col4_title,
+	        audit_trans_criteria, audit_trans_items
+	
+	test_id        = action . get_param_default ( "TEST_ID"       , ERROR )
+	component_name = action . get_param_default ( "COMPONENT_NAME", ERROR )
+	
+	audit_data_type  = bl_system ( ) . get_type ( "AUDIT_DATA"        )
+	audit_event_type = bl_system ( ) . get_type ( "AUDIT_EVENT"       )
+	audit_trans_type = bl_system ( ) . get_type ( "AUDIT_TRANSACTION" )
+	result_type      = bl_system ( ) . get_type ( "RESULT"            )
+	
+	{ create dataset }
+	CREATE OBJECT "STD_NET_SERVER" , dataset_builder
+	dataset_builder . create( BUILDER_ASSEMBLY , BUILDER_CLASS )
+		
+	dataset_builder . NewDataSet ( ) 
+	dataset_builder . AddTable ( "AUDITS" )
+	
+	{ Add Columns }
+	
+	col1_title = GET_USER_MESSAGE ( "RESULT_ENTRY_AUDIT_GUI_HEADER", 1 )
+	col2_title = GET_USER_MESSAGE ( "RESULT_ENTRY_AUDIT_GUI_HEADER", 2 )
+	col3_title = GET_USER_MESSAGE ( "RESULT_ENTRY_AUDIT_GUI_HEADER", 3 )
+	col4_title = GET_USER_MESSAGE ( "RESULT_ENTRY_AUDIT_GUI_HEADER", 4 )
+	
+	dataset_builder . AddColumnCaption ( col1_title , "System.DateTime" , col1_title )
+	dataset_builder . AddColumnCaption ( col2_title , "System.String"   , col2_title )
+	dataset_builder . AddColumnCaption ( col3_title , "System.String"   , col3_title )
+	dataset_builder . AddColumnCaption ( col4_title , "System.String"   , col4_title )
+	 
+	{ get audit data }
+	result_key = result_type . id_builder ( ) . build ( PACKED_DECIMAL ( test_id ) , component_name )
+	
+	audit_event_criteria = audit_event_type . new_criteria ( )
+	audit_event_criteria . add_predicate_eq ( "TABLE_NAME"  , "RESULT"   )
+	audit_event_criteria . add_predicate_eq ( "RECORD_KEY0" , result_key )
+	
+	audit_event_items = audit_event_criteria . execute ( )
+	
+	audit_event_enum = audit_event_items . get_enumerator ( )	
+	
+	{ loop through audit data }
+	WHILE audit_event_enum . move_next ( ) DO
+	
+		audit_event_item = audit_event_enum . get_current ( )
+		
+		audit_data_criteria = audit_data_type . new_criteria ( )
+		audit_data_criteria . add_predicate_eq ( "FIELD"  , "TEXT"   )
+		audit_data_criteria . add_predicate_eq ( "EVENT"  , audit_event_item . get_value ( "EVENT" ) )
+		
+		audit_data_items = audit_data_criteria . execute ( ) 
+		
+		IF audit_data_items . count ( ) > 0 THEN
+			
+			{ get the transaction }
+			audit_trans_criteria = audit_trans_type . new_criteria ( ) 
+			audit_trans_criteria . add_predicate_eq ( "TRANSACTION"  ,  
+			                       audit_event_item . get_value ( "TRANSACTION" )  )
+			                       
+			audit_trans_items = audit_trans_criteria . execute ( ) 
+			
+			{ add data to dataset }
+			
+			dataset_builder . NewRow ( )
+			dataset_builder . AddRowValue ( col1_title , audit_trans_items . item ( 1 ) . get_value ( "TRANSACTION_DATE" ) )
+			dataset_builder . AddRowValue ( col2_title , audit_trans_items . item ( 1 ) . get_value ( "USER_ID"          ) )
+			dataset_builder . AddRowValue ( col3_title , audit_data_items  . item ( 1 ) . get_value ( "VALUE_BEFORE"     ) )
+			dataset_builder . AddRowValue ( col4_title , audit_event_item . get_value ( "EVENT_REASON"     ) )
+			
+			dataset_builder . AddRow ( )
+		
+		ENDIF
+		
+	
+	ENDWHILE
+	
+	IF NOT bl_system ( ) . error_flagged ( ) THEN
+		
+		response . adddata ( dataset_builder . FullXml )
+		
+	ENDIF
+	
+ENDROUTINE	

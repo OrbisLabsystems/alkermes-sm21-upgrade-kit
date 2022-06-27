@@ -1,0 +1,1246 @@
+{******************************************************************************
+*
+* Module Name   : $SMIDI_LTE_POINTS
+*
+* Purpose       : Laboratory table editor for the smidi points table
+*
+* Document Ref. :
+*
+* Specification :
+*
+* Portability   : OVMS, Unix, NT4 and Windows 2000
+*
+* Re-entrant    :
+*
+*
+* Modification History
+* By        Date        Reason _____________________________________________
+*
+*******************************************************************************}
+
+ENABLE WINDOWS
+
+SET NAME "DISPLAY/"
+SET NOTPROTECTED
+SET COMPILE_OPTION DECLARE
+
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT       {   prompt with select array     }
+JOIN STANDARD_LIBRARY STD_CLASS              { object database                }
+JOIN STANDARD_LIBRARY STD_MESSAGE            { get messages                   }
+JOIN STANDARD_LIBRARY STD_PROMPT             { prompt add id's                }
+JOIN STANDARD_LIBRARY STD_UTILS              { browse_on_ra, var_is_assigned  }
+JOIN STANDARD_LIBRARY STD_VGL                { VGL_find_routines              }
+JOIN STANDARD_LIBRARY STD_WINDOW             { windowsetstatus                }
+
+JOIN LIBRARY $LABTABLIB                      { LTE main library               }
+JOIN LIBRARY $LIB_UTILS                      { confirm_with_text              }
+JOIN LIBRARY $LIST_EDITOR                    { The List Editor                }
+JOIN LIBRARY $LIB_GRID                       { PROMPTDETAILS310               }
+
+JOIN LIBRARY $SMIDI_LIB_SAP                  { CONSTANTS                      }
+JOIN LIBRARY $SMIDI_LTE_SYSTEM               { smidi_config_item, list stuff  }
+JOIN LIBRARY $SMIDI_LIB_UPLOAD               { queue point ud and point       }
+
+{ --------------------------------------------------------------------------- }
+{ ------------------------------- CONSTANTS --------------------------------- }
+
+CONSTANT POINTS_ROUTINE    = "STORE_DATA"
+CONSTANT SHOW_ALL_FIELDS   = FALSE
+
+{ --------------------------------------------------------------------------- }
+{ ------------------------------- VARIABLES --------------------------------- }
+
+DECLARE list_smidi_insppoint    ,            { Point usage decisions          }
+	list_point_create       ,            { Point create list object       }
+	fld                     ,            { Array field names list object  }
+	save_smidi_system       ,            { to set the config_items        }
+        choices                 ,            { full list of SAP prompts       }
+        sap_choices             ,            { the enabled SAP prompts        }
+        format_text             ,            { how to format the choice       }
+        sel_form                             { Form for SAP prompts           }
+
+DECLARE name_of_table,help_context,directory,extn,default_value,input_mess,
+	header_mess,footer_mess,display_footer_mess,displayed_name_of_table,prompt_details,fields_to_output,
+	special_actions_report,labtable_messages, retval
+
+	retval = EMPTY
+	modify_option ( retval )
+
+{ --------------------------------------------------------------------------- }
+{ -------------------------- Table Setup Routine ---------------------------- }
+
+ROUTINE table_setup ( operation )
+
+	DECLARE count
+
+	name_of_table           = "SMIDI_POINTS_QUERY"
+	help_context            = "SMIDI_POINTS_EDIT"
+	directory               = EMPTY
+	extn                    = EMPTY
+	default_value           = "DEFAULT_POINTS"
+
+	input_mess              = get_user_message( "SMIDI_LTE_POINTS_PROMPT", 1 )
+	header_mess             = get_user_message( "SMIDI_LTE_POINTS_HEADER", 1 )
+	footer_mess             = get_user_message( "SMIDI_LTE_POINTS_FOOTER", 1 )
+	display_footer_mess     = get_user_message( "SMIDI_LTE_POINTS_FOOTER", 2 )
+	displayed_name_of_table = get_user_message( "SMIDI_LTE_POINTS_TABLE" , 1 )
+
+	ARRAY prompt_details	ARRAY_SIZE ( 0 , 6 )
+
+		count = 1
+		prompt_details [ count , MESSAGE_POSITION    ] = get_user_message( "SMIDI_LTE_POINTS_GROUP" , 1 )
+        	prompt_details [ count , FIELD_NAME_POSITION ] = "GROUP_ID"
+		count = count + 1
+		prompt_details [ count , MESSAGE_POSITION    ] = get_user_message( "SMIDI_LTE_POINTS_MOD"   , 1 )
+        	prompt_details [ count , FIELD_NAME_POSITION ] = "MODIFIABLE"
+		count = count + 1
+		prompt_details [ count , MESSAGE_POSITION    ] = get_user_message( "SMIDI_LTE_POINTS_DESCR" , 1 )
+		prompt_details [ count , FIELD_NAME_POSITION ] = "DESCRIPTION"
+		count = count + 1
+		prompt_details [ count , MESSAGE_POSITION    ] = get_user_message( "SMIDI_LTE_POINTS_RPT"   , 1 )
+		prompt_details [ count , FIELD_NAME_POSITION ] = "REPEAT_INTERVAL"
+		count = count + 1
+		prompt_details [ count , MESSAGE_POSITION    ] = get_user_message( "SMIDI_LTE_POINTS_QUERY" , 1 )
+		prompt_details [ count , FIELD_NAME_POSITION ] = "FROM_IP_POINT"
+		count = count + 1
+		prompt_details [ count , MESSAGE_POSITION    ] = get_user_message( "SMIDI_LTE_POINTS_QUERY" , 2 )
+		prompt_details [ count , FIELD_NAME_POSITION ] = "TO_IP_POINT"
+		count = count + 1
+		prompt_details [ count , MESSAGE_POSITION    ] = get_user_message( "SMIDI_LTE_POINTS_QUERY" , 3 )
+		prompt_details [ count , FIELD_NAME_POSITION ] = "PROCESS_LIBRARY"
+		count = count + 1
+		prompt_details [ count , MESSAGE_POSITION    ] = get_user_message( "SMIDI_LTE_POINTS_QUERY" , 4 )
+		PROMPT_DETAILS [ count , TYPE_POSITION       ] = "ROUTINE"
+		PROMPT_DETAILS [ count , ROUTINE_POSITION    ] = "PROCESS_ROUTINE_PROMPT"
+		PROMPT_DETAILS [ count , LIBRARY_POSITION    ] = GLOBAL ( "CURRENT_LIBRARY" )
+		count = count + 1
+		prompt_details [ count , MESSAGE_POSITION    ] = get_user_message( "SMIDI_LTE_POINTS_QUERY" , 5 )
+		prompt_details [ count , FIELD_NAME_POSITION ] = "MAPPING_PROFILE"
+
+	ARRAY fields_to_output  ARRAY_SIZE ( 0 )
+		fields_to_output [ 1  ]  = "2"
+		fields_to_output [ 2  ]  = "3"
+		fields_to_output [ 3  ]  = "4"
+		fields_to_output [ 4  ]  = "5"
+		fields_to_output [ 5  ]  = "6"
+		fields_to_output [ 6  ]  = "7"
+
+		fields_to_output [ 7  ]  = "8"
+		fields_to_output [ 8  ]  = "9"
+		fields_to_output [ 9  ]  = "10"
+		fields_to_output [ 10 ]  = "11"
+		fields_to_output [ 11 ]  = "12"
+		fields_to_output [ 12 ]  = "13"
+
+		fields_to_output [ 13 ]  = "14"
+		fields_to_output [ 14 ]  = "15"
+		fields_to_output [ 15 ]  = "16"
+		fields_to_output [ 16 ]  = "17"
+		fields_to_output [ 17 ]  = "18"
+		fields_to_output [ 18 ]  = "19"
+
+		fields_to_output [ 19 ]  = "20"
+		fields_to_output [ 20 ]  = "21"
+		fields_to_output [ 21 ]  = "22"
+		fields_to_output [ 22 ]  = "23"
+		fields_to_output [ 23 ]  = "24"
+		fields_to_output [ 24 ]  = "25"
+
+		fields_to_output [ 25 ]  = "26"
+		fields_to_output [ 26 ]  = "27"
+		fields_to_output [ 27 ]  = "28"
+		fields_to_output [ 28 ]  = "29"
+		fields_to_output [ 29 ]  = "30"
+		fields_to_output [ 30 ]  = "31"
+
+		fields_to_output [ 31 ]  = "32"
+		fields_to_output [ 32 ]  = "33"
+		fields_to_output [ 33 ]  = "34"
+		fields_to_output [ 34 ]  = "35"
+		fields_to_output [ 35 ]  = "36"
+		fields_to_output [ 36 ]  = "37"
+
+		fields_to_output [ 37 ]  = "38"
+		fields_to_output [ 38 ]  = "39"
+		fields_to_output [ 39 ]  = "40"
+		fields_to_output [ 40 ]  = "41"
+		fields_to_output [ 41 ]  = "42"
+		fields_to_output [ 42 ]  = "43"
+		fields_to_output [ 43 ]  = "44"
+		fields_to_output [ 44 ]  = "45"
+
+	ARRAY special_actions_report 	ARRAY_SIZE ( 0 , 4 )
+	count = 1
+		special_actions_report [ count , CHARACTER_POSITION ] = "*"
+		special_actions_report [ count , TITLE_POSITION     ] = STRIP(count)
+	count = count + 1
+		special_actions_report [ count , CHARACTER_POSITION ] = STRIP ( count - 1 )
+		special_actions_report [ count , TITLE_POSITION     ] = get_user_message( "SMIDI_LTE_POINTS_MENU", 1 )
+		special_actions_report [ count , LIBRARY_POSITION   ] = GLOBAL ( "CURRENT_LIBRARY" )
+		special_actions_report [ count , ROUTINE_POSITION   ] = "SMIDI_CONFIG"
+	count = count + 1
+		special_actions_report [ count , CHARACTER_POSITION ] = STRIP ( count - 1 )
+		special_actions_report [ count , TITLE_POSITION     ] = get_user_message( "SMIDI_LTE_POINTS_MENU", 2 )
+		special_actions_report [ count , LIBRARY_POSITION   ] = GLOBAL ( "CURRENT_LIBRARY" )
+		special_actions_report [ count , ROUTINE_POSITION   ] = "points_user_prompts"
+	count = count + 1
+		special_actions_report [ count , CHARACTER_POSITION ] = STRIP ( count - 1 )
+		special_actions_report [ count , TITLE_POSITION     ] = get_user_message( "SMIDI_LTE_POINTS_MENU", 3 )
+		special_actions_report [ count , LIBRARY_POSITION   ] = GLOBAL ( "CURRENT_LIBRARY" )
+		special_actions_report [ count , ROUTINE_POSITION   ] = "points_usage_decision"
+	count = count + 1
+		special_actions_report [ count , CHARACTER_POSITION ] = STRIP ( count - 1 )
+		special_actions_report [ count , TITLE_POSITION     ] = get_user_message( "SMIDI_LTE_POINTS_MENU", 4 )
+		special_actions_report [ count , LIBRARY_POSITION   ] = GLOBAL ( "CURRENT_LIBRARY" )
+		special_actions_report [ count , ROUTINE_POSITION   ] = "points_create"
+
+	ARRAY labtable_messages 	ARRAY_SIZE ( 0 )
+		labtable_messages [ IDENTITY_MESSAGE   ] = get_user_message ( "SMIDI_LTE_POINTS_IDENTITY", 1 )
+		labtable_messages [ IDENTITY_MESSAGE+1 ] = get_user_message ( "SMIDI_LTE_POINTS_IDENTITY", 2 )
+		labtable_messages [ IDENTITY_MESSAGE+2 ] = get_user_message ( "SMIDI_LTE_POINTS_IDENTITY", 3 )
+		labtable_messages [ MOD_ON_MESSAGE     ] = GET MESSAGE ( 2546 , 1 )
+		labtable_messages [ MOD_BY_MESSAGE     ] = GET MESSAGE ( 2547 , 1 )
+		labtable_messages [ READ_MESSAGE       ] = GET MESSAGE ( 2566 , 1 )
+		labtable_messages [ WRITE_MESSAGE      ] = GET MESSAGE ( 2567 , 1 )
+
+ENDROUTINE  { table setup }
+
+{ --------------------------------------------------------------------------- }
+ROUTINE validation_routine
+
+	retval = TRUE
+	RETURN ( retval )
+
+ENDROUTINE  { validation routine }
+
+{ --------------------------------------------------------------------------- }
+ROUTINE prompt_object_routine ( prompt_object, VALUE key0_count, VALUE operation )
+ 
+	{ Called during the creation of the identity prompts              }
+	{                                                                 }
+	{ prompt_object is the prompt object from the specified prompt    }
+	{ key0_count    is the current key0 segment number                }
+	{               eg this would be 2 for the version_number         }
+	{ operation     the current LTE operation eg ADD, MODIFY, DISPLAY }
+	{                                                                 }
+	{ No return value is required                                     }
+           
+
+	IF ( operation != "MODIFY"  ) AND ( operation != "DISPLAY" ) THEN
+
+		prompt_object.display_only = FALSE
+
+	ELSEIF ( key0_count = 1 ) AND ( ( operation = "MODIFY" ) | ( operation = "DISPLAY" ) ) THEN
+	ELSEIF ( key0_count = 2 ) AND ( ( operation = "MODIFY" ) | ( operation = "DISPLAY" ) ) THEN
+	ELSEIF ( key0_count = 3 ) AND ( ( operation = "MODIFY" ) | ( operation = "DISPLAY" ) ) THEN
+
+		prompt_object.enter_prompt_routine = "enter_op_no"
+		prompt_object.leave_prompt_routine = "leave_op_no"
+		prompt_object.validation_routine   = "validate_op_no"
+		prompt_object.vgl_library          = GLOBAL ( "CURRENT_REPORT" )
+
+	ENDIF
+
+ENDROUTINE  { prompt object routine }
+
+{ --------------------------------------------------------------------------- }
+ROUTINE create_id_routine
+
+	RETURN ( EMPTY )
+
+ENDROUTINE  { create id routine }
+
+{ --------------------------------------------------------------------------- }
+ROUTINE update_routine ( labtable )
+
+	DECLARE loop, number_elements, object, request_key, subsys
+
+	save_smidi_system = SELECT SMIDI_POINTS_QUERY.SMIDI_SYSTEM
+	subsys            = SELECT SMIDI_SYSTEM.SUBSYSTEM_ID WHERE IDENTITY = save_smidi_system
+
+	IF save_smidi_system <> EMPTY THEN
+
+		ASSIGN SMIDI_POINTS_QUERY.SUBSYSTEM = subsys
+
+		loop            = 1
+		number_elements = list_point_create.collection.size()
+
+		WHILE loop <= number_elements DO
+
+			object      = list_point_create.collection.get_by_number ( loop )
+			request_key = SELECT smidi_insppoint.request_key IN OBJECT object
+
+			IF object.new THEN
+
+				IF smidi_queue_point ( request_key, save_smidi_system ) THEN
+					ASSIGN SMIDI_INSPPOINT.SAP_POINT_CREATED IN OBJECT object = TRUE
+				ENDIF
+
+			ELSEIF NOT ( SELECT smidi_insppoint.sap_point_created IN OBJECT OBJECT ) THEN
+
+				IF smidi_queue_point ( request_key, save_smidi_system ) THEN
+					ASSIGN SMIDI_INSPPOINT.SAP_POINT_CREATED IN OBJECT object = TRUE
+				ENDIF
+
+			ENDIF
+
+			loop   = loop + 1
+
+		ENDWHILE
+
+		loop            = 1
+		number_elements = list_smidi_insppoint.collection.size()
+
+		WHILE loop <= number_elements DO
+
+			object      = list_smidi_insppoint.collection.get_by_number ( loop )
+			request_key = SELECT smidi_insppoint.request_key IN OBJECT object
+	
+			IF NOT ( SELECT smidi_insppoint.sap_ud_uploaded IN OBJECT OBJECT ) THEN
+	
+				IF smidi_queue_point_ud ( request_key, save_smidi_system ) THEN
+					ASSIGN SMIDI_INSPPOINT.SAP_UD_UPLOADED IN OBJECT object = TRUE
+				ENDIF
+
+			ENDIF
+
+			loop   = loop + 1
+
+		ENDWHILE
+
+
+	ENDIF  { gotta have smidi_save_system }
+
+	RETURN ( EMPTY )
+
+ENDROUTINE  { update routine }
+
+{ --------------------------------------------------------------------------- }
+ROUTINE read_data_routine ( labtable, VALUE operation )
+
+	sel_main_form ( sel_form )
+                                                    
+ENDROUTINE  { read data routine }
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE do_the_work  ( VALUE operation )
+
+	IF ( smp_lte_initialise() ) THEN
+
+		table_setup ( operation )
+		smp_lte_perform_option( name_of_table        ,
+					displayed_name_of_table    ,
+					prompt_details             ,
+					labtable_messages          ,
+					default_value		   ,
+					input_mess                 ,
+					header_mess                ,
+					footer_mess                ,
+					display_footer_mess        ,
+					directory                  ,
+					extn                       ,
+					help_context               ,
+					GLOBAL ("CURRENT_LIBRARY") ,
+					fields_to_output           ,
+					special_actions_report     ,
+					operation                  )
+	ENDIF
+
+ENDROUTINE   { do_the_work }
+
+{ --------------------------------------------------------------------------- }
+ROUTINE add_option ( option )
+	do_the_work ( "add_ident" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE copy_option ( option )
+	do_the_work ( "copy_ident" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE modify_option ( option )
+	do_the_work ( "modify_ident" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE display_option ( option )
+	do_the_work ( "display_ident" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE remove_option ( option )
+	do_the_work ( "remove_ident" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE restore_option ( option )
+	do_the_work ( "restore_ident" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE list_option ( option )
+	do_the_work ( "list_idents" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE print_option ( option )
+	do_the_work ( "print_ident" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE spreadsheet_option ( option )
+
+	DECLARE key_search_field, the_table
+
+	the_table        = "SMIDI_POINTS_QUERY"
+	key_search_field = "FROM_IP_LOT"
+	CALL_ROUTINE "LTE_spreadsheet" USING the_table, key_search_field IN LIBRARY SMIDI_LIB_SAP
+
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE smp_lte_initialise
+
+	RETURN ( TRUE )
+
+ENDROUTINE
+
+{ ============================================================================ }
+{     PRIMARY KEY PROMPTS                                                      }
+{ ============================================================================ }
+
+ROUTINE enter_op_no ( self )
+
+	DECLARE op_array, lot_no, arec, cnt
+
+	CALL_ROUTINE "LABTABLIB_ENTER_ID_PROMPT" IN LIBRARY "$LABTABLIB" USING self 
+
+	ARRAY op_array
+
+	lot_no = self.parent_prompt.prompt_objects[2].value
+	cnt    = 0
+
+	a_rec  = SELECT SMIDI_POINTS_QUERY.FROM_IP_OP_NO
+		 WHERE FROM_IP_LOT = lot_no
+		 AND REMOVEFLAG    = FALSE
+
+	WHILE ( arec <> EMPTY ) DO
+
+		cnt           = cnt + 1
+		op_array[cnt] = a_rec
+
+		NEXT SMIDI_POINTS_QUERY
+
+		arec = SELECT SMIDI_POINTS_QUERY.FROM_IP_OP_NO
+
+	ENDWHILE
+
+	IF SIZE_OF_ARRAY ( op_array ) = 0 THEN
+
+		FLASH_MESSAGE ( "No operations for ":lot_no, TRUE )
+		self.set_lastkey ( "DOWN" )
+		arec = ""
+
+	ELSEIF SIZE_OF_ARRAY ( op_array )  = 1 THEN
+
+		arec      = op_array[1]
+		self.text = arec
+
+		self.repaste()
+		self.set_lastkey ( "RETURN" )
+
+	ELSE
+
+		browse_on_array ( 60, self.text, op_array )
+		self.repaste()
+		arec = self.text
+	ENDIF
+
+	RETURN ( arec )
+
+ENDROUTINE  { enter_op_no }
+
+{------------------------------------------------------------------}
+
+ROUTINE leave_op_no ( self )
+
+	CALL_ROUTINE "LABTABLIB_LEAVE_ID_PROMPT" IN LIBRARY "$LABTABLIB" USING self 
+
+ENDROUTINE  { leave_op_no }
+
+{------------------------------------------------------------------}
+
+ROUTINE validate_op_no ( self )
+	
+	DECLARE retval
+
+	CALL_ROUTINE "LABTABLIB_VALIDATE_ID_PROMPT" IN LIBRARY "$LABTABLIB" USING self RETURNING retval
+
+	IF ( VARIABLE_IS_ASSIGNED ( self.text ) ) THEN
+		retval = TRUE
+	ENDIF
+
+	RETURN ( retval )
+
+ENDROUTINE   { validate_op_no }
+
+{******************************************************************************}
+
+ROUTINE process_routine_prompt  ( VALUE column, VALUE row, VALUE cell_width, window, VALUE is_display )
+
+	DECLARE u1, u2
+
+	u1 = "PROCESS"
+	u2 = "SMIDI_POINTS_QUERY"
+
+	CALL_ROUTINE "routine_prompt" IN LIBRARY "$SMIDI_LTE_QUERY"
+		USING column, row, cell_width, window, is_display, u1, u2
+
+ENDROUTINE  { process_routine_prompt }
+
+{******************************************************************************}
+
+ROUTINE smidi_config ( VALUE id, VALUE old_id, VALUE mode )
+
+	smidi_config_items ( id, old_id, mode, "QUERY" )
+
+ENDROUTINE  { smidi_config }
+
+{ ============================================================================ }
+{        I N S P E C T I O N   P O I N T S    P R O M P T S                    }
+{ ============================================================================ }
+
+ROUTINE sel_form_validate( self )
+
+	declare valid
+
+	valid = FALSE
+
+	IF (self.get_lastkey() = "EXIT") THEN
+
+		valid = TRUE
+
+	ELSE
+
+		IF ( select smidi_points_query.user_C1_enabled = "X" ) THEN
+
+			assign smidi_points_query.user_C1_keyword = self.prompt_objects[ self.user_info[ choices[2 ,2]  ] ].value
+			assign smidi_points_query.user_C1_type    = self.prompt_objects[ self.user_info[ choices[3 ,2]  ] ].value
+			assign smidi_points_query.user_C1_value   = self.prompt_objects[ self.user_info[ choices[4 ,2]  ] ].value
+			assign smidi_points_query.user_C1_library = self.prompt_objects[ self.user_info[ choices[5 ,2]  ] ].value
+			assign smidi_points_query.user_C1_routine = self.prompt_objects[ self.user_info[ choices[6 ,2]  ] ].value
+	
+		ENDIF
+
+		IF ( select smidi_points_query.user_C2_enabled = "X" ) THEN
+
+			assign smidi_points_query.user_C2_keyword = self.prompt_objects[ self.user_info[ choices[8 ,2]  ] ].value
+			assign smidi_points_query.user_C2_type    = self.prompt_objects[ self.user_info[ choices[9 ,2]  ] ].value
+			assign smidi_points_query.user_C2_value   = self.prompt_objects[ self.user_info[ choices[10,2]  ] ].value
+			assign smidi_points_query.user_C2_library = self.prompt_objects[ self.user_info[ choices[11,2]  ] ].value
+			assign smidi_points_query.user_C2_routine = self.prompt_objects[ self.user_info[ choices[12,2]  ] ].value
+	
+		ENDIF
+
+		IF ( select smidi_points_query.user_N1_enabled = "X" ) THEN
+
+			assign smidi_points_query.user_N1_keyword = self.prompt_objects[ self.user_info[ choices[14,2] ] ].value
+			assign smidi_points_query.user_N1_type    = self.prompt_objects[ self.user_info[ choices[15,2] ] ].value
+			assign smidi_points_query.user_N1_value   = self.prompt_objects[ self.user_info[ choices[16,2] ] ].value
+			assign smidi_points_query.user_N1_library = self.prompt_objects[ self.user_info[ choices[17,2] ] ].value
+			assign smidi_points_query.user_N1_routine = self.prompt_objects[ self.user_info[ choices[18,2] ] ].value
+	
+		ENDIF
+
+		IF ( select smidi_points_query.user_N2_enabled = "X" ) THEN
+
+			assign smidi_points_query.user_N2_keyword = self.prompt_objects[ self.user_info[ choices[20,2] ] ].value
+			assign smidi_points_query.user_N2_type    = self.prompt_objects[ self.user_info[ choices[21,2] ] ].value
+			assign smidi_points_query.user_N2_value   = self.prompt_objects[ self.user_info[ choices[22,2] ] ].value
+			assign smidi_points_query.user_N2_library = self.prompt_objects[ self.user_info[ choices[23,2] ] ].value
+			assign smidi_points_query.user_N2_routine = self.prompt_objects[ self.user_info[ choices[24,2] ] ].value
+	
+		ENDIF
+
+		IF ( select smidi_points_query.user_D1_enabled = "X" ) THEN
+
+			assign smidi_points_query.user_D1_keyword = self.prompt_objects[ self.user_info[ choices[26,2] ] ].value
+			assign smidi_points_query.user_D1_type    = self.prompt_objects[ self.user_info[ choices[27,2] ] ].value
+			assign smidi_points_query.user_D1_value   = self.prompt_objects[ self.user_info[ choices[28,2] ] ].value
+			assign smidi_points_query.user_D1_library = self.prompt_objects[ self.user_info[ choices[29,2] ] ].value
+			assign smidi_points_query.user_D1_routine = self.prompt_objects[ self.user_info[ choices[30,2] ] ].value
+	
+		ENDIF
+
+		IF ( select smidi_points_query.user_T1_enabled = "X" ) THEN
+
+			assign smidi_points_query.user_T1_keyword = self.prompt_objects[ self.user_info[ choices[32,2] ] ].value
+			assign smidi_points_query.user_T1_type    = self.prompt_objects[ self.user_info[ choices[33,2] ] ].value
+			assign smidi_points_query.user_T1_value   = self.prompt_objects[ self.user_info[ choices[34,2] ] ].value
+			assign smidi_points_query.user_T1_library = self.prompt_objects[ self.user_info[ choices[35,2] ] ].value
+			assign smidi_points_query.user_T1_routine = self.prompt_objects[ self.user_info[ choices[36,2] ] ].value
+	
+		ENDIF
+
+		valid = TRUE
+
+	ENDIF
+
+	return( valid )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE sel_main_form( sel_form )
+
+	IF ( NOT VARIABLE_IS_ASSIGNED ( sel_form ) ) THEN
+
+		DECLARE sel_prompts, i, j, k
+
+		array sel_prompts
+		array choices
+		array sap_choices
+
+		choices[ 1 ,1 ] = "User_C1_Enabled"
+		choices[ 2 ,1 ] = "USER_C1_KEYWORD"
+		choices[ 3 ,1 ] = "USER_C1_TYPE"
+		choices[ 4 ,1 ] = "USER_C1_VALUE"
+		choices[ 5 ,1 ] = "USER_C1_LIBRARY"
+		choices[ 6 ,1 ] = "USER_C1_ROUTINE"
+
+		choices[ 7 ,1 ] = "User_C2_Enabled"
+		choices[ 8 ,1 ] = "USER_C2_KEYWORD"
+		choices[ 9 ,1 ] = "USER_C2_TYPE"
+		choices[ 10,1 ] = "USER_C2_VALUE"
+		choices[ 11,1 ] = "USER_C2_LIBRARY"
+		choices[ 12,1 ] = "USER_C2_ROUTINE"
+
+		choices[ 13,1 ] = "User_N1_Enabled"
+		choices[ 14,1 ] = "USER_N1_KEYWORD"
+		choices[ 15,1 ] = "USER_N1_TYPE"
+		choices[ 16,1 ] = "USER_N1_VALUE"
+		choices[ 17,1 ] = "USER_N1_LIBRARY"
+		choices[ 18,1 ] = "USER_N1_ROUTINE"
+
+		choices[ 19,1 ] = "User_N2_Enabled"
+		choices[ 20,1 ] = "USER_N2_KEYWORD"
+		choices[ 21,1 ] = "USER_N2_TYPE"
+		choices[ 22,1 ] = "USER_N2_VALUE"
+		choices[ 23,1 ] = "USER_N2_LIBRARY"
+		choices[ 24,1 ] = "USER_N2_ROUTINE"
+
+		choices[ 25,1 ] = "User_D1_Enabled"
+		choices[ 26,1 ] = "USER_D1_KEYWORD"
+		choices[ 27,1 ] = "USER_D1_TYPE"
+		choices[ 28,1 ] = "USER_D1_VALUE"
+		choices[ 29,1 ] = "USER_D1_LIBRARY"
+		choices[ 30,1 ] = "USER_D1_ROUTINE"
+
+		choices[ 31,1 ] = "User_T1_Enabled"
+		choices[ 32,1 ] = "USER_T1_KEYWORD"
+		choices[ 33,1 ] = "USER_T1_TYPE"
+		choices[ 34,1 ] = "USER_T1_VALUE"
+		choices[ 35,1 ] = "USER_T1_LIBRARY"
+		choices[ 36,1 ] = "USER_T1_ROUTINE"
+
+		CREATE OBJECT "STD_FORM", sel_form
+			{ Hard code the screen width to display all of the fields as the screen
+			  is unable to be resized.. }
+			sel_form.width              = 125 { GLOBAL ( "SCREEN_WIDTH" )}
+			sel_form.row                = 3
+			sel_form.column             = 3
+			sel_form.header             = get_user_message("SMIDI_LTE_POINTS_HEADER", 1 )
+			sel_form.footer             = get_user_message("SMIDI_LTE_POINTS_FOOTER", 2 )
+			sel_form.border             = TRUE
+			sel_form.return_behaviour   = FORM_RETURN_STAY
+			sel_form.validation_routine = "sel_form_validate"
+			sel_form.user_info          = sel_prompts
+			sel_form.button_style       = FORM_BUTTON_CLOSE
+
+		IF NOT VARIABLE_IS_ASSIGNED ( format_text ) THEN
+			format_text = "Text"
+		ENDIF
+
+		{ ================================================== }
+		{ The user defined prompts for the create points     }
+		{ ================================================== }
+
+		i = 1
+		j = 1
+		k = 0
+
+		WHILE i <= 36 DO
+
+			IF ( i = 1 ) | ( i = 7 ) | ( i = 13 ) | ( i = 19 ) | ( i = 25 ) | ( i = 31 ) THEN
+
+				IF ( select smidi_points_query.'choices[i,1]' = "X") THEN
+
+					{ ========================================================== }
+					{ Save the enabled prompts for points creation form/grid     }
+					{ ========================================================== }
+	
+					sap_choices[j,1] = choices[ i+3,1 ]                            { DBField }
+					sap_choices[j,2] = SELECT smidi_points_query.'choices[i+1,1]'  { Caption }
+					sap_choices[j,3] = SELECT smidi_points_query.'choices[i+2,1]'  { Type    }
+					sap_choices[j,4] = SELECT smidi_points_query.'choices[i+4,1]'  { Library }
+					sap_choices[j,5] = SELECT smidi_points_query.'choices[i+5,1]'  { Routine }
+					sap_choices[j,6] = 6
+
+					IF ( i = 1 ) THEN
+						sap_choices[j,3] = "TEXT18"
+						sap_choices[j,6] = 20
+					ELSEIF ( i = 7 ) THEN
+						sap_choices[j,3] = "TEXT10"
+						sap_choices[j,6] = 12
+					ELSEIF ( i = 13 ) THEN
+						sap_choices[j,3] = "999999"
+						sap_choices[j,6] = 8
+					ELSEIF ( i = 19 ) THEN
+						sap_choices[j,3] = "999"
+						sap_choices[j,6] = 6
+					ELSEIF ( i = 25 ) THEN
+						sap_choices[j,3] = "DATE-YYYYMZDZ"
+						sap_choices[j,6] = 10
+					ELSEIF ( i = 31 ) THEN
+						sap_choices[j,3] = "TIME-H24MISS"
+						sap_choices[j,6] = 10
+					ENDIF
+
+					j = j + 1
+
+					sel_form.add_display ( choices[i,1], 2, j, 2 )
+
+					k = k + 1
+					PROMPT OBJECT sel_prompts[k] ON LINE j FROM 22 TO 46 FORMAT smidi_points_query.'choices[i+1,1]' WITH ( value = SELECT smidi_points_query.'choices[i+1,1]' )
+					sel_prompts[ k ] = sel_form.add_prompt( sel_prompts[ k ] )
+					choices[i+1,2] = k
+
+					k = k + 1
+					PROMPT OBJECT sel_prompts[k] ON LINE j FROM 49 TO 59 FORMAT smidi_points_query.'choices[i+2,1]' WITH ( value = SELECT smidi_points_query.'choices[i+2,1]', leave_prompt_routine = "set_format_text" )
+					sel_prompts[ k ] = sel_form.add_prompt( sel_prompts[ k ] )
+					choices[i+2,2] = k
+
+					k = k + 1
+					PROMPT OBJECT sel_prompts[k] ON LINE j FROM 62 TO 72 FORMAT 'format_text' WITH ( value = SELECT smidi_points_query.'choices[i+3,1]' )
+					sel_prompts[ k ] = sel_form.add_prompt( sel_prompts[ k ] )
+					choices[i+3,2] = k
+
+					k = k + 1
+					PROMPT OBJECT sel_prompts[k] ON LINE j FROM 75 to 90 FORMAT smidi_points_query.'choices[i+4,1]' WITH ( value = SELECT smidi_points_query.'choices[i+4,1]' )
+					sel_prompts[ k ] = sel_form.add_prompt( sel_prompts[ k ] )
+					choices[i+4,2] = k
+
+					k = k + 1
+					PROMPT OBJECT sel_prompts[k] ON LINE j FROM 93 to 123 WITH ( value = SELECT smidi_points_query.'choices[i+5,1]', enter_prompt_routine = "set_routine_array" )
+					sel_prompts[ k ] = sel_form.add_prompt( sel_prompts[ k ] )
+					choices[i+5,2] = k
+
+				ENDIF
+
+			ENDIF
+
+			i = i + 1
+
+		ENDWHILE
+
+		sel_form.add_frame( PAD ( GET_USER_MESSAGE ( "SMIDI_LTE_POINTS_USER_PROMPTS", 1 ), "_", 144 ), 1,  1 , j + 1, 126 )
+		sel_form.height = j + 1
+
+	ENDIF  { only define this one time }
+
+ENDROUTINE { sel_main_form }
+
+{******************************************************************************}
+
+ROUTINE set_format_text ( self )
+
+	format_text = STRIP(self.parent_prompt.prompt_objects[ self.parent_prompt.active_prompt ].text )
+
+ENDROUTINE  { set_format_text  - enter_prompt_routine for the VALUE column }
+
+{******************************************************************************}
+
+ROUTINE set_routine_array ( self )
+
+	DECLARE routine_array, lib_name
+
+	ARRAY routine_array
+
+	lib_name = self.parent_prompt.prompt_objects[self.parent_prompt.active_prompt - 1 ].text
+
+	IF NOT BLANK ( lib_name ) THEN
+		vgl_find_routines ( lib_name, routine_array )
+	ENDIF
+
+	browse_on_array ( 80 , self.text , routine_array )
+
+	self.repaste()
+
+ENDROUTINE  { set_routine_array - enter_prompt_routine for the ROUTINE column }
+
+{******************************************************************************}
+
+ROUTINE points_user_prompts( VALUE id, VALUE old_id, VALUE mode )
+
+	IF mode = "PRINT" THEN
+
+	ELSEIF index( "#MODIFY#", mode ) <> 0 THEN
+
+		sel_form.start_prompt()
+		sel_form.wait_prompt()
+		sel_form.end_prompt()
+
+	ELSEIF index( "#DISPLAY#", mode ) <> 0 THEN
+
+		set display true
+
+		sel_form.start_prompt()
+		sel_form.wait_prompt()
+		sel_form.end_prompt()
+
+		set display false
+
+	ENDIF
+
+ENDROUTINE  { points_user_prompts }
+
+{******************************************************************************}
+
+ROUTINE do_userprompts_callbacks ( self, ud_object )
+
+	FLASH_MESSAGE ( "Custom code must be added", TRUE )
+
+ENDROUTINE  {  do_userprompts_callbacks }
+
+{ ============================================================================ }
+{     I N S P E C T I O N   P O I N T S    U S A G E   D E C I S I O N         }
+{ ============================================================================ }
+
+ROUTINE points_usage_decision ( identity, copied_identity, operation )
+
+	DECLARE answer
+
+	IF operation = "PRINT" THEN                                         { see points for print }
+	ELSEIF ( operation <> "COPY" ) THEN                                 { cannot copy points   }
+
+		copied_identity = EMPTY
+		answer = make_list_object ( 	identity            , 
+						copied_identity     , 
+						operation           , 
+						"SMIDI_INSPPOINT"   , 
+						list_smidi_insppoint, 
+                                                "USAGE_DECISION"    )
+
+
+		answer = list_smidi_insppoint.operation ( identity, copied_identity, operation )
+
+		{ ------------------------------------------------------------------------------------------ }
+		{ in 2001 you have to do this otherwise getting in, out, in, out, in, out of buttons crashes }
+		{ ------------------------------------------------------------------------------------------ }
+
+		IF ( answer <> EMPTY ) & ( NOT answer ) & ( list_smidi_insppoint <> EMPTY ) THEN
+	
+			list_smidi_insppoint.initialised = FALSE
+			list_smidi_insppoint.data_read   = FALSE
+
+		ENDIF
+
+		RETURN ( answer )
+
+	ENDIF
+
+ENDROUTINE  { points_usage_decision }
+
+{ ============================================================================ }
+{     I N S P E C T I O N   P O I N T S    C R E A T E     A    P O I N T      }
+{ ============================================================================ }
+
+ROUTINE points_create ( identity, copied_identity, operation )
+
+	DECLARE answer
+
+	IF operation = "PRINT" THEN
+
+		print_a_table ( identity, "SMIDI_INSPPOINT" )
+
+	ELSEIF ( operation <> "COPY" ) THEN                               { cannot copy points }
+
+		copied_identity = EMPTY
+		answer = make_list_object ( 	identity            , 
+						copied_identity     , 
+						operation           , 
+						"SMIDI_INSPPOINT"   , 
+						list_point_create   , 
+						"POINT_CREATE"      )
+
+
+		answer = list_point_create.operation ( identity, copied_identity, operation )
+
+		{ ------------------------------------------------------------------------------------------ }
+		{ in 2001 you have to do this otherwise getting in, out, in, out, in, out of buttons crashes }
+		{ ------------------------------------------------------------------------------------------ }
+
+		IF ( answer <> EMPTY ) & ( NOT answer ) & ( list_point_create <> EMPTY ) THEN
+	
+			list_point_create.initialised = FALSE
+			list_point_create.data_read   = FALSE
+
+		ENDIF
+
+		RETURN ( answer )
+
+	ENDIF
+
+ENDROUTINE  { points_create }
+
+{******************************************************************************}
+
+ROUTINE prompt_points   (        self        ,
+                                  grid        ,
+                            VALUE cell_column ,
+                            VALUE cell_row    ,
+                            VALUE column      ,
+                            VALUE row         ,
+                            VALUE cell_width  ,
+                                  window      ,
+                            VALUE is_display   )
+
+
+	DECLARE orig_def, def, status, a_field
+
+	IF self <> EMPTY THEN
+
+		a_field  = fld[cell_column]
+		def      = SELECT 'self.table'.'a_field' IN OBJECT self
+		orig_def = def
+
+		IF is_display = EMPTY THEN    { This is called from a List }	
+		ELSEIF is_display THEN
+
+			PAD ( def, " ", 30 )
+			DISPLAY def ON LINE row FROM column TO column+cell_width-1 IN WINDOW window FORMAT 'self.table'.'a_field'
+
+		ELSE
+
+			PROMPT FOR def ON LINE row FROM column TO column+cell_width-1 IN WINDOW window FORMAT 'self.table'.'a_field'
+
+			IF ( NOT is_display ) AND ( def <> orig_def ) THEN
+
+				ASSIGN 'self.table'.'a_field' IN OBJECT self = def
+				UPDATE 'self.table', status
+
+			ENDIF
+
+		ENDIF
+
+	ELSE
+
+		DISPLAY "oops" ON LINE row FROM column TO column+cell_width-1 IN WINDOW window
+
+	ENDIF   { ask Derek why self can be empty }
+
+ENDROUTINE { prompt_points }
+
+{ ---------------------------------------------------------------------------- }
+{              Routines shared by LIST OBJECTS for points UD and create        }
+{ ---------------------------------------------------------------------------- }
+
+ROUTINE print_a_table ( VALUE identity, VALUE the_table ) 
+
+	DECLARE field_details, field_print, cnt
+
+	ARRAY field_print ARRAY_SIZE ( 0 , 2 )
+	ARRAY field_details
+
+	GET_FIELD_NAMES ( the_table, field_details )
+
+	cnt   = 1
+	WHILE cnt <= SIZE_OF_ARRAY ( field_details ) DO
+
+		IF NOT field_details[cnt,2] THEN      { get rid of aliases }
+
+			field_print[cnt,1] = field_details[cnt,1]
+			field_print[cnt,2] = field_details[cnt,1]
+
+		ENDIF
+
+		cnt = cnt + 1
+
+	ENDWHILE
+
+	print_fields ( the_table, identity, "", "", 2, 28, field_details   )
+
+ENDROUTINE { print_a_table }
+
+{ --------------------------------------------------------------------------- }
+ROUTINE pre_insert_list_object ( self,grid,cell_column,cell_row,window,column,row,cell_width,cell_height,new_value )
+
+	IF BLANK ( grid.value ) AND ( self.userinfo = "POINT_CREATE" ) THEN
+
+		new_value = RIGHTSTRING ( "00000" : STRIP(cell_row), 6 )   { $list_editor prefix = self.identity }
+
+		IF ( cell_row = grid.cell_rows ) THEN
+
+			IF cell_row = 1 THEN
+				SET GLOBAL "LASTKEY" TO "DO"
+			ELSE
+				SET GLOBAL "LASTKEY" TO "RIGHT"
+			ENDIF
+	
+		ELSE
+
+			IF cell_row = 1 THEN
+				SET GLOBAL "LASTKEY" TO "REMOVE"
+			ELSE
+				SET GLOBAL "LASTKEY" TO "DO"
+			ENDIF
+
+			new_value = ""
+	
+		ENDIF   { this gets the list editor out of the endless append loop }
+
+	ELSE
+
+		FLASH_MESSAGE ( "Use CREATE to make a new point", TRUE )
+		new_value = ""
+		SET GLOBAL "LASTKEY" TO "REMOVE"
+
+	ENDIF  { grid already has value }
+
+ENDROUTINE  { pre_insert_list_object }
+
+{ --------------------------------------------------------------------------- }
+ROUTINE post_insert_list_object ( self, cell_row, window )
+	
+	DECLARE items, object, this_job
+
+	items  = self.collection.size()
+	object = self.collection.get_by_number ( items )
+
+	IF ( object <> EMPTY ) AND ( object.new ) THEN
+
+		IF items > 1 THEN
+			items = 1
+		ENDIF
+
+		object   = self.collection.get_by_number ( items )
+		this_job = SELECT SMIDI_INSPPOINT.JOB IN OBJECT object
+		object   = self.collection.get_by_number ( items )
+
+		ASSIGN SMIDI_INSPPOINT.JOB IN OBJECT object = this_job
+
+	ENDIF
+
+	RETURN ( TRUE )
+
+ENDROUTINE { post_insert_list_object }
+
+{******************************************************************************}
+
+ROUTINE make_list_object ( 	VALUE identity		,  
+				VALUE copied_identity	, 
+				VALUE operation		, 
+				VALUE the_table		, 
+				list_object_id  	,
+				VALUE mode              )
+    
+	DECLARE prompt_details, heading
+
+	{ ---------------------------------------------------------------------------------------------- }
+	{ was all inside an endif so it was done only 1 time but lots of SMP bugs when you do this DEREK }
+	{ ---------------------------------------------------------------------------------------------- }
+
+	list_editor_create_object ( list_object_id )
+
+	initialize_details ( prompt_details, heading, the_table, mode )
+
+	list_object_id.table           = the_table
+	list_object_id.header          = the_table:" ":identity
+	list_object_id.footer          = ""
+	list_object_id.pre_insert      = "pre_insert_list_object"
+	list_object_id.post_insert     = "post_insert_list_object"
+	list_object_id.delete          = "delete_list_object"
+	list_object_id.library         = GLOBAL ( "CURRENT_LIBRARY" )
+	list_object_id.compatability   = PROMPT_DETAILS_310
+	list_object_id.userinfo        = mode
+
+	{ ------------------------------------------------------------- }
+	{ The list above decides what can be deleted/inserted           }
+	{ ------------------------------------------------------------- }
+
+	IF ( OBJECT_CHECK_PROPERTY ( list_object_id, "DELETES_ENABLED" ) ) THEN
+		list_object_id.deletes_enabled  = FALSE
+	ENDIF
+
+	IF ( OBJECT_CHECK_PROPERTY ( list_object_id, "INSERTS_ENABLED" ) ) THEN
+		list_object_id.inserts_enabled  = ( mode = "POINT_CREATE" )
+	ENDIF
+
+	list_object_id.select_callback  = "MAP_CRITERIA"
+
+	{ ------------------------------------------------------------- }
+	{ Prompt details are read from the database fields by table     }
+	{ ------------------------------------------------------------- }
+
+	list_object_id.setup_prompt_details ( prompt_details, heading )
+
+	{ was all inside an endif so it was done only 1 time but lots of SMP bugs when you do this DEREK }
+
+ENDROUTINE { make_list_object }
+
+{******************************************************************************}
+
+ROUTINE map_criteria ( self, select_array )
+
+	DECLARE len_1, req_key, sys_key
+
+	GET_FIELD_DETAILS SMIDI_POINTS_QUERY.SMIDI_SYSTEM, "FIELD_SIZE", len_1
+
+	sys_key = LEFTSTRING ( self.identity, len_1 )
+	req_key = STRIP ( self.identity # sys_key ) : "%"
+
+	ARRAY select_array
+	ARRAY_SELECT_ADD ( select_array, ARRAY_SELECT_EQ  , "SMIDI_SYSTEM", sys_key )
+	ARRAY_SELECT_ADD ( select_array, ARRAY_SELECT_LIKE, "REQUEST_KEY" , req_key )
+
+ENDROUTINE  { map_criteria_query }
+
+{******************************************************************************}
+
+ROUTINE initialize_details ( prompt_details, heading, VALUE the_table, VALUE mode )
+
+	DECLARE count, field_details, message_prompt, a_field, field_size, is_key0, cnt, ndex, strLength
+
+	ARRAY prompt_details ARRAY_SIZE ( 0 , 6 )
+
+	{ ---------------------------------------------------------------------------- }
+	{ The n fields in array are critical user input & have special routines/table  }
+	{ ---------------------------------------------------------------------------- }
+
+	ARRAY fld
+
+	IF mode = "POINT_CREATE" THEN
+		fld[1 ] = "REQUEST_KEY"
+		fld[2 ] = "JOB"
+		fld[3 ] = "SAMPLE"
+		fld[4 ] = "USER_C1_VALUE"
+		fld[5 ] = "USER_C2_VALUE"
+		fld[6 ] = "USER_N1_VALUE"
+		fld[7 ] = "USER_N2_VALUE"
+		fld[8 ] = "USER_D1_VALUE"
+		fld[9 ] = "USER_T1_VALUE"
+	ELSE
+		fld[1 ] = "REQUEST_KEY"
+		fld[2 ] = "JOB"
+		fld[3 ] = "SAMPLE"
+		fld[4 ] = "SAP_UD_MATERIAL_NO"
+		fld[5 ] = "SAP_UD_PARTIAL_LOT"
+		fld[6 ] = "SAP_UD_BATCH"
+		fld[7 ] = "SAP_UD_CODE"
+		fld[8 ] = "SAP_UD_DECISION_TEXT"
+		fld[9 ] = "SAP_UD_QUANTITY"
+		fld[10] = "SAP_UD_UNITS"
+		fld[11] = "SAP_UD_REWORK_QUANTITY"
+		fld[12] = "SAP_UD_SCRAP_AMOUNT"
+		fld[13] = "SAP_UD_SCRAP_REASON"
+		fld[14] = "SAP_UD_EQUIPMENT_NO"
+		fld[15] = "SAP_UD_FUNCTIONAL_LOC"
+		fld[16] = "SAP_UD_OPERATOR"
+		fld[17] = "SAP_UD_DATE"
+		fld[18] = "SAP_UD_CAT_PLANT"
+		fld[19] = "SAP_UD_CODE_GROUP"
+		fld[20] = "SAP_UD_SELECTED_SET"
+		fld[21] = "SAP_UD_INSPECT_TYPE"
+	ENDIF
+
+	cnt     = 1
+	heading = ""
+
+	WHILE fld[cnt] <> EMPTY DO
+
+		GET_FIELD_DETAILS 'the_table'.'fld[cnt]', "PROMPT_DESCRIPTION", message_prompt
+		GET_FIELD_DETAILS 'the_table'.'fld[cnt]', "FIELD_SIZE"        , field_size
+
+		IF field_size <= 3 THEN
+			field_size = 8
+		ELSEIF field_size > 20 THEN
+			field_size = 20 
+		ENDIF
+
+		IF ( INDEX ( fld[cnt], "USER" ) > 0 ) THEN
+			message_prompt = LEFTSTRING ( fld[cnt], 8 ) : "KEYWORD"
+			message_prompt = SELECT SMIDI_POINTS_QUERY.'message_prompt'
+		ENDIF
+
+		IF ( NOT BLANK ( message_prompt ) ) THEN
+			
+			strLength = STRINGLENGTH(message_prompt)
+			
+			IF (field_size < strLength) THEN
+				field_size = strLength	
+			ENDIF
+			
+			heading = heading : " " : PAD ( message_prompt, " ", field_size )
+
+			prompt_details [ cnt, 1 ] = message_prompt
+			prompt_details [ cnt, 2 ] = "ROUTINE"
+			prompt_details [ cnt, 3 ] = GLOBAL ( "CURRENT_LIBRARY" )
+			prompt_details [ cnt, 4 ] = "prompt_points"
+			prompt_details [ cnt, 5 ] = 0
+			prompt_details [ cnt, 6 ] = field_size
+
+		ENDIF
+
+		cnt = cnt + 1
+
+	ENDWHILE
+
+
+	IF SHOW_ALL_FIELDS THEN
+
+		GET_FIELD_NAMES ( the_table, field_details )
+
+		cnt   = cnt - 1
+		count = 1
+	
+		WHILE count <= SIZE_OF_ARRAY ( field_details ) DO
+
+			IF NOT field_details[count,2] THEN
+
+				a_field  = field_details[count,1]
+
+				GET_FIELD_DETAILS 'the_table'.'a_field', "PROMPT_DESCRIPTION", message_prompt
+				GET_FIELD_DETAILS 'the_table'.'a_field', "FIELD_SIZE"        , field_size
+				GET_FIELD_DETAILS 'the_table'.'a_field', "KEY0_FIELD"        , is_key0
+
+				IF field_size > 20 THEN
+					field_size = 20
+				ELSEIF field_size < 5 THEN
+					field_size = 5
+				ENDIF
+
+				IF NOT ( smidi_lib_array_contains_slice ( fld, a_field, ndex ) ) THEN
+	
+					IF ( NOT is_key0 ) | ( ( is_key0 ) & ( GLOBAL ( "CURRAUTH" ) = 10 ) ) THEN
+
+						cnt = cnt + 1
+	
+						prompt_details [ cnt , 1 ] = message_prompt
+						prompt_details [ cnt , 2 ] = "FORMAT"
+						prompt_details [ cnt , 3 ] = the_table 
+						prompt_details [ cnt , 4 ] = field_details[count,1]
+						prompt_details [ cnt , 5 ] = 0
+						prompt_details [ cnt , 6 ] = field_size
+	
+						IF cnt = 1 THEN
+							heading = PAD ( message_prompt, " ", field_size )
+						ELSE
+							heading = heading : " " : PAD ( message_prompt, " ", field_size )
+						ENDIF
+					ENDIF
+				ENDIF
+			ENDIF
+
+			count = count + 1 
+
+		ENDWHILE
+
+	ENDIF   { Show all is a constant at the top of the file }
+
+ENDROUTINE { initialise_details }
+
+{ end $smidi_lte_points }

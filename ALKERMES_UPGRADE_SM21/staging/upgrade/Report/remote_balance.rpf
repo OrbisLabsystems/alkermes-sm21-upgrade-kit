@@ -1,0 +1,351 @@
+{******************************************************************************
+*
+* Module Name	: REMOTE_BALANCE
+*
+* Purpose	: Balance integration called from $instrument_comm
+*
+* Version	: 1.0
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By             Description
+* -------   -----------  ----------     ---------------------------------------
+* 1.0       01-Jun-2013  Orbis          Release Version 
+* 1.1       11-Mar-2014  Orbis          Enhancements   
+* 1.2 	23-Jun-2015  M. Flattery    Ref CC No. CC-ATH-2015-2058, TS Protocol No. 1600030914: 
+*                                       Check for instruments with no units & 
+*                                       Check for instruments with no units and results with units
+*						    
+*******************************************************************************}
+
+SET NAME "DEFER/"
+ENABLE WINDOWS
+SET NOTPROTECTED
+SET COMPILE_OPTION DECLARE
+
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_WINDOW
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_CLIENT
+JOIN LIBRARY $LIB_STAN
+JOIN LIBRARY $lib_utils
+JOIN LIBRARY OR_MSGBOX
+
+GLOBAL ROUTINE rb_select_instrument_wsheet (result_object, array_balances)
+
+	DECLARE test_id, bal, i 
+ 
+	ARRAY array_balances  ARRAYSIZE(0)
+
+	test_id = SELECT test . test_number
+	                      IN OBJECT result_object . test_object
+
+	{ Get all the relevant instruments off the worksheet header }
+
+	bal = SELECT wsheet_info_view.record_value
+			 WHERE test_number = test_id
+		
+	i = 0
+
+	WHILE (bal <> EMPTY) DO
+
+		IF (instrument_valid (STRIP(SELECT wsheet_info_view.identity))) THEN
+
+			i = i + 1
+			array_balances [i] = bal
+
+		ENDIF
+
+		NEXT wsheet_info_view
+		bal = SELECT wsheet_info_view.record_value
+
+	ENDWHILE	
+
+	RETURN (EMPTY)
+
+ENDROUTINE
+
+ROUTINE instrument_valid (VALUE inst)
+
+	DECLARE ok, rec
+
+	ok = FALSE
+
+	rec = SELECT phrase.phrase_id
+		WHERE phrase_type ="OR_WSTINST"
+		
+
+	WHILE (NOT ok) AND (rec <> EMPTY) DO
+
+		IF (inst = STRIP(rec)) THEN
+
+			ok = TRUE
+
+		ENDIF
+
+		NEXT phrase
+		rec = SELECT phrase.phrase_id
+		
+	ENDWHILE
+
+	RETURN (ok)
+
+ENDROUTINE
+
+{ 1.1 new routines ====================================== }
+
+GLOBAL ROUTINE rb_handle_units (VALUE instrument, VALUE full_string_in, 
+						VALUE uom_to_compare, value_out,
+						VALUE isTextValue, uom)
+
+	{ uom is output (the uom sent by instrument) }
+	{ Checks the input value uom }
+	{ Checks it against what is passed in here }
+	{ If wrong UOM, inform the user and dont allow it }
+	{ If no uom, then allow it also }
+	{ If instument is in list NO_UNITS then allow it}
+	
+	DECLARE allow, space
+
+	allow = TRUE
+	space = " "
+
+
+
+
+
+	full_string_in = STRIP (full_string_in)
+
+	{ Unless isTextValue=TRUE, remove the last word (the uom) }
+	uom = ""
+
+
+  	IF (instrument_no_units (instrument)) THEN
+
+		{do nothing as instrument doesn't send units}
+
+	ELSEIF (NOT isTextValue) THEN
+
+		WHILE (full_string_in <> "") AND
+			(get_character_at(full_string_in,
+				STRINGLENGTH(full_string_in)) <> space) DO
+
+			uom = get_character_at(full_string_in,
+				STRINGLENGTH(full_string_in)):uom
+			full_string_in = LEFTSTRING (full_string_in ,
+				STRINGLENGTH(full_string_in)-1)
+
+		ENDWHILE
+
+	ENDIF
+
+	full_string_in = STRIP (full_string_in)
+	uom = STRIP (uom)
+
+	IF (full_string_in="") AND (uom <> "") THEN
+
+		{ Assume if 1 word only, its the result, not uom }
+		full_string_in = uom
+		uom = ""
+
+	ENDIF	
+
+	{ Check for valid units }
+	{ If either the units from instrument are blank  }
+	{  then no check }
+	{ If ONLY the instrument are blank, prompt the user }
+
+	IF (uom="") AND (STRIP(uom_to_compare)="") THEN
+
+		value_out = full_string_in
+
+	ELSEIF (instrument_no_units_i (instrument)) THEN
+
+		{ if here, the instrument sends no unit but result unit is configured }
+		{flash_message ("This is a test for Vernier Calipers", true)}
+
+	ELSEIF (STRIP(uom)="") THEN
+
+		{ if here, the instrument sent a unit but none is configured }
+		allow = confirm_with_text (
+		 			"Instrument unit (blank)":
+					" is different to the required units ":STRIP(uom):
+					ASCII(13):ASCII(10):
+					"Continue ?" )
+
+		IF (allow) THEN
+
+			value_out = full_string_in
+		ENDIF
+
+	ELSEIF (STRIP(uom_to_compare)="") THEN
+
+		{ if here, the instrument sent a unit but none is configured }
+		allow = TRUE
+
+		IF (allow) THEN
+
+			value_out = full_string_in
+		ENDIF
+
+	ELSEIF (TOUPPER(uom) <> TOUPPER(STRIP(uom_to_compare))   ) THEN
+
+		allow = FALSE
+
+		flashmessage ("Invalid units: ":uom, true)
+
+	ELSE
+
+		value_out = full_string_in
+
+	ENDIF
+
+	RETURN (allow)
+
+ENDROUTINE
+
+
+GLOBAL ROUTINE rb_lod_check (VALUE input_value_string, VALUE input_uom, 
+				VALUE instrument, user_override, VALUE instrument_sent_uom)
+
+	{ Return False if not allowed
+        user_override is OUT and if True, it means the user click Yes to a below-lod value
+      }
+	DECLARE allow, val,min_lod, msg, disp_format
+
+	user_override = FALSE
+	allow = TRUE
+
+	IF (STRIP(input_value_string)="") THEN
+
+		RETURN (TRUE)
+
+	ELSEIF (NOT NUMTEXT(input_value_string)) THEN
+
+		{ if this is invalid, it will be caught elsewhere  }
+
+		RETURN (TRUE)
+
+	ENDIF
+
+	{ if no input uom, use the one that the instrument sent }
+
+	IF (STRIP(input_uom)="") THEN
+
+		input_uom = instrument_sent_uom
+
+	ENDIF
+
+	instrument = SELECT instrument . identity WHERE identity=instrument
+	min_lod = SELECT instrument . min_valid_read_value
+ 
+	val = NUMERIC(input_value_string)
+	input_uom=TOUPPER(STRIP(input_uom))
+
+	disp_format = "999.9999"
+	IF (input_uom="MG") THEN
+
+		{ no conversion }
+
+	ELSEIF (input_uom="G") THEN
+
+		min_lod = min_lod/1000
+		disp_format = "999.99999"
+
+	ELSEIF (input_uom="KG") THEN
+
+		min_lod = min_lod/1000
+		min_lod = min_lod/1000
+		disp_format = "9.9999999"
+
+	ELSE
+
+		{ no conversion }
+	ENDIF
+
+	{ Numeric field, default 0. Only numeric values checked here }
+
+	IF (val < min_lod) THEN
+
+		msg = STRIP(NUMBER_TO_TEXT(val,"9999.999")):
+				" (":STRIP(input_uom):
+				") is less than {LF}minimum instrument detection limit {LF}":
+				STRIP(NUMBER_TO_TEXT(min_lod,disp_format)):
+				" {LF}{LF} Continue ? {LF}"
+
+		allow = orMsgbox_yn_prompt (msg, FALSE, "Inst. LOD")
+
+		IF (allow) THEN
+
+			user_override = TRUE
+
+		ELSE
+
+			flashmessage ("Measurement discarded!", TRUE)
+		ENDIF
+
+	ENDIF
+
+	RETURN (allow)
+
+ENDROUTINE
+
+ROUTINE instrument_no_units (VALUE inst)
+
+	DECLARE ok, rec
+
+	ok = FALSE
+
+	rec = SELECT phrase.phrase_id
+		WHERE phrase_type ="NO_UNITS"
+		
+
+	WHILE (NOT ok) AND (rec <> EMPTY) DO
+
+		IF (inst = STRIP(rec)) THEN
+
+			ok = TRUE
+
+		ENDIF
+
+		NEXT phrase
+		rec = SELECT phrase.phrase_id
+		
+	ENDWHILE
+
+	RETURN (ok)
+
+ENDROUTINE
+
+ROUTINE instrument_no_units_i (VALUE inst)
+
+	DECLARE ok, rec
+
+	ok = FALSE
+
+	rec = SELECT phrase.phrase_id
+		WHERE phrase_type ="NO_UNITS_I"
+		
+
+	WHILE (NOT ok) AND (rec <> EMPTY) DO
+
+		IF (inst = STRIP(rec)) THEN
+
+			ok = TRUE
+
+		ENDIF
+
+		NEXT phrase
+		rec = SELECT phrase.phrase_id
+		
+	ENDWHILE
+
+	RETURN (ok)
+
+ENDROUTINE
+

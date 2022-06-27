@@ -1,0 +1,447 @@
+{******************************************************************************
+*
+* Module Name   : $UPGRADE
+*
+* Purpose       : Upgrade SampleManager to 11.2 SP2
+*
+* Document Ref. :
+*
+* Specification :
+*
+* Portability   : Not Checked
+*
+* Re-entrant    : No
+*
+*******************************************************************************}
+
+SET COMPILE_OPTION DECLARE
+SET NOTPROTECTED
+SET NAME "DEFER/"
+ENABLE WINDOWS
+
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN STANDARD_LIBRARY STD_STRUCTURE
+JOIN STANDARD_LIBRARY STD_UTILS
+
+JOIN LIBRARY $LIB_DB
+JOIN LIBRARY $LIB_MENU
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $TABLE_LOAD_SAVE_LIB
+JOIN LIBRARY $MENU_CONVERT
+JOIN LIBRARY $LOAD_MISSING_WF
+JOIN LIBRARY $LOAD_TABLE_DEFAULTS
+JOIN LIBRARY $LOAD_WORKFLOW_OLD
+JOIN LIBRARY $ENTITY_NAMES
+JOIN LIBRARY $CONVERT_CRITERIA
+JOIN LIBRARY $CONVERT_INSTTYPE
+
+{******************************************************************************}
+
+CONSTANT data_dir = "smp$datafiles:"
+CONSTANT data_extn = ".csv"
+
+CONSTANT menu_toolbar_1123 = "smp$datafiles:menu_toolbar_1123.mtb"
+
+{******************************************************************************}
+
+DECLARE upgrade_version
+
+IF GLOBAL ( "PARAM_ACTIVE" ) THEN
+
+	PROMPT FOR upgrade_version
+
+ELSE
+
+	upgrade_version = "11.2"
+
+ENDIF
+
+IF upgrade_version = "11.2" THEN
+
+	load_table_defaults ( "", "_1120_1121", ".td_csv" )
+
+	upgrade_overwrites_for_sm1121 ( )
+
+	upgrade_updates_for_sm1121 ( )
+
+	upgrade_version_rmbs ( )
+
+	upgrade_menu_builtin_to_procnum ( )
+
+ENDIF
+
+IF upgrade_version = "11.2 SP1" THEN
+
+	load_table_defaults ( "", "_1121_1122", ".td_csv" )
+	
+	upgrade_overwrites_for_sm1122 ( )
+
+ENDIF
+
+load_table_defaults ( "", "_1122_1123", ".td_csv" )
+
+upgrade_master_menu_tweaks ( )
+
+upgrade_default_workflows ( )
+
+load_missing_workflows ( )
+
+delete_122_web_help ( )
+
+import_new_menu_options ( menu_toolbar_1123 )
+
+EXIT
+
+{*****************************************************************************}
+
+ROUTINE upgrade_overwrites_for_sm1121
+
+{
+*	Load CSV files containing overwrites for SM1121
+*
+******************************************************************************}
+
+	load_if_present ( data_dir:"master_menu_1120_1121":data_extn          ,
+	                  OVERWRITE_TABLE                                     )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE upgrade_updates_for_sm1121
+
+{
+*	Load CSV files containing updates for SM1121
+*
+******************************************************************************}
+
+	load_if_present ( data_dir:"config_header":data_extn                  ,
+	                  IGNORE_FILE                                         )
+
+	load_if_present ( data_dir:"phrase":data_extn                         ,
+	                  IGNORE_FILE                                         )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_overwrites_for_sm1122
+
+{
+*	Load CSV files containing overwrites for SM1122
+*
+*******************************************************************************}
+
+	load_if_present ( data_dir:"master_menu_1121_1122":data_extn          ,
+	                  OVERWRITE_TABLE                                     )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE load_if_present ( VALUE file_nam  ,
+                          VALUE load_mode )
+
+{
+* Load CSV if present
+*
+******************************************************************************}
+
+	IF FILE EXISTS ( file_nam ) THEN
+
+		input_csv_file ( file_nam                  ,
+		                 load_mode                 ,
+		                 FALSE                     ,
+		                 SINGLE_TRANSACTION_NUMBER ,
+		                 TRUE                      )
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE import_new_menu_options ( VALUE menu_import_file )
+
+{
+*     Import the new menu options into the SYSTEM menu
+*
+*******************************************************************************}
+
+	menu_convert_load_menu_file ( "SYSTEM", menu_import_file )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_default_workflows
+
+{
+*     Upgrade the default workflow CSVs - $setup skips these in upgrade mode.
+*     Upgrade from the 11 series needs to selectively import workflows.
+*
+*******************************************************************************}
+
+	load_workflow_defaults ( "default_1123_", ".wf_csv" )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_menu_builtin_to_procnum
+
+{
+*     Convert old style builtin menu options to procedure numbers
+*
+*******************************************************************************}
+
+	upgrade_specific_builtin ( "FILE_RUN",      "MENU_35286", 35286 )
+	upgrade_specific_builtin ( "VIEW_REFRESH",  "MENU_35287", 35287 )
+	upgrade_specific_builtin ( "VIEW_REMOVED",  "MENU_35285", 35285 )
+	upgrade_specific_builtin ( "VIEW_VERSIONS", "MENU_35284", 35284 )
+	upgrade_specific_builtin ( "HELP_ABOUT",    "MENU_35283", 35283 )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_specific_builtin ( VALUE old_name ,
+                                   VALUE new_name ,
+                                   VALUE proc_num )
+
+{
+*     Convert old style builtin menu options to procedure numbers
+*
+*******************************************************************************}
+
+	DECLARE menu_values ,
+	        count ,
+	        menu_item
+
+	ARRAY menu_values ARRAYSIZE ( 0, 2 )
+
+	count = 0
+
+	menu_item = SELECT menu_toolbar . item_number
+	            WHERE  internal_item_name = old_name
+
+	WHILE menu_item <> EMPTY DO
+
+		count = count + 1
+
+		menu_values [ count, 1 ] = SELECT menu_toolbar . toolbar_name
+		menu_values [ count, 2 ] = menu_item
+
+		NEXT menu_toolbar
+		menu_item = SELECT menu_toolbar . item_number
+
+	ENDWHILE
+
+	count = 1
+
+	START WRITE TRANSACTION "Updating menu toolbars"
+
+	WHILE count <= size_of_array ( menu_values ) DO
+
+		menu_item = SELECT menu_toolbar . item_number FOR UPDATE
+		            WHERE  toolbar_name = menu_values [ count, 1 ] AND
+		                   item_number  = menu_values [ count, 2 ]
+
+		ASSIGN menu_toolbar . internal_item_name = new_name
+		ASSIGN menu_toolbar . procedure_num      = proc_num
+
+		UPDATE menu_toolbar
+
+		count = count + 1
+
+	ENDWHILE
+
+	COMMIT
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_version_rmbs
+
+{
+*     Modify the rmb for new version to include the version number
+*
+*******************************************************************************}
+
+	upgrade_specific_version_rmb ( 15035, "ANALYSIS_VERSION"        ) { Analysis }
+	upgrade_specific_version_rmb ( 35277, "VERSION"                 ) { Report template }
+	upgrade_specific_version_rmb ( 35280, "VERSION"                 ) { Modular Report }
+	upgrade_specific_version_rmb ( 35136, "ENTITY_TEMPLATE_VERSION" ) { Entity Template }
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_specific_version_rmb ( VALUE menu_procnum       ,
+                                       VALUE version_field_name )
+
+{
+*     Modify the passed rmb for new version to include the version number
+*
+*******************************************************************************}
+
+	DECLARE using_text ,
+	        count ,
+	        update_array
+
+	using_text = SELECT explorer_rmb . using
+	             WHERE  menuproc = menu_procnum
+
+	ARRAY update_array ARRAYSIZE ( 0, 4 )
+	count = 0
+
+	WHILE using_text <> EMPTY DO
+
+		IF INDEX ( TOUPPER ( using_text ), version_field_name ) = 0 THEN
+
+			count = count + 1
+
+			update_array [ count, 1 ] = SELECT explorer_rmb . cabinet
+			update_array [ count, 2 ] = SELECT explorer_rmb . folder_number
+			update_array [ count, 3 ] = SELECT explorer_rmb . rmb_number
+
+			update_array [ count, 4 ] = STRIP ( using_text ) : "," : version_field_name
+
+		ENDIF
+
+		NEXT explorer_rmb
+		using_text = SELECT explorer_rmb . using
+
+	ENDWHILE
+
+	START WRITE TRANSACTION "Upgrade updating RMB"
+
+	WHILE count > 0 DO
+
+		using_text = SELECT explorer_rmb . using FOR UPDATE
+		             WHERE  cabinet       = update_array [ count, 1 ] AND
+		                    folder_number = update_array [ count, 2 ] AND
+		                    rmb_number    = update_array [ count, 3 ]
+
+		IF using_text <> EMPTY THEN
+
+			ASSIGN explorer_rmb . using = update_array [ count, 4 ]
+
+			UPDATE explorer_rmb
+
+		ENDIF
+
+		count = count - 1
+
+	ENDWHILE
+
+	COMMIT
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_master_menu_tweaks
+
+{
+*     Specific updates to master menu definitions
+*
+*******************************************************************************}
+
+	START WRITE TRANSACTION "Upgrade updating Master Menu"
+
+	IF lib_db_select_padded ( "MASTER_MENU" ,
+	                          15775         ,
+	                          TRUE          ) THEN
+
+		ASSIGN master_menu . implementation_type = "DESIGNER"
+		ASSIGN master_menu . task_name           = "ActiveDesktopTask"
+		ASSIGN master_menu . task_parameters     = "ActiveDesktop"
+		ASSIGN master_menu . window_style        = "DOCK"
+
+		UPDATE master_menu
+
+	ENDIF
+
+	IF lib_db_select_padded ( "MASTER_MENU" ,
+	                          15931         ,
+	                          TRUE          ) THEN
+
+		ASSIGN master_menu . action_type = "HISTORY"
+
+		UPDATE master_menu
+
+	ENDIF
+
+	IF lib_db_select_padded ( "MASTER_MENU" ,
+	                          35006         ,
+	                          TRUE          ) THEN
+
+		ASSIGN master_menu . action_type = "HISTORY"
+
+		UPDATE master_menu
+
+	ENDIF
+
+	IF lib_db_select_padded ( "MASTER_MENU" ,
+	                          35041         ,
+	                          TRUE          ) THEN
+
+		ASSIGN master_menu . table_name = "STOCK_ORDER"
+
+		UPDATE master_menu
+
+	ENDIF
+
+	IF lib_db_select_padded ( "MASTER_MENU" ,
+	                          35256         ,
+	                          TRUE          ) THEN
+
+		ASSIGN master_menu . icon = ""
+
+		UPDATE master_menu
+
+	ENDIF
+
+	COMMIT
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE delete_file ( VALUE file_nam )
+
+{
+*     Delete the web help sent out with 11.2SP2
+*
+*******************************************************************************}
+
+	DECLARE status
+
+	IF FILE EXISTS ( file_nam ) THEN
+
+		FILE DELETE file_nam, status
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE delete_122_web_help
+
+{
+*     Delete the web help sent out with 11.2SP2
+*
+*******************************************************************************}
+
+	delete_file ( "smp$resource\help\SMW.zip" )
+	delete_file ( "smp$resource\help\WebOnly.map" )
+
+ENDROUTINE
+
+{*****************************************************************************}
+{*****************************************************************************}
+{*****************************************************************************}

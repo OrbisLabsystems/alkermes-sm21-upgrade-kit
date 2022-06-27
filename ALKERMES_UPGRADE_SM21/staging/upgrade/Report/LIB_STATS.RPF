@@ -1,0 +1,295 @@
+
+
+{ Stat Library, JMW, 06/03/97 }
+
+SET NAME "/DISPLAY"
+JOIN LIBRARY $LIB_UTILS
+JOIN STANDARD_LIBRARY std_utils
+
+{ ======= This bit for Testing Purposes Only, Allows the Program to be ====== }
+{ ======= Run from the Command Line                                    ====== }
+
+ARRAY res_array
+res_array [ 1 ] = -2
+res_array [ 2 ] = 0
+res_array [ 3 ] = 5
+res_array [ 4 ] = 6
+res_array [ 5 ] = 33
+res_array [ 6 ] = 998
+
+
+IF get_sum ( res_array, mean ) THEN
+   IF get_stdev ( res_array, mean, stdev ) THEN
+      IF get_cv ( mean, stdev, cv ) THEN
+          flash_message ( "Mean & SD & CV " :
+                           mean : " " : stdev : " " : cv , TRUE )
+      ELSE
+          flash_message ( "Failed " : cv , TRUE )
+      ENDIF
+   ELSE
+      flash_message ( "Failed " : stdev , TRUE )
+   ENDIF
+ELSE
+   flash_message ( "Failed " : mean, TRUE )
+ENDIF
+
+
+get_max ( res_array , max )
+flash_message ( max, TRUE )
+get_min ( res_array , max )
+flash_message ( max, TRUE )
+get_range ( res_array , max )
+flash_message ( max, TRUE )
+get_range_values ( res_array , max )
+flash_message ( max, TRUE )
+
+
+GLOBAL ROUTINE get_sum ( res_array , mean )
+
+DECLARE i, sum, arr_size, failed
+i      = 0
+sum    = 0
+failed = FALSE
+
+arr_size = SIZE_OF_ARRAY ( res_array )
+
+WHILE ( i < arr_size ) DO
+
+    i = i + 1
+
+    IF NUMTEXT ( res_array [ i ] ) THEN
+        sum = sum + res_array [ i ]
+    ELSE
+
+        flash_message ( "Error Summing " :
+                         res_array [ i ] :
+                        " is not Numeric " , TRUE )
+        failed = TRUE
+    ENDIF
+
+ENDWHILE
+
+IF NOT failed THEN
+    mean = sum / i
+    RETURN ( TRUE )
+ELSE
+    mean = "Failed - Non Numeric Component"
+    RETURN ( FALSE )
+ENDIF
+
+ENDROUTINE
+
+
+GLOBAL ROUTINE get_stdev ( res_array , mean, stdev )
+
+DECLARE i, sum, arr_size, failed
+i      = 0
+dev    = 0
+failed = FALSE
+
+arr_size = SIZE_OF_ARRAY ( res_array )
+
+WHILE ( i < arr_size ) DO
+
+    i = i + 1
+
+    IF NUMTEXT ( res_array [ i ] ) THEN
+        dev = dev + (( mean - res_array [ i ] ) * ( mean - res_array [ i ] ))
+    ELSE
+
+        flash_message ( "Error Summing " :
+                         res_array [ i ] :
+                        " is not Numeric " , TRUE )
+        failed = TRUE
+    ENDIF
+
+ENDWHILE
+
+IF NOT failed THEN
+    stdev = SQRT ( dev ) / i
+    RETURN ( TRUE )
+ELSE
+    stdev = "Failed - Non Numeric Component"
+    RETURN ( FALSE )
+ENDIF
+
+ENDROUTINE
+
+GLOBAL ROUTINE get_cv ( mean, stdev, cv )
+
+IF NUMTEXT ( mean ) AND NUMTEXT ( stdev ) AND ( mean <> 0 ) THEN
+    cv = 100 * ( stdev / mean )
+    RETURN ( TRUE )
+ELSE
+    cv = "Either Mean or Standard Deviation is Not Numeric ( or Mean = 0 ) "
+    RETURN ( FALSE )
+ENDIF
+
+ENDROUTINE
+
+GLOBAL ROUTINE get_min ( res_array , min )
+
+DECLARE i, arr_size, failed
+i      = 0
+failed = FALSE
+
+arr_size = SIZE_OF_ARRAY ( res_array )
+
+WHILE ( i < arr_size ) DO
+
+    i = i + 1
+
+    IF NUMTEXT ( res_array [ i ] ) THEN
+        IF ( i = 1 ) THEN
+            min = res_array [ i ]
+        ELSE
+            IF res_array [ i ] < min THEN
+                min = res_array [ i ]
+            ENDIF
+        ENDIF
+    ELSE
+
+        flash_message ( "Error Summing " :
+                         res_array [ i ] :
+                        " is not Numeric " , TRUE )
+        failed = TRUE
+    ENDIF
+
+ENDWHILE
+
+IF NOT failed THEN
+    RETURN ( TRUE )
+ELSE
+    min = "Failed - Non Numeric Value "
+    RETURN ( FALSE )
+ENDIF
+
+ENDROUTINE
+
+GLOBAL ROUTINE get_max ( res_array , max )
+
+DECLARE i, arr_size, failed
+i      = 0
+failed = FALSE
+
+arr_size = SIZE_OF_ARRAY ( res_array )
+
+WHILE ( i < arr_size ) DO
+
+    i = i + 1
+
+    IF NUMTEXT ( res_array [ i ] ) THEN
+        IF ( i = 1 ) THEN
+            max = res_array [ i ]
+        ELSE
+            IF res_array [ i ] > max THEN
+                max = res_array [ i ]
+            ENDIF
+        ENDIF
+    ELSE
+
+        flash_message ( "Error Summing " :
+                         res_array [ i ] :
+                        " is not Numeric " , TRUE )
+        failed = TRUE
+    ENDIF
+
+ENDWHILE
+
+IF NOT failed THEN
+    RETURN ( TRUE )
+ELSE
+    max = "Failed - Non Numeric Value "
+    RETURN ( FALSE )
+ENDIF
+
+ENDROUTINE
+
+GLOBAL ROUTINE get_range ( res_array , range )
+
+DECLARE i, arr_size, failed, min, max
+i      = 0
+failed = FALSE
+
+arr_size = SIZE_OF_ARRAY ( res_array )
+
+WHILE ( i < arr_size ) DO
+
+    i = i + 1
+
+    IF NUMTEXT ( res_array [ i ] ) THEN
+        IF ( i = 1 ) THEN
+            max = res_array [ i ]
+            min = res_array [ i ]
+        ELSE
+            IF res_array [ i ] > max THEN
+                max = res_array [ i ]
+            ENDIF
+            IF res_array [ i ] < min THEN
+                min = res_array [ i ]
+            ENDIF
+        ENDIF
+    ELSE
+
+        flash_message ( "Error Summing " :
+                         res_array [ i ] :
+                        " is not Numeric " , TRUE )
+        failed = TRUE
+    ENDIF
+
+ENDWHILE
+
+IF NOT failed THEN
+    range = max - min
+    RETURN ( TRUE )
+ELSE
+    range = "Failed - Non Numeric Value "
+    RETURN ( FALSE )
+ENDIF
+
+ENDROUTINE
+
+GLOBAL ROUTINE get_range_values ( res_array , range )
+
+DECLARE i, arr_size, failed, min, max
+i      = 0
+failed = FALSE
+
+arr_size = SIZE_OF_ARRAY ( res_array )
+
+WHILE ( i < arr_size ) DO
+
+    i = i + 1
+
+    IF NUMTEXT ( res_array [ i ] ) THEN
+        IF ( i = 1 ) THEN
+            max = res_array [ i ]
+            min = res_array [ i ]
+        ELSE
+            IF res_array [ i ] > max THEN
+                max = res_array [ i ]
+            ENDIF
+            IF res_array [ i ] < min THEN
+                min = res_array [ i ]
+            ENDIF
+        ENDIF
+    ELSE
+
+        flash_message ( "Error Summing " :
+                         res_array [ i ] :
+                        " is not Numeric " , TRUE )
+        failed = TRUE
+    ENDIF
+
+ENDWHILE
+
+IF NOT failed THEN
+    range = STRIP ( min ) : " to " : STRIP ( max )
+    RETURN ( TRUE )
+ELSE
+    range = "Failed - Non Numeric Value "
+    RETURN ( FALSE )
+ENDIF
+
+ENDROUTINE
+

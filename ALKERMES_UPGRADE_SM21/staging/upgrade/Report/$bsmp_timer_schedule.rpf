@@ -1,0 +1,836 @@
+{******************************************************************************
+*
+* Module Name   : $BSMP_TIMER_SCHEDULE
+*
+* Purpose       : Controls the setup and running of watch dog timer schedules
+*                 or edited
+*
+* Document Ref. : 
+*
+* Specification :
+*
+* Portability   : Not Checked
+*
+* Re-entrant    :
+*
+********************************************************************************
+*
+*  Ref   Date        Name             Comment
+*  ===== ==========  ===============  =========================================
+*  1.1   05-Mar-07   V. Molloy        Added routine add_one_day.
+*
+*******************************************************************************}
+
+
+SET NOTPROTECTED
+ENABLE WINDOWS
+SET COMPILE_OPTION DECLARE
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_ARRAY
+
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $LABTABLIB
+JOIN LIBRARY $LIST_EDITOR
+JOIN LIBRARY $LIB_GRID
+
+
+DECLARE tag_test_identity , 
+        tag_test_test     , 
+        tag_test_date     , 
+        tag_test_debug    , 
+        tag_test_show     , 
+        tag_test_grid    
+
+
+{*****************************************************************************}
+
+ROUTINE bsmp_timer_schedule_get_schedule ( VALUE schedule     ,
+					   VALUE current_date ) 
+
+{
+*
+*
+******************************************************************************}
+
+	DECLARE return_value ,
+		routine_name ,
+		library
+
+	
+	library = SELECT timer_schedule . library
+	          WHERE identity = schedule
+
+	IF library <> EMPTY THEN
+
+		routine_name = SELECT timer_schedule . routine
+ 
+		CALL_ROUTINE    routine_name
+		     IN LIBRARY library 
+	             USING      current_date
+		     RETURNING  return_value
+		     NEW CONTEXT
+
+		IF is_date ( return_value ) THEN
+
+
+		ELSEIF return_value = EMPTY THEN
+
+			return_value = get_user_message ( "BSMP_TIMER_SCHEDULE_NO_RETURN" , 1 ) 
+		ELSE
+
+			return_value = get_user_message ( "BSMP_TIMER_SCHEDULE_BAD_DATE" , 1 ) 
+
+		ENDIF
+
+	ELSE
+
+		return_value = get_user_message ( "BSMP_TIMER_SCHEDULE_NO_SCHEDULE" , 1 ) 
+
+	ENDIF
+
+	RETURN ( return_value )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+GLOBAL ROUTINE bsmp_timer_schedule_check_schedule  
+
+{
+*
+*
+******************************************************************************}
+
+	DECLARE schedule     ,
+		current_date ,
+		return_value 
+
+ 	return_value = EMPTY
+	
+	schedule = SELECT timerqueue . timer_schedule
+
+	IF NOT blank ( schedule ) THEN
+
+		current_date = SELECT timerqueue . run_time 
+
+		return_value = bsmp_timer_schedule_get_schedule ( schedule     ,
+					                          current_date ) 
+
+
+		IF is_date ( return_value ) THEN
+
+			return_value = return_value + SELECT timerqueue . repeat_interval
+
+			ASSIGN timerqueue . run_time = return_value
+
+		ELSE
+
+			ASSIGN timerqueue . suspended = TRUE
+
+			IF global ( "TERMTYPE" ) = "GUI" THEN
+
+				flash_message ( return_value , TRUE ) 
+
+			ENDIF
+                            
+		ENDIF
+
+	ENDIF
+
+	RETURN ( return_value )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+GLOBAL ROUTINE bsmp_timer_schedule_c_interface ( VALUE schedule ,
+						       run_time )        
+
+{
+*
+*
+******************************************************************************}
+
+	run_time = bsmp_timer_schedule_get_schedule ( schedule  ,
+					              run_time  ) 
+
+                                                                 
+ENDROUTINE
+
+{*****************************************************************************}
+{*****************************************************************************}
+
+
+GLOBAL ROUTINE create_form_test_screen ( form ) 
+
+{
+*   
+*   
+******************************************************************************}
+
+        DECLARE prompt_object
+
+        PROMPT OBJECT form CLASS "STD_FORM"
+        form . header           = get_user_message ( "BSMP_TIMER_SCHEDULE_TEST_HEADER" , 1 )
+        form . footer           = get_user_message ( "BSMP_TIMER_SCHEDULE_TEST_FOOTER" , 1 )
+
+        form . row              = 6
+        form . column           = 5
+        form . height           = 15
+        form . width            = 54
+        form . vgl_library      = global ( "current_library" )
+        form . button_style     = FORM_BUTTON_NONE
+        form . return_behaviour = FORM_RETURN_STAY
+	form . select_routine   = "test_select"
+		
+
+        form . add_frame ( "", 2 , 1, 1 , 40  ) 
+
+        PROMPT OBJECT prompt_object CLASS "STD_PROMPT_TEXT"
+        prompt_object . value         = get_user_message ( "BSMP_TIMER_SCHEDULE_TEST_IDENTITY" , 1 )
+        prompt_object . row           = 1
+        prompt_object . column        = 5
+        prompt_object . height        = 1
+        prompt_object . width         = 10
+        prompt_object . vgl_library   = global ( "current_library" )
+        prompt_object . justification = PROMPT_JUSTIFY_LEFT
+
+        form . add_display ( prompt_object ) 
+
+        PROMPT OBJECT prompt_object BROWSE ON timer_schedule
+        prompt_object . value                = ""
+        prompt_object . row                  = 1
+        prompt_object . column               = 19
+        prompt_object . height               = 1
+        prompt_object . width                = 10
+        prompt_object . vgl_library          = global ( "current_library" )
+        prompt_object . enter_prompt_routine = "test_identity_enter_prompt"
+        prompt_object . leave_prompt_routine = "test_identity_leave_prompt"
+        prompt_object . then_select          = TRUE
+
+        tag_test_identity = form . add_prompt ( prompt_object ) 
+        tag_test_identity = tag_test_identity { stop compilation warnings } 
+
+	IF global ( "termtype" ) = "GUI" THEN
+
+	        PROMPT OBJECT prompt_object CLASS "STD_PROMPT_BUTTON"
+        	prompt_object . caption             = get_user_message ( "BSMP_TIMER_SCHEDULE_TEST_TEST" , 1 )
+     	   	prompt_object . row                 = 1
+        	prompt_object . column              = 44
+  	        prompt_object . height              = 1
+        	prompt_object . width               = 10
+        	prompt_object . vgl_library         = global ( "current_library" )
+        	prompt_object . mouse_click_routine = "test_test_mouse_click"
+
+        	tag_test_test = form . add_prompt ( prompt_object ) 
+        	tag_test_test = tag_test_test { stop compilation warnings } 
+
+	ENDIF
+
+        form . add_frame ( "", 2 , 3, 2 , 40  ) 
+
+        PROMPT OBJECT prompt_object CLASS "STD_PROMPT_TEXT"
+        prompt_object . value         = get_user_message ( "BSMP_TIMER_SCHEDULE_TEST_DATE" , 1 )
+        prompt_object . row           = 3
+        prompt_object . column        = 4
+        prompt_object . height        = 1
+        prompt_object . width         = 14
+        prompt_object . vgl_library   = global ( "current_library" )
+        prompt_object . justification = PROMPT_JUSTIFY_LEFT
+
+        form . add_display ( prompt_object ) 
+
+        PROMPT OBJECT prompt_object CLASS "STD_PROMPT_TEXT_DATE"
+        prompt_object . value          = ""
+        prompt_object . row            = 3
+        prompt_object . column         = 19
+        prompt_object . height         = 1
+        prompt_object . width          = 19
+        prompt_object . vgl_library    = global ( "current_library" )
+        prompt_object . allow_date     = TRUE
+        prompt_object . allow_time     = TRUE
+        prompt_object . allow_interval = FALSE
+
+        tag_test_date = form . add_prompt ( prompt_object ) 
+        tag_test_date = tag_test_date { stop compilation warnings } 
+
+	IF global ( "termtype" ) = "GUI" THEN
+
+	        PROMPT OBJECT prompt_object CLASS "STD_PROMPT_BUTTON"
+        	prompt_object . caption             = "Debug"
+        	prompt_object . row                 = 3
+        	prompt_object . column              = 44
+        	prompt_object . height              = 1
+        	prompt_object . width               = 10
+      	  	prompt_object . vgl_library         = global ( "current_library" )
+        	prompt_object . mouse_click_routine = "test_debug_mouse_click"
+
+        	tag_test_debug = form . add_prompt ( prompt_object ) 
+        	tag_test_debug = tag_test_debug { stop compilation warnings } 
+
+	ENDIF
+	
+        PROMPT OBJECT prompt_object CLASS "STD_PROMPT_TEXT"
+        prompt_object . value         = get_user_message ( "BSMP_TIMER_SCHEDULE_TEST_SHOW" , 1 )
+        prompt_object . row           = 4
+        prompt_object . column        = 4
+        prompt_object . height        = 1
+        prompt_object . width         = 14
+        prompt_object . vgl_library   = global ( "current_library" )
+        prompt_object . justification = PROMPT_JUSTIFY_LEFT
+
+        form . add_display ( prompt_object ) 
+
+        PROMPT OBJECT prompt_object CLASS "STD_PROMPT_TEXT_INTEGER"
+        prompt_object . value       = ""
+        prompt_object . row         = 4
+        prompt_object . column      = 19
+        prompt_object . height      = 1
+        prompt_object . width       = 10
+        prompt_object . vgl_library = global ( "current_library" )
+        prompt_object . minimum     = 0
+
+        tag_test_show = form . add_prompt ( prompt_object ) 
+        tag_test_show = tag_test_show { stop compilation warnings } 
+
+	IF global ( "termtype" ) = "GUI" THEN
+
+	        PROMPT OBJECT prompt_object CLASS "STD_PROMPT_BUTTON"
+        	prompt_object . caption      = get_user_message ( "BSMP_TIMER_SCHEDULE_TEST_CLOSE" , 1 )
+        	prompt_object . row          = 5
+        	prompt_object . column       = 44
+        	prompt_object . height       = 1
+       	        prompt_object . width        = 10
+                prompt_object . vgl_library  = global ( "current_library" )
+                prompt_object . send_lastkey = "EXIT"
+
+        	form . add_prompt ( prompt_object ) 
+	
+	ENDIF
+
+        form . add_frame ( "", 2 , 6, 8 , 40  ) 
+
+        PROMPT OBJECT prompt_object CLASS "STD_GRID_EDITOR"
+        prompt_object . row                      = 6
+        prompt_object . column                   = 3
+        prompt_object . height                   = 8
+        prompt_object . width                    = 38
+        prompt_object . vgl_library              = global ( "current_library" )
+        prompt_object . cell_columns             = 1
+        prompt_object . cell_rows                = 0
+        prompt_object . title_size_top           = 0
+        prompt_object . title_size_left          = 0
+        prompt_object . column_size  [ 1 ]       = 38
+        prompt_object . column_separator  [ 1 ]  = GRID_SEPARATOR_BOTH
+        prompt_object . display_cell_routine     = "test_grid_display_cell"
+        prompt_object . prompt_cell_routine      = "test_grid_prompt_cell"
+	prompt_object . border                   = TRUE
+
+        tag_test_grid = form . add_prompt ( prompt_object ) 
+        tag_test_grid = tag_test_grid { stop compilation warnings } 
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE test_select ( self ) 
+
+{
+*   
+*   
+******************************************************************************}
+
+	bsmp_timer_schedule_call_test ( self  ,
+		 		        FALSE )
+ 
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE test_debug_mouse_click ( self ) 
+
+{
+*   
+*   
+******************************************************************************}
+
+	bsmp_timer_schedule_call_test ( self . parent_prompt ,
+		 		        TRUE                 )
+ 
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE test_identity_leave_prompt ( self ) 
+
+{
+*   
+*   
+******************************************************************************}
+
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE test_identity_enter_prompt ( self ) 
+
+{
+*   
+*   
+******************************************************************************}
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE test_test_mouse_click ( self ) 
+
+{
+*   
+*   
+******************************************************************************}
+
+	bsmp_timer_schedule_call_test ( self . parent_prompt ,
+		 		        FALSE                )
+ 	
+	 
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE test_grid_display_cell (        self        , 
+                                  VALUE cell_column , 
+                                  VALUE cell_row , 
+                                        window , 
+                                  VALUE column , 
+                                  VALUE row  , 
+                                  VALUE cell_width , 
+                                  VALUE cell_height ) 
+
+{
+*   
+*   
+******************************************************************************}
+
+	DISPLAY self . user_info [ cell_row ]
+		ON LINE   row
+		FROM      column
+		TO        column + cell_width - 1
+		IN WINDOW window
+		FORMAT date_time
+		
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE test_grid_prompt_cell (        self        , 
+                                 VALUE cell_column , 
+                                 VALUE cell_row , 
+                                       window , 
+                                 VALUE column , 
+                                 VALUE row  , 
+                                 VALUE cell_width , 
+                                 VALUE cell_height ) 
+
+{
+*   
+*   
+******************************************************************************}
+
+	PROMPT FOR self . user_info [ cell_row ]
+		   ON LINE   row
+		   FROM      column
+		   TO        column + cell_width - 1
+		   IN WINDOW window
+		   FORMAT date_time
+		   WITH ( display_only = TRUE )
+	
+
+ENDROUTINE
+
+
+{*****************************************************************************}
+
+GLOBAL ROUTINE bsmp_timer_schedule_test ( VALUE option )
+
+{
+*
+*
+******************************************************************************}
+
+	DECLARE form
+
+	SET NAME "defer/"
+
+	create_form_test_screen ( form ) 
+	
+	form . prompt_objects [ tag_test_date ] . value = now
+	form . prompt_objects [ tag_test_show ] . value = 20
+
+	form . start_prompt ()
+	form . wait_prompt ()
+	form . end_prompt ()
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE bsmp_timer_schedule_call_test (       form  ,
+			                VALUE debug ) 
+
+{
+*   
+*   
+******************************************************************************}
+
+	DECLARE grid         ,
+		row          ,
+		count        ,
+		next_date    ,
+		total        ,
+		library      ,
+		routine_name
+
+	grid      = form . prompt_objects [ tag_test_grid     ]	
+	row       = form . prompt_objects [ tag_test_identity ]
+	next_date = form . prompt_objects [ tag_test_date     ] . value
+	total     = form . prompt_objects [ tag_test_show     ] . value
+
+	count     = 1
+
+	ARRAY grid . user_info 
+
+
+	library      = SELECT timer_schedule . library IN OBJECT row
+	routine_name = SELECT timer_schedule . routine IN OBJECT row
+
+	next_date = bsmp_timer_schedule_call ( library      ,
+					       routine_name ,
+					       debug        ,
+					       next_date    )
+
+	
+	WHILE ( is_date ( next_date )) AND
+	      ( count     <= total  )  DO
+
+		grid . user_info [ count ] = next_date 
+		count = count + 1
+
+		next_date = bsmp_timer_schedule_call ( library      ,
+						       routine_name ,
+						       debug        ,
+						       next_date    )
+
+
+	ENDWHILE
+	 
+	grid . cell_rows = size_of_array ( grid . user_info )
+	grid . rebuild ()
+
+	IF grid . cell_rows = 0 THEN
+	
+		flash_message ( get_user_message ( "BSMP_TIMER_SCHEDULE_TEST_NO_DATES" , 1 ), 
+				TRUE                                                       )
+
+	ENDIF 
+
+ENDROUTINE
+
+
+{*****************************************************************************}
+
+GLOBAL ROUTINE bsmp_timer_schedule_call ( VALUE library      ,
+					  VALUE routine_name ,
+					  VALUE debug        ,
+					  VALUE current_date )
+
+{
+*
+*
+******************************************************************************}
+	
+	DECLARE return_value
+
+	IF debug THEN
+
+		CALL_ROUTINE    routine_name
+		     IN LIBRARY library
+		     USING      current_date
+		     RETURNING  return_value
+		     DEBUG CONTEXT
+
+	ELSE
+
+		CALL_ROUTINE    routine_name
+		     IN LIBRARY library
+		     USING      current_date
+		     RETURNING  return_value
+		     NEW CONTEXT
+
+	ENDIF
+
+	RETURN ( return_value )
+
+ENDROUTINE
+
+
+{******************************************************************************}
+{******************************************************************************}
+
+ROUTINE First_Of_Month ( VALUE start_date )
+
+{
+*
+*
+*******************************************************************************}
+
+	DECLARE month ,
+		year	
+
+	SET DATE FORMAT "DD-MM-YYYY"
+
+	start_date = string  ( start_date )
+	month      = numeric ( substring ( start_date , 4 , 2 ))
+	year       = numeric ( substring ( start_date , 7 , 4 ))
+
+	month      = month + 1
+
+	IF month > 12 THEN
+
+		month = 1
+		year  = year + 1
+
+	ENDIF
+	
+ 
+	start_date = "01-"                              : 
+		      number_to_text ( month , "99"   ) : 
+		     "-"                                :
+		      number_to_text ( year  , "9999" ) 
+			   
+
+	start_date = date ( start_date )
+
+	RESTORE DATE FORMAT
+
+	RETURN ( start_date ) 
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE First_Monday_Of_Month ( VALUE start_date )
+
+{
+*
+*
+*******************************************************************************}
+
+	DECLARE return_date
+
+	return_date = First_Of_Month ( start_date )
+
+	WHILE day_number ( return_date ) <> 1 DO
+
+		return_date = return_date + "0001 00:00" 
+
+	ENDWHILE
+
+	RETURN ( return_date )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE Not_First_Monday_Of_Month ( VALUE start_date )
+
+{
+*
+*
+*******************************************************************************}
+
+	DECLARE return_date    ,
+		the_first 
+
+	SET DATE FORMAT "DD-MM-YYYY"
+
+
+	return_date = Weekly ( start_date )
+	the_first   = First_Monday_Of_Month ( start_date )
+
+	IF substring ( the_first , 1, 10 ) = substring ( return_date ,1, 10)  THEN
+
+		return_date = return_date + interval ( "0007 00:00" )
+
+	ENDIF
+
+	RESTORE DATE FORMAT
+
+	RETURN ( return_date )
+
+ENDROUTINE
+{******************************************************************************}
+
+ROUTINE Annually ( VALUE start_date )
+
+{
+*
+*
+*******************************************************************************}
+
+	DECLARE return_date   ,
+		year           
+
+	SET DATE FORMAT "DD-MM-YYYY"
+	
+	year = numeric ( substring ( start_date , 7 , 4 )) + 1
+
+	return_date = "01-01-"                                  :
+	              number_to_text ( year , "9999" ) 
+		
+	return_date = date ( return_date )
+
+	RESTORE DATE FORMAT
+
+	RETURN ( return_date )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE Semi_Annually ( VALUE start_date )
+
+{
+*
+*
+*******************************************************************************}
+
+	DECLARE return_date   ,
+		year          ,
+		month 
+
+	SET DATE FORMAT "DD-MM-YYYY"
+	
+	year  = numeric ( substring ( start_date , 7 , 4 )) 
+	month = numeric ( substring ( start_date , 4 , 2 ))
+
+	IF month <= 6 THEN
+
+		return_date = "01-07" 
+
+	ELSE
+
+		return_date = "01-01" 
+		year        = year + 1
+
+	ENDIF
+
+	return_date = return_date : "-" : number_to_text ( year , "9999" ) 
+		
+	return_date = date ( return_date )
+
+	RESTORE DATE FORMAT
+
+	RETURN ( return_date )
+
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE Quarterly ( VALUE start_date )
+
+{
+*
+*
+*******************************************************************************}
+
+
+	DECLARE return_date   ,
+		year          ,
+		month 
+
+	SET DATE FORMAT "DD-MM-YYYY"
+	
+	year  = numeric ( substring ( start_date , 7 , 4 )) 
+	month = numeric ( substring ( start_date , 4 , 2 ))
+
+	IF month <= 3 THEN
+
+		return_date = "01-04"  
+
+	ELSEIF month <= 6 THEN
+
+		return_date = "01-07" 
+
+	ELSEIF month <= 9 THEN
+
+		return_date = "01-10" 
+
+	ELSE
+
+		return_date = "01-01" 
+		year        = year + 1
+
+	ENDIF
+
+	return_date = return_date : "-" : number_to_text ( year , "9999" ) 
+		
+	return_date = date ( return_date )
+
+	RESTORE DATE FORMAT
+
+	RETURN ( return_date )
+
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE Weekly ( VALUE start_date )
+
+{
+*
+*
+*******************************************************************************}
+
+	DECLARE return_date 
+
+	SET DATE FORMAT "DD-MM-YYYY"
+
+	return_date = substring ( start_date , 1 , 10 )
+	return_date = date ( return_date ) + interval ( "0001 00:00" )
+
+	WHILE day_number ( return_date ) <> 1 DO
+
+		return_date = return_date + "0001 00:00" 
+
+	ENDWHILE
+
+	RESTORE DATE FORMAT
+
+	RETURN ( return_date )
+
+ENDROUTINE
+
+
+
+ROUTINE add_one_day ( VALUE start_date )   {1.1}
+
+{
+*
+*
+*******************************************************************************}
+
+RETURN ( start_date + INTERVAL ( "01 00:00:00.00" ) )
+
+ENDROUTINE
+
+
+
+
+
+
+

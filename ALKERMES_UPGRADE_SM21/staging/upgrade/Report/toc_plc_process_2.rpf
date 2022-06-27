@@ -1,0 +1,2280 @@
+{==============================================================================}
+{                                                                              }
+{  ORBIS INFORMATION SYSTEMS                                                   }
+{                                                                              }
+{  Filename         : TOC_PLC_PROCESS.RPF                                      }
+{  Version          : 1.0                                                      }
+{  Document Ref.    :                                                          }
+{  Author           : Aidan Finnerty                                           }
+{  Date Created     : 02/06/05                                                 }
+{  Responsible      :                                                          }
+{  Description      : Based on TOC_PROCESS_RESULTS, but applies to PLC-files   } 
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{                                                                              }
+{  Ver.     Date        By          Description                                }
+{  ----     ----        --          -----------                                }
+{  1.0      12/07/05    AF          Based on TOC_PROCESS_RESULTS.rpf           }
+{  2.0      14-MAR-14   LD          Replaced SELECT MAX statement for          } 
+{                                   SQL server with ORDER ON ... DESCENDING.   } 
+{  MOD3   3-JUN-15    AF   New TOC file                                   }
+{                                                                              }
+{==============================================================================}
+
+SET COMPILE_OPTION DECLARE
+ENABLE WINDOWS
+
+SET NAME "DEFER\"
+SET NOTPROTECTED
+
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN LIBRARY $LIB_UTILS
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_TRANSFER
+JOIN STANDARD_LIBRARY STD_DATABASE
+
+{ Constants }
+
+CONSTANT FILE_POSN_TAG    = 1
+CONSTANT FILE_POSN_TIME   = 2
+CONSTANT FILE_POSN_VALUE  = 3
+CONSTANT FILE_POSN_VALID  = 4
+
+CONSTANT INDEX_TAG     = 1
+CONSTANT INDEX_TIME    = 2
+CONSTANT INDEX_VALUE   = 3
+CONSTANT INDEX_VALID   = 4
+
+CONSTANT VALID_FLAG     = "1"
+CONSTANT INVALID_FLAG   = "0"
+
+
+CONSTANT PROPERTY_TOC    = "TOC"
+CONSTANT PROPERTY_TEMP   = "Temperature"
+CONSTANT PROPERTY_COND   = "Conductivity"
+
+
+{ TOC Analyses _ summary analysis component names }
+
+CONSTANT TIME_COMPONENT       = "Time Stamp"
+CONSTANT TOC_COMPONENT        = "TOC"
+CONSTANT COND_COMPONENT       = "Conductivity"
+CONSTANT TEMP_COMPONENT       = "Temperature"
+CONSTANT VALIDITY_COMPONENT   = "Validity"
+CONSTANT SUMM_TOC_COMP        = "Summary TOC"
+CONSTANT SUMM_COND_COMP       = "Summary Conductivity"
+CONSTANT SUMM_NOTES_COMP      = "Notes"
+
+
+CONSTANT NOTES_MSG_NO_LIMIT_CHK = "No Limits Checked on any tests called "
+CONSTANT VALIDITY_NO_TOC        = "Missing TOC record"
+CONSTANT VALIDITY_NO_COND       = "Missing Conductivity record"
+CONSTANT VALIDITY_NO_TEMP       = "Missing Temperature record"
+
+CONSTANT VALIDITY_FILE_FLAG     = "Validity flag detected on the PLC file"
+CONSTANT VALIDITY_TEMPCOND_INT  = "Temperature and Conductivity timestamp tolerance exceeded"
+CONSTANT VALIDITY_DEFAULT_FAIL  = "Validity issue detected on the PLC file"
+
+CONSTANT VALIDITY_INVALID_SUMM  = "Validity issue detected on the PLC file"
+
+{ Parsing constant }
+
+CONSTANT TOC_FILE_DATA_ROW_NO = 2 { TOC Raw data starts on row 2 of file   }
+
+
+process_file_interactive ()
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE wdt_call                                                            }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  07/06/05     AF              Top level routine called from watch dog timer  }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE wdt_call (VALUE the_time)
+
+   { The WDT wont let pass parameter directly in }
+   { The call_routine calling this routine passes date only }
+   { The timerqueue table stores the routine      }
+   { The record is selected, so get the parameter that way }
+
+    DECLARE file_group 
+
+
+   IF GLOBAL ( "PARAM_ACTIVE" ) THEN
+ 
+       PROMPT FOR file_group
+
+    ELSE
+
+        { Error }
+        file_group="xxx"
+
+    ENDIF
+
+    process_file (STRIP(file_group))
+
+ENDROUTINE     {  wdt_call  }
+
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE process_file                                                        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  07/06/05     AF              Main processing routine                        }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE process_file (VALUE file_group)
+
+    DECLARE i, toc, toc_array, file_name, err_msg, status, arc_file
+                  ,format_version
+
+    ARRAY toc_array    ARRAYSIZE (0)
+
+   { MOD3 allow new format }
+    format_version = 1
+    IF (INDEX(file_group, "_V2") > 0) THEN
+        format_version = 2
+    ENDIF
+
+    { Get list of TOC instruments for the given file group }
+    { Read the processing routines for those instruments   }
+
+    toc = SELECT toc_data . identity
+             WHERE file_group = file_group
+               AND is_active = TRUE
+
+    
+    i = 0
+
+    WHILE (toc <> EMPTY) 
+
+        { Check in instrument table for valid instrument }
+
+        toc = SELECT  instrument . identity
+                 WHERE identity = toc
+                  AND removeflag = FALSE
+
+        IF (toc <> EMPTY) THEN
+
+            i = i + 1       
+            toc_array [i] = toc
+
+        ENDIF
+
+        NEXT toc_data
+        toc = SELECT toc_data . identity
+   
+    ENDWHILE
+
+
+    { If no matching valid instruments, stop here }
+
+    IF (i = 0) THEN
+
+        RETURN
+
+    ENDIF
+
+
+
+    { The file routine should be the same for 
+      all instruments in the group, because it is the
+      same file, so only call it once.
+      This routine, returns the name of the file, and archives the file
+
+      This routine, unlike process_results, does not log errors
+      Instead, the error is returned and this calling routine logs
+      it in the logfile for each affected instrument
+    }
+
+    status = plc_copy_file (toc_array [1], file_name, arc_file, err_msg)
+
+    IF (status = FALSE) THEN
+
+        { error log for each instrument }
+
+         i = 0
+
+         WHILE (i < size_of_array (toc_array)) 
+
+             i = i + 1
+             log_toc_error (toc_array [i], "ERROR (file copy): ":err_msg)
+
+         ENDWHILE
+
+    ENDIF
+
+
+    { Log the archive file name }
+
+     i = 0
+
+     WHILE (i < size_of_array (toc_array)) 
+
+             i = i + 1
+             log_toc_error (toc_array [i], "Archive file = ":arc_file)
+
+     ENDWHILE
+
+    
+    IF (status = TRUE) THEN
+
+        {  For each instrument in the group, call the processing routine for that instrument }
+        i = 0
+
+        WHILE (i < size_of_array (toc_array)) 
+
+            i = i + 1
+        
+             { Any failures in this routine are handled by the routine }
+             { Call in new context so that a crash for 1 instrument    }
+             { wont affect others in the same group                    }
+
+             CALL_ROUTINE "process_results"
+                IN LIBRARY GLOBAL("current_library")
+                USING toc_array [i], file_name, format_version
+                NEW CONTEXT
+
+        ENDWHILE
+
+
+        { delete temporary processing file }
+        FILE DELETE file_name
+
+    ENDIF
+   
+
+ENDROUTINE    {  process_file  }
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE process_file_interactive                                            }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  07/06/05     AF             For interactive use ONLY, prompts for file group}
+{                              Cannot run interactively the routine called from}
+{                              WDT because it is passed a parameter            }
+{                              This routine prompts for that parameter         }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE process_file_interactive
+
+    DECLARE file_group
+
+
+    grp_prompt_form (file_group)
+
+
+    process_file (file_group)
+
+ENDROUTINE
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE grp_prompt_form                                                     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  07/06/05     AF             For interactive use ONLY, prompts for file group}
+{                                                                              }
+{==============================================================================}
+
+ROUTINE grp_prompt_form (file_group)
+
+    DECLARE form, display_prompt, prompt_obj, the_header, the_border, display_1
+
+    the_header = "Select TOC file group"
+    the_border = ""
+
+    display_1 = "File Group"
+
+    CREATE OBJECT PROMPT_CLASS_FORM, form
+
+    form . header = the_header
+    form . footer = ""
+    form . height = 1
+    form . width  = 47
+    form . row    = ( GLOBAL ( "SCREEN_HEIGHT") - form . height) / 2
+    form . column = ( GLOBAL ( "SCREEN_WIDTH" ) - form . width ) / 2
+    form . border = TRUE
+    form . active_prompt = 1
+    form . return_behaviour = FORM_RETURN_STAY
+    form . add_frame ( the_border  ,   1, 1, 1, 46 )
+
+    PROMPT OBJECT display_prompt
+            CLASS "STD_PROMPT_TEXT"
+            ON LINE 1 FROM 2 TO 16
+            WITH ( VALUE      =  display_1,
+                   BOLD       =  TRUE       ,
+                   RAISED     =  TRUE )
+
+    form . add_display ( display_prompt )
+
+
+    PROMPT OBJECT prompt_obj
+            BROWSE ON PHRASE . TOC_GROUP
+            ON LINE 1 FROM 20 to 40
+            WITH ( ALWAYS_VALIDATE = TRUE)
+
+    form . add_prompt ( prompt_obj )
+
+    form . start_prompt ()
+    form . wait_prompt ()
+    form . end_prompt ()
+
+    file_group = STRIP(form . prompt_objects[1] . value)
+
+    file_group = SELECT phrase . phrase_id 
+                    WHERE phrase_text = file_group
+                    AND phrase_type = "TOC_GROUP"
+
+ENDROUTINE     {  grp_prompt_form  }
+
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE plc_copy_file                                                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  07/06/05     AF             Handles the file copy and archiving             }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE plc_copy_file (VALUE toc_instrument, new_file_name, arc_file, err_msg)
+
+
+    {=======================================================================}
+    { This routine copies the file to correct location                      }
+    { It archives the file (this is before processing)                      }
+    { It returns the name of the file, which is ready for processing        }
+    { The TOC instrument ID passed has already been checked for remove flag }
+    {=======================================================================}
+
+
+
+    DECLARE ret_status, arc_file_path, arc_ext, plc_file, check_exist, status,
+            plc_logical, proc_logical, arc_logical, file_name, the_date,
+            i, max_retries, locked_wait, new_file_path
+
+
+    ret_status = TRUE
+    
+    plc_file = SELECT toc_data . toc_file_name
+                       WHERE identity = toc_instrument
+    
+    IF (plc_file = EMPTY) OR
+       (plc_file ="") THEN
+
+        err_msg = "Unable to retrieve file name for TOC ":toc_instrument
+        RETURN (FALSE)
+
+    ENDIF
+
+    plc_logical    = STRIP (SELECT toc_data . toc_dir_logical)
+    proc_logical   = STRIP (SELECT toc_data . proc_dir_logical)
+    arc_logical    = STRIP (SELECT toc_data . arc_dir_logical)
+    arc_file_path  = STRIP (SELECT toc_data . arcive_file_path)
+    arc_ext        = STRIP (SELECT toc_data . arcive_file_ext)
+    new_file_name  = STRIP (SELECT toc_data . processing_dir)
+    locked_wait    = SELECT toc_data . locked_file_wait
+    max_retries    = SELECT toc_data . file_copy_attempt
+
+
+
+    
+    SET DATE FORMAT "YZMONDZH24MISSCC"
+
+    the_date = NOW    
+
+    file_name     = STRIP(LOGICAL(plc_logical))
+    arc_file      = STRIP(LOGICAL(arc_logical))
+    new_file_path = STRIP(LOGICAL(proc_logical))
+
+    { ensure "\" at end of directory/drive }
+    ensure_valid_dir ( file_name )
+    ensure_valid_dir ( arc_file )
+    ensure_valid_dir ( arc_file_path )
+    ensure_valid_dir ( new_file_path )
+    ensure_valid_dir ( new_file_name )
+
+
+    file_name     = file_name:plc_file
+    arc_file      = arc_file:arc_file_path:the_date:".":arc_ext
+    new_file_name = new_file_path:new_file_name:the_date:".toc"
+
+    RESTORE DATE FORMAT
+
+
+    { Configured wait + hold-off time if file not exist }
+
+    i = 0
+
+    REPEAT
+
+        i = i + 1
+        check_exist = FILE EXISTS(file_name)
+
+        IF (check_exist = FALSE) THEN
+
+            SLEEP FOR INTERVAL (locked_wait)
+
+        ENDIF
+
+    UNTIL (i >= max_retries) OR (check_exist = TRUE)
+
+
+    IF check_exist THEN
+
+       { Copy into temp folder for processing, and return new location } 
+
+        i = 0
+
+        REPEAT
+
+           i = i + 1
+           FILE COPY file_name, new_file_name, status
+
+           { If error, hold off time }
+
+           IF (status = EMPTY) THEN
+
+               { Sometimes FILE COPY wont give an error }
+               { So check that the new file exists now  }
+               { The new file name is unique, so if its there, copy was successful }
+               
+               check_exist = FILE EXISTS (new_file_name)
+
+               IF NOT check_exist THEN
+
+                   status = "File copy failed"
+
+               ENDIF
+
+           ENDIF
+
+           IF (status <> EMPTY) THEN
+
+               SLEEP FOR INTERVAL (locked_wait)
+
+           ENDIF
+
+        UNTIL (i >= max_retries) OR (status = EMPTY)
+
+
+        IF status <> EMPTY THEN
+
+            err_msg ="File copy error:  ":status
+            RETURN (FALSE)
+
+        ENDIF
+
+
+        { Archive the file (the copied one) }
+
+        FILE COPY new_file_name, arc_file, status
+
+        IF (status = EMPTY) THEN
+
+           { Sometimes FILE COPY wont give an error }
+           { So check that the new file exists now  }
+           { The new file name is unique, so if its there, copy was successful }
+               
+           check_exist = FILE EXISTS (arc_file)
+
+           IF NOT check_exist THEN
+
+               status = "File copy failed"
+
+           ENDIF
+
+        ENDIF
+
+        IF (status <> EMPTY) THEN
+
+            err_msg ="Archive file copy error:  ":status
+            RETURN (FALSE)
+
+        ENDIF
+
+
+    ELSE
+
+        err_msg ="File does not exist:  ":file_name
+        RETURN (FALSE)
+
+    ENDIF
+    
+
+    RETURN (ret_status)
+
+ENDROUTINE     {  plc_copy_file  }
+
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE ensure_valid_dir                                                    }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  07/06/05     AF             Corrects configured directory name format       }
+{                              e.g add "\" to end if required                  }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE ensure_valid_dir (the_dir)
+
+    IF (the_dir <> EMPTY) THEN
+
+        IF (the_dir <> ERROR) THEN
+
+
+           IF (STRIP(the_dir) <> "") THEN
+               
+              IF (GET_CHARACTER_AT (the_dir, STRINGLENGTH(the_dir)) <> "\") THEN
+
+                  the_dir = the_dir:"\"
+
+              ENDIF
+
+           ENDIF
+
+        ENDIF
+
+    ENDIF
+
+ENDROUTINE
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE process_results                                                     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  07/06/05     AF              Created, based on TOCView TOC_PROCESS_RESULTS  }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE process_results (VALUE toc_instrument, VALUE file_name, VALUE format_version)
+
+    DECLARE ret_status, samp_id, summary_test, summ_notes_res, the_date,
+            result_array, test_array, maintanence_times
+
+    ARRAY result_array
+    ARRAY test_array
+    ARRAY maintanence_times
+
+
+    SET DATE FORMAT "DZ/MZ/YZ H24:MI:SS"
+
+
+    summ_notes_res = ""
+    ret_status = TRUE
+    the_date = TODAY - "0001 00:00:00.00"
+
+
+
+    parse_file (toc_instrument, file_name, result_array , format_version )
+
+
+    IF SIZE_OF_ARRAY(result_array) > 0 THEN
+
+        check_toc_maintanence( toc_instrument, maintanence_times, the_date  )
+
+        create_sample_tests_and_results ( toc_instrument, 
+                                          samp_id,
+                                              test_array,
+                                              result_array,
+                                              summary_test,
+                                              maintanence_times,
+                                              summ_notes_res )
+
+        check_result_limits ( toc_instrument,
+                                  samp_id,
+                                  test_array,
+                                  summary_test,
+                                  summ_notes_res )
+
+    ENDIF
+
+
+
+    RESTORE DATE FORMAT
+
+
+    RETURN (ret_status)
+
+ENDROUTINE    {  process_results  }
+
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE check_toc_maintanence                                               }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  01/05/01     DK              Check Maintanence/Sanitistaion times           }
+{  31/05/05     AF              Passed inst ID. Include analyser_id            }
+{                               (instrument id) in all queries                 }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+ROUTINE check_toc_maintanence ( VALUE toc_instrument,
+                                maintanence_times,
+                               the_date)
+
+    DECLARE the_rec, day_after, count, any_recs
+
+    count = 1
+ 
+
+    SET DATE FORMAT "DD-MON-YYYY H24:MI:SS.CC"
+
+
+    { AF June 05                                                    }
+    { Count all events up to now, because this report               }
+    { will be called at intervals through the day (old one was not) }
+    { old code: day_after = the_date + "001 00:00:00.00"            }
+
+    day_after = NOW
+
+    { Find any sanitisation records for the day }
+ 
+    the_rec = select toc_maintenance_3 . modified_on
+               WHERE modified_on >= the_date
+                AND  modified_on <= day_after
+		AND  analyser_id = toc_instrument
+                ORDER ON toc_sequence ASCENDING
+
+    IF the_rec <> EMPTY THEN
+
+        WHILE the_rec <> EMPTY DO
+
+            maintanence_times[count, 1] = the_rec
+            maintanence_times[count, 2] = select toc_maintenance_3 . started
+            maintanence_times[count, 3] = select toc_maintenance_3 . toc_sequence
+            maintanence_times[count, 4] = select toc_maintenance_3 . toc_sequence
+            maintanence_times[count, 5] = select toc_maintenance_3 . old_toc_seq
+            maintanence_times[count, 6] = select toc_maintenance_3 . event_id
+
+            count = count + 1
+
+            NEXT toc_maintenance_3
+            the_rec = select toc_maintenance_3 . modified_on
+
+        ENDWHILE
+
+    ELSE
+
+        { IF No Records found for current day, find last record on last day
+          that records were generated.                                    }
+
+        any_recs = select toc_maintenance_3 . toc_sequence
+                    WHERE modified_on > " 1-JAN-1900 00:00:00.00"
+
+        IF any_recs <> EMPTY THEN
+
+            the_rec = SELECT toc_maintenance_3 . modified_on  {2.0}
+                       WHERE modified_on < the_date
+		           AND analyser_id = toc_instrument
+                       ORDER ON modified_on DESCENDING
+
+	    IF the_rec <> EMPTY THEN
+
+            	the_rec = select toc_maintenance_3 . modified_on
+                       		WHERE modified_on = the_rec
+
+            	maintanence_times[count, 1] = the_rec
+            	maintanence_times[count, 2] = select toc_maintenance_3 . started
+            	maintanence_times[count, 3] = select toc_maintenance_3 . toc_sequence
+            	maintanence_times[count, 4] = select toc_maintenance_3 . toc_sequence
+            	maintanence_times[count, 5] = select toc_maintenance_3 . old_toc_seq
+            	maintanence_times[count, 6] = select toc_maintenance_3 . event_id
+
+	    ENDIF
+
+       ENDIF
+
+
+    ENDIF
+
+
+    RESTORE DATE FORMAT
+
+
+ENDROUTINE     {  check_toc_maintanence  }
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE create_sample_tests_and_results                                     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  07/06/05     AF              Based on TOC_PROCESS_RESULTS.rpf version.      }
+{                               Create Sample, add tests and Results           }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE create_sample_tests_and_results( VALUE toc_instrument,
+                                         samp_id,
+                                         test_array,
+                                         result_array,
+                                         summary_test,
+                                         maintanence_times,
+                                         summ_notes_res     )
+
+    DECLARE counter, test_id, put_test_array, status_array, log_mess,
+            count, the_date, limit_check_on, result_date, toc_proc_no,
+            event_id, the_anal, samp_tmpl, err_msg, summ_anal, samp_already_logged
+
+    ARRAY put_test_array
+    ARRAY status_array
+
+    limit_check_on = TRUE
+
+    count = 1
+
+    { get the date from result file reading }
+
+    IF (size_of_array(result_array) > 0) THEN
+
+        the_date = result_array [1,1]
+
+    ELSE
+
+        the_date = TODAY
+
+    ENDIF
+
+
+    samp_tmpl = SELECT toc_data . samp_template
+                  WHERE identity = toc_instrument
+
+    summ_anal = SELECT toc_data . summary_analysis
+
+    { The sample is logged in unless there is already one for this instrument today }
+
+    samp_id = ensure_logged_sample (toc_instrument, samp_tmpl, 
+                                    the_date, samp_already_logged, err_msg)
+
+   
+    IF (samp_id = 0) THEN
+
+       log_mess = "Sample login error   ":err_msg:"  . TOC instrument ":toc_instrument
+       log_toc_error (toc_instrument, log_mess)
+
+       RETURN
+
+    ELSE
+
+       IF (samp_already_logged) THEN
+
+           log_mess = "TOC Sample ":STRIP(samp_id):
+                            " already logged in for TOC instrument ":toc_instrument
+
+       ELSE
+
+           log_mess = "Logged in TOC Sample ":STRIP(samp_id):
+                            " for TOC instrument ":toc_instrument
+
+       ENDIF
+
+       log_toc_error (toc_instrument,log_mess)
+
+    ENDIF
+
+
+
+    summary_test = SELECT test . test_number 
+                      WHERE  sample = samp_id
+                      AND analysis = summ_anal
+
+
+    counter = 1
+
+    put_test_array[1,1] = "component_name"
+    put_test_array[1,2] = "text"
+    put_test_array[2,1] = TIME_COMPONENT
+    put_test_array[3,1] = TOC_COMPONENT
+    put_test_array[4,1] = COND_COMPONENT
+    put_test_array[5,1] = TEMP_COMPONENT
+    put_test_array[6,1] = VALIDITY_COMPONENT
+
+    WHILE (counter <= size_of_array(result_array)) DO
+
+
+	result_date = result_array[counter, 1]
+        check_results_for_maintanence ( limit_check_on,
+                                       result_date,
+                                       maintanence_times,
+                                       toc_proc_no,
+                                       event_id    )
+
+       IF limit_check_on THEN { No Maintanence Occuring }
+
+           the_anal  = SELECT toc_data . analysis
+           test_id   = NEW_TEST(samp_id, the_anal)
+
+           test_id = STRIP(test_id)
+
+           log_mess = "New Test ":STRIP(Test_id):". Limits applied to Test Results taken at ":
+                       STRIP(result_date)
+
+           summ_notes_res = summ_notes_res:""
+
+       ELSE { TOC Maintanence, DO NOT Check results against Specifications }
+
+           the_anal  = SELECT toc_data . analysis_no_spec
+           test_id   = NEW_TEST(samp_id, the_anal)
+
+           test_id = STRIP(test_id)
+
+           log_mess = "New Test ":STRIP(Test_id):" for results taken at ":STRIP(result_date):
+                      ". NO Limits applied to Results due to ":STRIP(event_id):
+                      ". TOC Event No. ": STRIP(toc_proc_no)
+
+
+           summ_notes_res = NOTES_MSG_NO_LIMIT_CHK:STRIP(the_anal)
+
+
+       ENDIF
+
+       test_array[counter] = test_id
+
+       log_toc_error (toc_instrument, log_mess)
+
+       put_test_array[2,2] = result_date
+       put_test_array[3,2] = result_array[counter, 2]
+       put_test_array[4,2] = result_array[counter, 3]
+       put_test_array[5,2] = result_array[counter, 4]
+       put_test_array[6,2] = result_array[counter, 5]
+
+
+       PUT_TEST_RESULTS test_id, put_test_array, status_array
+
+       {ERROR LOGGING}
+
+       count = 1
+       WHILE (count <= 5) DO
+
+           IF (status_array[count] <> EMPTY) THEN
+
+               { AF June 2005 - Format correctly the PUT_TEST_RESULTS error message }
+
+               format_ptr_error ( log_mess, status_array[count] )
+
+               log_toc_error ( toc_instrument, log_mess )
+
+           ENDIF
+
+           count = count + 1
+
+       ENDWHILE
+
+       counter = counter + 1
+
+    ENDWHILE
+
+
+
+ENDROUTINE
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE check_result_limits                                                 }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  07/06/05     AF              Based on TOC_PROCESS_RESULTS.rpf version.      }
+{                               Create Sample, add tests and Results           }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE check_result_limits ( VALUE toc_instrument, 
+                              samp_id,
+                              test_array,
+                              summary_test,
+                              summ_notes_res )
+
+
+    { summ_notes_res is used to pass in message about limit checking }
+
+    DECLARE count,  summ_res, log_mess,
+             the_phrase, cur_summ_toc, cur_summ_cond, 
+              cur_summ_notes, res_name, def_notes, in_spec_txt, out_spec_txt, invalid_txt,
+             invalid_data, oos_toc, oos_cond, res, valid_txt, no_spec_anal
+
+    count = 1
+    cur_summ_cond = ""
+    cur_summ_notes = ""
+    cur_summ_toc = ""
+    invalid_data = FALSE
+    oos_toc = FALSE
+    oos_cond = FALSE
+
+
+    { Text that will likely be constant for all is stored in a phrase }
+    { If some instrument needs these changed, a new phrase with the same phrase list can be set up }
+   
+    the_phrase = SELECT toc_data . text_phrase
+                    WHERE identity = toc_instrument
+
+    no_spec_anal = SELECT toc_data . analysis_no_spec
+
+
+    in_spec_txt = SELECT phrase . phrase_text
+                          WHERE phrase_type = the_phrase
+                            AND phrase_id = "INSPEC"
+
+    out_spec_txt = SELECT phrase . phrase_text
+                          WHERE phrase_type = the_phrase
+                            AND phrase_id = "OUTSPEC"
+
+     def_notes = SELECT phrase . phrase_text
+                          WHERE phrase_type = the_phrase
+                            AND phrase_id = "DEFNOTES"
+
+     invalid_txt = SELECT phrase . phrase_text
+                          WHERE phrase_type = the_phrase
+                            AND phrase_id = "INVALID"
+
+     valid_txt = SELECT phrase . phrase_text
+                          WHERE phrase_type = the_phrase
+                            AND phrase_id = "VALID"
+
+
+ 
+     in_spec_txt   = STRIP (in_spec_txt)
+     out_spec_txt  = STRIP (out_spec_txt)
+     def_notes     = STRIP (def_notes)
+     invalid_txt   = STRIP (invalid_txt)
+     valid_txt     = STRIP (valid_txt)
+ 
+
+     { Check that the summary components are not out of spec }
+     { If they are, dont change them  }
+
+     res_name = SELECT result . name 
+                    WHERE test_number = summary_test
+
+    WHILE (res_name <> EMPTY) 
+
+       IF (res_name = SUMM_TOC_COMP) THEN
+       
+           cur_summ_toc = STRIP(SELECT result . text)
+
+       ELSEIF (res_name = SUMM_COND_COMP) THEN
+
+           cur_summ_cond = STRIP(SELECT result . text)
+
+       ELSEIF (res_name = SUMM_NOTES_COMP) THEN
+
+           cur_summ_notes = STRIP(SELECT result . text)
+
+       ENDIF
+
+       NEXT result
+       res_name = SELECT result . name 
+
+    ENDWHILE     
+
+
+    { For each test, check toc, conductivity and vallidity }
+    { If any invalid readings, everything does not comply  }
+
+    REPEAT
+
+        res_name = SELECT result . name
+                      WHERE test_number = test_array[count]
+
+
+        WHILE (res_name <> EMPTY) DO
+
+            IF (res_name = VALIDITY_COMPONENT) THEN
+
+                    res = SELECT result . text
+ 
+                    IF (STRIP(res) <> valid_txt) THEN
+
+                       invalid_data = TRUE
+
+                    ENDIF
+
+            ELSEIF  (res_name = TOC_COMPONENT) THEN
+
+                    res = SELECT result . out_of_range
+
+                    IF (res = TRUE) THEN
+
+                       oos_toc = TRUE
+
+                    ENDIF
+
+            ELSEIF  (res_name = COND_COMPONENT) THEN
+
+                    res = SELECT result . out_of_range
+
+                    IF (res = TRUE) THEN
+
+                       oos_cond = TRUE
+
+                    ENDIF
+
+            ENDIF
+
+           NEXT result
+           res_name = SELECT result . name 
+
+        ENDWHILE
+
+            
+        count = count + 1
+
+    UNTIL ( count > SIZE_OF_ARRAY ( test_array ) ) OR
+          ( invalid_data = TRUE)
+
+
+       
+ 
+
+
+    { Conductivity }
+
+    IF (cur_summ_cond = in_spec_txt) OR (cur_summ_cond = "") THEN
+
+        IF (oos_cond = TRUE) THEN
+
+            summ_res = out_spec_txt
+            NEWRESULT(samp_id, summary_test, SUMM_COND_COMP, summ_res, "")
+
+        ELSE
+
+            summ_res = in_spec_txt
+            NEWRESULT(samp_id, summary_test, SUMM_COND_COMP, summ_res, "")
+
+        ENDIF
+
+    ELSE
+
+        summ_res = "Conductivity already does not comply. Dont change result"
+
+    ENDIF
+
+    log_mess = SUMM_COND_COMP:" ":summ_res
+    log_toc_error(toc_instrument, log_mess)
+
+
+
+    { TOC }
+
+    IF (cur_summ_toc = in_spec_txt) OR (cur_summ_toc = "") THEN
+
+        IF (oos_toc = TRUE) THEN
+
+            summ_res = out_spec_txt
+            NEWRESULT(samp_id, summary_test, SUMM_TOC_COMP, summ_res, "")
+
+        ELSE
+
+            summ_res = in_spec_txt
+            NEWRESULT(samp_id, summary_test, SUMM_TOC_COMP, summ_res, "")
+
+        ENDIF
+
+    ELSE
+
+        summ_res = "TOC already does not comply. Dont change result"
+
+    ENDIF
+
+    log_mess = SUMM_TOC_COMP:" ":summ_res
+    log_toc_error(toc_instrument, log_mess)
+
+
+
+     { Notes component }
+
+
+     invalid_txt = STRIP(invalid_txt)
+
+     { Enter Summary Notes Result ONLY if no previous non-comply  }
+     { If invalid data, that is always entered                    }
+
+     IF (invalid_data = TRUE) THEN
+        
+        IF (INDEX(cur_summ_notes ,NOTES_MSG_NO_LIMIT_CHK) > 0) THEN
+
+          { Already has been a maintenance event also, 
+            so that must be kept in the notes 
+          
+            Make sure invalid_txt only added once 
+            (if there were previous invalid tests) 
+          }
+
+          cur_summ_notes = NOTES_MSG_NO_LIMIT_CHK:STRIP(no_spec_anal)
+
+          summ_res = invalid_txt:", ":cur_summ_notes
+            
+        ELSEIF (summ_notes_res <> "")
+
+          { Invalid data AND maintenance event }
+
+          summ_res = invalid_txt:", ":summ_notes_res
+
+        ELSE
+            
+          summ_res = invalid_txt
+
+        ENDIF
+
+        NEWRESULT(samp_id, summary_test, SUMM_NOTES_COMP, summ_res, "")
+
+
+     ELSEIF (cur_summ_notes = def_notes) OR (cur_summ_notes = "") THEN
+
+        { If no notes or default notes, and not invalid this time
+           Then just write in default or "maintenance" note
+        }
+
+         IF summ_notes_res <> "" THEN
+
+            summ_res = summ_notes_res
+
+         ELSE
+
+            summ_res = def_notes
+
+         ENDIF
+
+        NEWRESULT(samp_id, summary_test, SUMM_NOTES_COMP, summ_res, "")
+
+     ELSEIF (INDEX(cur_summ_notes ,invalid_txt) > 0) AND 
+            (summ_notes_res <> "")
+
+        { If it says invalid already, dont lose that         }
+        { Only need to update if there was maintenance event }
+        { (summ_notes_res <> "")                             }
+
+        summ_res = invalid_txt:", ":summ_notes_res
+        NEWRESULT(samp_id, summary_test, SUMM_NOTES_COMP, summ_res, "")
+
+     ENDIF
+
+
+     log_mess = STRIP(SUMM_NOTES_COMP):" ":summ_res
+     log_toc_error(toc_instrument, log_mess)
+
+
+     summ_notes_res = ""
+
+
+ENDROUTINE      {  check_result_limits  }
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE check_results_for_maintanence                                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  07/06/05     AF              Based on TOC_PROCESS_RESULTS.rpf version.      }
+{                               Check TOC File Results against Maintanence     }
+{                               Records.                                       }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE check_results_for_maintanence ( limit_check_on,
+                                        result_date,
+                                        maintanence_times,
+                                        toc_proc_no,
+                                        event_id    )
+
+    DECLARE count, no_of_recs, is_started, maintanence_time, stop_time,
+            stop_toc_seq, pre_maintanence_time
+
+
+    count = 1
+    limit_check_on = TRUE
+
+    no_of_recs = SIZE_OF_ARRAY ( maintanence_times )
+
+    IF no_of_recs > 0 THEN
+
+        WHILE count <= no_of_recs DO
+
+            maintanence_time = maintanence_times [count, 1]
+            is_started       = maintanence_times [count, 2]
+
+ 
+            IF maintanence_time <> EMPTY THEN
+
+                IF ( ( result_date >= maintanence_time )   AND
+                     ( is_started = TRUE               ) ) OR
+
+                   ( ( result_date <= maintanence_time )   AND
+                     ( is_started = FALSE              ) 
+		{ AND ( event_day <> res_day            )  }
+							)  THEN
+
+                    toc_proc_no = maintanence_times [count, 4]
+                    event_id    = maintanence_times [count, 6]
+
+                    stop_toc_seq = maintanence_times [count + 1, 5]
+                    stop_time    = maintanence_times [count + 1, 1]
+
+{Orbis - MK 16-MAY-2002 - Modification made to check for events greater then a day }
+
+		    IF is_started = FALSE THEN
+
+	    		IF count = 1 THEN
+
+			    stop_toc_seq = empty
+
+	    		ELSE
+			    pre_maintanence_time = maintanence_times [count - 1, 1]
+
+			    IF result_date <= pre_maintanence_time THEN
+				stop_toc_seq = 1
+			    ENDIF
+
+			ENDIF
+		    ENDIF
+
+{Orbis - MK 16-MAY-2002 - End of Modifications ************************************}	
+
+
+                    IF ( stop_toc_seq = EMPTY ) THEN
+
+                        limit_check_on = FALSE { Maintanence ON, Dont Check Specs }
+                        count = no_of_recs + 1 { Break out of loop                }
+
+                    ELSEIF (( stop_toc_seq >= toc_proc_no ) AND
+                        ( result_date <= stop_time   )) THEN
+
+                        limit_check_on = FALSE { Maintanence ON, Dont Check Specs }
+                        count = no_of_recs + 1 { Break out of loop                }
+
+                    ENDIF
+
+                    count = count + 1 { Keep on checking records }
+
+                ELSE
+
+                    count = count + 1 { Keep on checking records }
+                    limit_check_on = TRUE
+
+                ENDIF
+
+            ELSE
+
+                count = count + 1 { Keep on checking records }
+
+            ENDIF
+
+        ENDWHILE
+
+    ELSE
+
+        { No Maintanence Records to Check for this Day }
+        limit_check_on = TRUE
+
+    ENDIF
+
+ENDROUTINE    {  check_results_for_maintanence  }
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE log_toc_error                                                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  07/06/05     AF              Based on TOC_PROCESS_RESULTS.rpf version.      }
+{                               Log Any TOC File Manipulation Errors           }
+{                                                                              }
+{==============================================================================}
+
+GLOBAL ROUTINE log_toc_error ( VALUE toc, VALUE file_error_status )
+
+    DECLARE mapped_drive, the_date, file_name, check_ok, check_exist
+
+    mapped_drive = STRIP(LOGICAL("smp$toc_errorlog"))
+
+    SET DATE FORMAT "DZMONYZ H24:MI:SS"
+
+    the_date = TODAY
+    the_date = LEFTSTRING(the_date, 7)
+    the_date = STRIP(the_date)
+    file_name = mapped_drive:STRIP(toc):"_":the_date:".TXT"
+
+    RESTORE DATE FORMAT
+
+    the_date = NOW
+    file_error_status = the_date:"...":STRIP(file_error_status)
+ 
+    check_exist = FILE EXISTS(file_name)
+
+    IF check_exist = TRUE THEN
+
+        FILE EXTEND file_name, check_ok
+        FILE WRITE file_name, file_error_status, check_ok
+        FILE CLOSE file_name, check_ok
+
+    ELSE
+
+        FILE CREATE file_name, check_ok
+
+        IF (check_ok = EMPTY) THEN
+
+        FILE OPEN file_name, check_ok
+        FILE WRITE file_name, file_error_status, check_ok
+        FILE CLOSE file_name, check_ok
+
+        ENDIF
+
+    ENDIF
+
+
+ENDROUTINE     {  log_toc_error  }
+
+
+
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE parse_file                                                          }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  07/06/05     AF              Based on TOC_PROCESS_RESULTS.rpf version.      }
+{                               Routine to Parse TOC File contents.            }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE parse_file ( VALUE toc_instrument, VALUE file_to_parse, result_array , VALUE format_version )
+
+    DECLARE file_open_status, parsed_string, file_read_status,
+          toc_row_count, file_close_status, toc_array, temp_array, cond_array, record_cnt,
+	  max_interval, toc_tag, temp_tag, cond_tag,
+	 the_tag, the_time, the_value, the_valid, time_diff,
+         the_phrase, valid_txt, the_error_stored
+
+    ARRAY toc_array      ARRAySIZE (0,4)
+    ARRAY temp_array     ARRAySIZE (0,4)
+    ARRAY cond_array     ARRAySIZE (0,4)
+
+
+    record_cnt  = 0
+    toc_row_count = 0
+    the_error_stored = ""
+
+
+    toc_tag    = SELECT toc_data . plc_toc_sensor_id 
+                    WHERE identity = toc_instrument
+
+    cond_tag   = SELECT toc_data . plc_cond_sensor_id
+    temp_tag   = SELECT toc_data . plc_temp_sensor_id
+    the_phrase = SELECT toc_data . text_phrase
+
+    valid_txt  = SELECT phrase . phrase_text
+                          WHERE phrase_type = the_phrase
+                            AND phrase_id = "VALID"
+
+
+    FILE OPEN file_to_parse, file_open_status
+
+    IF file_open_status <> EMPTY THEN
+
+        log_toc_error ( toc_instrument, file_open_status ) 
+
+    ENDIF
+
+
+    { Compensate for First Two rows in File with no Data }
+
+    REPEAT
+
+        FILE READ file_to_parse, parsed_string, file_read_status
+        toc_row_count = toc_row_count + 1
+
+    UNTIL toc_row_count = TOC_FILE_DATA_ROW_NO
+
+
+    IF file_read_status <> EMPTY THEN
+
+        log_toc_error ( toc_instrument, file_read_status)  
+
+    ELSE
+
+        WHILE (file_read_status = EMPTY) DO
+                     
+            parse_line (parsed_string, the_tag, the_time, the_value, the_valid, format_version)
+
+            { If anything missing, flag as invalid, and use 0 }
+
+	    IF (the_value = "") THEN
+
+                the_value = 0
+                the_valid = INVALID_FLAG
+
+                IF (the_tag = toc_tag) THEN
+
+                    the_valid        = INVALID_FLAG
+                    the_error_stored = VALIDITY_NO_TOC 
+
+	        ELSEIF (the_tag = cond_tag) THEN
+
+                    the_valid        = INVALID_FLAG
+                    the_error_stored = VALIDITY_NO_COND 
+
+	        ELSEIF (the_tag = temp_tag) THEN
+
+                    the_valid        = INVALID_FLAG
+                    the_error_stored = VALIDITY_NO_TEMP 
+
+                ENDIF
+                
+	    ELSEIF (the_valid = "") THEN
+
+                the_valid        = INVALID_FLAG
+                the_error_stored = "Missing validity for ":the_tag
+
+	    ELSEIF (the_time = "") THEN
+
+                the_valid        = INVALID_FLAG
+                the_error_stored = "Missing time for ":the_tag
+
+            ELSEIF (NOT IS_DATE (the_time)) THEN
+
+                the_valid        = INVALID_FLAG
+                the_error_stored = "Invalid time for ":the_tag
+
+             ENDIF
+
+
+
+              IF (the_tag = toc_tag) THEN
+
+                    record_cnt = record_cnt + 1
+
+                    toc_array [ record_cnt, INDEX_TAG    ] = the_tag
+		    toc_array [ record_cnt, INDEX_TIME   ] = the_time
+		    toc_array [ record_cnt, INDEX_VALUE  ] = the_value
+		    toc_array [ record_cnt, INDEX_VALID  ] = the_valid
+		    
+
+	       ELSEIF (the_tag = cond_tag) THEN
+
+                    record_cnt = record_cnt + 1
+
+	            cond_array [ record_cnt, INDEX_TAG    ] = the_tag
+		    cond_array [ record_cnt, INDEX_TIME   ] = the_time
+		    cond_array [ record_cnt, INDEX_VALUE  ] = the_value
+		    cond_array [ record_cnt, INDEX_VALID  ] = the_valid
+
+	        ELSEIF (the_tag = temp_tag) THEN
+
+                    record_cnt = record_cnt + 1
+
+		    temp_array [ record_cnt, INDEX_TAG    ] = the_tag
+		    temp_array [ record_cnt, INDEX_TIME   ] = the_time
+		    temp_array [ record_cnt, INDEX_VALUE  ] = the_value
+		    temp_array [ record_cnt, INDEX_VALID  ] = the_valid
+
+                ENDIF
+
+
+                FILE READ file_to_parse, parsed_string, file_read_status
+
+            IF ( file_read_status <> EMPTY ) AND
+               ( STRIP(file_read_status) <> "Attempt to read past end of text file") THEN
+
+                log_toc_error ( toc_instrument, file_read_status)  
+
+            ENDIF
+	    
+        ENDWHILE
+
+    ENDIF
+
+    FILE CLOSE file_to_parse, file_close_status
+
+    IF file_close_status <> EMPTY THEN
+
+        log_toc_error ( toc_instrument, file_close_status )  
+
+    ENDIF
+
+    
+	{ Now have all the file data for this instrument in array }
+	{ Remove all except the latest entry for each             }
+
+    filter_latest_reading (toc_array)
+    filter_latest_reading (temp_array)
+    filter_latest_reading (cond_array)
+
+
+    { Check that each has a reading, if not add invalid one }
+		
+	check_validity_flag (toc_instrument, toc_array, the_error_stored, "TOC")
+	check_validity_flag (toc_instrument, temp_array, the_error_stored, "Temperature")
+	check_validity_flag (toc_instrument, cond_array, the_error_stored, "Conductivity")
+
+	handle_empty_reading (toc_instrument, the_error_stored, 
+                                 toc_array,  PROPERTY_TOC)
+	handle_empty_reading (toc_instrument, the_error_stored, 
+                                 temp_array, PROPERTY_TEMP)
+	handle_empty_reading (toc_instrument, the_error_stored, 
+                                 cond_array, PROPERTY_COND)
+
+
+    { Check interval between temp. and cond }
+
+	max_interval = SELECT toc_data . plc_max_time_lag
+	
+
+        IF (NOT IS_DATE(temp_array [1, INDEX_TIME])) THEN
+
+            temp_array [ 1, INDEX_VALID   ] = INVALID_FLAG
+
+        ELSEIF (NOT IS_DATE(cond_array [1, INDEX_TIME])) THEN
+
+            cond_array [ 1, INDEX_VALID   ] = INVALID_FLAG
+
+	ELSE
+
+            time_diff = DATE(cond_array [ 1, INDEX_TIME   ]) - DATE(temp_array [ 1, INDEX_TIME   ])
+
+            IF ( time_diff > max_interval ) THEN
+
+                IF (the_error_stored = "") THEN
+
+                   the_error_stored = VALIDITY_TEMPCOND_INT
+
+                ENDIF
+
+	        temp_array [ 1, INDEX_VALID   ] = INVALID_FLAG
+                log_toc_error (toc_instrument, "The time difference between temperature ":
+                               "and conductivity readings exceeds maximum interval ":
+                                STRING(max_interval):
+                               " . Times cond, temp: ":cond_array [ 1, INDEX_TIME   ]:
+                                ",":temp_array [ 1, INDEX_TIME   ])
+
+            ENDIF
+ 
+            time_diff = DATE(temp_array [ 1, INDEX_TIME   ]) - DATE(cond_array [ 1, INDEX_TIME   ])
+
+            IF ( time_diff > max_interval ) THEN
+
+
+                IF (the_error_stored = "") THEN
+
+                   the_error_stored = VALIDITY_TEMPCOND_INT
+
+                ENDIF
+
+	        temp_array [ 1, INDEX_VALID   ] = INVALID_FLAG
+                log_toc_error (toc_instrument, "The time difference between temperature ":
+                               "and conductivity readings exceeds maximum interval ":
+                                STRING(max_interval):
+                               " . Times cond, temp: ":cond_array [ 1, INDEX_TIME   ]:
+                                ",":temp_array [ 1, INDEX_TIME   ])
+ 
+            ENDIF
+
+	ENDIF
+
+    
+    { Make sure there is an error reason }
+
+    IF (the_error_stored = "") THEN
+
+        the_error_stored = VALIDITY_DEFAULT_FAIL
+
+    ENDIF
+
+
+
+   { Fill result array (only 1 result }
+
+    result_array [1, 1 ] = toc_array  [1, INDEX_TIME ]
+    result_array [1, 2 ] = toc_array  [1, INDEX_VALUE]
+    result_array [1, 3 ] = cond_array [1, INDEX_VALUE]
+    result_array [1, 4 ] = temp_array [1, INDEX_VALUE]
+
+    IF (   ( toc_array  [ 1, INDEX_VALID   ] <> VALID_FLAG) OR
+           ( cond_array [ 1, INDEX_VALID   ] <> VALID_FLAG) OR
+           ( temp_array [ 1, INDEX_VALID   ] <> VALID_FLAG) 
+        ) THEN
+
+        result_array [1, 5 ] = the_error_stored
+
+    ELSE
+
+        result_array [1, 5 ] = valid_txt
+
+    ENDIF
+
+
+ENDROUTINE     {  parse_file  }
+
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE handle_empty_reading                                                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  07/06/05     AF              Handle cases where no reading for TOC/Cond/temp}
+{                                                                              }
+{==============================================================================}
+
+ROUTINE handle_empty_reading (VALUE toc_instrument, the_error_stored,
+                                  the_array, VALUE array_type)
+
+    IF (size_of_array (the_array) = 0) THEN
+
+        the_array [ 1, INDEX_TAG    ] = "0"
+        the_array [ 1, INDEX_TIME   ] = NOW
+        the_array [ 1, INDEX_VALUE  ] = "0"
+        the_array [ 1, INDEX_VALID  ] = INVALID_FLAG
+
+
+        log_toc_error (toc_instrument, "No valid reading for ":array_type)
+
+ 
+        { If missing readings, store error (in output parameter) }
+
+        IF (array_type = PROPERTY_TOC) THEN
+
+            the_error_stored = VALIDITY_NO_TOC 
+
+	ELSEIF (array_type = PROPERTY_COND) THEN
+
+            the_error_stored = VALIDITY_NO_COND 
+
+	ELSEIF (array_type = PROPERTY_TEMP) THEN
+
+            the_error_stored = VALIDITY_NO_TEMP 
+
+        ENDIF
+
+    ENDIF
+
+ENDROUTINE     {  handle_empty_reading  }
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE check_validity_flag                                                 }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  07/06/05     AF              Handle cases where no validity flag in file=0  }
+{                               for TOC/Cond/temp                              }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE check_validity_flag (VALUE toc_instrument, the_array, 
+                             the_error_stored, VALUE array_type)
+
+    IF (size_of_array (the_array) > 0) THEN
+ 
+        IF (the_array [ 1, INDEX_VALID  ] = INVALID_FLAG) THEN
+
+            log_toc_error (toc_instrument, 
+                          "Invalid ":STRIP(array_type):" reading - Validity flag=0")
+
+            IF (the_error_stored = "") THEN
+
+                the_error_stored = VALIDITY_FILE_FLAG
+
+            ENDIF
+
+        ENDIF
+
+    ENDIF
+
+ENDROUTINE
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE filter_latest_reading                                               }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  07/06/05     AF              Filter out latest reading (from array) for each}
+{                               sensor                                         }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE filter_latest_reading (the_array)
+
+    DECLARE i, break
+
+  
+    { First check for valid dates }
+
+    i = size_of_array (the_array)
+
+    WHILE (i > 0) 
+
+        IF (NOT IS_DATE(the_array [i, INDEX_TIME])) THEN
+
+            array_remove_slice (the_array, 1, i)
+
+        ENDIF
+
+        i = i - 1
+
+    ENDWHILE
+   
+
+    WHILE (size_of_array (the_array) > 1)
+
+        i = size_of_array (the_array)  
+
+        break = FALSE
+
+    	WHILE (i > 1) AND (break = FALSE) 
+
+            i = i - 1
+
+              IF (DATE(the_array [i + 1, INDEX_TIME]) = DATE(the_array [i, INDEX_TIME])) THEN
+
+                { Unlikely to get 2 entries at the same time                                    }
+		{ If get, remove 1, to stop infinite loop                                       }
+		{ Then flag the other one as invalid, because cant have 2 readings at same time }
+
+                the_array [i , INDEX_VALID] = INVALID_FLAG
+   		array_remove_slice (the_array, 1, i + 1)
+
+
+	      ELSEIF (DATE(the_array [i + 1, INDEX_TIME]) < DATE(the_array [i, INDEX_TIME])) THEN
+
+		array_remove_slice (the_array, 1, i + 1)
+				    
+	      ELSEIF (DATE(the_array [i + 1, INDEX_TIME]) > DATE(the_array [i, INDEX_TIME])) THEN
+
+		array_remove_slice (the_array, 1, i)
+                break = TRUE
+				    
+	     ENDIF
+
+        ENDWHILE
+
+    ENDWHILE     {  WHILE (size_of_array (the_array) > 1)  }
+
+
+ENDROUTINE     {  filter_latest_reading  }
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE parse_line                                                          }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  07/06/05     AF              Parse a single line in the file                }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE parse_line (VALUE file_line, the_tag, the_time, the_value, the_valid, VALUE format_version)
+
+    DECLARE counter, tab_posn, delim
+
+    delim           = ";"    
+    IF (format_version = 2) THEN
+        delim           = ","   {  MOD3  }
+    ENDIF
+
+    the_tag         = ""
+    the_time        = ""
+    the_value       = ""
+    the_valid       = ""
+
+    file_line = STRIP (file_line)
+    file_line = delim:file_line      { So existing parse algorithm can be used }
+    tab_posn = INDEX (file_line,delim)
+
+            
+    { First remove " (ascii 34)  }
+    file_line = SUBSTITUTE (file_line, ASCII(34),"")
+ 
+      
+    { Parse }
+    counter = 0
+
+    WHILE (tab_posn <> 0) DO
+
+        file_line = file_line # LEFTSTRING(file_line, tab_posn)
+        tab_posn = INDEX (file_line,delim)
+        counter = counter + 1
+
+        IF (counter = FILE_POSN_TAG) THEN
+
+            the_tag = LEFTSTRING(file_line, tab_posn-1)
+
+            { MOD3 }
+            make_safe_sensor_length (the_tag)
+		    
+        ELSEIF (counter = FILE_POSN_TIME) THEN
+
+            the_time = LEFTSTRING (file_line, tab_posn-1)
+
+            { Change . to / }
+            the_time = SUBSTITUTE (the_time, ".","/")
+
+            { MOD3 - make old format to minimise changes }
+            IF (format_version = 2) THEN
+                reformat_date_string (the_time)
+            ENDIF
+ 
+        ELSEIF (counter = FILE_POSN_VALUE) THEN
+
+            the_value = LEFTSTRING(file_line, tab_posn-1)
+
+        ELSEIF (counter = FILE_POSN_VALID) THEN
+
+            the_valid = LEFTSTRING(file_line, tab_posn-1)
+
+        ENDIF
+	 
+    ENDWHILE    { end of line parse }
+
+
+    the_tag         = STRIP (the_tag)
+    the_time        = STRIP (the_time)
+    the_value       = STRIP (the_value)
+    the_valid       = STRIP (the_valid)
+
+
+    { All TOC, temperature and conductivity values must be numeric }
+    { If not , cant compare spec and the TOC_LIMIT calculation will crash    }
+    { Change it to blank, a 0 will be inserted later }
+
+    IF (NOT NUMTEXT (the_value)) THEN
+
+        the_value = ""
+
+    ENDIF
+
+ENDROUTINE     { parse_line  }
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE ensure_logged_sample                                                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  07/06/05     AF              Log in a sample if required and/or retrieve ID }
+{                                of current sample                             }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE ensure_logged_sample (VALUE toc_instrument, VALUE samp_template, 
+                              VALUE the_time, 
+                                samp_already_logged, err_msg)
+
+    { First, look in TOC_SAMPLE table for an entry for the instrument }
+    { If none, an entry must be created, and a sample logged in       }
+    { If there is an entry for the instrument, check the sample date  }
+    { If not today, log in sample, and update the record              }
+    { If there is a sample for today, no need to log another sample   }
+
+    { samp_already_logged is FALSE, unless the sample was logged in already }
+
+    DECLARE samp_id, samp_date, check_ok, the_key, toc, the_day
+
+    err_msg = ""
+    samp_already_logged = FALSE
+
+
+    { the time passed in must be in format }
+    { dz/mz/yz HH24:MI:ss                  }
+
+    IF (IS_DATE (the_time) = FALSE) THEN
+
+        err_msg = "Invalid timestamp in result file ":the_time
+        RETURN (0)
+
+    ENDIF
+
+    the_day = LEFTSTRING(the_time, 8)
+
+
+    IF (IS_DATE (the_day) = FALSE) THEN
+
+        err_msg = "Invalid timestamp format in result file ":the_day
+        RETURN (0)
+
+    ENDIF
+
+
+    samp_id = SELECT toc_sample . sample  
+                 WHERE toc = toc_instrument
+
+    IF (samp_id = EMPTY) THEN
+
+        { Need an entry for that instrument to be added }
+        { and need to login sample                      }
+
+        samp_id = NEW_SAMPLE (" ",samp_template," ")
+
+        COMMIT
+
+        IF (samp_id <> EMPTY) THEN
+
+            the_key = PAD (STRIP(toc_instrument), " ", 10)
+            the_key = JUSTIFY(the_key, "LEFT")
+
+            RESERVE ENTRY toc_sample, the_key, check_ok
+
+            IF (check_ok = EMPTY) THEN
+
+               check_write_transaction()
+
+               ASSIGN toc_sample . sample    = samp_id
+               ASSIGN toc_sample . samp_date = the_day
+               
+               UPDATE toc_sample
+
+
+            ELSE
+
+                err_msg = check_ok
+                samp_id = 0
+
+            ENDIF
+
+        ELSE
+
+            samp_id = 0
+            err_msg = "No sample logged in"
+
+        ENDIF
+
+    ELSE
+
+        { Check the sample date }
+
+        samp_date = SELECT toc_sample . samp_date
+
+ 
+        IF (DATE(samp_date) = DATE(the_day)) THEN
+
+            samp_already_logged = TRUE
+
+        ELSE
+
+            samp_id = NEW_SAMPLE (" ",samp_template," ")
+
+           COMMIT
+
+           toc = SELECT toc_sample . toc   FOR UPDATE
+                        WHERE toc = toc_instrument
+
+            
+            IF (toc = EMPTY) THEN
+
+                err_msg = "unable to access toc_sample record for ":toc_instrument
+                samp_id = 0
+
+            ELSEIF (samp_id <> EMPTY) THEN
+
+               { Update the table with new sample details }
+
+                  check_write_transaction()
+ 
+                  ASSIGN toc_sample . sample    = samp_id
+                  ASSIGN toc_sample . samp_date = the_day
+                 
+                  UPDATE toc_sample
+
+            ELSE
+                err_msg = "No sample logged in"
+                samp_id = 0
+
+            ENDIF
+
+        ENDIF
+
+    ENDIF
+
+
+
+    IF (transaction_is_write () ) THEN
+
+        COMMIT
+
+    ENDIF
+
+
+    RETURN (samp_id)
+
+
+ENDROUTINE    {  ensure_logged_sample  }
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE check_write_transaction                                             }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  17-DEC-1997  ER              This checks if the process is already in a     }
+{                               write_transaction, and if not, starts one.     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE check_write_transaction
+
+    IF NOT transaction_is_write() THEN
+
+       START WRITE TRANSACTION "update record"
+
+    ENDIF
+
+ENDROUTINE
+
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE format_ptr_error                                                    }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  06-June-2005  AF             Ensure PUT_TEST_RESULTS error descriptions are }
+{                               read correctly. This routines formats the error}
+{                               message for display                            }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE format_ptr_error ( disp_msg, ptr_status )
+
+   {==========================================================}
+   { disp_msg is formatted message for output                 } 
+   {==========================================================}
+
+
+    DECLARE the_msg, conv_msg
+
+    disp_msg = "Put Test Results error"
+    
+    IF (ptr_status <> EMPTY) THEN
+
+       IF (ptr_status <> ERROR) THEN
+
+              the_msg  = ptr_status
+              conv_msg = get_user_message (ptr_status, 1)
+
+              IF (conv_msg <> EMPTY) THEN
+
+                 IF (conv_msg <> ERROR) THEN
+
+                     the_msg = the_msg:".  ":STRING(conv_msg)
+
+                 ENDIF                  
+
+              ENDIF
+
+              disp_msg = disp_msg:". ":STRIP(the_msg)
+
+       ENDIF
+
+    ENDIF
+
+
+
+
+ENDROUTINE     {  format_ptr_error   }
+
+
+{ MOD3 }
+
+
+ROUTINE reformat_date_string (string_to_change)
+
+    DECLARE dt
+
+    { change the date string format }
+
+    string_to_change = STRIP (string_to_change)
+
+    SET DATE FORMAT "MM/DD/YYYZ H12:MI:SS AM"
+    dt = DATE (string_to_change)
+    RESTORE DATE FORMAT
+
+    SET DATE FORMAT "DZ/MZ/YZ H24:MI:SS"
+    string_to_change = STRIP (dt)
+    RESTORE DATE FORMAT
+
+ENDROUTINE
+
+ROUTINE make_safe_sensor_length (string_to_change)
+
+    DECLARE db_len
+
+    string_to_change = STRIP (string_to_change)
+
+    { if sensor name too big for database, truncate. }
+    { assumes all 3 sensor fields will always be the same length in toc_data, as is now }
+
+    GET_FIELD_DETAILS TOC_DATA . plc_toc_sensor_id , "FIELD_SIZE", db_len
+
+    IF ( STRINGLENGTH(string_to_change) > db_len) THEN
+
+        { if longer, truncate }
+        string_to_change = LEFTSTRING (string_to_change, db_len)
+        string_to_change = STRIP (string_to_change)
+
+    ENDIF
+
+ENDROUTINE

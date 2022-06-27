@@ -1,0 +1,523 @@
+{*******************************************************************************
+*
+* Module Name   :  OLS_GENERIC_MAP
+*
+* Purpose       :  Generic mapping from table in LIMS
+*
+* Version 1.0
+*******************************************************************************} 
+
+SET COMPILE_OPTION DECLARE
+SET NAME "DEFER/"
+ENABLE WINDOWS
+SET NOTPROTECTED
+
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_GENERAL
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN STANDARD_LIBRARY STD_MESSAGE
+JOIN STANDARD_LIBRARY STD_STRUCTURE
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN LIBRARY $LIB_UTILS
+
+
+DECLARE g_datatype
+
+
+{
+Alias the user in the mapping LTE
+}
+ROUTINE check_user (user_id, datatype)
+
+    DECLARE ret, lims_user 
+
+    ret = EMPTY
+    g_datatype = datatype
+    g_datatype = g_datatype
+
+    lims_user = SELECT phrase . phrase_id
+			    WHERE phrase_type="GN_IM_UMAP"
+				 AND phrase_text=user_id
+
+    IF (lims_user = EMPTY) THEN
+
+        ret = user_id:" user not mapped"
+
+    ELSE
+
+	    user_id = lims_user
+
+    ENDIF
+
+    RETURN (ret)
+
+ENDROUTINE
+
+
+{
+  Gets the test
+}
+ROUTINE get_test (VALUE sample_id, VALUE test_field_value, actual_test_id)
+
+	DECLARE status 
+
+	status = EMPTY
+	actual_test_id = 1   { dummy value, the test is mapped later }
+
+	RETURN (status)
+
+ENDROUTINE
+
+
+ROUTINE write_results (VALUE sample_id, VALUE test_number, array_results, VALUE user_id, 
+						VALUE is_first_call, error_array, entered_results_array)
+
+
+	DECLARE status, i, j,  ptr_cnt, ptr_fld_cnt,
+            array_ptr_field_names, status_array ,  res_type ,
+		  array_all_maps, component_name_mapped, err_msg,
+		ptr_array, entered_results_count
+
+	status = EMPTY
+
+	res_type = "RESULT"
+	ARRAY entered_results_array
+	ARRAY ptr_array
+	ARRAY array_ptr_field_names
+	ARRAY array_all_maps
+     ptr_cnt = 0
+
+	{  array_results :   [c, x]
+	    c,1:   1=field type   2=comp name  3=result value  4,5,...see below
+	    Subsequent fields as follows: name, value.....This is meant for other fields in result table
+	    Above is when field type =RESULT
+	    Otherwise its specific to the field type value
+	}
+
+	DECLARE array_tests
+	ARRAY array_tests
+	get_all_sample_tests (sample_id, array_tests)
+
+	{ Get all the mapped components for the test }
+	get_mapped_component_list (g_datatype, array_tests,  array_all_maps)
+
+	i = 0
+
+	WHILE ( i < size_of_array (array_results) ) DO
+
+		i = i + 1
+
+		IF (array_results[i,1]=res_type) THEN
+
+			j = 3
+			WHILE (array_results[i,j+1] <> EMPTY) DO
+
+				j = j + 1
+
+				ptr_cnt = size_of_array(array_ptr_field_names)+1
+				array_ptr_field_names [ptr_cnt] = array_results[i,j]
+
+				j = j +1   { skip value, onto next name }
+
+			ENDWHILE
+	
+			i = 9999    { no need to check any more, all have same field names }
+
+		ENDIF
+
+	ENDWHILE
+
+	{ Now have the field name list, make the arrays }
+	i = 0
+
+	WHILE (status=EMPTY) AND
+		( i < size_of_array (array_results) ) DO
+
+		i = i + 1
+
+		test_number = 0
+		ARRAY ptr_array
+		ptr_cnt = 1
+		ptr_array [1,1]  = "component_name"
+		ptr_array [1,2]  = "text"
+
+		j = 0
+
+		WHILE (j < size_of_array(array_ptr_field_names)) DO
+
+			j = j + 1
+			ptr_array [1,j+2] = array_ptr_field_names[j]
+
+		ENDWHILE
+
+		IF (array_results[i,1]=res_type) THEN
+
+			get_mapped_comp_name (array_results [i,2], array_all_maps, 
+							test_number, component_name_mapped)
+
+			IF (component_name_mapped <> "") AND (test_number <> "")  AND
+				 (test_number <> 0) THEN
+
+				ptr_cnt = size_of_array(ptr_array)+1
+				ptr_array [ptr_cnt,1] = component_name_mapped
+				ptr_array [ptr_cnt,2] = array_results [i,3]
+
+				entered_results_count = size_of_array (entered_results_array) + 1
+				entered_results_array [entered_results_count, 1] = test_number
+				entered_results_array [entered_results_count, 2] = ptr_array [ptr_cnt,1]
+
+                    ptr_fld_cnt = 2
+				j = 3
+				WHILE (array_results[i,j+1] <> EMPTY) DO
+	
+					j = j + 2
+                         ptr_fld_cnt = ptr_fld_cnt + 1
+					ptr_array [ptr_cnt, ptr_fld_cnt] = array_results [i,j]
+
+				ENDWHILE
+
+			ENDIF
+
+		ENDIF
+
+		{ write the result }
+
+		IF ( status = EMPTY ) AND (ptr_cnt > 1) THEN
+
+			PUT_TEST_RESULTS test_number,  ptr_array ,status_array
+
+			IF (status_array[1] <> EMPTY) THEN
+
+				err_msg = make_error_string_from_ptr_status ( status_array, ptr_array )
+
+				IF (STRIP(err_msg) <> "") THEN
+
+					status = make_error_string_from_ptr_status ( status_array, ptr_array ) 
+
+				ENDIF
+
+			ENDIF
+
+		ENDIF
+
+	ENDWHILE
+
+
+
+	RETURN (status)
+
+ENDROUTINE
+
+
+ROUTINE get_all_sample_tests (VALUE sample, array_tests)
+
+	DECLARE rec, i
+
+	ARRAY array_tests   ARRAYSIZE (0,6)
+
+	rec = SELECT test . test_number
+			WHERE sample = sample
+			AND status <> "X"
+			AND status <> "A"
+			AND status <> "R"
+			AND status <> "I"
+
+	WHILE (rec <> EMPTY) DO
+
+		i = size_of_array (array_tests) + 1
+
+		array_tests [i,1] = SELECT test . test_number
+		array_tests [i,2] = SELECT test . analysis
+		array_tests [i,3] = SELECT test . analysis_version 
+		array_tests [i,4] = FALSE  { flag if has a mapping }
+		array_tests [i,5] = ""    { default peakname for the test, assuming only 1.  Set leter }
+		array_tests [i,6] = SELECT test . test_count
+
+		NEXT test  
+		rec = SELECT test . test_number
+
+	ENDWHILE
+
+ENDROUTINE
+
+{
+ Look up the mapping tables to get what is mapped
+ array_tests in, array_all_maps out
+}
+ROUTINE get_mapped_component_list (VALUE map_record, array_tests, array_all_maps)
+
+	DECLARE cnt_map, cnt_tests, rec
+
+	cnt_map = 0
+
+	{ Fields in array_all_maps:  test_no, analysis, component, runtype_repl, inj_no, peak, emp_field }
+     { Fields in array_tests: test, analysis, analysis ver, map flag }
+
+	cnt_tests = 0
+
+	WHILE (cnt_tests < size_of_array(array_tests)) DO
+
+		cnt_tests = cnt_tests + 1
+
+		rec = SELECT imsm_map_field . analysis
+				WHERE analysis = array_tests [cnt_tests, 2]
+				AND enabled = TRUE
+				AND identity = map_record
+
+		WHILE (rec <> EMPTY) DO
+
+			cnt_map = size_of_array (array_all_maps) + 1
+
+			array_all_maps [cnt_map,1] = array_tests [cnt_tests, 1]
+			array_all_maps [cnt_map,2] = array_tests [cnt_tests, 2]
+			array_all_maps [cnt_map,3] = SELECT imsm_map_field . component
+			array_all_maps [cnt_map,4] = SELECT imsm_map_field . inst_id1
+			array_all_maps [cnt_map,5] = SELECT imsm_map_field . inst_id2
+			array_all_maps [cnt_map,6] = ""  { reserved }
+			array_all_maps [cnt_map,7] = "" { reserved }
+			array_all_maps [cnt_map,8] = array_tests [cnt_tests, 6]
+
+			NEXT imsm_map_field
+			rec = SELECT imsm_map_field . analysis
+
+		ENDWHILE
+
+	ENDWHILE
+
+
+ENDROUTINE
+
+ROUTINE make_param_array (VALUE param_list, p_arr, VALUE delim)
+
+    DECLARE i, param
+
+    ARRAY p_arr
+
+    param_list = STRIP (param_list)
+
+    REPEAT
+
+        param_list = STRIP (param_list)
+        i = INDEX (param_list, delim)
+
+        IF (i>0) THEN
+
+            param      = SUBSTRING (param_list, 1, i-1)
+            param_list = SUBSTRING (param_list, i+1, STRINGLENGTH (param_list)-i)
+
+            p_arr [size_of_array(p_arr)+1] = STRIP(param)
+
+        ELSEIF (STRIP(param_list) <> "")
+
+            param = STRIP (param_list)
+            param_list = ""
+
+            p_arr [size_of_array(p_arr)+1] = STRIP(param)
+
+        ENDIF
+
+    UNTIL (i = 0)
+
+ENDROUTINE    {  make_param_array  }
+
+
+{
+internal
+}
+ROUTINE make_error_string_from_ptr_status ( 
+					ptr_err_array, ptr_array )
+
+    DECLARE i, the_msg, conv_msg, full_str, crlf,
+		warn_mess, warn_text
+
+    crlf=ASCII(13):ASCII(10)
+    full_str = ""
+    the_msg = ""
+
+	message_fetch( "RESULT_ENTRY_MLP_LEVEL_ID", warn_mess )
+	warn_text = message_get_text ( warn_mess, 1 )
+	warn_text = SUBSTRING (warn_text,1,20)
+
+    IF (size_of_array(ptr_err_array)>0) THEN
+
+        IF (ptr_err_array[1] <> EMPTY) THEN
+
+            conv_msg = get_user_message (ptr_err_array[1], 1)
+		  IF (conv_msg <> ERROR) THEN
+
+			the_msg = STRING(conv_msg)
+			IF (INDEX(the_msg,warn_text) < 1) THEN
+
+	               full_str = full_str:STRIP(the_msg):crlf
+
+			ENDIF
+
+           ENDIF              
+
+        ENDIF
+
+    ENDIF
+
+    i = 1
+
+    WHILE (i < SIZE_OF_ARRAY (ptr_err_array)) DO
+
+        i = i + 1
+
+        IF (ptr_err_array [i] <> EMPTY) THEN
+
+              IF (ptr_err_array [i] <> ERROR) THEN
+
+                 the_msg  = ptr_err_array [i]
+                 conv_msg = get_user_message (ptr_err_array [i], 1)
+
+                 IF (conv_msg <> EMPTY) THEN
+
+                    IF (conv_msg <> ERROR) THEN
+
+                       the_msg = the_msg:".  ":STRING(conv_msg)
+
+                    ENDIF                  
+
+                 ENDIF
+
+				IF (INDEX(the_msg,warn_text) < 1) THEN
+
+   			  		full_str = full_str:STRIP(the_msg):"(":ptr_array[i,1]:"=":ptr_array[i,2]:")":crlf
+
+				ENDIF
+
+              ENDIF
+
+        ENDIF
+
+    ENDWHILE
+	
+    RETURN (full_str)
+
+ENDROUTINE    
+
+ROUTINE get_msg (VALUE msg)
+
+	DECLARE ret
+
+	ret = get_user_message ("OLS_LHSMC_":STRIP(msg), 1)
+
+	RETURN ( ret )
+
+ENDROUTINE
+
+
+{ gets mapped LIMS component name and analysis
+  Outputs in testno, comp_to_use, empower_component_mapped (the empower peak name)
+}
+ROUTINE get_mapped_comp_name (VALUE comp_alias, array_mapping, 
+						testno_to_use, comp_to_use )
+
+	DECLARE ret, i, j,  array_mapped, 
+         id1, id2 
+
+	ret = EMPTY
+	testno_to_use = ""
+	comp_to_use = ""
+	ARRAY array_mapped  ARRAYSIZE (0,2)
+	
+	{ comp_alias is in the form e.g. <id1>;<id2> 
+     }
+
+	parse_result_id (comp_alias, id1, id2)
+
+	{ array_mapping is the SM-Empower mapping of every test on the sample }
+	{ Fields are test_no, analysis, component, id1, id2 }
+
+	i = 0
+
+	WHILE (ret = EMPTY) AND
+           (i < size_of_array (array_mapping) ) DO
+
+		i = i + 1
+
+		IF ( STRIP(TOUPPER(array_mapping [i,4])) = STRIP(TOUPPER(id1))  ) AND 
+             ( STRIP(TOUPPER(array_mapping [i,5])) = STRIP(TOUPPER(id2))  ) THEN
+
+			j = size_of_array (array_mapped) + 1
+			array_mapped [j, 1] = array_mapping [i,1]
+			array_mapped [j, 2] = array_mapping [i,3]
+
+		ENDIF
+
+	ENDWHILE
+
+
+	{ If > 1 mapped, doesnt map }
+
+	IF (size_of_array(array_mapped)=1) THEN
+
+		j = 1
+		testno_to_use = array_mapped [j, 1]
+		comp_to_use = array_mapped [j, 2]
+
+	ENDIF
+
+	RETURN (ret)
+
+ENDROUTINE
+
+
+ROUTINE parse_result_id (VALUE full, id1, id2)
+
+    { full is in the form e.g. id1;id2
+     }
+
+	DECLARE i, delim, array_split
+
+	id1 = ""
+	id2 = ""
+	ARRAY array_split
+	delim = ";"
+	split (full, delim, array_split)
+
+	i = 0
+
+	WHILE (i < size_of_array (array_split)) DO
+
+		i = i + 1
+
+		IF (i=1) THEN
+			id1 = STRIP(array_split [i])
+		ELSEIF (i=2) THEN
+			id2 = STRIP(array_split [i])
+		ENDIF
+
+	ENDWHILE
+	 
+ENDROUTINE
+
+ROUTINE split (VALUE full, VALUE delim, array_split)
+
+	DECLARE i, val
+
+	ARRAY array_split
+
+	REPEAT
+
+		i = INDEX (full, delim)
+
+		IF (i>0) THEN
+		
+			val = STRIP(SUBSTRING (full, 1, i-1))
+			full = STRIP(SUBSTRING (full, i+STRINGLENGTH(delim), (STRINGLENGTH(full)+1)-(i+STRINGLENGTH(delim))))
+
+		ELSE
+			val = full
+			full = ""
+		ENDIF
+
+		array_split [size_of_array(array_split)+1] = STRIP(val)
+
+	UNTIL (full = "")
+
+ENDROUTINE
+

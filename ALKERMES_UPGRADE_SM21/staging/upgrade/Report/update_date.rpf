@@ -1,0 +1,119 @@
+
+SET COMPILE_OPTION DECLARE
+SET NOTPROTECTED
+SET NAME "DEFER/"
+ENABLE WINDOWS
+
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN STANDARD_LIBRARY STD_STRUCTURE
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_WINDOW
+
+JOIN LIBRARY $lib_utils
+
+scan_tables ( )
+
+FLASH_MESSAGE ( "Done.", TRUE )
+
+{******************************************************************************}
+
+ROUTINE scan_tables
+
+{
+*     Loop over the tables looking for packed decimal fields
+*
+*******************************************************************************}
+
+	DECLARE tables ,
+	        max_table ,
+	        table_no ,
+	        table_nam ,
+	        field_no ,
+	        max_field ,
+	        field_nam ,
+	        fields ,
+	        field_type ,
+	        is_view
+
+	get_table_names ( tables )
+
+	max_table = size_of_array ( tables )
+
+	table_no = 1
+
+	WHILE table_no <= max_table DO
+
+		table_nam = STRIP ( tables [ table_no, 1 ])
+
+		get_table_details 'table_nam' ,
+		                  "IS_VIEW"   ,
+		                  is_view
+
+		IF NOT is_view THEN
+
+			get_field_names ( table_nam , fields )
+
+			field_no = 1
+			max_field = size_of_array ( fields )
+
+			WHILE field_no <= max_field DO
+
+				IF NOT fields [ field_no , 2 ] THEN
+
+					field_nam = STRIP ( fields [ field_no , 1 ])
+
+					GET_FIELD_DETAILS 'table_nam' . 'field_nam' ,
+					                  "DATA_TYPE"               ,
+					                  field_type
+
+					IF field_type = "Date" THEN
+
+						correct_date_field ( table_nam ,
+						                     field_nam )
+
+					ENDIF
+
+				ENDIF
+
+				field_no = field_no + 1
+
+			ENDWHILE
+
+		ENDIF
+
+		table_no = table_no + 1
+
+	ENDWHILE
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE correct_date_field ( table_nam ,
+                             field_nam )
+
+{
+*     Call dynamic SQL to update the fields
+*
+*******************************************************************************}
+
+	DECLARE sql_statement
+
+	window_set_status ( "Processing " : STRIP ( table_nam ) : "." : STRIP ( field_nam ))
+
+	IF ( database_system ( ) = DATABASE_SQLSERVER ) THEN
+		sql_statement = "UPDATE [" : STRIP ( table_nam ) :
+		                "] SET [" : STRIP ( field_nam ) :
+		                "] = NULL WHERE [" : STRIP ( field_nam ) :
+		                "] = CAST('' as datetime)"
+	ENDIF
+
+	execute_sql ( sql_statement )
+	execute_sql ( "COMMIT" )
+
+ENDROUTINE
+
+{******************************************************************************}
+{******************************************************************************}
+{******************************************************************************}

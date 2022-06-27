@@ -1,0 +1,177 @@
+! Messages for generic libraries
+! LIB_UTIL
+! LIB_FILE
+! LIB_PIPE
+! LIB_LOG
+! LIB_FORM
+! LIB_FTP
+! LIB_SQL
+!
+! Vers Date        Author            Description
+! ---- ----------- ----------------- --------------------------------------------------------
+! 1.0  24-DEC-1999 Ken Jacobs        
+!
+!
+! ********************************************************************************************
+! All messages in this group are only used by the test code for LIB_MESSAGE
+
+MESSAGE GROUP "LIB_MESSAGE_"
+
+MESSAGE = "SIMPLE"
+TEXT    = "Simple message"
+
+MESSAGE = "PARAMETER_1"
+TEXT    = "Message with 1 parameter, []"
+
+MESSAGE = "PARAMETER_2"
+TEXT    = "Message with 2 parameters, [] and []"
+
+MESSAGE = "PARAMETER_3"
+TEXT    = "Message with 3 parameters, [], [] and []"
+
+! ********************************************************************************************
+
+MESSAGE GROUP = "LIB_LOG_"
+
+! The following messages are abbreviates for severity and should be a maximum of 10 characters
+
+MESSAGE = "FATAL"
+TEXT    = "FATAL"
+
+MESSAGE = "ERROR"
+TEXT    = "ERROR"
+
+MESSAGE = "TRANS"
+TEXT    = "TRANS"
+
+MESSAGE = "TRACE"
+TEXT    = "Debug"
+
+MESSAGE = "FAILED_WRITING_TO_LOG"
+TEXT    = "Failed writing message to log file. Message = [], Reason = []"
+
+! ********************************************************************************************
+
+MESSAGE GROUP = "LIB_FORM_"
+
+MESSAGE = "START_DATE"
+TEXT    = "Start Date"
+
+MESSAGE = "END_DATE"
+TEXT    = "Start Date"
+
+MESSAGE = "TWO_DATES_REQUIRED"
+TEXT    = "Both a start date and end date are required"
+
+MESSAGE = "START_BEFORE_END_DATE"
+TEXT    = "The start date should be before the end date"
+
+MESSAGE = "YEAR"
+TEXT    = "Year"
+
+MESSAGE = "INVALID_YEAR"
+TEXT    = "Entered value is invalid as a year"
+
+MESSAGE = "JOB_ID"
+TEXT    = "Job ID"
+
+MESSAGE = "LOGIN_DATE"
+TEXT    = "Login Date"
+
+MESSAGE = "ENTER_BOTH_FIELDS"
+TEXT    = "Values must be entered for both fields"
+
+MESSAGE = "FILE_NAME"
+TEXT    = "File Name"
+
+! ********************************************************************************************
+
+MESSAGE GROUP "LIB_FTP_"
+
+! This text in the ftp log file indicates it worked
+MESSAGE = "TRANSFER_COMPLETE"
+TEXT    = "Transfer complete"
+
+MESSAGE = "CONVERT_DIRECTORY"
+TEXT    = "Unable to convert directory to path name in []"
+
+MESSAGE = "INVALID_WORKING_DIRECTORY"
+TEXT    = "Working directory is invalid, []"
+
+MESSAGE = "FAILED"
+TEXT    = "FTP file transfer failed. For details see log file []"
+
+! ********************************************************************************************
+
+MESSAGE GROUP "LIB_SQL_"
+
+MESSAGE = "MENU_TITLE"
+TEXT    = "SQL Menu"
+
+MESSAGE = "MENU_ENABLE_TRACING"
+TEXT    = "Enable SQL Tracing"
+
+MESSAGE = "MENU_DISABLE_TRACING"
+TEXT    = "Disable SQL Tracing"
+
+MESSAGE = "MENU_VIEW_TRACE_FILE"
+TEXT    = "View SQL Trace File"
+
+MESSAGE = "MENU_DELETE_TRACE_FILES"
+TEXT    = "Delete SQL trace files"
+
+MESSAGE = "MENU_TKPROF_TRACE_FILE"
+TEXT    = "Run TKPROF on an SQL trace file"
+
+MESSAGE = "MENU_VIEW_TKPROF_FILE"
+TEXT    = "View TKPROF file"
+
+MESSAGE = "TRACING_ON"
+TEXT    = "SQL Tracing On"
+
+MESSAGE = "TRACING_OFF"
+TEXT    = "SQL Tracing Off"
+
+MESSAGE = "TITLE_TRACE_FILE"
+TEXT    = "SQL Trace File"
+
+MESSAGE = "TITLE_TKPROF_FILE"
+TEXT    = "SQL TKPROF File"
+
+MESSAGE = "CONFIG_NOT_DEFINED"
+TEXT    = "The configuration item CS_SQL_TRACE_DIRECTORY is not defined"
+
+MESSAGE = "CONFIRM_DELETE"
+TEXT    = "Delete []"
+
+MESSAGE = "DELETED"
+TEXT    = "Deleted []"
+
+MESSAGE = "NOT_DELETED"
+TEXT    = "File not deleted"
+
+MESSAGE = "NO_TRACE_FILES"
+TEXT    = "No Trace files found"
+
+MESSAGE = "TKPROF_NOT_FOUND"
+TEXT    = "TKPROF file not found"
+
+! ********************************************************************************************
+
+MESSAGE GROUP "LIB_UTILS_"
+
+MESSAGE = "TITLE_INFORMATION"
+TEXT    = "Information"
+
+MESSAGE = "RUNNING"
+TEXT    = "Program running - please wait"
+
+MESSAGE = "TITLE_PRINTER"
+TEXT    = "Printer"
+
+MESSAGE = "PROMPT_PRINTER"
+TEXT    = "Printer"
+
+MESSAGE = ""
+TEXT    = ""
+

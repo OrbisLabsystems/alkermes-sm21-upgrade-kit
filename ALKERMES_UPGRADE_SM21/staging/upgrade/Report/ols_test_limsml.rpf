@@ -1,0 +1,258 @@
+{*******************************************************************************
+*
+* Module Name   : OLS_TEST_LIMSML
+*
+* Purpose       : Interactively run LIMSML handlers for testing or development
+*
+* Document Ref  : N/a
+*
+* Version 1.0
+*******************************************************************************} 
+
+
+SET COMPILE_OPTION DECLARE
+SET NAME "DEFER/"
+ENABLE WINDOWS
+SET NOTPROTECTED
+
+
+JOIN STANDARD_LIBRARY STD_CLIENT
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN LIBRARY $PROMPT_FILE
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $LIB_XML_VIEW
+JOIN LIBRARY $LIB_POPUP_MENU
+JOIN LIBRARY $LIMSML_PROCESS
+JOIN LIBRARY $LIMSML_HELPER
+JOIN LIBRARY $BL
+JOIN LIBRARY $BL_COLLECTABLE
+JOIN LIBRARY $BL_COLLECTION
+ 
+
+main (0)
+
+
+ROUTINE main (VALUE opt)
+
+	DECLARE filename, contents, err_msg, ok
+
+	prompt_filename ( "smp$userfiles", "xml", filename)
+
+     IF (STRIP (filename)="") THEN
+
+		flashmessage ("No file selected, exiting....", TRUE)
+
+		EXIT
+
+	ENDIF
+
+     contents=""
+     ok = read_file_contents (filename, contents, err_msg) 
+	IF (ok) THEN
+               
+         run_limsml ( contents )
+
+     ELSE
+          flashmessage ("File read error: ":err_msg,true)
+
+     ENDIF
+
+ENDROUTINE
+
+
+ROUTINE run_limsml ( limsml_xml_string )
+
+	DECLARE request
+
+	request = limsml_helper_create_document( limsml_xml_string )
+
+      IF ( request . document <> EMPTY ) THEN
+			 process_document( request )
+		ENDIF
+
+      flashmessage ("done", true)
+
+ENDROUTINE
+ 
+
+
+ROUTINE read_file_contents (VALUE file_to_parse, contents, err_msg)
+
+	DECLARE file_status, line_read_count, parsed_string
+
+	err_msg = ""   
+
+	FILE OPEN file_to_parse, file_status
+
+	IF file_status <> EMPTY THEN
+
+		err_msg = "Error opening file : ":file_status
+		RETURN (FALSE)
+
+	ENDIF
+	
+     line_read_count = 0
+	contents = ""
+
+	REPEAT
+
+          line_read_count = line_read_count + 1
+		FILE READ file_to_parse, parsed_string, file_status
+
+          IF (file_status=EMPTY)  
+
+    			contents = contents:ASCII(13):ASCII(10):parsed_string
+
+		ENDIF
+		 
+
+	UNTIL (file_status <> EMPTY)
+
+	FILE CLOSE file_to_parse
+
+	RETURN (TRUE)
+
+ENDROUTINE
+
+
+ROUTINE process_document( document )
+
+	DECLARE request_xml, transaction_xml, response_xml, error_xml,
+	        transaction, response, trans_total, count
+
+	IF (TRUE) THEN
+
+		request_xml = document . returnxml ()
+		xml_view( GET_USER_MESSAGE("LIMSML_TESTER_HEADER", 3 ) ,
+		          request_xml )
+
+	ENDIF
+
+	CREATE OBJECT HELPER_DOCUMENT, response
+
+	count = 0
+	trans_total = document . transactiontotal()
+
+	WHILE ( count <= trans_total - 1 ) DO
+
+		transaction = document . gettransaction ( count )
+		transaction_xml = transaction . returnxml ()
+
+		IF ( FALSE ) THEN
+			CALL_ROUTINE "process_transaction" USING transaction_xml, response_xml, error_xml
+			IN LIBRARY "$LIMSML_PROCESS"
+			DEBUG CONTEXT
+		ELSE
+			process_transaction ( transaction_xml, response_xml, error_xml )
+		ENDIF
+
+		count = count + 1
+
+		IF ( NOT BLANK ( response_xml ) ) THEN
+			response . addtransaction ( response_xml )
+		ELSE
+
+			response . adderrorxml ( error_xml )
+
+		ENDIF
+
+		transaction . reset()
+
+	ENDWHILE
+
+	response_xml = response . returnxml ()
+
+	IF (TRUE) THEN
+
+		IF NOT BLANK( response_xml ) THEN
+
+			xml_view( GET_USER_MESSAGE("LIMSML_TESTER_HEADER", 4 ),
+			          response_xml )
+
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE
+
+
+ROUTINE prompt_filename ( VALUE file_dir, VALUE file_ext, the_file)
+		
+
+    DECLARE form,  can_leave, ret
+    DECLARE  pr1,  start_line, start_col,
+          the_header, form_height
+
+    the_header  = "Enter file"
+    form_height = 2
+
+    ret = FALSE
+    the_file = ""
+
+    PROMPT OBJECT form
+        CLASS PROMPT_CLASS_FORM
+        WITH ( width  = 60                                  ,
+               row    = 5                                   ,
+               column = 10                                  ,
+               height = form_height                          ,
+               header = the_header                          ,
+               footer = "<DO> to Continue, <EXIT> to Cancel",
+               proportional = TRUE                          ,
+               return_behaviour = FORM_RETURN_LEAVE     ,
+               user_info = ""  )
+
+    form . add_frame ( "" ,   1, 1, form_height, form.width )
+
+      
+    start_line = 1
+    start_col  = 10
+
+
+      form . add_display ( "File:", 
+                          start_col, 
+                          start_line,
+                          PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+
+      PROMPT OBJECT pr1
+            BROWSE ON FILE
+	    on line start_line from start_col+14 TO 45
+          WITH (  file_directory = file_dir       ,
+	          file_extension = file_ext        ,
+		  client_file    = FALSE                        ,
+		  vgl_library    = GLOBAL ( "CURRENT_LIBRARY" ) ,
+		  allow_multiple = FALSE                     )
+
+
+        form.add_prompt ( pr1 )           { Prompt 1  }
+ 
+
+    form . start_prompt ()
+
+    REPEAT
+
+        form . wait_prompt  ()
+
+
+        can_leave = TRUE
+
+        IF (form . get_lastkey () <> "EXIT" ) THEN
+
+             ret = TRUE
+
+             IF (TRUE) THEN
+
+                 the_file = form . prompt_objects [1] . value
+
+             ENDIF
+
+        ENDIF
+
+    UNTIL  (can_leave) OR (form . get_lastkey () = "EXIT" ) 
+ 
+
+    form . end_prompt ()
+
+
+    RETURN (ret)
+
+ENDROUTINE    {  prompt_filename  }

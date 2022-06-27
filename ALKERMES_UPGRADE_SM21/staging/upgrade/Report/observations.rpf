@@ -1,0 +1,98 @@
+{******************************************************************************
+*
+* Module Name          : OBSERVATIONS
+*
+* Purpose              : Allows a large comment file to be written to the 
+*                        test table as a blob
+*
+* Portability          : Not Checked
+*
+* Author               : Jonathan O'Neill
+*
+* Date created         : 22-FEB-2005
+*
+* Version              : 1.0
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By                Description
+* -------   -----------  ----------        ------------------------------------
+* 1.0       22-FEB-2005  Jonathan O'Neill  Initial version
+*
+*******************************************************************************}
+ENABLE WINDOWS
+
+SET NAME "DEFER/"
+SET COMPILE_OPTION DECLARE
+
+JOIN LIBRARY $LIB_UTILS
+
+JOIN STANDARD_LIBRARY STD_DATABASE
+
+CONSTANT EXTENSION = "ECH"
+
+{******************************************************************************
+* 
+* Description : Retreives and saves file from database blob
+*
+* Parameters  : test number
+*
+******************************************************************************}
+
+ROUTINE lib_tsr_toolbox_obs ( test_number )
+
+
+    DECLARE temp_file_name, 
+            status            
+  
+    temp_file_name = TOLOWER ( "SMP$TEXTREPORTS:" : STRIP ( test_number ) : "." : EXTENSION )
+   
+    test_number = SELECT test.test_number FOR UPDATE
+                    WHERE test_number = test_number 
+    
+    status = blob_to_file ( "test", "text_comment", temp_file_name )
+    
+    FILE SEND temp_file_name , "EDIT/"
+
+    IF lastkey = "DO"  THEN
+
+	IF FILE EXISTS ( temp_file_name )
+			
+	    IF NOT transaction_is_write() THEN
+		
+                START WRITE TRANSACTION "Write Blob"
+		
+		blob_from_file_binary ( "test", "text_comment", temp_file_name )
+		
+		UPDATE test
+		    
+		COMMIT
+		
+	    ELSE
+		
+		blob_from_file_binary ( "test", "text_comment", temp_file_name )
+		    
+		UPDATE test
+		    		    		
+	    ENDIF
+
+            FILE DELETE temp_file_name, status
+
+	ENDIF
+
+    ELSE
+
+	IF FILE EXISTS ( temp_file_name )
+
+		FILE DELETE temp_file_name, status
+
+	ENDIF
+
+    ENDIF
+    
+ENDROUTINE
+
+{******************************************************************************}
+

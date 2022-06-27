@@ -1,0 +1,271 @@
+{******************************************************************************
+*
+* Module Name	: OLS_EMPOWER_FIELDS
+* Purpose	: Get fields for sample/test/batch etc
+*
+* Version	: 1.1
+*
+*******************************************************************************}
+
+
+SET COMPILE_OPTION DECLARE
+SET NAME "DEFER/"
+ENABLE WINDOWS
+SET NOTPROTECTED
+
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_GENERAL
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN STANDARD_LIBRARY STD_STRUCTURE
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_CLIENT
+JOIN LIBRARY $LIB_UTILS
+
+
+GLOBAL ROUTINE flds_get_sample_data (VALUE sample, field_array)
+
+	DECLARE rec, i
+
+	rec = SELECT sample . id_numeric
+			WHERE id_numeric = sample
+
+	IF (rec <> EMPTY) THEN
+
+		i = 0
+
+		WHILE (i < SIZE_OF_ARRAY (field_array)) DO
+
+			i = i + 1
+			field_array [i,2] = SELECT sample . 'field_array [i,1]'
+
+		ENDWHILE
+
+	ENDIF
+
+ENDROUTINE 
+
+
+GLOBAL ROUTINE flds_get_batch_data (VALUE batch_id, field_array)
+
+	DECLARE rec, i
+
+	rec = SELECT batch_header . identity
+			WHERE identity = batch_id
+
+	IF (rec <> EMPTY) THEN
+
+		i = 0
+
+		WHILE (i < SIZE_OF_ARRAY (field_array)) DO
+
+			i = i + 1
+			field_array [i,2] = SELECT batch_header . 'field_array [i,1]'
+
+		ENDWHILE
+
+	ENDIF
+
+ENDROUTINE 
+
+GLOBAL ROUTINE flds_get_analysis_data (VALUE test1, VALUE test2, 
+								VALUE test3, VALUE test4, field_array)
+
+	DECLARE rec, i, anal, analver, complist
+
+	{ Because variable no. of components, blank [i,1] and fill later }
+	i = 0
+
+	WHILE (i < SIZE_OF_ARRAY (field_array)) DO
+
+		i = i + 1
+		field_array [i,1] = ""
+
+	ENDWHILE
+
+
+	rec = SELECT test.test_number
+			WHERE  ( test_number = test1
+				OR test_number = test2
+				OR test_number = test3
+				OR test_number = test4 )
+			ORDER ON test_number
+
+	{ Just take values from first test }
+
+	IF (rec <> EMPTY) THEN
+
+		anal = SELECT test.analysis
+		analver = SELECT test.analysis_version
+		complist = SELECT test.component_list
+
+		IF (STRIP(complist) = "") THEN
+
+			rec = SELECT versioned_component . name
+				WHERE analysis=anal
+				AND  analysis_version = analver
+				ORDER ON order_number
+
+			i = 0
+
+			WHILE (rec <> EMPTY) AND (i < SIZE_OF_ARRAY (field_array)) DO
+
+				i = i + 1
+				field_array [i,1] = "COMPONENT-":STRIP( NUMBER_TO_TEXT(i,"9999") )
+				field_array [i,2] = SELECT versioned_component . name
+
+				NEXT versioned_component 
+				rec = SELECT versioned_component . name
+
+			ENDWHILE
+
+		ELSE
+
+			rec = SELECT versioned_c_l_entry . name
+				WHERE analysis=anal
+				AND  analysis_version = analver
+				AND  comp_list = comp_list
+				ORDER ON order_number
+
+			i = 0
+
+			WHILE (rec <> EMPTY) AND (i < SIZE_OF_ARRAY (field_array)) DO
+
+				i = i + 1
+				field_array [i,1] = "COMPONENT-":STRIP( NUMBER_TO_TEXT(i,"9999") )
+				field_array [i,2] = SELECT versioned_c_l_entry . name
+
+				NEXT versioned_c_l_entry 
+				rec = SELECT versioned_c_l_entry . name
+
+			ENDWHILE
+
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE 
+
+GLOBAL ROUTINE flds_get_result_data (VALUE test1, VALUE test2, VALUE test3, VALUE test4, field_array)
+
+	DECLARE i, val, comp
+
+	i = 0
+
+	WHILE (i < size_of_array (field_array) ) DO
+
+		i = i + 1
+		comp = field_array [i, 1] 
+
+		val = SELECT result . text
+				WHERE name = comp
+				AND status <> "X"
+				AND status <> "R"
+				AND ( test_number = test1
+				OR test_number = test2
+				OR test_number = test3
+				OR test_number = test4 )
+			ORDER ON test_number
+
+		{ just get last one - highest test no }
+
+		WHILE (val <> EMPTY) DO
+
+			field_array [i, 2] = val
+
+			NEXT result  
+			val = SELECT result . text
+
+		ENDWHILE
+
+	ENDWHILE
+
+
+ENDROUTINE 
+
+GLOBAL ROUTINE flds_get_sample_result_data (VALUE sample, field_array)
+
+	DECLARE i, val, comp
+
+	i = 0
+
+	WHILE (i < size_of_array (field_array) ) DO
+
+		i = i + 1
+		comp = field_array [i, 1] 
+
+		val = SELECT samp_test_result . result_text
+				WHERE component_name = comp
+				AND result_status <> "X"
+				AND result_status <> "R"
+				AND id_numeric = sample
+			ORDER ON test_number
+
+		{ just get last one - highest test no }
+
+		WHILE (val <> EMPTY) DO
+
+			field_array [i, 2] = val
+
+			NEXT samp_test_result
+			val = SELECT samp_test_result . result_text
+
+		ENDWHILE
+
+	ENDWHILE
+
+
+ENDROUTINE 
+
+
+GLOBAL ROUTINE flds_get_test_data (VALUE test1, VALUE test2, 
+							VALUE test3, VALUE test4, field_array)
+
+	DECLARE i, val, fld
+
+	i = 0
+
+	WHILE (i < size_of_array (field_array) ) DO
+
+		i = i + 1
+		fld = field_array [i, 1] 
+
+		val = SELECT test . 'fld'
+				WHERE test_number=test1
+
+		IF (val <> EMPTY) THEN
+			field_array [i, 2] = val
+		ELSE
+
+			val = SELECT test . 'fld'
+				WHERE test_number=test2
+
+			IF (val <> EMPTY) THEN
+				field_array [i, 2] = val
+			ELSE
+
+				val = SELECT test . 'fld'
+					WHERE test_number=test3
+
+			IF (val <> EMPTY) THEN
+				field_array [i, 2] = val
+			ELSE
+
+				val = SELECT test . 'fld'
+					WHERE test_number=test4
+				IF (val <> EMPTY) THEN
+					field_array [i, 2] = val
+				ENDIF
+
+			ENDIF
+
+			ENDIF
+
+		ENDIF
+
+	ENDWHILE
+
+ENDROUTINE 
+

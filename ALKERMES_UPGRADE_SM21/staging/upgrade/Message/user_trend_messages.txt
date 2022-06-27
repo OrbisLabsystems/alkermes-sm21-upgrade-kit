@@ -1,0 +1,4 @@
+MESSAGE GROUP "TREND_"
+
+MESSAGE = 	"NO_PRODUCT"
+TEXT = 		"No product defined for that sample"

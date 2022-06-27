@@ -1,0 +1,1140 @@
+{------------------------------------------------------------------------------}
+{                                                                              }
+{ Module Name   : R_WKS.RPF ( based on SMP standard report $PRSAMPWS.RPF)      }
+{                 All TTL modification commented .                             }
+{                                                                              }
+{ Purpose       : To read and display a sample worksheet from a test file      }
+{                                                                              }
+{ Document Ref. : P96378 4.3.7 AND P96378 4.3.11                               }
+{                                                                              }
+{ Description   : This program behaves as the standard report for printing     }
+{                 Sample Worksheets with 2 exception . Included in the header  }
+{                 for the worksheet are two new fields .                       }
+{                                                                              }
+{                       1) barcode of the sample numeric identification        }
+{                                                                              }
+{                       2) mlp version number and identity                     }
+{                                                                              }
+{=============================================================================}
+{                                                                             }
+{  Modification History                                                       }
+{                                                                             }
+{  Ver.     Date        By          Description                               }
+{  ----     ----        --          -----------                               }
+{ 1.00      01/04/96    JOG         Release Version . Modification to do_print}
+{ 1.01      26/05/96    JMW         Updated Version for minor changes         }
+{                                   This Report has been copied from the stan-}
+{                                   dard Sample Worksheet Report $PRSAMPWS.   }
+{                                   Modification to this worksheet have been  }
+{                                   made as requested by TMD, Project Issues  }
+{                                   Update fx, 21/05/96.                      }
+{                                   The modifications are as follows.         }
+{                                   1) Print Tests for a Group.               }
+{                                   2) Print Test Sequence as Per Test Sched. }
+{                                   3) Prints Chopped Results on additional   }
+{                                      lines.                                 }
+{ ============================================================================}
+
+{******************************************************************************
+*
+* Module Name   : $PRSAMPWS.RPF
+*
+* Purpose       : To read and display a sample worksheet from a test file
+*
+* Document Ref. : SE/T/TVGL-WORK-REPORTS/1/3
+*
+* Specification :
+*
+* Portability   : Not Checked
+*
+* Re-entrant    :
+*
+*******************************************************************************}
+
+SET PRINTERCODES TRUE
+
+JOIN STANDARD_LIBRARY std_prompt
+JOIN STANDARD_LIBRARY std_utils
+JOIN LIBRARY $lib_utils
+JOIN LIBRARY $wksbrowse
+
+ENABLE WINDOWS
+
+SET FORMAT "9999999999"
+
+SET WIDTH 132
+
+SET COMPILE_OPTION DECLARE
+
+CONSTANT SAMPLE_WORKSHEET_TYPE = "$SAMPLE"
+CONSTANT SAMPLE_WORKSHEET_IDV  = "SMPWKS    "
+
+{------------------------------------------------------------------------------}
+
+{ Start of processing }
+
+DECLARE sample_id, wks_name, printer_id
+
+sample_id  = " "
+wks_name   = " "
+printer_id = " "
+
+IF GLOBAL ( "PARAM_ACTIVE") THEN
+
+  	PROMPT FOR sample_id
+
+  	IF GLOBAL ( "PARAM_ACTIVE" ) THEN
+
+     		PROMPT FOR printer_id
+
+     		IF ( printer_id <> " " ) THEN
+
+        		SET NAME "PRINTER/" : STRIP ( printer_id )
+     		ENDIF
+	ENDIF
+
+ENDIF
+
+IF ( printer_id = "" ) THEN
+     	SET NAME "DEFER/"
+ENDIF
+
+{ Check the worksheet id given }
+
+wks_name = STRIP ( sample_id )
+
+IF NUMTEXT ( wks_name ) THEN
+
+    	wks_name = JUSTIFY ( PAD ( wks_name, " ", 10 ) , "RIGHT" )
+
+    	wks_name = SELECT sample . id_numeric
+               	    	WHERE ( id_numeric = wks_name )
+ELSE
+
+    	wks_name = SELECT sample.id_numeric
+               		WHERE ( id_text = wks_name )
+ENDIF
+
+IF ( wks_name = EMPTY ) THEN
+	wks_name = " "
+ENDIF
+
+{ Do the actual printing }
+
+sample_worksheet ( wks_name, printer_id )
+
+EXIT
+
+{------------------------------------------------------------------------------}
+
+ROUTINE sample_worksheet ( VALUE wks_name,
+			   VALUE printer_id )
+
+	DECLARE ok, form, wks_file, wks_type, wks_sample, wks_date, wks_op,
+		test_list
+
+	ok = TRUE
+
+	create_form ( form, wks_name )
+
+	form . start_prompt ()
+
+	{ Print the worksheet given }
+
+	IF ( wks_name = " " ) THEN
+
+		form . wait_prompt ()
+
+		ok = ( form . get_lastkey () <> "EXIT" )
+
+		IF ( ok ) THEN
+			wks_name = form . prompt_objects [ 1 ] . value
+
+			disable_buttons ( form )
+		ENDIF
+
+	ENDIF
+
+	IF ( ok ) THEN
+
+  		ok = test_work_sheet_open ( wks_name, wks_file )
+
+		IF ( ok ) THEN
+
+			IF ( read_worksheet_file ( wks_file,
+ 			      			   wks_type,
+ 			      			   wks_sample,
+ 			      			   wks_date,
+			 			   wks_op,
+			      			   test_list ) ) THEN
+
+                                         { ================================ }
+                                         { JMW, Modification v1.00 26/05/96 }
+                                         { New function                     }
+                                         { ================================ }
+
+
+                                default_group_tests ( test_list )
+                                order_array_by_test_schedule ( test_list )
+
+                                         { ================================ }
+                                         { End of Modification              }
+                                         { ================================ }
+
+				do_print ( form,
+					   wks_name,
+			      		   wks_type,
+ 			      		   wks_sample,
+ 			      		   wks_date,
+			 		   wks_op,
+			      		   test_list )
+	    		ENDIF
+  		ENDIF
+
+	ENDIF
+
+	FLUSH_LITERAL
+
+	form . end_prompt ()
+
+	RETURN ( ok )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE create_form ( form, VALUE wks_name )
+
+	{ Routine to set up windows }
+
+	DECLARE prompt_col, display_col, prompt_text, prompt_row, line_no,
+		separator, form_height, display_len, prompt_object
+
+	form_height = 6
+
+	PROMPT OBJECT form
+		CLASS PROMPT_CLASS_FORM
+		WITH  ( column       = 15,
+			row          = 8,
+			height       = form_height,
+			width        = 50,
+			border       = TRUE,
+			proportional = TRUE,
+                	help_context = "$PRSAMPWS_SCREEN",
+			header 	     = GET_USER_MESSAGE ( "PRSAMPWS_HEADER",1 ))
+
+	IF ( wks_name = "" ) THEN
+		form . footer       = GET_USER_MESSAGE ( "PRSAMPWS_FOOTER",1 )
+	ELSE
+		form . button_style = FORM_BUTTON_NONE
+		form . height = form . height + 1
+	ENDIF
+
+	CONSTANT REPLICATE_FLD = 1
+	CONSTANT ANALYSIS_FLD  = 2
+	CONSTANT COMPONENT_FLD = 3
+	CONSTANT RESULT_FLD    = 4
+	CONSTANT WORKSHEET_FLD = 5
+
+	ARRAY prompt_text
+	ARRAY prompt_row
+
+	prompt_text [ WORKSHEET_FLD ] = "PRSAMPWS_DISPLAY_3"
+	prompt_text [ REPLICATE_FLD ] = "PRSAMPWS_DISPLAY_4"
+	prompt_text [ ANALYSIS_FLD  ] = "PRSAMPWS_DISPLAY_5"
+	prompt_text [ COMPONENT_FLD ] = "PRSAMPWS_DISPLAY_6"
+	prompt_text [ RESULT_FLD    ] = "PRSAMPWS_DISPLAY_7"
+
+	prompt_row [ WORKSHEET_FLD ] = 1
+	prompt_row [ REPLICATE_FLD ] = 3
+	prompt_row [ ANALYSIS_FLD  ] = 4
+	prompt_row [ COMPONENT_FLD ] = 5
+	prompt_row [ RESULT_FLD    ] = 6
+
+	IF ( GLOBAL ( "TERMTYPE" ) = "GUI" ) THEN
+		display_col = 2
+		separator = " "
+	ELSE
+		display_col = 1
+		separator = " :"
+	ENDIF
+
+	{ Find the maximum size of the prompts }
+
+	line_no = 1
+	display_len = 0
+
+	WHILE ( prompt_text [ line_no ] <> EMPTY ) DO
+
+		prompt_text [ line_no ] = GET_USER_MESSAGE (
+						    prompt_text [ line_no ], 1 )
+
+		display_len = find_max_number (
+				      STRINGLENGTH ( prompt_text [ line_no ] ) ,
+				      display_len )
+		line_no = line_no + 1
+
+	ENDWHILE
+
+	prompt_col = display_col + display_len + STRINGLENGTH ( separator ) + 1
+
+	line_no = 1
+
+	{ First add the fixed text }
+
+	WHILE ( prompt_text [ line_no ] <> EMPTY ) DO
+
+		prompt_text [ line_no ] = PAD ( prompt_text [ line_no ],
+						" ", display_len ) : separator
+
+		form . add_display ( prompt_text [ line_no ],
+				     display_col,
+				     prompt_row [ line_no ],
+			     	     PROMPT_RENDITION_RAISED +
+							PROMPT_RENDITION_BOLD )
+
+		line_no = line_no + 1
+
+	ENDWHILE
+
+	{ Now add the actual prompt objects to the form}
+
+        PROMPT OBJECT prompt_object
+                FORMAT IDENTITY_20
+		ON LINE prompt_row [ WORKSHEET_FLD ] FROM prompt_col
+                WITH ( vgl_library = GLOBAL ( "CURRENT_LIBRARY" ),
+		       always_validate    = TRUE,
+		       validation_routine = "WORKSHEET_VALIDATION",
+		       browse_routine     = "WORKSHEET_BROWSE_ON_WKS",
+                       user_info          = SAMPLE_WORKSHEET_IDV,
+		       value              = wks_name )
+
+	{ If no worksheet has been given then prompt for it, else just
+	  display it }
+
+	IF ( wks_name = "" ) THEN
+
+		form . add_prompt ( prompt_object )
+
+	ELSE
+		prompt_object . lowered = TRUE
+		form . display_objects [ WORKSHEET_FLD ] = prompt_object
+	ENDIF
+
+	{ Now add the rest of the display objects }
+
+	PROMPT OBJECT prompt_object
+		ON LINE prompt_row [ REPLICATE_FLD ] FROM prompt_col
+                FORMAT TEXT_10
+		WITH ( lowered = TRUE )
+
+	form . display_objects [ REPLICATE_FLD ] = prompt_object
+
+	PROMPT OBJECT prompt_object
+		ON LINE prompt_row [ ANALYSIS_FLD ] FROM prompt_col
+                FORMAT TEXT_10
+		WITH ( lowered = TRUE )
+
+	form . display_objects [ ANALYSIS_FLD ] = prompt_object
+
+	PROMPT OBJECT prompt_object
+		ON LINE prompt_row [ COMPONENT_FLD ] FROM prompt_col
+                FORMAT TEXT_30
+		WITH ( lowered = TRUE )
+
+	form . display_objects [ COMPONENT_FLD ] = prompt_object
+
+	PROMPT OBJECT prompt_object
+		ON LINE prompt_row [ RESULT_FLD ] FROM prompt_col
+                FORMAT TEXT_30
+		WITH ( lowered = TRUE )
+
+	form . display_objects [ RESULT_FLD ] = prompt_object
+
+	form . add_frame ( "", 1, 1, 1, form . width )
+
+	form . add_frame ( "", 1, 3, 4, form . width )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE disable_buttons ( form )
+
+	DECLARE button, start_button
+
+	IF ( GLOBAL ( "TERMTYPE" ) = "GUI" ) THEN
+
+		IF ( form . prompt_objects [ 4 ] = EMPTY ) THEN
+			start_button = 1
+		ELSE
+			start_button = 2
+		ENDIF
+
+		button = form . prompt_objects [ start_button ]
+		button . set_enabled ( FALSE )
+
+		button = form . prompt_objects [ start_button + 1 ]
+		button . set_enabled ( FALSE )
+
+		button = form . prompt_objects [ start_button + 2 ]
+		button . set_enabled ( FALSE )
+	ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+GLOBAL ROUTINE print_sample_worksheet ( VALUE wks_name,
+                                        VALUE printer_id )
+
+	{ Print Worksheet call for Sample Login V2  }
+
+	DECLARE form, wks_file, wks_type, wks_sample, wks_date, wks_op,
+		test_list
+
+  	IF ( printer_id = " " ) THEN
+    		SET NAME "DEFAULT_TEXT/"
+  	ELSE
+    		SET NAME "PRINTER/" : STRIP ( printer_id )
+  	ENDIF
+
+  	IF NUMTEXT ( wks_name ) THEN
+
+    		wks_name = JUSTIFY(PAD(STRIP(wks_name)," ",10),"RIGHT")
+    		wks_name = SELECT sample . id_numeric
+               			WHERE id_numeric = wks_name
+  	ELSE
+    		wks_name = SELECT sample . id_numeric
+               			WHERE id_text = wks_name
+  	ENDIF
+
+  	IF ( wks_name <> EMPTY ) THEN
+
+		create_form ( form, wks_name )
+
+		form . start_prompt ()
+
+		IF test_work_sheet_open ( wks_name, wks_file ) THEN
+
+			disable_buttons ( form )
+
+			IF ( read_worksheet_file ( wks_file,
+ 			      			   wks_type,
+ 			      			   wks_sample,
+ 			      			   wks_date,
+			 			   wks_op,
+			      			   test_list ) ) THEN
+				do_print ( form,
+					   wks_name,
+			      		   wks_type,
+ 			      		   wks_sample,
+ 			      		   wks_date,
+			 		   wks_op,
+			      		   test_list )
+
+	    		ENDIF
+    		ENDIF
+
+  		FLUSH_LITERAL
+
+		form . end_prompt ()
+  	ENDIF
+
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE worksheet_validation ( self )
+
+	{ Check that the worksheet exists }
+
+	DECLARE status, id
+
+	status = EMPTY
+
+	IF ( self . value <> "" ) THEN
+
+	    	id = JUSTIFY ( PAD ( self . value, " ", 10 ) , "RIGHT" )
+
+		status = SELECT worksheet . identity
+			  WHERE ( ( identity = id ) AND
+	                   	  ( worksheet_type = SAMPLE_WORKSHEET_IDV ) )
+
+		IF ( status = EMPTY ) THEN
+			flash_message ( "PRSAMPWS_NO_SUCH_WKS", TRUE )
+		ELSE
+			self . value = id
+			self . repaste ()
+		ENDIF
+	ENDIF
+
+	RETURN ( status <> EMPTY )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE worksheet_browse_on_wks ( self )
+
+	IF ( browse_on_worksheet ( self . user_info ,
+      	    		      	   self . text      ) ) THEN
+
+		self . text = STRIP ( self . text )
+
+		self . repaste ( )
+
+		self . set_lastkey ( "DO" )
+
+		self . stop_prompt ()
+
+	ENDIF
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE get_worksheet_name
+
+	{ Prompt user for worksheet name }
+
+  	DECLARE carry_on, screen_box, wks_name, wks_file
+
+  	wks_name =  " "
+
+  	REPEAT
+
+    		wks_name = prompt_for_worksheet ( "SMPWKS", screen_box, 22, 3 )
+
+    		IF ( wks_name <> EMPTY ) THEN
+
+      			carry_on = test_work_sheet_open ( wks_name, wks_file )
+    		ELSE
+      			carry_on = ( LASTKEY = "EXIT" )
+      			wks_name = " "
+    		ENDIF
+
+  	UNTIL carry_on
+
+  	RETURN ( LASTKEY <> "EXIT" )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE test_worksheet_open ( VALUE wks_name,
+			      wks_file )
+
+	{ Check worksheet name is valid by opening it }
+
+	DECLARE success
+
+  	{ Make filename lowercase for Unix }
+
+  	wks_file = "smp$worksheets:" : TOLOWER( STRIP ( wks_name ) ) : ".wss"
+
+  	FILE OPEN wks_file, success
+
+  	IF ( success <> EMPTY ) THEN
+		flash_message ( "PRSAMPWS_DISPLAY_8", TRUE )
+  	ENDIF
+
+	RETURN ( success = EMPTY )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE read_worksheet_file ( VALUE wks_file,
+ 			      wks_type,
+ 			      wks_sample,
+ 			      wks_date,
+ 			      wks_op,
+			      test_list )
+
+	DECLARE analysis_count, success, return_value, wks_test_num, status
+
+  	ARRAY test_list ARRAYSIZE ( 0 )
+
+  	wks_name = STRIP ( wks_name )
+
+  	FILE READ wks_file, wks_type,   success
+  	FILE READ wks_file, wks_sample, success
+  	FILE READ wks_file, wks_date,   success
+  	FILE READ wks_file, wks_op,     success
+
+  	IF ( success = EMPTY ) THEN
+
+    		IF ( wks_type = SAMPLE_WORKSHEET_TYPE ) THEN
+
+			analysis_count = 0
+      			return_value = TRUE
+
+      			REPEAT
+
+        			FILE READ wks_file, wks_test_num, success
+
+        			IF ( ( wks_test_num <> EMPTY ) AND
+				     ( wks_test_num <> " "   ) ) THEN
+
+          				analysis_count = analysis_count + 1
+
+          				test_list [ analysis_count ] =
+								wks_test_num
+        			ENDIF
+
+      			UNTIL ( success <> EMPTY )
+
+    		ELSE
+			flash_message ( "PRSAMPWS_DISPLAY_9", TRUE )
+    		ENDIF
+
+  	ELSE
+
+    		flash_message ( GET_USER_MESSAGE ( "PRSAMPWS_DISPLAY_10",1 ) :
+				success, TRUE )
+
+		return_value = FALSE
+  	ENDIF
+
+  	FILE CLOSE wks_file, success
+
+	{ Finally make sure the sample record still exists }
+
+	IF ( return_value = TRUE ) THEN
+
+  		status = SELECT sample . status
+                	   WHERE id_numeric = wks_sample
+
+  		IF ( status = EMPTY ) THEN
+
+    			flash_message (
+				GET_USER_MESSAGE ( "PRSAMPWS_DISPLAY_11", 1 ) :
+				STRIP ( wks_sample ) :
+             			GET_USER_MESSAGE ( "PRSAMPWS_DISPLAY_12", 1 ),
+				TRUE )
+
+			return_value = FALSE
+		ENDIF
+
+	ENDIF
+
+	RETURN ( return_value )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE do_print ( form,
+		   VALUE wks_name,
+		   VALUE wks_type,
+		   VALUE wks_sample,
+		   VALUE wks_date,
+		   VALUE wks_op,
+		   	 test_list )
+
+	DECLARE tab_1, tab_2, tab_3, tab_4, tab_5, op_name, sample_text,
+		header_line, description, desc_bit, entry_num
+	DECLARE tt_num, tests_wks_name, test_no_text, error_msg,
+		replicate, analysis_id, disp_anal, comp_name, r, res_str
+        DECLARE tab_3b, op_id, date_now, mlp_version, mlp_identity
+
+        mlp_identity = ""
+        mlp_version = ""                { ============================ }
+                                        { mlp_version added by JOG TTL }
+                                        { 1/4/96 , ELAN customisation  }
+                                        { ============================ }
+
+    	wks_op = TOUPPER ( STRIP ( wks_op ) )
+
+    	IF ( wks_op = "BLANK" ) THEN
+      		op_name = "."
+    	ELSE
+      		op_name = SELECT personnel.description
+                       	    WHERE identity = wks_op
+      		IF ( op_name = EMPTY ) THEN
+        		op_name = "."
+      		ELSEIF op_name <> " " THEN
+        		op_name = GET_USER_MESSAGE ( "PRSAMPWS_OP_1", 1): STRIP ( op_name ) : "."
+      		ENDIF
+    	ENDIF
+
+	sample_text = SELECT sample . id_text
+			WHERE id_numeric = wks_name
+
+
+    	SET HEADER PAD ( GET_USER_MESSAGE ( "PRSAMPWS_HEAD_1",1 ) :
+		         STRIP ( wks_name ) :
+               	         GET_USER_MESSAGE ( "PRSAMPWS_HEAD_2", 1) :
+		         sample_text, " ", 70 ) :
+                   GET_USER_MESSAGE ( "PRSAMPWS_HEAD_3", 1 )
+                                           { JMW, 01/06/96, 73 to 70 }
+
+    	header_line = GET_USER_MESSAGE ( "PRSAMPWS_HEAD_4", 1):
+        	          STRIP ( substring ( wks_date, 1, 11 )) : op_name
+
+    	IF LENGTH ( header_line ) < 80 THEN
+
+      		header_line = pad ( " ", " ", (80 - length ( header_line )) DIV 2 ) :
+                    	header_line
+    	ENDIF
+
+      	tab_1=GET_USER_MESSAGE ( "PRSAMPWS_TAB_1", 1)
+      	tab_2=GET_USER_MESSAGE ( "PRSAMPWS_TAB_2", 1)
+      	tab_3=GET_USER_MESSAGE ( "PRSAMPWS_TAB_3", 1)
+
+                                        { ========================== }
+                                        { The mlp version number for }
+                                        { the sample JOG TTL 1/4/96  }
+                                        { ========================== }
+
+        mlp_identity = SELECT SAMPLE . product
+
+        IF ( mlp_identity <> EMPTY ) OR ( mlp_identity <> "" ) THEN
+            mlp_version  = SELECT SAMPLE . product_version
+        ENDIF
+
+
+
+                                        { =================================== }
+                                        { Variable for the sampleid barcode   }
+                                        { JOG, 27/5/96                        }
+                                        { =================================== }
+
+        tab_3b = SELECT sample . id_numeric
+
+        op_id = JUSTIFY ( STRIP ( OPERATOR ), "LEFT" )
+
+        date_now = NOW
+
+LITERAL
+
+                     $tab_1____________________________
+                     ----------------------------------
+
+$header_line____________________________________________________________________
+
+       $tab_2____$wks_sample_  $tab_3_______$sample_text_________________
+
+    !* $tab_3b___________________ !*
+
+    MLP Identity : $mlp_identity MLP Version : $mlp_version
+
+    Printed by : $op_id______    Print Date : $date_now___________________
+
+$ENDLITERAL
+
+    	description = SELECT sample.description
+    	desc_bit = splitwords ( description, 65 )
+    	description = description # desc_bit
+
+    	IF desc_bit <> " " THEN
+
+      		tab_4=GET_USER_MESSAGE ( "PRSAMPWS_TAB_4", 1)
+LITERAL
+
+$tab_4________$desc_bit________________________________________________________
+$ENDLITERAL
+
+    	ENDIF
+
+    	WHILE description <> " " DO
+      		desc_bit = splitwords ( description, 65 )
+      		description = description # desc_bit
+
+LITERAL
+              $desc_bit________________________________________________________
+$ENDLITERAL
+
+    	ENDWHILE
+
+	{ Now print the results for this worksheet }
+
+  	entrynum = 1
+
+	IF ( test_list [ 1 ] <> EMPTY ) THEN
+
+      		tab_5=GET_USER_MESSAGE ( "PRSAMPWS_TAB_5", 1)
+
+LITERAL
+
+--------------------------------------------------------------------------------
+$tab_5__________________________________________________________________________
+--------------------------------------------------------------------------------
+$ENDLITERAL
+
+{
+SET FOOTER "-----------------------------------------------------" :
+	           "---------------------------"
+}
+ON NEW PAGE
+
+      		tab_5=GET_USER_MESSAGE ( "PRSAMPWS_TAB_5", 1)
+
+LITERAL
+--------------------------------------------------------------------------------
+$tab_5____________________________________________________________________________
+--------------------------------------------------------------------------------
+$ENDLITERAL
+
+ENDON
+
+  	ENDIF
+
+	WHILE ( test_list [ entry_num ] <> EMPTY ) DO
+
+	    	tt_num = test_list [ entrynum ]
+
+	    	tests_wks_name = SELECT test.sample
+                      	  	WHERE test_number = tt_num
+
+	    	IF tests_wks_name = EMPTY THEN
+
+	      		test_no_text = STRIP ( string ( tt_num ))
+
+	      		error_msg = GET_USER_MESSAGE ( "PRSAMPWS_DISPLAY_13", 1) :
+				    test_no_text :
+        	      		    GET_USER_MESSAGE ( "PRSAMPWS_DISPLAY_14", 1)
+
+			flash_message ( error_msg, TRUE )
+
+	    	ELSEIF tests_wks_name <> wks_name THEN
+
+	      		test_no_text = STRIP ( string ( tt_num ))
+	      		error_msg = GET_USER_MESSAGE ( "PRSAMPWS_DISPLAY_13", 1) :
+				    test_no_text :
+	            		    GET_USER_MESSAGE ( "PRSAMPWS_DISPLAY_15", 1) :
+				    STRIP ( tests_wks_name ) :
+	             		    GET_USER_MESSAGE ( "PRSAMPWS_DISPLAY_16", 1) :
+				    wks_sample :
+	             		    GET_USER_MESSAGE ( "PRSAMPWS_DISPLAY_17", 1)
+
+			flash_message ( error_msg, TRUE )
+	    	ELSE
+
+	      		replicate = SELECT test.test_count
+	      		replicate = STRIP(string(replicate))
+	      		analysis_id = SELECT test.analysis
+	      		disp_anal = STRIP ( analysis_id ) : "/" : replicate
+
+			form . display_objects [ REPLICATE_FLD ] .
+							set_text ( replicate )
+			form . display_objects [ ANALYSIS_FLD ] .
+							set_text ( analysis_id )
+
+	      		comp_name = SELECT component.name
+	                  		WHERE analysis = analysis_id
+			  		ORDER ON order_number
+	      		WHILE comp_name <> EMPTY DO
+
+	        		TEST PAGE 2
+
+				form . display_objects [ COMPONENT_FLD ] .
+							set_text ( comp_name )
+
+	        		r = SELECT component.result_type
+
+	        		res_str = SELECT result.text
+	                  		  WHERE (test_number = tt_num )
+	                  		   AND ( name = comp_name )
+
+	        		IF ( res_str = EMPTY ) THEN
+
+					res_str = ""
+
+LITERAL
+|$disp_anal___|$comp_name______________________________| $r |                  |
+$ENDLITERAL
+
+	        		ELSEIF ( r = "N" ) OR ( r = "K" ) THEN
+
+	          			res_str = STRIP ( res_str ) : " " :
+	                    			STRIP ( SELECT result.units )
+
+                                        output_result_line ( disp_anal,
+                                                             comp_name,
+                                                             r,
+                                                             res_str )
+
+	        		ELSE
+
+	          			res_str = STRIP ( res_str )
+
+                                        output_result_line ( disp_anal,
+                                                             comp_name,
+                                                             r,
+                                                             res_str )
+
+	        		ENDIF
+
+				form . display_objects [ RESULT_FLD ] .
+							set_text ( res_str )
+	        		disp_anal = " "
+
+	        		NEXT component
+
+	        		comp_name = SELECT component . name
+
+	      		ENDWHILE
+
+	    	ENDIF
+
+LITERAL
+--------------------------------------------------------------------------------
+$ENDLITERAL
+
+	    	entrynum = entrynum + 1
+
+	  ENDWHILE
+
+          WHILE ( LINESLEFT > 1 )
+
+LITERAL
+
+$ENDLITERAL
+
+          ENDWHILE
+
+LITERAL
+End of Sample Worksheet
+$ENDLITERAL
+
+	  SET FOOTER " "
+
+	  RETURN
+
+ENDROUTINE {locate_results}
+
+{------------------------------------------------------------------------------}
+
+
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  26/05/96     JMWHYTE         Created to reorder test array                  }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  test_lsit              REFERENCE            Test number Array               }
+{==============================================================================}
+ROUTINE order_array_by_test_schedule ( test_list )
+
+DECLARE i, order_num, collection, test_object, size_arr, this_anal_id ,
+        test_sched
+
+i = 0
+order_num = 1
+
+test_sched = SELECT SAMPLE . test_schedule
+IF test_sched = EMPTY THEN RETURN ENDIF
+
+CREATE OBJECT "STD_COLLECTION", collection
+DEFINE CLASS "TEST_RECORD"
+   INHERIT "STD_COLLECTED"
+   PROPERTIES "TEST_NUMB",
+              "TEST_SCHED_ORDER"
+
+END CLASS
+
+size_arr = size_of_array ( test_list )
+
+WHILE ( i < size_arr  ) DO
+
+   i = i + 1
+
+   IF test_list [ i ] = EMPTY THEN RETURN ENDIF
+
+   CREATE OBJECT "TEST_RECORD", test_object
+
+   test_object . test_numb = test_list [ i ]
+
+   this_anal_id = SELECT TEST . analysis_id
+                  WHERE test_number = test_list [ i ]
+
+   order_num = SELECT test_sched_entry . order_num
+               WHERE ( identity    = SELECT SAMPLE . test_schedule )
+                 AND ( analysis_id = this_anal_id                  )
+
+                                     { Need Secondary Component Index        }
+                                     { As Get by Index on Test Schedule      }
+                                     { ignores component order               }
+
+
+   IF order_num = EMPTY THEN
+                                     { Trap if Test Schedule is empty       }
+        order_num = 9999
+   ELSE
+                                     { Will be no more that 99 analyses     }
+                                     { and 999 components, Secondary Index  }
+
+       IF order_num <= 9 THEN
+           order_num = "0" : STRIP ( order_num )
+       ENDIF
+
+       IF     ( i <= 999 ) and ( i > 99 ) THEN
+           order_num = STRIP ( order_num ) : ""   : STRIP ( i )
+       ELSEIF ( i <= 99 ) AND  ( i > 9  ) THEN
+           order_num = STRIP ( order_num ) : "0"  : STRIP ( i )
+       ELSE
+           order_num = STRIP ( order_num ) : "00" : STRIP ( i )
+       ENDIF
+
+   ENDIF
+
+   test_object . test_sched_order = order_num
+   collection . add ( test_object )
+
+ENDWHILE
+
+collection . add_index ( "TEST_SCHED_ORDER" )
+
+i = 0
+
+WHILE ( i < size_arr ) DO
+
+    i = i + 1
+    test_object = collection . get_by_index_number ( "TEST_SCHED_ORDER", i )
+
+    test_list [ i ] = test_object . test_numb
+
+ENDWHILE
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE default_group_tests  Uses array_delete_slice function to remove     }
+{                               array elements where group id of analysis      }
+{                               if non-blank is equal to default group of      }
+{                               person generating worksheet.                   }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  27/05/96     JOG             Created                                        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  test_list              REFERENCE            Test number Array               }
+{                                                                              }
+{==============================================================================}
+ROUTINE default_group_tests ( test_list )
+
+    DECLARE test_list_counter, default_group,
+            anal_id, group_id, full_size
+
+    default_group = SELECT personnel . default_group
+                    WHERE identity = OPERATOR()
+
+                                        { ================================== }
+                                        { if there is no default group show  }
+                                        { all tests else remove all tests    }
+                                        { from test list that are not of the }
+                                        { default group                      }
+                                        { ================================== }
+
+    IF ( ( default_group <> EMPTY ) AND ( default_group <> "" ) ) THEN
+
+        test_list_counter = 1
+
+                                        { ================================== }
+                                        { while elements to be checked       }
+                                        { ================================== }
+
+        full_size = SIZE_OF_ARRAY ( test_list )
+
+        WHILE ( test_list_counter <= SIZE_OF_ARRAY ( test_list ) ) AND
+              ( test_list_counter < full_size                    )
+
+            anal_id  = SELECT test . analysis
+                       WHERE ( test_number = test_list [ test_list_counter ] )
+
+            group_id = SELECT analysis . group_id
+                       WHERE ( identity = anal_id )
+
+                                        { ================================== }
+                                        { if analysis group not the default  }
+                                        { group remove it from test list     }
+                                        { ================================== }
+
+            IF ( group_id <> default_group ) THEN
+                array_remove_slice ( test_list, 1, test_list_counter )
+            ELSE
+                test_list_counter = test_list_counter + 1
+            ENDIF
+
+        ENDWHILE
+
+    ENDIF
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE output_result_line           Output a result line and carry over    }
+{                                       more then one line                     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  27/5/96      JOG             Created                                        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  disp_anal              VALUE                Analysis                        }
+{  comp_name              VALUE                Component Name                  }
+{  r                      VALUE                Result Status                   }
+{  res_str                VALUE                Result String                   }
+{==============================================================================}
+ROUTINE output_result_line ( VALUE disp_anal,
+                             VALUE comp_name,
+                             VALUE r,
+                             VALUE res_str )
+
+    DECLARE test_string, output, output_len, adj_len, col_width
+    col_width = 16
+
+    test_string = STRIP ( res_str )
+    output      = STRIP ( SPLITWORDS ( test_string, col_width ) )
+    output_len  = STRINGLENGTH ( output )
+    adj_len     = STRING_LENGTH ( test_string ) - output_len
+
+LITERAL
+|$disp_anal___|$comp_name______________________________| $r | $output_________ |
+$ENDLITERAL
+
+    WHILE ( adj_len > 0 )
+
+        test_string = STRIP ( RIGHTSTRING ( test_string,
+                              STRINGLENGTH ( test_string ) - output_len ) )
+
+        output = STRIP ( SPLITWORDS ( test_string, col_width ) )
+        output_len = STRINGLENGTH ( output )
+
+LITERAL
+|             |                                        |    | $output_________ |
+$ENDLITERAL
+
+        adj_len = STRINGLENGTH ( test_string ) - output_len
+
+    ENDWHILE
+
+ENDROUTINE

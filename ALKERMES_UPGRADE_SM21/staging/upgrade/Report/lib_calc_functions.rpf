@@ -1,0 +1,567 @@
+
+{******************************************************************************
+*
+* Module Name          : LIB_CALC_FUNCTIONS
+*
+* Purpose              : Special Calculation Functions
+*
+* Portability          : Not Checked
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By             Description
+* -------   -----------  ----------     ---------------------------------------
+* 1.0       03-Jun-2005  Vincent Molloy Release Version 
+* 1.1       15-Dec-2005  Vincent Molloy Fix to on_condition routine to return
+*                                       units for value1 or value2 if they exist.
+*                                       Sets inequality correctly for value1 and 
+*                                       value2.
+* 1.2       21-Dec-2005  Vincent Molloy Added new function called text_result
+*                                       that can return a literal text result
+*                                       including inequalities and units as a
+*                                       calculated result
+*
+*******************************************************************************}
+
+
+
+SET COMPILE_OPTION DECLARE
+SET NAME "DEFER/"
+ENABLE WINDOWS
+SET NOTPROTECTED
+
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_GENERAL
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN STANDARD_LIBRARY STD_STRUCTURE
+
+JOIN LIBRARY $LIB_RE_FORMULA
+JOIN LIBRARY $CRITERIA_SAVED
+JOIN LIBRARY $LIB_UTILS
+
+
+ROUTINE print_data_set ( obj_db )
+
+{
+*
+* This routine prints the values in the data set
+*
+*******************************************************************************}
+
+DECLARE rec_num ,
+        num_recs ,
+        result_obj ,
+        result_text
+        
+	lib_re_formula_write_to_print_file ( "" )
+	lib_re_formula_write_to_print_file ( "Number of Result values : " : STRIP ( obj_db.size ( )))
+	lib_re_formula_write_to_print_file ( "" )
+	lib_re_formula_write_to_print_file ( "----------------------" )
+	lib_re_formula_write_to_print_file ( "Result value           ")
+	lib_re_formula_write_to_print_file ( "----------------------" )
+	
+	num_recs = obj_db.size ( )
+
+	rec_num = 1
+
+	WHILE rec_num <= num_recs DO
+
+		result_obj = obj_db . get_by_number( rec_num )
+		
+		IF ( result_obj <> EMPTY ) THEN
+			result_text = SELECT result . text
+			                IN OBJECT result_obj
+		ELSE
+			result_text = ""
+		ENDIF			                
+
+		lib_re_formula_write_to_print_file ( result_text )
+
+		rec_num = rec_num + 1
+		
+	ENDWHILE
+
+	lib_re_formula_write_to_print_file ( "----------------------" )
+	lib_re_formula_write_to_print_file ( "" )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+
+
+{******************************************************************************}
+
+ROUTINE count_set ( expression )
+
+{
+*
+* This routine will return the number of results in a result set
+* 
+*******************************************************************************}
+
+DECLARE result_set, count
+
+	result_set = expression . get_parameter_result_set()
+	
+	IF ( expression . context . mode = FORMULA_MODE_PRINT ) THEN
+		print_data_set ( result_set )
+	ENDIF
+
+	IF ( expression . context . mode = FORMULA_MODE_CALCULATE   ) OR
+	   ( expression . context . mode = FORMULA_MODE_PRINT       ) OR
+	   ( expression . context . mode = FORMULA_MODE_TEST_PHASE1 ) THEN
+
+		count = result_set . size()
+
+		expression . return_value ( count )
+
+        ENDIF
+
+
+ENDROUTINE{ count_set }
+
+
+{******************************************************************************
+*
+*   ADD PREFIXES TO RESULTS
+*
+*******************************************************************************}
+
+ROUTINE prefix_lt ( expression )
+
+{
+*
+* Prefixes the result with Less Than (<) symbol
+* 
+*******************************************************************************}
+
+DECLARE the_result
+
+ 	the_result = expression . get_parameter_numeric()
+
+	IF ( expression . context . mode = FORMULA_MODE_CALCULATE   ) OR
+	   ( expression . context . mode = FORMULA_MODE_PRINT       ) OR
+	   ( expression . context . mode = FORMULA_MODE_TEST_PHASE1 ) THEN
+
+		expression . return_value ( the_result )
+		expression . return_text  ( the_result )
+		expression . return_inequality(FORMULA_LT)
+
+        ENDIF
+
+
+ENDROUTINE { prefix_lt }
+
+
+ROUTINE prefix_gt ( expression )
+
+{
+*
+* Prefixes the result with Greater Than (>) symbol
+* 
+*******************************************************************************}
+
+DECLARE the_result
+
+	the_result = expression . get_parameter_numeric()
+
+	IF ( expression . context . mode = FORMULA_MODE_CALCULATE   ) OR
+	   ( expression . context . mode = FORMULA_MODE_PRINT       ) OR
+	   ( expression . context . mode = FORMULA_MODE_TEST_PHASE1 ) THEN
+
+		expression . return_value ( the_result )
+		expression . return_text  ( the_result )
+		expression . return_inequality( FORMULA_GT )
+
+        ENDIF
+
+
+ENDROUTINE { prefix_gt }
+
+
+ROUTINE prefix_le ( expression )
+
+{
+*
+* Prefixes the result with Less Than or Equal To (<=) symbol
+* 
+*******************************************************************************}
+
+DECLARE the_result
+
+	the_result = expression . get_parameter_numeric()
+
+	IF ( expression . context . mode = FORMULA_MODE_CALCULATE   ) OR
+	   ( expression . context . mode = FORMULA_MODE_PRINT       ) OR
+	   ( expression . context . mode = FORMULA_MODE_TEST_PHASE1 ) THEN
+
+		expression . return_value ( the_result )
+		expression . return_text  ( the_result )
+		expression . return_inequality( FORMULA_LE )
+
+        ENDIF
+
+
+ENDROUTINE { prefix_le }
+
+ROUTINE prefix_ge ( expression )
+
+{
+*
+* Prefixes the result with Greater Than or Equal To (>=) symbol
+* 
+*******************************************************************************}
+
+DECLARE the_result
+
+	the_result = expression . get_parameter_numeric()
+
+	IF ( expression . context . mode = FORMULA_MODE_CALCULATE   ) OR
+	   ( expression . context . mode = FORMULA_MODE_PRINT       ) OR
+	   ( expression . context . mode = FORMULA_MODE_TEST_PHASE1 ) THEN
+
+		expression . return_value ( the_result )
+		expression . return_text  ( the_result )
+		expression . return_inequality( FORMULA_GE )
+
+        ENDIF
+
+
+ENDROUTINE { prefix_ge }
+
+
+
+{*****************************************************************************
+*
+*   IF Function
+*
+*******************************************************************************}
+
+ROUTINE on_condition ( expression )
+
+{
+*
+* Evaluates Condition and Does One of Two Things depending on the outcome
+* 
+*******************************************************************************}
+
+DECLARE eval,
+        param1,
+        the_operator,
+        param2,
+        value1,
+        value2,
+        param1_inequal,
+        param2_inequal,
+        value1_inequal,
+        value2_inequal,
+        value1_units,  
+        value2_units
+
+        {***   Get Param1 Information ***}
+
+        param1               = expression . get_parameter()
+
+        IF (STRIP(param1) = "") THEN
+
+            param1 = ""
+
+        ELSEIF NUMTEXT(param1) THEN
+ 
+            param1 = NUMERIC(param1)
+
+            param1_inequal = expression . get_parameter_inequality()
+
+            param1_inequal = param1_inequal
+
+        ELSE
+ 
+            param1 = STRING(param1)
+
+        ENDIF
+
+	the_operator         = expression . get_parameter_text()
+
+        {***   Get Param2 Information ***}
+
+        param2               = expression . get_parameter()
+        
+        IF (STRIP(param2) = "") THEN
+
+            param2 = ""
+
+        ELSEIF NUMTEXT(param2) THEN
+ 
+            param2 = NUMERIC(param2)
+
+            param2_inequal = expression . get_parameter_inequality()
+
+            param2_inequal = param2_inequal
+
+        ELSE
+ 
+            param2 = STRING(param2)
+
+        ENDIF
+
+        {***   Get Value1 Information ***}
+
+        value1               = expression . get_parameter()
+
+        value1_inequal = expression . get_parameter_inequality()
+
+        value1_units = expression . get_parameter_units()
+
+        IF (STRIP(value1) = "") THEN
+
+            value1 = "" 
+
+        ELSEIF NUMTEXT(value1) THEN
+ 
+            value1 = NUMERIC(value1)
+
+        ELSE
+ 
+            value1 = STRING(value1)
+
+        ENDIF
+
+
+        {***   Get Value2 Information ***}
+
+        value2         = expression . get_parameter()
+
+        value2_inequal = expression . get_parameter_inequality()
+
+        value2_units = expression . get_parameter_units()
+
+        IF (STRIP(value2) = "") THEN
+
+            value2 = ""
+
+        ELSEIF NUMTEXT(value2) THEN
+ 
+            value2 = NUMERIC(value2)
+
+        ELSE
+ 
+            value2 = STRING(value2)
+
+        ENDIF
+
+        the_operator = STRIP(the_operator)
+
+        {***   Perform the Comparison ***}
+
+        IF ( expression . context . mode = FORMULA_MODE_CALCULATE   ) OR
+	   ( expression . context . mode = FORMULA_MODE_PRINT       ) OR
+	   ( expression . context . mode = FORMULA_MODE_TEST_PHASE1 ) THEN
+
+
+            IF (the_operator = "<") THEN
+
+                eval = ( param1 < param2 )           
+
+            ELSEIF (the_operator = ">") THEN
+
+                eval = ( param1 > param2 )           
+               
+            ELSEIF (the_operator = "<=") THEN
+
+                eval = ( param1 <= param2 )           
+
+            ELSEIF ( the_operator = ">=") THEN
+
+                eval = ( param1 >= param2 )            
+
+            ELSEIF ( the_operator = "=" ) THEN
+
+                IF (NUMTEXT(param1) AND NUMTEXT(param2)) THEN
+
+                    IF NUMERIC(param1) = NUMERIC(param2) THEN
+
+                        eval = TRUE
+
+                    ELSE
+
+                        eval = FALSE 
+
+                    ENDIF
+
+                ELSEIF (param1 = param2) THEN
+
+                    eval = TRUE
+
+                ELSE
+
+                    eval = FALSE
+
+                ENDIF	        
+
+            ELSE
+
+                flash_message ("Invalid Operator Supplied to Formula Function", true)
+
+            ENDIF
+
+            IF eval THEN
+
+                IF (STRIP(value1) = "") THEN
+
+                    expression . return_value ( EMPTY )
+                    expression . return_text  ( EMPTY )
+                    expression . return_inequality ( EMPTY )
+                    expression . return_units (value1_units)
+                  
+                ELSEIF NUMTEXT(value1) THEN
+
+                    expression . return_value ( NUMERIC(value1) )
+                    expression . return_text  ( NUMERIC(value1) )
+                    expression . return_inequality ( value1_inequal )
+                    expression . return_units (value1_units)
+
+                ELSE
+
+                    expression . return_text  ( STRING(value1) )
+                    expression . return_value ( STRING(value1) )
+                    expression . return_inequality  ( value1_inequal )
+                    expression . return_units (value1_units)
+
+                ENDIF
+
+            ELSE
+
+                IF (STRIP(value2) = "") THEN
+
+                    expression . return_value ( EMPTY )
+                    expression . return_text  ( EMPTY )
+                    expression . return_inequality ( EMPTY )
+                    expression . return_units (value2_units)
+                   
+                ELSEIF NUMTEXT(value2) THEN
+
+                    expression . return_value ( NUMERIC(value2) )
+                    expression . return_text  ( NUMERIC(value2) )
+                    expression . return_inequality  ( value2_inequal )
+                    expression . return_units (value2_units)
+
+                ELSE
+
+                    expression . return_text  ( STRING(value2) )
+                    expression . return_value ( STRING(value2) )
+                    expression . return_inequality ( value2_inequal )
+                    expression . return_units (value2_units)
+
+                ENDIF
+
+            ENDIF
+            
+        ENDIF
+
+
+ENDROUTINE { on_condition }
+
+
+
+ROUTINE get_inequality (VALUE full_result)
+
+    DECLARE inequality
+
+    IF ( LEFTSTRING(full_result, 2) = "<=" ) THEN
+
+        inequality = 2  {<=}
+
+    ELSEIF ( LEFTSTRING(full_result, 2) = ">=" ) THEN
+
+        inequality = 4  {>=}
+   
+    ELSEIF ( LEFTSTRING(full_result, 1) = "<" ) THEN
+
+        inequality = 1  {<}
+
+    ELSEIF ( LEFTSTRING(full_result, 1) = ">" ) THEN 
+
+        inequality = 5  {>}
+
+    ELSE
+
+        inequality = 3  {=}
+
+    ENDIF
+
+    RETURN (inequality)
+
+ENDROUTINE
+
+
+
+ROUTINE get_result_text ( expression )
+
+{
+*
+* Resturns Result Text for a given component
+* 
+*******************************************************************************}
+
+    DECLARE the_result,
+            result_object,
+            textual_result
+
+        the_result = expression . get_parameter_text()
+
+
+
+
+	IF ( expression . context . mode = FORMULA_MODE_CALCULATE   ) OR
+	   ( expression . context . mode = FORMULA_MODE_PRINT       ) OR
+	   ( expression . context . mode = FORMULA_MODE_TEST_PHASE1 ) THEN
+
+
+            result_object = expression.context.result_context.get_result( expression.context.test_number, the_result )
+
+            IF ( result_object <> EMPTY )
+
+                textual_result = SELECT result . text IN OBJECT result_object
+
+
+
+            ENDIF
+
+            expression . return_value ( textual_result )
+            expression . return_text  ( textual_result )
+
+
+
+        ENDIF
+
+
+ENDROUTINE { result_text }
+
+
+
+{******************************************************************************}
+
+ROUTINE text_result ( expression )
+
+{
+*
+* Returns the result and associated inequality from a text string
+* 
+*******************************************************************************}
+
+DECLARE text_value
+
+	text_value = expression . get_parameter_text()
+
+	expression . return_value( text_value )
+
+        expression . return_inequality ( get_inequality (text_value) )
+
+        expression . return_units ( expression . get_parameter_units())
+
+	
+ENDROUTINE

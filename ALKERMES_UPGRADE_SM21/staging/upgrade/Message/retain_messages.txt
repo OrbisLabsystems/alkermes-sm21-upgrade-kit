@@ -1,0 +1,47 @@
+MESSAGE GROUP "RETAIN_LIB_"
+
+MESSAGE        = "ERROR_UPDATING"
+TEXT           = "Error updating Retain record."
+
+MESSAGE        = "ALREADY_DISPOSED"
+TEXT           = "This retain has already been disposed."
+
+MESSAGE        = "INCORRECT_STATUS"
+TEXT           = "The record is not in the correct state for this action."
+
+MESSAGE        = "QUANTITY_EXCEEDED"
+TEXT           = "You cannot remove a greater quantity than is available."
+
+MESSAGE        = "MIN_QUANTITY_EXCEEDED"
+TEXT           = "Note: You have reduced retain below minimum quantity."
+
+MESSAGE        = "AUTO_DISPOSED_MESSAGE"
+TEXT           = "All remaining retain has been Removed - Record Disposed!"
+
+MESSAGE        = "HISTORY_MAN_COMMENT"
+TEXT           = "Manually added record."
+
+MESSAGE        = "RECEIVE_RETAIN"
+TEXT           = "Receive Retain"
+
+MESSAGE        = "QUANTITY"
+TEXT           = "Quantity : "
+
+MESSAGE        = "LOCATION"
+TEXT           = "Location : "
+
+MESSAGE        = "BOX_NO"
+TEXT           = "Box No : "
+
+MESSAGE        = "COMMENT"
+TEXT           = "Comment : "
+
+MESSAGE        = "REMOVE_RETAIN"
+TEXT           = "Remove Retain"
+
+MESSAGE        = "SELECT_LOCATION"
+TEXT           = "Select a Location..."
+
+MESSAGE        = "CHANGE_LOCATION"
+TEXT           = "Change Location"
+

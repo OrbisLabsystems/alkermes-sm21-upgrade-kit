@@ -1,0 +1,72 @@
+{                                                                              }
+{       ELAN - Labstation Calculation Assistence Program                       }
+{                                                                              }
+{       Filename     :  R_LIB_CALC                                             }
+{       Version      :  1.00                                                   }
+{       Author       :  Deirdre McNabola                                       }
+{       Date Created :	13/6/96                                                }
+{                                                                              }
+{------------------------------------------------------------------------------}
+{                                                                              }
+{       Modification History                                                   }
+{                                                                              }
+{       Ver    Date      By      Description                                   }
+{       ---    ----      --      ---------------------------------------       }
+{       1.00   13/06/96  DMcN    First Version                                 }
+{       1.01   28/06/96  DMcN    Modified to allow for check for required      }
+{                                components in dependent calculations.         }
+{                                                                              }
+{------------------------------------------------------------------------------}
+
+GLOBAL  ROUTINE get_result (tnumber,component_name)
+
+JOIN LIBRARY $LIB_UTILS
+
+DECLARE res_str, ret_value
+
+IF NUMTEXT (tnumber) THEN 
+
+
+
+res_str = SELECT RESULT.text
+          WHERE ( test_number=tnumber)
+          AND   ( name = component_name)
+
+ELSE
+
+res_str = SELECT RESULT.text
+          WHERE ( test_number=tnumber)
+          AND   ( name = component_name)
+
+
+ENDIF
+
+IF (res_str=EMPTY) OR (res_str="") THEN 
+    flash_message ( "No value entered for ":component_name, TRUE )
+	ret_value = ""  { WAS empty }
+ELSE 
+	IF (NUMTEXT (res_str) = TRUE) THEN 
+	ret_value = NUMERIC (res_str)
+	ELSE
+		ret_value = ""
+	ENDIF
+ENDIF
+
+RETURN (ret_value)
+
+ENDROUTINE
+
+
+GLOBAL ROUTINE test_not_started ( test_number )
+
+no_of_results = SELECT COUNT RESULT
+                WHERE ( test_number = test_number )
+
+IF no_of_results < 1 THEN
+    RETURN ( TRUE )
+ELSE
+    RETURN ( FALSE )
+ENDIF
+
+ENDROUTINE
+

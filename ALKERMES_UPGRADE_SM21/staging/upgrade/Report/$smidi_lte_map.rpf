@@ -1,0 +1,1422 @@
+{******************************************************************************
+*
+* Module Name   : $SMIDI_LTE_MAP
+*
+* Purpose       : SMIDI Mapping LTE.
+*
+* Document Ref. :
+*
+* Specification :
+*
+* Portability   : OVMS, Unix, NT 4 and Windows 2000
+*
+* Re-entrant    :
+*
+*
+* Modification History
+* By        Date        Reason _____________________________________________
+*
+*******************************************************************************}
+
+{ --------------------------------------------------------------------------- }
+
+ENABLE WINDOWS
+SET NAME "DISPLAY/"
+SET COMPILE_OPTION EXP_MESS
+SET NOTPROTECTED                       { required because translate_name      }
+
+JOIN STANDARD_LIBRARY STD_ARRAY        { array_remove_slice                   }
+JOIN STANDARD_LIBRARY STD_CLASS        { object_set_current_table             }
+JOIN STANDARD_LIBRARY STD_GENERAL      { smp_version_number                   }
+JOIN STANDARD_LIBRARY STD_MESSAGE      { Message Support                      }
+JOIN STANDARD_LIBRARY STD_PROMPT       { std prompt for sap map               }
+JOIN STANDARD_LIBRARY STD_STRUCTURE    { Structure Modifications.             }
+JOIN STANDARD_LIBRARY STD_UTILS        { Standard Utilities.                  }
+JOIN STANDARD_LIBRARY STD_VGL          { VGL Find Routines...                 }
+JOIN STANDARD_LIBRARY STD_WINDOW       { Window set status                    }
+
+JOIN LIBRARY $LABTABLIB                { Lab Table Functionality              }
+JOIN LIBRARY $LIST_EDITOR              { The List Editor.                     }
+JOIN LIBRARY $LIB_UTILS                { flash_messages                       }
+JOIN LIBRARY $LIB_GRID                 { Grid Functionality.                  }
+
+JOIN LIBRARY $SMIDI_LIB_SAP            { array_contains_slice sse, constants  }
+
+CONSTANT TABLE_AUTHORITY  = 10
+
+{*******************************************************************************
+*                           M A I N   C O D E 
+*******************************************************************************}
+
+DECLARE the_list_editor                { list editor for optional fields      }
+DECLARE list_required                  { list editor for Mandatory fields     }
+DECLARE required                       { boolean if mandatory required        }
+DECLARE map_initialized                { boolean if map_initialized done once }
+DECLARE prompt_details                 { the list of prompts                  }
+DECLARE heading                        { and the heading on the prompts       }
+DECLARE map_list_editor                { sap map (lims table uses SAP object) }
+
+{ --------------------------------------------------------------------------- }
+
+	option = EMPTY
+	modify_option ( option )
+	exit
+
+{ -------------------------- Table Setup Routine ---------------------------- }
+
+ROUTINE table_setup
+
+	DECLARE count
+
+	directory               = EMPTY
+	extn                    = EMPTY
+	help_context            = "$LTE_TEM_EDIT"
+	default_value           = "DEFAULT"
+	name_of_table           = "SMIDI_MAP_HEADER"
+	displayed_name_of_table = GET_USER_MESSAGE ( "SMIDI_MLTE_TABLE", 1 ) 
+
+	header_mess         = GET_USER_MESSAGE ( "SMIDI_MLTE_HEADER", 1 ) 
+	footer_mess         = GET_USER_MESSAGE ( "SMIDI_MLTE_MFOOT", 1 ) 
+	display_footer_mess = GET_USER_MESSAGE ( "SMIDI_MLTE_DFOOT", 1 ) 
+	input_mess          = GET_USER_MESSAGE ( "SMIDI_MLTE_INPUT", 1 ) 
+
+	ARRAY prompt_details	ARRAY_SIZE ( 0 , 6 )
+	count = 1
+		prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE ( "SMIDI_MLTE_GROUP", 1 ) 
+	        prompt_details [ count , FIELD_NAME_POSITION ] = "GROUP_ID"
+	count = count + 1
+		prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE ( "SMIDI_MLTE_DESC", 1 ) 
+		prompt_details [ count , FIELD_NAME_POSITION ] = "DESCRIPTION"
+	count = count + 1
+		prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE ( "SMIDI_MLTE_MOD", 1 ) 
+		prompt_details [ count , FIELD_NAME_POSITION ] = "MODIFIABLE"
+
+	ARRAY fields_to_output  ARRAY_SIZE ( 0 )
+		fields_to_output [ 1 ]  = "1"
+		fields_to_output [ 2 ]  = "2"
+		fields_to_output [ 3 ]  = "3"
+		fields_to_output [ 4 ]  = "4"
+		fields_to_output [ 5 ]  = "5"
+		fields_to_output [ 6 ]  = "6"
+		fields_to_output [ 7 ]  = "7"
+		fields_to_output [ 8 ]  = "8"
+		fields_to_output [ 9 ]  = "9"
+		fields_to_output [ 10]  = "10"
+		fields_to_output [ 11]  = "11"
+		fields_to_output [ 12]  = "12"
+		fields_to_output [ 13]  = "13"
+		fields_to_output [ 14]  = "14"
+		fields_to_output [ 15]  = "15"
+		fields_to_output [ 16]  = "16"
+		fields_to_output [ 17]  = "17"
+		fields_to_output [ 18]  = "18"
+		fields_to_output [ 19]  = "19"
+		fields_to_output [ 20]  = "20"
+		fields_to_output [ 21]  = "21"
+
+	ARRAY 	special_actions_report 	ARRAY_SIZE ( 0 , 4 )
+
+		special_actions_report [ 1 , CHARACTER_POSITION ] = "*"
+		special_actions_report [ 1 , TITLE_POSITION     ] = GET_USER_MESSAGE ( "SMIDI_MLTE_STIT", 1 ) 
+
+		count = 2
+
+		special_actions_report [ count , CHARACTER_POSITION ] = STRIP ( count - 1 )
+		special_actions_report [ count , TITLE_POSITION     ] = GET_USER_MESSAGE ( "SMIDI_MLTE_ITEMS", 1 )
+		special_actions_report [ count , LIBRARY_POSITION   ] = GLOBAL ( "CURRENT_LIBRARY" )
+		special_actions_report [ count , ROUTINE_POSITION   ] = "LTE_MAP_SETUP"
+
+		count = count + 1
+		special_actions_report [ count , CHARACTER_POSITION ] = STRIP ( count - 1 )
+		special_actions_report [ count , TITLE_POSITION     ] = GET_USER_MESSAGE ( "SMIDI_MLTE_ITEMS", 2 )
+		special_actions_report [ count , LIBRARY_POSITION   ] = GLOBAL ( "CURRENT_LIBRARY" )
+		special_actions_report [ count , ROUTINE_POSITION   ] = "MAP_OPTIONAL"
+
+		IF ( GLOBAL ( "CURRAUTH" ) >= TABLE_AUTHORITY ) THEN
+
+			count = count + 1
+			special_actions_report [ count , CHARACTER_POSITION ] = STRIP ( count - 1 )
+			special_actions_report [ count , TITLE_POSITION     ] = GET_USER_MESSAGE ( "SMIDI_MLTE_ITEMS", 3 ) 
+			special_actions_report [ count , LIBRARY_POSITION   ] = GLOBAL ( "CURRENT_LIBRARY" )
+			special_actions_report [ count , ROUTINE_POSITION   ] = "MAP_MANDATORY"
+
+		ENDIF
+
+        ARRAY 	labtable_messages ARRAY_SIZE ( 0 )
+        
+		labtable_messages [ IDENTITY1_MESSAGE ] = GET MESSAGE ( 2545 , 1 )
+		labtable_messages [ IDENTITY2_MESSAGE ] = GET MESSAGE ( 2884 , 1 )
+		labtable_messages [ IDENTITY3_MESSAGE ] = GET MESSAGE ( 2884 , 2 )
+		labtable_messages [ IDENTITY4_MESSAGE ] = GET MESSAGE ( 2884 , 3 )
+		labtable_messages [ MOD_ON_MESSAGE    ] = GET MESSAGE ( 2546 , 1 )
+        	labtable_messages [ MOD_BY_MESSAGE    ] = GET MESSAGE ( 2547 , 1 )
+        	labtable_messages [ READ_MESSAGE      ] = GET MESSAGE ( 2566 , 1 )
+        	labtable_messages [ WRITE_MESSAGE     ] = GET MESSAGE ( 2567 , 1 )
+
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+{                                                                             }
+{ The following routines are provided as call back points for LTE processing. }
+{ User code may be added as appropriate.                                      }
+{ --------------------------------------------------------------------------- }
+
+ROUTINE validation_routine
+
+	{ Called on pressing the DO key to save LTE screen.               }
+	{ Called outside of the LTE write transaction.                    }
+	{                                                                 }
+	{ Returns a boolean value to indicate whether to proceed with     }
+	{ the save process - if FALSE is returned the user is forced back }
+	{ into the editor                                                 }
+
+	RETURN ( TRUE )
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE prompt_object_routine (       prompt_object ,
+                                VALUE key0_count    ,
+                                VALUE operation     )
+
+	{ Called during the creation of the identity prompts              }
+	{                                                                 }
+	{ prompt_object is the prompt object fro the specified prompt     }
+	{ key0_count    is the current key0 segment number                }
+	{               eg this would be 2 for the version_number         }
+	{                  field of the versioned_analysis table          }
+	{ operation     the current LTE operation eg ADD, MODIFY, DISPLAY }
+	{                                                                 }
+	{ No return value is required                                     }
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE create_id_routine
+
+	{ Called before starting the identity prompts of an LTE for the   }
+	{ ADD and COPY options.                                           }
+	{                                                                 }
+	{ The return value is used as the identity of the new record      }
+	{ instead of starting the identity prompts.                       }
+	{ Returning EMPTY causes the identity prompt to be started.       }
+
+        RETURN ( EMPTY )
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE update_routine ( labtable )
+
+	{ Called on pressing the DO key to save LTE screen.               }
+	{ Called after the LTE write transaction has been started.        }
+	{                                                                 }
+	{ labtable is the labtable object.                                }
+	{                                                                 }
+	{ The return value is TRUE  if updates have been performed        }
+	{                     FALSE if updates have NOT been performed    }
+	{                     EMPTY - the systems checks for updates      }
+
+        RETURN ( FALSE )
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE read_data_routine ( labtable, VALUE operation )
+
+	{ Called after the record has been selected / reserved but before }
+	{ the editor screen has been built.                               }
+	{                                                                 }
+	{ labtable      the labtable object.                              }
+	{ operation     the current LTE operation eg ADD, MODIFY, DISPLAY }
+	{                                                                 }
+	{ No return value is required                                     }
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE validate_new_id_routine ( VALUE new_id )
+
+	{ Called after each ID value has been entered.                    }
+	{                                                                 }
+	{ new_id is the value entered at the prompt.                      }
+	{                                                                 }
+	{ Returns a boolean value to indicate whether the value is valid. }
+
+	RETURN ( TRUE )
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE do_the_work  ( VALUE operation )
+
+	smp_lte_initialise()
+	table_setup ()
+	smp_lte_perform_option( name_of_table              ,
+					displayed_name_of_table    ,
+					prompt_details             ,
+					labtable_messages          ,
+					default_value              ,
+					input_mess                 ,
+					header_mess                ,
+					footer_mess                ,
+					display_footer_mess        ,
+					directory                  ,
+					extn                       ,
+					help_context               ,
+					GLOBAL ("CURRENT_LIBRARY") ,
+					fields_to_output           ,
+					special_actions_report     ,
+					operation                  )
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+ROUTINE add_option ( option )
+	do_the_work ( "add_ident" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE copy_option ( option )
+	do_the_work ( "copy_ident" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE modify_option ( option )
+	do_the_work ( "modify_ident" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE display_option ( option )
+	do_the_work ( "display_ident" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE remove_option ( option )
+	do_the_work ( "remove_ident" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE restore_option ( option )
+	do_the_work ( "restore_ident" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE list_option ( option )
+	do_the_work ( "list_idents" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE print_option ( option )
+	do_the_work ( "print_ident" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE spreadsheet_option ( option )
+
+	DECLARE key_search_field, the_table
+
+	the_table        = "SMIDI_MAP_HEADER"
+	key_search_field = "MAPPING_PROFILE"
+	CALL_ROUTINE "LTE_spreadsheet" USING the_table, key_search_field IN LIBRARY SMIDI_LIB_SAP
+
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE spreadsheet_item ( option )
+
+	DECLARE key_search_field, the_table
+
+	the_table        = "SMIDI_MAP_ITEM"
+	key_search_field = "MAPPING_PROFILE"
+	CALL_ROUTINE "LTE_spreadsheet" USING the_table, key_search_field IN LIBRARY SMIDI_LIB_SAP
+
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE smp_lte_initialise
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE sel_form_validate( self )
+
+	declare valid
+
+	valid = FALSE
+
+	IF (self.get_lastkey() = "EXIT") THEN
+
+		valid = TRUE
+
+	ELSE
+
+		assign smidi_map_header.result_create         = self.prompt_objects[ self.user_info[ 1  ] ].value
+		assign smidi_map_header.result_assign         = self.prompt_objects[ self.user_info[ 2  ] ].value
+		assign smidi_map_header.test_create           = self.prompt_objects[ self.user_info[ 3  ] ].value
+		assign smidi_map_header.test_missing          = self.prompt_objects[ self.user_info[ 4  ] ].value
+		assign smidi_map_header.force_sample_size     = self.prompt_objects[ self.user_info[ 5  ] ].value
+
+		assign smidi_map_header.component_places      = self.prompt_objects[ self.user_info[ 6  ] ].value
+		assign smidi_map_header.component_units       = self.prompt_objects[ self.user_info[ 7  ] ].value
+		assign smidi_map_header.component_phrase      = self.prompt_objects[ self.user_info[ 8  ] ].value
+		assign smidi_map_header.comp_limits_plausible = self.prompt_objects[ self.user_info[ 9  ] ].value
+		assign smidi_map_header.analysis_copy_comps   = self.prompt_objects[ self.user_info[ 10 ] ].value
+		assign smidi_map_header.analysis_copy_lists   = self.prompt_objects[ self.user_info[ 11 ] ].value
+		assign smidi_map_header.boolean_true_word     = self.prompt_objects[ self.user_info[ 12 ] ].value
+		assign smidi_map_header.boolean_false_word    = self.prompt_objects[ self.user_info[ 13 ] ].value
+
+		assign smidi_map_header.mlp_update            = self.prompt_objects[ self.user_info[ 14 ] ].value
+		assign smidi_map_header.mlp_copy_lims_only    = self.prompt_objects[ self.user_info[ 15 ] ].value
+		assign smidi_map_header.mlp_places            = self.prompt_objects[ self.user_info[ 16 ] ].value
+		assign smidi_map_header.mlp_type              = self.prompt_objects[ self.user_info[ 17 ] ].value
+		assign smidi_map_header.mlp_units             = self.prompt_objects[ self.user_info[ 18 ] ].value
+		assign smidi_map_header.mlp_phrase            = self.prompt_objects[ self.user_info[ 19 ] ].value
+		assign smidi_map_header.mlp_target            = self.prompt_objects[ self.user_info[ 20 ] ].value
+
+		valid = TRUE
+
+	ENDIF
+
+	return( valid )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE sel_main_form( sel_form )
+
+	DECLARE sel_prompts, i, k, choices
+
+	array sel_prompts
+	array choices
+
+	choices[ 1  ] = "RESULT_CREATE"
+	choices[ 2  ] = "RESULT_ASSIGN"
+	choices[ 3  ] = "TEST_CREATE"
+	choices[ 4  ] = "TEST_MISSING"
+	choices[ 5  ] = "FORCE_SAMPLE_SIZE"
+	choices[ 6  ] = "COMPONENT_PLACES"
+	choices[ 7  ] = "COMPONENT_UNITS"
+	choices[ 8  ] = "COMPONENT_PHRASE"
+	choices[ 9  ] = "COMP_LIMITS_PLAUSIBLE"
+	choices[ 10 ] = "ANALYSIS_COPY_COMPS"
+	choices[ 11 ] = "ANALYSIS_COPY_LISTS"
+	choices[ 12 ] = "BOOLEAN_TRUE_WORD"
+	choices[ 13 ] = "BOOLEAN_FALSE_WORD"
+	choices[ 14 ] = "MLP_UPDATE"
+	choices[ 15 ] = "MLP_COPY_LIMS_ONLY"
+	choices[ 16 ] = "MLP_PLACES"
+	choices[ 17 ] = "MLP_TYPE"
+	choices[ 18 ] = "MLP_UNITS"
+	choices[ 19 ] = "MLP_PHRASE"
+	choices[ 20 ] = "MLP_TARGET"
+
+	CREATE OBJECT "STD_FORM", sel_form
+
+	{ ================================================ }
+	{ Display the map header in a pretty form 4/8/8    }
+	{ ================================================ }
+								{    col, row, ht, wid }
+	sel_form.add_frame( GET_USER_MESSAGE("SMIDI_MLTE_CHOICES",1),  1,   1, 14, 100 )
+	sel_form.add_frame( GET_USER_MESSAGE("SMIDI_MLTE_CHOICES",2),  2,   2,  2,  98 )
+	sel_form.add_frame( GET_USER_MESSAGE("SMIDI_MLTE_CHOICES",3),  2,   6,  8,  52 )
+	sel_form.add_frame( GET_USER_MESSAGE("SMIDI_MLTE_CHOICES",4), 56,   6,  8,  42 )
+
+	sel_form.add_display( PAD( GET_USER_MESSAGE("SMIDI_MLTE_MAP",1)," ",28 ), 3, 2, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display( PAD( GET_USER_MESSAGE("SMIDI_MLTE_MAP",2)," ",28 ), 3, 3, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display( PAD( GET_USER_MESSAGE("SMIDI_MLTE_MAP",3)," ",28 ),39, 2, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display( PAD( GET_USER_MESSAGE("SMIDI_MLTE_MAP",4)," ",28 ),39, 3, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display( PAD( GET_USER_MESSAGE("SMIDI_MLTE_MAP",5)," ",22 ),75, 3, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+
+	PROMPT OBJECT sel_prompts[1] ON LINE 2 FROM 33 FORMAT SMIDI_MAP_HEADER.'choices[1]' WITH ( value = SELECT smidi_map_header.'choices[1]', is_check = TRUE )
+	PROMPT OBJECT sel_prompts[2] ON LINE 3 FROM 33 FORMAT SMIDI_MAP_HEADER.'choices[2]' WITH ( value = SELECT smidi_map_header.'choices[2]', is_check = TRUE )
+	PROMPT OBJECT sel_prompts[3] ON LINE 2 FROM 69 FORMAT SMIDI_MAP_HEADER.'choices[3]' WITH ( value = SELECT smidi_map_header.'choices[3]', is_check = TRUE )
+	PROMPT OBJECT sel_prompts[4] ON LINE 3 FROM 69 FORMAT SMIDI_MAP_HEADER.'choices[4]' WITH ( value = SELECT smidi_map_header.'choices[4]', is_check = TRUE )
+	PROMPT OBJECT sel_prompts[5] ON LINE 3 FROM 98 FORMAT SMIDI_MAP_HEADER.'choices[5]' WITH ( value = SELECT smidi_map_header.'choices[5]', is_check = TRUE )
+
+	sel_prompts[ 1 ] = sel_form.add_prompt( sel_prompts[ 1 ] )
+	sel_prompts[ 2 ] = sel_form.add_prompt( sel_prompts[ 2 ] )
+	sel_prompts[ 3 ] = sel_form.add_prompt( sel_prompts[ 3 ] )
+	sel_prompts[ 4 ] = sel_form.add_prompt( sel_prompts[ 4 ] )
+	sel_prompts[ 5 ] = sel_form.add_prompt( sel_prompts[ 5 ] )
+
+	{ ================================================== }
+	{ The analysis / component items, then MLP items     }
+	{ ================================================== }
+
+	i = 6
+	k = 14
+
+	WHILE i <= 13 DO
+
+		IF i < 13 THEN
+
+			sel_form.add_display( PAD( GET_USER_MESSAGE("SMIDI_MLTE_MAP",k)," ",30 ),3,i, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+
+			IF ( INDEX ( choices[k], "FORMAT" ) = 0 ) THEN
+				PROMPT OBJECT sel_prompts[k] ON LINE i FROM 35 FORMAT SMIDI_MAP_HEADER.'choices[k]' WITH ( value = SELECT smidi_map_header.'choices[k]', is_check = TRUE  )
+			ELSE
+				PROMPT OBJECT sel_prompts[k] ON LINE i FROM 35 FORMAT SMIDI_MAP_HEADER.'choices[k]' WITH ( value = SELECT smidi_map_header.'choices[k]' )
+			ENDIF
+	
+			sel_prompts[k] = sel_form.add_prompt( sel_prompts[k] )
+
+		ENDIF   { format mlp was removed }
+
+		sel_form.add_display( PAD( GET_USER_MESSAGE("SMIDI_MLTE_MAP",i)," ",30 ),57,i, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+		
+		IF ( INDEX ( choices[i], "BOOLEAN" ) > 0 ) THEN
+			PROMPT OBJECT sel_prompts[i] ON LINE i FROM 88 FORMAT SMIDI_MAP_HEADER.'choices[i]' WITH ( value = SELECT smidi_map_header.'choices[i]' )
+		ELSE
+			PROMPT OBJECT sel_prompts[i] ON LINE i FROM 88 FORMAT SMIDI_MAP_HEADER.'choices[i]' WITH ( value = SELECT smidi_map_header.'choices[i]', is_check = TRUE  )
+		ENDIF
+
+		sel_prompts[i] = sel_form.add_prompt( sel_prompts[i] )
+
+		i = i + 1
+		k = k + 1
+
+	ENDWHILE
+
+	sel_form.height             = 14
+	sel_form.width              = 100
+	sel_form.row                = 3
+	sel_form.column             = 3
+	sel_form.header             = get_user_message("SMIDI_LTE_SEL_HEADER",1)
+	sel_form.footer             = get_user_message("SMIDI_LTE_SEL_FOOTER",1)
+	sel_form.border             = TRUE
+	sel_form.return_behaviour   = FORM_RETURN_STAY
+	sel_form.validation_routine = "sel_form_validate"
+	sel_form.user_info          = sel_prompts
+
+ENDROUTINE
+
+{******************************************************************************}
+
+GLOBAL ROUTINE lte_map_SETUP( VALUE id, VALUE old_id, VALUE mode )
+
+	DECLARE sel_form
+
+	IF mode = "PRINT" THEN
+
+	ELSEIF index( "#MODIFY#", mode ) <> 0 THEN
+
+		sel_main_form( sel_form )
+
+		sel_form.start_prompt()
+		sel_form.wait_prompt()
+		sel_form.end_prompt()
+
+	ELSEIF index( "#DISPLAY#", mode ) <> 0 THEN
+
+		set display true
+		sel_main_form( sel_form )
+
+		sel_form.start_prompt()
+		sel_form.wait_prompt()
+		sel_form.end_prompt()
+		set display false
+
+	ENDIF
+
+ENDROUTINE
+
+
+{*******************************************************************************
+*                            R O U T I N E S
+*******************************************************************************}
+
+ROUTINE map_OPTIONAL ( VALUE identity,  VALUE copied_identity, VALUE operation )
+
+	DECLARE answer
+
+	IF operation = "PRINT" THEN
+		print_map ( identity )
+	ELSE
+
+		answer = map_options ( identity, copied_identity, operation, FALSE )
+		RETURN ( answer )
+	ENDIF
+
+ENDROUTINE { map_OPTIONAL }
+
+{******************************************************************************}
+
+ROUTINE map_MANDATORY ( VALUE identity, VALUE copied_identity, VALUE operation  )
+
+	DECLARE answer
+
+	IF operation = "PRINT" THEN
+		print_map ( identity )
+	ELSE
+		answer = map_options ( identity, copied_identity, operation, TRUE )
+		RETURN ( answer )
+	ENDIF
+
+ENDROUTINE  { MAP_MANDATORY }
+
+{******************************************************************************}
+
+ROUTINE print_map ( VALUE identity ) 
+
+	DECLARE field_details
+	ARRAY field_details ARRAY_SIZE ( 0 , 2 )
+
+	field_details [ 1, 1 ] = "TABLE_NAME"
+	field_details [ 1, 2 ] = GET_USER_MESSAGE ( "SMIDI_MAP_MSG_TAB", 1 ) 
+	field_details [ 2, 1 ] = "FIELD_NAME"
+	field_details [ 2, 2 ] = GET_USER_MESSAGE ( "SMIDI_MAP_MSG_FLD", 1 ) 
+	field_details [ 3, 1 ] = "STRUCTURE"
+	field_details [ 3, 2 ] = GET_USER_MESSAGE ( "SMIDI_MAP_MSG_STR", 1 ) 
+	field_details [ 4, 1 ] = "SAP_NAME"
+	field_details [ 4, 2 ] = GET_USER_MESSAGE ( "SMIDI_MAP_MSG_SAP", 1 ) 
+	field_details [ 5, 1 ] = "LIBRARY_NAME"
+	field_details [ 5, 2 ] = GET_USER_MESSAGE ( "SMIDI_MAP_MSG_LIB", 1 ) 
+	field_details [ 6, 1 ] = "ROUTINE_NAME"
+	field_details [ 6, 2 ] = GET_USER_MESSAGE ( "SMIDI_MAP_MSG_ROU", 1 ) 
+	field_details [ 7, 1 ] = "NUMBER_LEFT"
+	field_details [ 7, 2 ] = GET_USER_MESSAGE ( "SMIDI_MAP_MSG_OPTIONS", 1 ) 
+	field_details [ 8, 1 ] = "NUMBER_RIGHT"
+	field_details [ 8, 2 ] = GET_USER_MESSAGE ( "SMIDI_MAP_MSG_OPTIONS", 2 )
+	field_details [ 9, 1 ] = "MAP_UPDATE"
+	field_details [ 9, 2 ] = GET_USER_MESSAGE ( "SMIDI_MAP_MSG_OPTIONS", 3 )
+
+	print_fields (  "SMIDI_MAP_ITEM", identity, "", "", 2, 28, field_details   )
+
+ENDROUTINE { print_map }
+
+{******************************************************************************}
+
+ROUTINE MAP_options ( VALUE identity, VALUE copied_identity, VALUE operation, VALUE required )
+
+	DECLARE answer
+	
+	answer = TRUE
+
+	IF NOT required THEN
+
+		{ Optional Fields}
+
+		IF ( list_editor_create_object ( the_list_editor ) ) THEN
+	
+
+			smidi_mapping_prompt_details ( prompt_details, heading )
+
+			the_list_editor.table            = "SMIDI_MAP_ITEM"
+			the_list_editor.header           = GET_USER_MESSAGE ( "SMIDI_MAP_MSG_OPTIONAL_ITEM",1) 
+			the_list_editor.footer           = ""
+			the_list_editor.pre_insert       = "MAP_INSERT_ROUTINE"
+			the_list_editor.post_insert      = "MAP_POST_INSERT"
+			the_list_editor.delete           = "MAP_DELETE_ROUTINE"
+			the_list_editor.library          = GLOBAL ( "CURRENT_LIBRARY" )
+			the_list_editor.compatability    = PROMPT_DETAILS_310
+			the_list_editor.select           = EMPTY                      { different on optional }
+			the_list_editor.userinfo         = FALSE
+
+
+			the_list_editor.select_callback = "MAP_CRITERIA_OPTIONAL" 
+			
+	
+			the_list_editor.setup_prompt_details ( prompt_details, heading )
+
+		ENDIF
+
+		answer = the_list_editor.operation ( identity, copied_identity, operation )
+
+		{ --------------------------------------------------------------------------- }
+		{ Button pressed, then user hits cancel, then button press then user ok, etc  }
+		{ --------------------------------------------------------------------------- }
+		IF ( answer <> EMPTY ) & ( NOT answer ) & ( the_list_editor <> EMPTY ) THEN
+
+			the_list_editor.initialised = FALSE
+			the_list_editor.data_read   = FALSE
+
+		ENDIF
+
+	ELSE
+		{ Mandatory Fields }
+
+		IF ( list_editor_create_object ( list_required ) ) THEN
+		
+			smidi_mapping_prompt_details ( prompt_details, heading )
+
+			list_required.table            = "SMIDI_MAP_ITEM"
+			list_required.header           = GET_USER_MESSAGE ( "SMIDI_MAP_MSG_MANDATORY_ITEM",1) 
+			list_required.footer           = ""
+			list_required.pre_insert       = EMPTY     { "MAP_INSERT_ROUTINE" }
+			list_required.post_insert      = EMPTY     { "MAP_POST_INSERT"    }
+			list_required.delete           = EMPTY     { "MAP_DELETE_ROUTINE" }
+			list_required.deletes_enabled  = FALSE
+			list_required.inserts_enabled  = FALSE
+			list_required.library          = GLOBAL ( "CURRENT_LIBRARY" )
+			list_required.compatability    = PROMPT_DETAILS_310
+			list_required.select           = EMPTY
+			list_required.userinfo         = TRUE
+
+			list_required.select_callback  = "MAP_CRITERIA_MANDATORY"
+			
+
+ 			list_required.setup_prompt_details ( prompt_details, heading )
+
+		ENDIF
+
+		answer = list_required.operation ( identity, copied_identity, operation )
+
+		{ --------------------------------------------------------------------------- }
+		{ Button pressed, then user hits cancel, then button press then user ok, etc  }
+		{ --------------------------------------------------------------------------- }
+
+		IF ( answer <> EMPTY ) & ( NOT answer ) & ( list_required <> EMPTY ) THEN
+
+			list_required.initialised = FALSE
+			list_required.data_read   = FALSE
+
+		ENDIF
+
+	ENDIF   { required is for MANDATORY mapping and has a select routine and different criteria }
+
+	RETURN ( answer ) 
+
+ENDROUTINE { other_option }
+
+{******************************************************************************}
+
+ROUTINE map_criteria_optional ( self, select_array )
+
+	DECLARE labtable
+
+	ARRAY select_array
+
+	labtablib_get_labtable ( labtable )
+
+	ARRAY_SELECT_ADD ( select_array, ARRAY_SELECT_EQ, "MANDATORY", "FALSE" )
+
+	IF labtable.operation <> "COPY" THEN
+		ARRAY_SELECT_ADD ( select_array, ARRAY_SELECT_EQ, "MAPPING_PROFILE", self.identity )
+	ELSE
+		ARRAY_SELECT_ADD ( select_array, ARRAY_SELECT_EQ, "MAPPING_PROFILE", self.copy_identity )
+	ENDIF
+
+ENDROUTINE  { map_criteria_optional }
+
+{******************************************************************************}
+
+ROUTINE map_criteria_mandatory ( self, select_array )
+
+	DECLARE labtable
+
+	ARRAY select_array
+
+	labtablib_get_labtable ( labtable )
+
+	ARRAY_SELECT_ADD ( select_array, ARRAY_SELECT_EQ, "MANDATORY", "TRUE" )
+	
+	IF labtable.operation <> "COPY" THEN
+		ARRAY_SELECT_ADD ( select_array, ARRAY_SELECT_EQ, "MAPPING_PROFILE", self.identity )
+	ELSE
+		ARRAY_SELECT_ADD ( select_array, ARRAY_SELECT_EQ, "MAPPING_PROFILE", self.copy_identity )
+	ENDIF
+
+ENDROUTINE  { map_criteria_mandatory }
+
+{******************************************************************************}
+
+ROUTINE map_delete_routine ( self )
+
+	DECLARE retval
+	retval = TRUE
+
+	IF SELECT smidi_map_item.mandatory THEN
+
+		flash_message ( "SMIDI_MAP_MSG_MANDY" , TRUE )
+		retval = FALSE
+
+	ENDIF
+
+	RETURN ( retval )
+
+ENDROUTINE { map_delete_routine }
+
+{******************************************************************************}
+
+ROUTINE map_insert_routine ( self        ,
+                             grid        ,
+                             cell_column ,
+                             cell_row    ,
+                             window      ,
+                             column      ,
+                             row         ,
+                             cell_width  ,
+                             cell_height ,
+                             new_value   )
+
+	DECLARE form, blank_array, convert_tables, cnt, wid, message, userinput
+
+	ARRAY blank_array
+
+	blank_array [ 1, 1 ] = ""
+	blank_array [ 1, 2 ] = ""
+
+	ARRAY convert_tables ARRAY_SIZE ( 0, 2 )
+	get_table_names ( convert_tables )
+
+	cnt = 1
+	WHILE ( convert_tables[cnt,1] <> EMPTY ) DO
+
+		IF ( INDEX ( convert_tables[cnt,1], "VIEW"       ) > 0 )
+		OR ( INDEX ( convert_tables[cnt,1], "REPORT"     ) > 0 )
+		OR ( INDEX ( convert_tables[cnt,1], "ESIG"       ) > 0 )
+		OR ( INDEX ( convert_tables[cnt,1], "ARCHIVE"    ) > 0 )
+		OR ( INDEX ( convert_tables[cnt,1], "C_"         ) = 1 )
+		OR ( INDEX ( convert_tables[cnt,1], "BLOB"       ) > 0 )
+		OR ( INDEX ( convert_tables[cnt,1], "CGI_"       ) > 0 )
+		OR ( INDEX ( convert_tables[cnt,1], "CRITERIA"   ) > 0 )
+		OR ( INDEX ( convert_tables[cnt,1], "MENU"       ) > 0 )
+		OR ( INDEX ( convert_tables[cnt,1], "OBSOLETE"   ) > 0 )
+		OR ( INDEX ( convert_tables[cnt,1], "ROLE"       ) > 0 )
+		OR ( INDEX ( convert_tables[cnt,1], "STAT_"      ) > 0 )
+		OR ( INDEX ( convert_tables[cnt,1], "AUDIT"      ) > 0 )
+		OR ( INDEX ( convert_tables[cnt,1], "HELP"       ) > 0 )
+		OR ( INDEX ( convert_tables[cnt,1], "ICON"       ) > 0 )
+		OR ( INDEX ( convert_tables[cnt,1], "USER"       ) > 0 )
+		OR ( INDEX ( convert_tables[cnt,1], "ACCESS_LOG" ) > 0 )
+		OR ( INDEX ( convert_tables[cnt,1], "EXPLORER"   ) > 0 ) THEN
+
+			array_remove_slice ( convert_tables, 1, cnt )
+
+		ELSE
+			cnt = cnt + 1
+		ENDIF
+
+	ENDWHILE
+
+	CREATE OBJECT "STD_FORM", form
+		form.header           = GET_USER_MESSAGE ( "SMIDI_MAP_MSG_NEW", 1 ) 
+		form.footer           = ""
+		form.width            = GLOBAL ( "SCREEN_WIDTH" ) 
+		form.height           = 2
+		form.column           = 1 + ( GLOBAL ( "SCREEN_WIDTH"  ) - form.width  ) / 2
+		form.row              = 4
+		form.confirm_required = FALSE
+		form.vgl_library      = GLOBAL ( "CURRENT_LIBRARY" )
+		form.parent_prompt    = self
+		form.userinfo         = grid
+
+	PROMPT OBJECT form.prompt_objects [ 1 ]
+	    AT 19, 1
+	    CHOOSE OUTOF convert_tables
+	    WITH  ( validation_routine   = "not_blank_validation_routine",
+	            always_validate      = TRUE                          ,
+	            vgl_library          = GLOBAL ( "CURRENT_LIBRARY" )  ,
+                    leave_prompt_routine = "leave_table_routine"         ,
+	            lowered              = TRUE                          )
+
+	PROMPT OBJECT form.prompt_objects [ 2 ]
+	    AT 19, 2
+	    CHOOSE OUTOF blank_array
+	    WITH  ( vgl_library          = GLOBAL ( "CURRENT_LIBRARY" ),
+	            width                = 21                          ,  
+	            lowered              = TRUE                        ,
+		    always_validate      = TRUE                        ,
+		    validation_routine   = "field_validation_routine"  )
+       
+	message = GET_USER_MESSAGE ( "SMIDI_MAP_MSG_TABNAM", 1 )
+	form.add_display ( PAD ( message , " ", 15 ), 2, 1, PROMPT_RENDITION_RAISED )
+
+	message = GET_USER_MESSAGE ( "SMIDI_MAP_MSG_FLDNAM", 1 )
+	form.add_display ( PAD ( message , " ", 15 ), 2, 2, PROMPT_RENDITION_RAISED )
+	form.add_frame ( "", 1, 1, form.height, form.width )
+
+	form.start_prompt ( ) 
+	form.wait_prompt  ( ) 
+	form.end_prompt   ( ) 
+
+	userinput = form.get_lastkey()
+	
+	IF userinput = "EXIT" THEN
+
+		new_value                   = ""
+		form.prompt_objects[1].text = ""
+		SET GLOBAL "LASTKEY" TO "EXIT"
+
+	ELSEIF ( userinput <> "EXIT" ) AND  ( NOT BLANK ( form.prompt_objects[1].text ) ) THEN 
+
+		GET_FIELD_DETAILS smidi_map_item.table_name, "FIELD_SIZE", wid
+		new_value = PAD ( form.prompt_objects [ 1 ].text, " ", wid ) :  form.prompt_objects [ 2 ].text
+		SET GLOBAL "LASTKEY" TO "CONTINUE"
+
+	ELSE
+
+		IF ( cell_row = grid.cell_rows ) THEN
+
+			IF cell_row = 1 THEN
+				SET GLOBAL "LASTKEY" TO "DO"
+			ELSE
+				SET GLOBAL "LASTKEY" TO "UP"
+			ENDIF
+
+		ELSE
+
+			IF cell_row = 1 THEN
+				SET GLOBAL "LASTKEY" TO "REMOVE"
+			ELSE
+				SET GLOBAL "LASTKEY" TO "DO"
+			ENDIF
+
+		ENDIF
+
+		new_value = ""
+
+	ENDIF
+
+ENDROUTINE { map_insert_routine }
+
+{******************************************************************************}
+
+ROUTINE map_post_insert ( self, cell_row, window )
+
+	ASSIGN 'self.table'.MANDATORY = self.userinfo
+
+ENDROUTINE { map_post_insert }
+
+{******************************************************************************}
+
+GLOBAL ROUTINE smidi_mapping_prompt_details ( prompt_details, heading )
+
+	IF NOT VARIABLE_IS_ASSIGNED ( map_initialized ) THEN
+
+		DECLARE count
+
+		ARRAY prompt_details ARRAY_SIZE ( 0 , 6 )
+
+		count = 1
+			prompt_details [ count , 1 ] = GET_USER_MESSAGE ( "SMIDI_MAP_MSG_TABNAM",1 ) 
+			prompt_details [ count , 2 ] = "DISPLAY"
+			prompt_details [ count , 3 ] = "SMIDI_MAP_ITEM"
+			prompt_details [ count , 4 ] = "TABLE_NAME"
+			prompt_details [ count , 5 ] = 0
+			prompt_details [ count , 6 ] = STRINGLENGTH ( prompt_details [ count, 1 ]  )
+		count = count + 1
+			prompt_details [ count , 1 ] = GET_USER_MESSAGE ( "SMIDI_MAP_MSG_FLDNAM",1 ) 
+			prompt_details [ count , 2 ] = "DISPLAY"
+			prompt_details [ count , 3 ] = "SMIDI_MAP_ITEM"
+			prompt_details [ count , 4 ] = "FIELD_NAME"
+			prompt_details [ count , 5 ] = 0
+			prompt_details [ count , 6 ] = STRINGLENGTH ( prompt_details [ count, 1 ]  )
+		count = count + 1
+			prompt_details [ count , 1 ] = GET_USER_MESSAGE ( "SMIDI_MAP_MSG_STR", 1 ) 
+			prompt_details [ count , 2 ] = "FORMAT"
+			prompt_details [ count , 3 ] = "SMIDI_MAP_ITEM"
+			prompt_details [ count , 4 ] = "STRUCTURE"
+			prompt_details [ count , 5 ] = 0
+			prompt_details [ count , 6 ] = STRINGLENGTH ( prompt_details [ count, 1 ]  )
+		count = count + 1
+			prompt_details [ count , 1 ] = GET_USER_MESSAGE ( "SMIDI_MAP_MSG_SAP", 1 ) 
+			prompt_details [ count , 2 ] = "ROUTINE"
+			prompt_details [ count , 3 ] = GLOBAL ( "CURRENT_LIBRARY" )
+			prompt_details [ count , 4 ] = "SAP_NAME_PROMPT"
+			prompt_details [ count , 5 ] = 0
+			prompt_details [ count , 6 ] = STRINGLENGTH ( prompt_details [ count, 1 ]  )
+		count = count + 1
+			prompt_details [ count , 1 ] = GET_USER_MESSAGE ( "SMIDI_MAP_MSG_DEF", 1 ) 
+			prompt_details [ count , 2 ] = "ROUTINE"
+			prompt_details [ count , 3 ] = GLOBAL ( "CURRENT_LIBRARY" )
+			prompt_details [ count , 4 ] = "DEFAULT_PROMPT"
+			prompt_details [ count , 5 ] = 0
+			prompt_details [ count , 6 ] = STRINGLENGTH ( prompt_details [ count, 1 ]  ) 
+		count = count + 1
+			prompt_details [ count , 1 ] = GET_USER_MESSAGE ( "SMIDI_MAP_MSG_LIB", 1 ) 
+			prompt_details [ count , 2 ] = "ROUTINE"
+			prompt_details [ count , 3 ] = GLOBAL ( "CURRENT_LIBRARY" )
+			prompt_details [ count , 4 ] = "LIBRARY_PROMPT"
+			prompt_details [ count , 5 ] = 0
+			prompt_details [ count , 6 ] = STRINGLENGTH ( prompt_details [ count, 1 ]  )
+		count = count + 1
+			prompt_details [ count , 1 ] = GET_USER_MESSAGE ( "SMIDI_MAP_MSG_ROU", 1 ) 
+			prompt_details [ count , 2 ] = "ROUTINE"
+			prompt_details [ count , 3 ] = GLOBAL ( "CURRENT_LIBRARY" )
+			prompt_details [ count , 4 ] = "ROUTINE_PROMPT"
+			prompt_details [ count , 5 ] = 0
+			prompt_details [ count , 6 ] = STRINGLENGTH ( prompt_details [ count, 1 ]  )
+		count = count + 1
+			prompt_details [ count , 1 ] = GET_USER_MESSAGE ( "SMIDI_MAP_MSG_OPTIONS", 1 )
+			prompt_details [ count , 2 ] = "FORMAT"
+			prompt_details [ count , 3 ] = "SMIDI_MAP_ITEM"
+			prompt_details [ count , 4 ] = "NUMBER_LEFT"
+			prompt_details [ count , 5 ] = 0
+			prompt_details [ count , 6 ] = STRINGLENGTH ( prompt_details [ count, 1 ]  )
+		count = count + 1
+			prompt_details [ count , 1 ] = GET_USER_MESSAGE ( "SMIDI_MAP_MSG_OPTIONS", 2 )
+			prompt_details [ count , 2 ] = "FORMAT"
+			prompt_details [ count , 3 ] = "SMIDI_MAP_ITEM"
+			prompt_details [ count , 4 ] = "NUMBER_RIGHT"
+			prompt_details [ count , 5 ] = 0
+			prompt_details [ count , 6 ] = STRINGLENGTH ( prompt_details [ count, 1 ]  )
+		count = count + 1
+			prompt_details [ count , 1 ] = GET_USER_MESSAGE ( "SMIDI_MAP_MSG_OPTIONS", 3 )
+			prompt_details [ count , 2 ] = "ROUTINE"
+			prompt_details [ count , 3 ] = GLOBAL ( "CURRENT_LIBRARY" )
+			prompt_details [ count , 4 ] = "MAP_UPDATE_PROMPT"
+			prompt_details [ count , 5 ] = 0
+			prompt_details [ count , 6 ] = STRINGLENGTH ( prompt_details [ count, 1 ]  )
+
+		count   = 1
+		heading = ""
+	
+		WHILE count <= SIZE_OF_ARRAY ( prompt_details ) DO
+
+			heading = heading : PAD ( prompt_details [ count, 1 ], " ", prompt_details [ count, 6 ] ) : " "
+			count   = count + 1 
+
+		ENDWHILE
+
+		map_initialized = TRUE
+
+	ENDIF   { do it one time only }
+
+ENDROUTINE { smidi_mapping_prompt_details }
+
+{******************************************************************************}
+
+ROUTINE default_prompt   (        self        ,
+                                  grid        ,
+                            VALUE cell_column ,
+                            VALUE cell_row    ,
+                            VALUE column      ,
+                            VALUE row         ,
+                            VALUE cell_width  ,
+                                  window      ,
+                            VALUE is_display   )
+
+	{ Routine for the Default Value Prompt.
+	*
+	* Parameters   : Self        - Object
+	*                Grid        - A Grid Object.
+	*                Cell_Column - An Integer holding the Current Grid Column.
+	*                Cell_Row    - An Integer holding the Current Grid Row.
+	*                Column      - An Integer holding the Window Column for Display
+	*                Row         - An Integer holding the Window Row for Display.
+	*                Cell_Width  - An Integer representing the cell width.
+	*                Window      - The Current Window
+	*                Is_Display  - Display Only
+	* Return Value : N/a
+	*	
+	*******************************************************************************}
+
+	DECLARE display_only, orig_def, def, table, field, key
+
+	table     = SELECT smidi_map_item.table_name     IN OBJECT self
+	field     = SELECT smidi_map_item.field_name     IN OBJECT self
+	def       = SELECT smidi_map_item.default_value  IN OBJECT self
+	orig_def  = def
+
+	IF is_display = EMPTY THEN
+
+		{ This is called from a List }	
+
+	ELSEIF is_display THEN
+
+		DISPLAY def ON LINE row FROM column TO column+cell_width-1 IN WINDOW window FORMAT 'table'.'field'
+
+	ELSE
+
+		display_only = grid.parent_prompt.display_only
+
+		GET_FIELD_DETAILS 'table'.'field', "KEY0_FIELD", key
+
+		IF key THEN
+
+			PROMPT FOR def ON LINE row FROM column TO column+cell_width-1
+			    IN WINDOW window BROWSE ON 'table'.'field' WITH ( display_only=display_only )
+
+		ELSE
+
+			PROMPT FOR def ON LINE row FROM column TO column+cell_width-1
+			    IN WINDOW window FORMAT 'table'.'field' WITH ( display_only=display_only )
+
+		ENDIF
+
+		IF ( NOT display_only ) AND ( def <> orig_def ) THEN
+			ASSIGN smidi_map_item.default_value IN OBJECT self = def
+		ENDIF
+
+	ENDIF
+
+	RETURN ( def )
+
+ENDROUTINE { default_prompt }
+
+{******************************************************************************}
+
+ROUTINE sap_name_prompt   (        self        ,
+                                   grid        ,
+                             VALUE cell_column ,
+                             VALUE cell_row    ,
+                             VALUE column      ,
+                             VALUE row         ,
+                             VALUE cell_width  ,
+                                   window      ,
+                             VALUE is_display   )
+
+	DECLARE display_only, structure, orig_name, smp_name, mandy_array
+
+	structure  = SELECT smidi_map_item.structure IN OBJECT self
+	smp_name   = SELECT smidi_map_item.smp_name  IN OBJECT self
+	orig_name  = smp_name
+
+	IF is_display = EMPTY THEN
+
+		{ This is called from a List }	
+
+	ELSEIF is_display THEN
+
+		DISPLAY smp_name ON LINE row FROM column TO column+cell_width-1
+		    IN WINDOW window FORMAT TEXT20
+
+	ELSE
+
+		ARRAY mandy_array
+		array_select_add ( mandy_array, ARRAY_SELECT_EQ, "IDENTITY", structure )
+		display_only = grid.parent_prompt.display_only
+
+ 		PROMPT FOR smp_name ON LINE row FROM column TO column+cell_width-1 IN WINDOW window
+		    BROWSE ON smidi_structure_items.internal_name WITH ( display_only=display_only, mandatory_array=mandy_array )
+
+		IF ( NOT display_only ) AND ( smp_name <> orig_name ) THEN
+			ASSIGN smidi_map_item.smp_name  IN OBJECT self = smp_name
+		ENDIF
+
+	ENDIF
+
+	RETURN ( smp_name )
+
+ENDROUTINE { sap_name_prompt }
+
+{******************************************************************************}
+
+ROUTINE library_prompt (      self        ,
+                              grid        ,
+                        VALUE cell_column ,
+                        VALUE cell_row    ,
+                        VALUE column      ,
+                        VALUE row         ,
+                        VALUE cell_width  ,
+                              window      ,
+                        VALUE is_display   )
+
+
+	DECLARE lib, orig
+	lib  = SELECT smidi_map_item.library_name IN OBJECT self
+	orig = lib
+
+	IF is_display = EMPTY THEN
+
+		{ This is called from a List }	
+
+	ELSEIF is_display THEN
+
+		DISPLAY lib ON LINE row FROM column TO column+cell_width-1 IN WINDOW window
+
+	ELSE
+
+		PROMPT FOR lib ON LINE row FROM column TO column+cell_width-1 IN WINDOW window BROWSE ON report
+
+		IF ( LASTKEY <> "EXIT" ) AND ( lib <> orig ) THEN
+			ASSIGN smidi_map_item.library_name  IN OBJECT self = lib
+			ASSIGN smidi_map_item.routine_name  IN OBJECT self = ""
+		ENDIF
+
+	ENDIF
+
+	RETURN ( lib )
+
+ENDROUTINE { library_prompt }
+
+{******************************************************************************}
+
+ROUTINE routine_prompt (      self        ,
+                              grid        ,
+                        VALUE cell_column ,
+                        VALUE cell_row    ,
+                        VALUE column      ,
+                        VALUE row         ,
+                        VALUE cell_width  ,
+                              window      ,
+                        VALUE is_display   )
+
+	DECLARE rootine, library_name
+	
+	library_name = SELECT smidi_map_item.library_name IN OBJECT self
+	rootine      = SELECT smidi_map_item.routine_name IN OBJECT self
+
+	IF is_display = EMPTY THEN
+
+		{ This is called from a List }	
+
+	ELSEIF is_display THEN
+
+		DISPLAY rootine ON LINE row FROM column TO column+cell_width-1 IN WINDOW window
+
+	ELSE
+
+		PROMPT FOR rootine ON LINE row FROM column TO column+cell_width-1 IN WINDOW window FORMAT TEXT30
+		    WITH ( browse_routine     = "routine_browse"             ,
+		           vgl_library        = GLOBAL ( "CURRENT_LIBRARY" ) ,
+		           user_info          = library_name                 ,
+		           validation_routine = "routine_validate"           )
+
+		IF ( LASTKEY <> "EXIT" ) THEN
+			ASSIGN smidi_map_item.routine_name IN OBJECT self = rootine
+		ENDIF
+
+	ENDIF
+
+	RETURN ( rootine )
+
+ENDROUTINE { routine_prompt }
+
+{******************************************************************************}
+
+ROUTINE map_update_prompt   (        self        ,
+                                   grid        ,
+                             VALUE cell_column ,
+                             VALUE cell_row    ,
+                             VALUE column      ,
+                             VALUE row         ,
+                             VALUE cell_width  ,
+                                   window      ,
+                             VALUE is_display   )
+
+	DECLARE display_only, table_id, field_name, orig_val, cur_val, is_key0, tw, fw
+
+	table_id    = SELECT smidi_map_item.table_name IN OBJECT self
+	field_name  = SELECT smidi_map_item.field_name IN OBJECT self
+	cur_val     = SELECT smidi_map_item.map_update IN OBJECT self
+	orig_val    = cur_val
+
+	IF is_display = EMPTY THEN
+
+		{ This is called from a List }	
+
+	ELSEIF is_display THEN
+
+		DISPLAY cur_val ON LINE row FROM column TO column+cell_width-1
+		    IN WINDOW window FORMAT BOOLEAN WITH ( true_word="*", false_word=" ")
+
+	ELSE
+
+
+		GET_FIELD_DETAILS 'table_id'.'field_name', "KEY0_FIELD", is_key0
+
+		IF ( NOT is_key0 ) & ( field_name <> "WORK_PROFILE" ) THEN
+
+			display_only = TRUE
+			window_set_status ( "This field can only be set for table's primary key fields" )
+			tw      = " "
+			fw      = " "
+			cur_val = " "
+
+		ELSE
+
+			display_only = grid.parent_prompt.display_only
+			tw           = "*"
+			fw           = " "
+
+		ENDIF
+
+
+		PROMPT FOR cur_val ON LINE row FROM column TO column+cell_width-1 IN WINDOW window
+		    FORMAT BOOLEAN WITH ( display_only=display_only, true_word=tw, false_word=fw )
+
+		IF ( cur_val <> orig_val ) THEN
+
+			ASSIGN smidi_map_item.map_update IN OBJECT self = cur_val
+
+		ENDIF
+
+	ENDIF
+
+	RETURN ( cur_val )
+
+ENDROUTINE { map_update_prompt }
+
+{******************************************************************************}
+
+ROUTINE leave_table_routine ( self )
+
+	DECLARE details, field_prompt, cnt, current, this_table, this_field, details_with_no_empties
+
+	ARRAY details
+	ARRAY details_with_no_empties
+
+
+	get_field_names ( self.text, details )
+
+	field_prompt = self.parent_prompt.prompt_objects [ 2 ]
+
+	{ ----------------------------------------------------------------------------------- }
+	{ This array needs all the fields that are already defined removed so can't add twice }
+	{ ----------------------------------------------------------------------------------- }
+
+	cnt     = 1
+	current = self.parent_prompt.parent_prompt.collection
+
+	current.set_first()
+
+	WHILE current.current <> EMPTY DO
+
+		this_table = SELECT SMIDI_MAP_ITEM.TABLE_NAME IN OBJECT current.current
+		this_field = SELECT SMIDI_MAP_ITEM.FIELD_NAME IN OBJECT current.current
+
+		IF ( STRIP ( self.text ) = STRIP ( this_table ) ) THEN
+
+			IF ( smidi_lib_array2_slice ( details, this_field, cnt ) ) THEN
+
+				array_remove_slice ( details, 1, cnt )
+
+			ENDIF
+		ENDIF
+
+		current.set_next()
+
+	ENDWHILE
+
+	{ ---------------------------------------------------------------- }
+	{ Now remove all aliases so that only the database field is chosen }
+	{ ---------------------------------------------------------------- }
+
+	cnt = 1
+
+	WHILE details[cnt,1] <> EMPTY DO
+
+		IF details[cnt,2] THEN
+			array_remove_slice ( details, 1, cnt )
+		ELSE
+			cnt = cnt + 1
+		ENDIF
+
+	ENDWHILE
+
+	{ ---------------------------------------------------------------- }
+	{ Now build a clean array so the prompt will not have any empties  }
+	{ ---------------------------------------------------------------- }
+
+	cnt = 1
+
+	WHILE details[cnt,1] <> EMPTY DO
+
+		details_with_no_empties[cnt,1] = details[cnt,1]
+		details_with_no_empties[cnt,2] = details[cnt,2]
+
+		cnt = cnt + 1
+
+	ENDWHILE
+
+	{ ---------------------------------------------------------------- }
+	{ Well, guess we have a good clean choose array by now - huh?      }
+	{ ---------------------------------------------------------------- }
+
+	field_prompt.choose_array = details_with_no_empties
+	field_prompt.set_text ( "" )
+
+ENDROUTINE { leave_table_routine }
+
+{******************************************************************************}
+
+ROUTINE not_blank_validation_routine ( self )
+
+	RETURN ( NOT BLANK ( self.text ) )
+
+ENDROUTINE { not_blank_validation_routine }
+
+{******************************************************************************}
+
+ROUTINE field_validation_routine ( self )
+	
+	RETURN ( TRUE )
+	
+	{ BUG = need to check if the field is already on the optional OR mandatory screens *************     }
+	{  retval = retval & NOT EMPTY self.parent_prompt.parent_prompt.collection.get_by_name ( self.text ) }
+	{ ************************************************************************************************** }
+
+ENDROUTINE { not_blank_validation_routine }
+
+{******************************************************************************}
+
+ROUTINE build_heading ( prompt_details )
+
+	RETURN ( heading )
+
+ENDROUTINE { build_heading }
+
+{******************************************************************************}
+
+ROUTINE routine_browse ( self ) 
+
+	DECLARE routine_array, lib_name, map_array, count, map_count
+
+	ARRAY routine_array
+	ARRAY map_array
+
+	lib_name = self.user_info
+
+	IF NOT BLANK ( lib_name ) THEN
+		vgl_find_routines ( lib_name, routine_array )
+	ENDIF
+
+	{ ==================================== }
+	{ only show the routines for mapping   }
+	{ ==================================== }
+
+	count     = 1
+	map_count = 0
+
+	WHILE ( count <= SIZE_OF_ARRAY ( routine_array ) ) DO
+
+		IF ( LEFTSTRING ( routine_array[count], 3 ) = "MAP" ) THEN
+
+			map_count            = map_count + 1
+			map_array[map_count] = routine_array[count]
+
+		ENDIF
+
+		count = count + 1
+
+	ENDWHILE
+
+	browse_on_array ( 80 , self.text , map_array )
+
+	self.repaste()
+
+ENDROUTINE { routine_browse }
+
+{******************************************************************************}
+
+ROUTINE routine_validate ( self ) 
+
+	DECLARE lib_name, rout_name, valid_flag, message, detail
+
+	valid_flag = TRUE
+	lib_name   = self.user_info
+	rout_name  = self.text
+
+	IF NOT BLANK ( rout_name ) THEN
+
+		valid_flag = vgl_validate_routine ( lib_name , rout_name )
+		
+		IF NOT valid_flag THEN
+
+			message_fetch ( "SMIDI_MAP_MSG_BAD_ROUT", message )
+			detail = STRIP ( lib_name ) : "/" : STRIP ( rout_name )
+			message_add_parameter ( message, detail )
+			message = message_get_text ( message, 1 )
+
+			flash_message ( message, TRUE )
+
+		ENDIF
+
+	ENDIF
+
+	RETURN ( valid_flag )
+
+ENDROUTINE { routine_validate }
+
+{ end $smidi_lte_map }

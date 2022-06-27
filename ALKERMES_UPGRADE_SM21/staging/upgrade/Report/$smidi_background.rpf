@@ -1,0 +1,434 @@
+{*******************************************************************************
+*
+* Module Name   : $SMIDI_BACKGROUND
+*
+* Purpose       : Report that implements a new piece of functionality.
+*
+* Document Ref. : CH01234, Implement new functionality
+*
+* (c) Copyright 1984-cccc Thermo Electron Corporation. All rights reserved.
+********************************************************************************} 
+ENABLE WINDOWS 
+
+SET NAME "DISPLAY/"
+SET NOTPROTECTED
+SET COMPILE_OPTION DECLARE
+SET COMPILE_OPTION EXP_MESS
+
+JOIN STANDARD_LIBRARY STD_ARRAY		{ size_of_array				 }
+JOIN STANDARD_LIBRARY STD_CLIENT           	{ client_registry_get_value       	 }
+JOIN STANDARD_LIBRARY STD_DATABASE	{ transaction is write            	 }
+JOIN STANDARD_LIBRARY STD_GENERAL		{                                 			 }
+JOIN STANDARD_LIBRARY STD_PROMPT		{ debug file to params           	 }
+JOIN STANDARD_LIBRARY STD_USER_LOGIN	{ login_user                     		 }
+JOIN STANDARD_LIBRARY STD_VGL              	{ VGL_validate_routine           	 }
+JOIN STANDARD_LIBRARY STD_WINDOW	{ window_set_status			 }
+JOIN LIBRARY $LIB_UTILS                   			 { flash-message, spawn           	 }
+JOIN LIBRARY $PROMPT_LIST                 		 { list viewer of the client reg   	 }
+
+{*******************************************************************************
+*                              VARIABLES / CONSTANTS
+*******************************************************************************}
+
+CONSTANT MSG_HIGH        = 10                     { debug level for logfiles }
+CONSTANT MSG_LOW         = 1                       { minor debug output       }
+
+CONSTANT MAX_PROCESS = "MAX_PROCESS"
+CONSTANT VALID_PROCESS = "VALID_PROCESS"
+
+{ Status Queue constants }
+CONSTANT SLEEPY_TIME          = "0 00:00:30"      { status program mode 1    }
+CONSTANT USER_STATUS_LIBRARY  = "$smidi_user"     { status program mode 1    }
+CONSTANT USER_STATUS_ROUTINE  = "user_status"     { status program mode 1    }
+DECLARE os_delim
+
+
+DECLARE	the_process_prompt,		{ The name of the background Proces to execute }
+			max_process_prompt,		{ Identifier for the max number of processes reached }
+			bg_report,		{ Report to execute }
+			bg_routine,		{ Rotuine within the Report to execute }
+			bg_user,			{ ID of the Background User }
+			ret_value,		{ BOOL indicating success or failure }
+			user_removed,	{ SampleManager User ID  }
+			sm_password		{ SampleManager User password (encrypted) }
+	
+
+
+{*******************************************************************************
+*                               M A I N   C O D E
+*******************************************************************************}
+		
+	PROMPT FOR the_process_prompt	 
+	PROMPT FOR max_process_prompt	
+	
+	InvokeBackgroundProcess (the_process_prompt )
+
+
+{*******************************************************************************
+*                             R O U T I N E S
+*******************************************************************************}
+
+
+{******************************************************************************}
+
+ROUTINE InvokeBackgroundProcess ( theProcess )
+
+{Invoke the Background functionalilty.
+*
+* Parameters   : theProcess - the Name of the Background Process
+*              
+* Return Value : None
+*
+*******************************************************************************}
+
+	{**********************************************************************}
+	{* Retrieve the Library, routine and user for the Background Process                       *}
+	{**********************************************************************}
+	IF (the_process_prompt <> EMPTY) THEN
+
+		IF NOT (GetBackgroundDetails()) THEN
+	
+			{ Unable to retrieve the Background details }
+			do_message ( GET_USER_MESSAGE ( "SMIDI_BACKGROUND_BG", 27 ), MSG_HIGH )
+		
+		ELSEIF NOT (GetSMDetails()) THEN
+		
+			{ Unable to retrieve the Background details }
+			do_message ( GET_USER_MESSAGE ( "SMIDI_BACKGROUND_BG", 28 ), MSG_HIGH )
+		
+		ELSEIF NOT (login_user(bg_User, sm_password)) THEN
+		
+			{ Unable to retrieve the Background details }
+			do_message ( GET_USER_MESSAGE ( "SMIDI_BACKGROUND_BG", 29 ), MSG_HIGH )
+			
+		ELSEIF NOT	(CallProcess()) THEN
+		
+			{ Unable to retrieve the Background details }
+			do_message ( GET_USER_MESSAGE ( "SMIDI_BACKGROUND_BG", 30 ), MSG_HIGH )
+		
+		ENDIF
+		
+		
+	ELSE
+		{ No Process has been passed  }
+		do_message ( GET_USER_MESSAGE ( "SMIDI_BACKGROUND_BG", 26 ), MSG_HIGH )
+		
+	ENDIF { IF NOT BLANK (theProcess) }
+	
+	
+ENDROUTINE  { do message }
+
+{******************************************************************************}
+
+ROUTINE GetBackgroundDetails
+
+{ Retrieve the Background details
+*
+* Parameters   : None
+*              
+* Return Value : BOOL, indicating success
+*
+*******************************************************************************}
+
+	ret_value = FALSE
+	
+	bg_report = SELECT SMIDI_BACKGROUND.VGL_LIBRARY
+						WHERE REMOVEFLAG = FALSE
+						AND ACTIVE = TRUE
+						AND SERVICE = the_process_prompt
+	
+	IF  ( bg_report <> EMPTY ) THEN
+		
+		bg_routine = SELECT SMIDI_BACKGROUND.VGL_ROUTINE
+		
+		IF  ( bg_routine <> EMPTY ) THEN
+		
+			bg_User = SELECT SMIDI_BACKGROUND.USER_ID
+			
+			IF  ( bg_User <> EMPTY ) THEN
+			
+				ret_value = TRUE
+			
+			ENDIF
+		
+		ENDIF
+	
+	ENDIF
+	
+	RETURN (ret_value)
+	
+ENDROUTINE { GetbackgroundDetails }
+
+
+{******************************************************************************}
+
+ROUTINE GetSMDetails 
+
+{ Retrieve the SampleManager Logon details for the Background User
+*
+* Parameters   : None
+*              
+* Return Value : BOOL, indicating success
+*
+*******************************************************************************}
+
+	DECLARE status
+	ret_value = FALSE
+
+	
+	user_removed = SELECT PERSONNEL.REMOVEFLAG WHERE IDENTITY = bgUser
+	
+	IF (user_removed = EMPTY ) | (user_removed) THEN
+	
+		do_message ( GET_USER_MESSAGE ( "SMIDI_BACKGROUND_BG", 6):bg_User:"-> ":bg_report,MSG_HIGH )
+	
+	ELSE
+		
+		status = EMPTY
+	
+	ENDIF  { select on the new user is all ok }
+
+	IF status = EMPTY THEN
+		
+		user_removed= SELECT PASSWORD.EXPIRES WHERE IDENTITY = bg_User
+		
+		IF ( NOT BLANK ( user_removed) ) & (user_removed < NOW ) THEN
+			status = ERROR
+			do_message ( GET_USER_MESSAGE ("SMIDI_BACKGROUND_BG", 8):bg_User:" ":user_removed:"-> ":bg_report, MSG_HIGH )	
+			
+		ELSE
+			
+			sm_password = SELECT PASSWORD.CRYPTPASS
+			
+			IF ( sm_password <> EMPTY ) THEN
+			
+				ret_value = TRUE
+				
+			ENDIF
+		
+		ENDIF
+
+	ENDIF
+	
+	RETURN (ret_value)
+
+ENDROUTINE { GetSMDetails }
+
+
+{******************************************************************************}
+
+ROUTINE CallProcess
+
+{ Calls the Specified Routine in the specified Library for the Background Process
+*
+* Parameters   : None
+*              
+* Return Value : BOOL, indicating success
+*
+*******************************************************************************}
+
+	DECLARE service
+	
+	service= 0
+	
+	IF max_process_prompt = VALID_PROCESS THEN
+			CALL_ROUTINE bgRoutine
+						USING service
+				 		IN LIBRARY bgReport	
+	ELSE
+			CALL_ROUTINE "SMIDIBGMAXPROCESS"
+						USING the_process_prompt
+				 		IN LIBRARY bgReport	
+	
+	ENDIF
+	
+	RETURN (TRUE)				 	
+
+ENDROUTINE { CallProcess }
+
+
+{*******************************************************************************
+*                        G L O B A L    R O U T I N E S
+*******************************************************************************}
+
+
+{******************************************************************************}
+
+GLOBAL
+
+ROUTINE do_message ( VALUE msg_String, VALUE msg_Level )
+
+{ Creates a log file and logs any errors
+*
+* Parameters   : msg_String - Message string to be logged
+*			  msg_level - LEvel of severity for the message
+*              
+* Return Value : None
+*
+*******************************************************************************}
+
+	DECLARE filename,todays_date,this_time, message, status
+
+        SET DATE FORMAT "DZ-MON-YYYZ"
+        todays_date = STRIP ( NOW )
+        RESTORE DATE FORMAT
+        
+        SET DATE FORMAT "H24-MI-SS"
+        this_time = STRIP ( NOW )
+        
+	filename =  LIB_UTILS_LOGICAL_TO_STRING ( "SMP$LOGFILES" ):"\": GLOBAL ( "INSTANCE" ) :"_" :the_process_prompt:"_":todays_date:"_":this_time :".log"
+	message = STRIP(msg_level) : " | " : STRIP ( NOW ) : " | " : STRIP(msg_String)
+	RESTORE DATE FORMAT
+	
+	FILE CREATE filename, status
+	
+	FILE WRITE filename, message, status
+	FILE CLOSE filename, status
+
+	IF ( GLOBAL ( "MODE" ) = "INTERACTIVE" ) THEN
+		window_set_status ( message )
+	ENDIF
+	
+ENDROUTINE { do_message }		
+
+
+
+{*******************************************************************************
+*                       STATUS QUEUE ROUTINES
+*******************************************************************************}
+
+ROUTINE smidi_bg_rmb ( explorer_rmb, object, collection )
+
+	IF ( GLOBAL ( "PLATFORM" ) = "NT" ) THEN
+		os_delim = "\"
+	ELSEIF ( GLOBAL ( "PLATFORM" ) = "UNIX" ) THEN
+		os_delim = "/"
+	ELSE
+		os_delim = ":"
+	ENDIF
+
+	smidi_status_queue()
+
+ENDROUTINE    { smidi_explorer_rmb }
+
+{ ----------------------------------------------------------- }
+
+ROUTINE smidi_status_queue
+
+	DECLARE shutdown_enabled, logfile_id, status
+
+	build_logfile ( logfile_id, "STATUS_QUEUE" )
+
+	shutdown_enabled = SELECT CONFIG_HEADER.VALUE WHERE IDENTITY = "SHUTDOWN_ENABLED"
+
+	WHILE NOT shutdown_enabled DO
+
+		get_status_queue(logfile_id)
+
+		IF ( GLOBAL ( "MODE" ) <> "INTERACTIVE" ) THEN
+
+			SLEEP FOR SLEEPY_TIME
+			shutdown_enabled = SELECT CONFIG_HEADER.VALUE WHERE IDENTITY = "SHUTDOWN_ENABLED"
+
+		ELSEIF ( confirm_with_text ( "Quit processing status_queue table ?" ) ) THEN
+
+			shutdown_enabled = TRUE 
+
+		ENDIF
+
+	ENDWHILE
+
+	FILE CLOSE logfile_id, status
+
+	EXIT
+
+ENDROUTINE  { smidi_Status_queue }
+
+{ ----------------------------------------------------------- }
+
+ROUTINE get_status_queue ( VALUE logfile_id )
+
+	DECLARE full_id, status, save_type, save_status
+
+	full_id = SELECT STATUS_QUEUE.IDENTITY FOR UPDATE
+		    WHERE TYPE >= "A"
+		    ORDER ON IDENTITY DESCENDING
+
+	WHILE ( full_id <> EMPTY ) & ( full_id <> LOCKED ) DO
+
+
+		save_type   = STRIP ( SELECT STATUS_QUEUE.TYPE   )
+		save_status = STRIP ( SELECT STATUS_QUEUE.STATUS )
+
+		window_set_status ( "Status Trigger --> ":save_type:save_status:full_id )
+
+		IF NOT TRANSACTION_IS_WRITE() THEN
+			START WRITE TRANSACTION "StatusQueueDelete"
+		ENDIF
+
+		IF ( do_status_trigger ( save_type:save_status:full_id, logfile_id ) ) THEN
+
+			DELETE STATUS_QUEUE, status
+
+			IF status = EMPTY THEN
+				COMMIT                    { @@@ <--- THIS IS THE ONLY COMMIT in program     }
+			ELSE
+
+				do_message ( "Error deleting status_queue ":full_id:" ":status, MSG_HIGH )
+				ROLLBACK                  { @@@ <--- FIRST rollback in program              }
+			ENDIF
+
+		ELSE
+			ROLLBACK                        { @@@ <--- SECOND (and last) ROLLBACK in program  }
+		ENDIF
+
+		NEXT STATUS_QUEUE
+		full_id = SELECT STATUS_QUEUE.IDENTITY
+
+	ENDWHILE
+
+ENDROUTINE { get_status_queue }
+
+{ ---------------------------------------------------------------------------------------- }
+
+ROUTINE do_status_trigger ( VALUE full_id, VALUE logfile )
+	
+	DECLARE retval
+	retval = TRUE
+
+	IF ( VGL_VALIDATE_ROUTINE ( USER_STATUS_LIBRARY, USER_STATUS_ROUTINE ) ) THEN
+
+		CALL_ROUTINE USER_STATUS_ROUTINE IN LIBRARY USER_STATUS_LIBRARY 
+			USING full_id, logfile RETURNING retval NEW CONTEXT
+
+		IF ( NOT ( VARIABLE_IS_ASSIGNED ( retval ) ) ) | ( retval = EMPTY ) THEN
+
+			do_message ( "Warning ":USER_STATUS_LIBRARY:"/":USER_STATUS_ROUTINE:" did not return a value (T/F) for success of call, assuming all is ok ":full_id, MSG_HIGH )
+			retval = TRUE
+
+		ENDIF
+
+	ELSE
+
+		do_message ( "Warning ":USER_STATUS_LIBRARY:"/":USER_STATUS_ROUTINE:" is not a valid routine/library, will delete status queue ":full_id, MSG_HIGH )
+
+	ENDIF  { vgl_validated the routine/library for the status trigger }	
+
+	RETURN ( retval )
+
+ENDROUTINE  { do_status }
+
+{ ---------------------------------------------------------------------------------------- }
+GLOBAL ROUTINE build_logfile ( log_fileid, VALUE a_lib )
+
+	DECLARE tmpString
+	SET DATE FORMAT "Mon'_'DZ'_'H24'_'MI"
+	tmpString = a_lib : "_" : STRIP ( NOW )
+	RESTORE DATE FORMAT
+
+	log_fileid = LIB_UTILS_LOGICAL_TO_STRING ( "SMP$LOGFILES" )  : os_delim : tmpString : ".log"
+
+ENDROUTINE  { build_logfile name }
+
+{ end $smidi_background  }
+

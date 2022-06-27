@@ -1,4 +1,4 @@
-﻿{******************************************************************************
+{******************************************************************************
 *
 *	Routines to parse and calculate formulas
 *
@@ -542,10 +542,9 @@ ROUTINE lib_re_formula_print_formula ( VALUE formula       ,
 
 		temp = temp : "/"
 
-		SET FORMAT "999"
-
-		temp = temp : strip ( SELECT test . test_count IN OBJECT result_object .
-							                 test_object   )
+		temp = temp : strip ( number_to_text ( SELECT test . test_count
+		                                        IN OBJECT result_object . test_object ,
+		                                        "999"                                 ))
 
 		write_to_formula_print_file( temp )
 
@@ -2060,25 +2059,48 @@ ENDROUTINE
 {*******************************************************************************}
 
 ROUTINE lib_re_formula_result_value ( VALUE test_number ,
-				      VALUE name        ,
-					    units       ,
-					    inequality  ,
-					    dilution    )
+                                      VALUE name        ,
+                                            units       ,
+                                            inequality  ,
+                                            dilution    )
 
 {
 *
 *
 *******************************************************************************}
 
+	RETURN ( lib_re_formula_result_value_from_field ( test_number ,
+	                                                  name        ,
+	                                                  units       ,
+	                                                  inequality  ,
+	                                                  dilution    ,
+	                                                  "TEXT"      ))
+
+ENDROUTINE
+
+{*******************************************************************************}
+
+ROUTINE lib_re_formula_result_value_from_field ( VALUE test_number      ,
+                                                 VALUE name             ,
+                                                       units            ,
+                                                       inequality       ,
+                                                       dilution         ,
+                                                 VALUE result_fieldname )
+
+{
+*
+*******************************************************************************}
+
 	DECLARE file_descriptor ,
 		answer          ,
+		str_answer      ,
 		first           ,
 		second
 
 	IF ( name        = SELECT result . name        ) AND
 	   ( test_number = SELECT result . test_number ) THEN
 
-		answer = SELECT result . text
+		answer = SELECT result . 'result_fieldname'
 		file_descriptor = EMPTY
 
 	ELSE
@@ -2089,7 +2111,7 @@ ROUTINE lib_re_formula_result_value ( VALUE test_number ,
 
 		IF test_number <> ERROR THEN
 
-			answer = SELECT result . text
+			answer = SELECT result . 'result_fieldname'
 				 WHERE ( test_number = test_number ) AND
 				       ( name        = name        )
 
@@ -2119,20 +2141,36 @@ ROUTINE lib_re_formula_result_value ( VALUE test_number ,
 
 	IF answer <> EMPTY THEN
 
-		answer = result_string ( EMPTY       ,
-				         test_number ,
-				         name        )
+		str_answer = result_string ( EMPTY       ,
+		                             test_number ,
+		                             name        )
 
-		IF answer <> EMPTY THEN
+		IF ( result_fieldname = "TEXT" )
 
-			first  = substring ( answer , 1 , 1 )
-			second = substring ( answer , 2 , 1 )
+			answer = str_answer
 
-		        IF INDEX ( "<>" , first ) <> 0 THEN
+		ELSEIF ( result_fieldname = "VALUE" )
 
-                		IF second = "=" THEN
+			answer = result_value ( EMPTY       ,
+			                        test_number ,
+			                        name        )
 
-		                        inequality = first : second
+		ELSEIF ( result_fieldname = "RAW_RESULT" )
+
+			str_answer = answer
+
+		ENDIF
+
+		IF str_answer <> EMPTY THEN
+
+			first  = substring ( str_answer , 1 , 1 )
+			second = substring ( str_answer , 2 , 1 )
+
+			IF INDEX ( "<>" , first ) <> 0 THEN
+
+				IF second = "=" THEN
+
+					inequality = first : second
 
                 		ELSE
 
@@ -2161,11 +2199,33 @@ ROUTINE lib_re_formula_result_value ( VALUE test_number ,
 ENDROUTINE
 
 {*******************************************************************************}
+
 GLOBAL
 
 ROUTINE lib_re_formula_get_result (       self         ,
-				          context      ,
-				    value use_dilution )
+                                          context      ,
+                                    VALUE use_dilution )
+
+{
+*
+*
+*******************************************************************************}
+
+	RETURN ( lib_re_formula_get_result_fieldname ( self         ,
+	                                               context      ,
+	                                               use_dilution ,
+	                                               "TEXT"       ))
+
+ENDROUTINE
+
+{*******************************************************************************}
+
+GLOBAL
+
+ROUTINE lib_re_formula_get_result_fieldname (       self              ,
+                                                    context           ,
+                                              VALUE use_dilution      ,
+                                              VALUE result_field_name )
 
 {
 *
@@ -2232,23 +2292,24 @@ ROUTINE lib_re_formula_get_result (       self         ,
 		ENDIF
 
 		result_object = context . result_context . get_result ( test_number ,
-        		                                                        name )
+		                                                        name )
 
 		IF result_object = EMPTY THEN
 
-			answer = lib_re_formula_result_value ( test_number  ,
-						               name         ,
-							       self . units ,
-							       inequality   ,
-							       dilution     )
-
+			answer = lib_re_formula_result_value_from_field ( test_number       ,
+			                                                  name              ,
+			                                                  self . units      ,
+			                                                  inequality        ,
+			                                                  dilution          ,
+			                                                  result_field_name )
 
 			IF answer = EMPTY THEN
 
-				lib_re_formula_runtime_error (  context          ,
-							       "RESULT_NOTFOUND" ,
-								name             ,
-								EMPTY            )
+				lib_re_formula_runtime_error ( context           ,
+				                               "RESULT_NOTFOUND" ,
+				                               name              ,
+				                               EMPTY             )
+
 			ENDIF
 
 			self . value  = answer
@@ -2256,9 +2317,25 @@ ROUTINE lib_re_formula_get_result (       self         ,
 		ELSEIF result_object . result_accepted_status () THEN
 
 			dilution     = result_object . get_field ( "DILUTION_FACTOR" )
-			self . value = result_object . result_val
+
+			IF (result_field_name = "TEXT") THEN
+
+				self . value = result_object . result_str
+				inequality   =  result_object . get_inequality ()
+
+			ELSEIF (result_field_name = "RAW_RESULT") THEN
+
+				self . value = result_object . result_raw_str
+				inequality   =  result_object . get_raw_inequality ()
+
+			ELSE
+
+				self . value = result_object . result_val
+				inequality   =  result_object . get_inequality ()
+
+			ENDIF
+
 			self . units = result_object . result_unit
-			inequality   = result_object . get_inequality ()
 
 		ELSE
 
@@ -3504,7 +3581,8 @@ ROUTINE lib_re_formula_standard_function ( self )
 		component     ,
 		found         ,
 		standard_date ,
-		context
+		context       ,
+		old_format
 
 	self . set_parameter_count_check_off()
 
@@ -3590,12 +3668,16 @@ ROUTINE lib_re_formula_standard_function ( self )
 
 				ELSE
 
+					old_format = GLOBAL ( "FORMAT_TEXT" )
         	                	SET FORMAT "999"
+
 					lib_re_formula_runtime_error (  context        ,
 								       "NO_STAND_COMP" ,
 									component      ,
 									strip ( standard_id ) : "/" :
 								        strip ( versions [ 1 ] )    )
+
+        	                	SET FORMAT old_format
 
 				ENDIF
 
@@ -7997,133 +8079,7 @@ ROUTINE lib_re_formula_print_parameter ( VALUE param_table  ,
 	ENDIF
 
 ENDROUTINE
-{*******************************************************************************}
 
-ROUTINE lib_re_formula_stk_btch_param_funct ( self )
-
-{
-*
-*
-*******************************************************************************}
-
-	DECLARE param_name         ,
-	        file_descriptor_s  ,
-	        file_descriptor_sb ,
-		answer             ,
-		context            ,
-		batch_num           ,
-		stock_id           ,
-		stock_batch        ,
-		units
-
-	self . set_parameter_count_check_off()
-
-	context = self . context
-
-	answer   = ""
-	units    = ""
-	stock_id = ""
-
-	IF lib_re_formula_param_number ( self ) = 2 THEN
-
-		stock_id    = lib_re_formula_parameter_text ( self    ,
-							      1       ,
-							      context )
-
-		param_name  = lib_re_formula_parameter_text ( self    ,
-							      2       ,
-							      context )
-
-	ELSE
-
-		lib_re_formula_runtime_error (  context           ,
-					       "INCORRECT_PARAMS" ,
-					       "STOCK_PARAM"      ,
-						lib_re_formula_param_number ( self )      )
-
-	ENDIF
-
-	IF ( context . error ) THEN
-
-		{ Error already signalled }
-
-	ELSEIF context  . read_script THEN
-
-		formula_script_read_stock_param ( stock_id   ,
-					          param_name ,
-					          answer     ,
-					          units      )
-
-	ELSEIF ( context . mode = FORMULA_MODE_TEST_PHASE1 ) THEN
-
-		lib_re_formula_prompt_stock_param ( param_name   ,
-		                                    answer       )
-
-	ELSEIF ( context . mode <> FORMULA_MODE_VALIDATE ) THEN
-
-		push_file_descriptor ( "STOCK_INVENTORY",      file_descriptor_s  )
-		push_file_descriptor ( "STOCK_BATCH_PROPERTY", file_descriptor_sb )
-
-		batch_num = SELECT test . instrument_batch
-		                  IN OBJECT context . result_object . test_object
-
-		stock_batch = SELECT stock_inventory . stock_batch
-		              WHERE  stock = stock_id AND
-		                     be_batch_id  = batch_num
-
-		IF stock_batch <> EMPTY THEN
-
-			answer = SELECT stock_batch_property . value
-				 WHERE ( stock       = stock_id    ) AND
-			               ( stock_batch = stock_batch ) AND
-				       ( identity     = param_name )
-
-			units = SELECT stock_batch_property . units
-
-			IF answer = EMPTY THEN
-
-				lib_re_formula_runtime_error (  context                                         ,
-							       "STOCK_PARAM_NOT_FOUND"                          ,
-								param_name                                      ,
-								STRIP ( stock_id ) : "/" : STRIP ( stock_batch ))
-
-			ENDIF
-
-		ELSE
-
-			answer = EMPTY
-			lib_re_formula_runtime_error (  context                ,
-						       "STOCK_BATCH_NOT_FOUND" ,
-							stock_batch            ,
-							stock_id               )
-
-		ENDIF
-
-		pop_file_descriptor ( file_descriptor_s  )
-		pop_file_descriptor ( file_descriptor_sb )
-
-	ENDIF
-
-	self . text = answer
-
-	IF NUMTEXT ( answer ) THEN
-		self . value = NUMERIC ( answer )
-	ENDIF
-
- 	self . units = units
-	self . inequality = FORMULA_EQ
-
-	IF context . mode = FORMULA_MODE_PRINT THEN
-
-		lib_re_formula_print_stock_param ( stock_id    ,
-		                                   stock_batch ,
-		                                   param_name  ,
-					           answer      ,
-					           units       )
-
-  	ENDIF
-
-ENDROUTINE
 
 {*******************************************************************************}
 {*******************************************************************************}

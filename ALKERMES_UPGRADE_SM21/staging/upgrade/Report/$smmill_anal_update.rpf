@@ -1,0 +1,1335 @@
+{==============================================================================}
+{                                                                              }
+{  ORBIS INFORMATION SYSTEMS                                                   }
+{                                                                              }
+{  Filename         : $SMMILL_ANAL_UPDATE.RPF                                  }
+{  Version          : 3.1                                                      }
+{  Author           : A. Finnerty                                              }
+{  Date Created     : 14-Jul-2004                                              }
+{  Description      : Contains routines that allow a result map be transferred }
+{                     to a later analysis version                              }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{                                                                              }
+{  Ver.     Date        By          Description                                }
+{  ----     ----        --          -----------                                }
+{  3.1      23-Aug-2004 AF          Release version                            }
+{  2.0      21-Jun-2005 AF          Modified for version 2.0 of the interface  }
+{  Added on 02/08/05 by Enon Gavin for SM-Millennium enchancements             }
+{                                                                              }
+{  2.1      25/10/05 by Aidan Finnerty  In routine select_copy_data parameter  }
+{                    the_anal changed from reference to value so that it cannot}
+{                    be changed by passing it to this routine. This corrects an}
+{                    error found by OQ script 6.2 step 11                      }
+{ Added on 26/10/05 by Enon Gavin for SM-Millennium enchancement       }
+{==============================================================================}
+
+
+ENABLE WINDOWS
+
+SET NAME "DEFER/"
+SET NOTPROTECTED
+
+SET COMPILE_OPTION DECLARE
+
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $PROMPT_LIST
+
+
+{========================================================================
+
+  This report can be used as a template for other purposes
+  The number of identity prompts can be set between 1 and 5
+  (using number_of_prompts global )
+
+  Specify the prompt names using LBL_IDENTITY constants
+  The ROUTINE_LIST_IDENTITY routines are used to set the routines that fill the identities
+  The ROUTINE_ONOK routine is called when OK is pressed. It returns True/False for validation
+  and carries out the action. It accepts N parameters where N is number of identities
+
+  A global routine may be written that waps main_form_initialisation (which is 
+  not global as there may be > 1 reports using this template). This will allow this 
+  form to be automatically populated (e.g. if calling from another screen e.g. SM-Millennium explorer )
+
+==============================================================================}
+
+
+{ form }
+CONSTANT ID_PROMPT_WIDTH = 30
+
+
+{ Routines }
+
+CONSTANT ROUTINE_LIST_IDENTITY1 = "get_entity_list"
+CONSTANT ROUTINE_LIST_IDENTITY2 = "get_mapped_anal_list"
+CONSTANT ROUTINE_LIST_IDENTITY3 = "get_mapped_anal_ver_list"
+CONSTANT ROUTINE_LIST_IDENTITY4 = "get_all_anal_vers"
+CONSTANT ROUTINE_LIST_IDENTITY5 = ""
+CONSTANT ROUTINE_ONOK = "update_res_map"
+
+
+{ Labels }
+CONSTANT LBL_CAPTION = "Update analysis version map"
+
+CONSTANT LBL_IDENTITY1 = "CDS Project"
+CONSTANT LBL_IDENTITY2 = "Mapped analysis"
+CONSTANT LBL_IDENTITY3 = "Mapped analysis version"
+CONSTANT LBL_IDENTITY4 = "All analysis versions"
+CONSTANT LBL_IDENTITY5 = ""
+
+{ Other constants }
+CONSTANT WRITE_TRANS_NAME 		= "SM-Millennium Interface"
+CONSTANT CTXT_NO_NEW_VER  		= "No new analysis version"
+CONSTANT CTXT_PROMPTS_NOT_POPULATE   	= "All prompts must be populated"
+CONSTANT CTXT_COMPLETED  		= "Completed"
+
+
+
+{ Tags so prompt index is known for prompt objects  }
+DECLARE prompt_tag_array, g_number_of_prompts, g_start_time
+
+g_number_of_prompts = 4
+
+main_form_run (1)
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE main_form_run                                                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  07/07/04     AF              Runs the main form                             }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE main_form_run (VALUE option)
+
+   main_form_initialisation (0, EMPTY, EMPTY, EMPTY, EMPTY)
+
+ENDROUTINE   {   main_form_run   }
+
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE main_form_initialisation                                            }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  07/07/04     AF              Initialise the prompt Libraries                }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE main_form_initialisation (VALUE num_prompts, VALUE id1, VALUE id2, VALUE id3,
+                                                     VALUE id4 )
+     
+    set_up_std_prompt_list_class ( ) 
+
+    DECLARE form
+
+    { prompt_tag_array is a global, but dim as array here, so can call this from other routines }
+    ARRAY prompt_tag_array   ARRAYSIZE (0)
+    
+    { To get around problem with menu proc, (validates form automatically) dont allow
+       form validation unless oipen for >2 seconds
+    }
+    g_start_time = NOW
+
+    { Can optionally set number of prompts global from here }
+    IF (num_prompts > 0) THEN
+
+        g_number_of_prompts = num_prompts
+
+    ENDIF
+
+    create_form_main_form ( form )
+
+
+    { initial values }
+    IF (id1 <> EMPTY) THEN
+
+	array_insert_slice (form.prompt_objects [prompt_tag_array [1]].choose_array,1,1)
+	form.prompt_objects [prompt_tag_array [1]].choose_array [1,1] = PAD (id1, " ", ID_PROMPT_WIDTH)
+	form.prompt_objects [prompt_tag_array [1]].choose_array [1,2] = id1
+
+    ENDIF
+
+    IF (id2 <> EMPTY) THEN
+
+	array_insert_slice (form.prompt_objects [prompt_tag_array [2]].choose_array,1,1)
+	form.prompt_objects [prompt_tag_array [2]].choose_array [1,1] = PAD (id2, " ", ID_PROMPT_WIDTH)
+	form.prompt_objects [prompt_tag_array [2]].choose_array [1,2] = id2
+
+    ENDIF
+
+    IF (id3 <> EMPTY) THEN
+
+	array_insert_slice (form.prompt_objects [prompt_tag_array [3]].choose_array,1,1)
+	form.prompt_objects [prompt_tag_array [3]].choose_array [1,1] = PAD (id3, " ", ID_PROMPT_WIDTH)
+	form.prompt_objects [prompt_tag_array [3]].choose_array [1,2] = id3
+
+    ENDIF
+
+    IF (id4 <> EMPTY) THEN
+
+	array_insert_slice (form.prompt_objects [prompt_tag_array [4]].choose_array,1,1)
+	form.prompt_objects [prompt_tag_array [4]].choose_array [1,1] = PAD (id4, " ", ID_PROMPT_WIDTH)
+	form.prompt_objects [prompt_tag_array [4]].choose_array [1,2] = id4
+
+    ENDIF
+
+
+
+    form . start_prompt ( ) 
+    form . wait_prompt  ( ) 
+    form . end_prompt   ( )
+
+
+ENDROUTINE   {   main_form_initialisation   }
+
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE create_form_main_form                                               }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  07/07/04     AF              creates main form                              }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE create_form_main_form ( form ) 
+
+    DECLARE id1_array
+
+    ARRAY id1_array    ARRAYSIZE (0,2)
+
+  
+    {  The form }
+    PROMPT OBJECT form CLASS "STD_FORM"
+    form . header               = LBL_CAPTION
+    form . row                  = 5
+    form . column               = 20
+    form . height               = 3 * g_number_of_prompts
+    form . width                = 38
+    form . vgl_library          = global ( "current_library" )
+    form . validation_routine   = "main_form_validation"
+    form . button_style         = FORM_BUTTON_OK_CANCEL
+    form . return_behaviour     = FORM_RETURN_LEAVE
+
+
+    form.add_frame ("",2,1,3 * g_number_of_prompts,36)  
+
+
+
+    {  Create identity prompts, they must be created in correct order - id 1 first, ..... }
+
+    create_prompt (form,  LBL_IDENTITY1, 1)
+      
+
+    {   fill identity prompt }
+
+    CALL_ROUTINE ROUTINE_LIST_IDENTITY1
+                 USING id1_array
+
+    form . prompt_objects [prompt_tag_array [1]] . choose_array = id1_array
+
+    ensure_default_prompt (form . prompt_objects [prompt_tag_array [1]].choose_array)
+
+
+    IF (g_number_of_prompts > 1) THEN
+
+        create_prompt (form,  LBL_IDENTITY2, 2)
+        ensure_default_prompt (form . prompt_objects [prompt_tag_array [2]].choose_array)
+
+    ENDIF
+
+
+    IF (g_number_of_prompts > 2) THEN
+
+        create_prompt (form,  LBL_IDENTITY3, 3)
+        ensure_default_prompt (form . prompt_objects [prompt_tag_array [3]].choose_array)
+ 
+    ENDIF
+
+    IF (g_number_of_prompts > 3) THEN
+
+        create_prompt (form,  LBL_IDENTITY4, 4)
+        ensure_default_prompt (form . prompt_objects [prompt_tag_array [4]].choose_array)
+
+    ENDIF
+
+
+    IF (g_number_of_prompts > 4) THEN
+
+        create_prompt (form,  LBL_IDENTITY5, 5)
+        ensure_default_prompt (form . prompt_objects [prompt_tag_array [5]].choose_array)
+
+    ENDIF
+
+ENDROUTINE  {  create_form_main_form  }
+
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE create_prompt                                                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  07/07/04     AF              creates one prompt                             }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE create_prompt (form, VALUE name, VALUE id_number)
+
+    DECLARE prompt_object, id_cnt_text
+  
+    PROMPT OBJECT prompt_object CLASS "STD_PROMPT_TEXT_CHOOSE"
+
+    ARRAY prompt_object.choose_array    
+  
+    { need numeric form of id number }
+    id_cnt_text = STRIP( id_number )
+
+    form . add_display ( name, 3 , ((id_number-1) * 3) + 1, PROMPT_RENDITION_NORMAL ) 
+
+    prompt_object . value                = ""
+    prompt_object . row                  = ((id_number-1) * 3) + 2
+    prompt_object . column               = 4
+    prompt_object . height               = 1
+    prompt_object . width                = ID_PROMPT_WIDTH
+    prompt_object . vgl_library          = global ( "current_library" )
+    prompt_object . leave_prompt_routine = "prompt_identity":id_cnt_text:"_leave_prompt"
+    prompt_object . is_spin              = FALSE
+
+
+    {
+        If need other callbacks, use the following:
+
+            prompt_object . browse_routine       = "prompt_identity":id_cnt_text:"_browse"
+            prompt_object . enter_prompt_routine = "prompt_identity":id_cnt_text:"_enter_prompt"
+            prompt_object . leave_prompt_routine = "prompt_identity":id_cnt_text:"_leave_prompt"
+            prompt_object . validation_routine   = "prompt_identity":id_cnt_text:"_validation"
+            prompt_object . select_routine       = "prompt_identity":id_cnt_text:"_select"
+            prompt_object . key_press_routine    = "prompt_identity":id_cnt_text:"_key_press"
+    }
+
+
+    {  store the tag  }
+    prompt_tag_array [ size_of_array (prompt_tag_array) + 1 ] = form . add_prompt ( prompt_object)
+
+ENDROUTINE    {  create_prompt  }
+
+
+
+
+{---------------- Callbacks for prompt main_form  ------------------------}
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE main_form_validation                                                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  07/07/04     AF              Validation routine, called when click OK       }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE main_form_validation ( self ) 
+
+    DECLARE is_valid
+
+    { To get around problem with menu proc, (validates form automatically) dont allow
+       form validation unless oipen for >2 seconds
+    }
+    IF ((NOW - g_start_time) < INTERVAL ("0000 00:00:02")) THEN
+
+        RETURN (FALSE)
+
+    ENDIF
+
+
+    IF (g_number_of_prompts = 1) THEN
+
+        CALL_ROUTINE ROUTINE_ONOK
+                 USING self . prompt_objects [prompt_tag_array [1]] . value 
+                 RETURNING is_valid
+    ENDIF
+
+
+    IF (g_number_of_prompts = 2) THEN
+
+        CALL_ROUTINE ROUTINE_ONOK
+                 USING self . prompt_objects [prompt_tag_array [1]] . value , 
+                       self . prompt_objects [prompt_tag_array [2]] . value 
+                 RETURNING is_valid
+    ENDIF
+
+    IF (g_number_of_prompts = 3) THEN
+
+        CALL_ROUTINE ROUTINE_ONOK
+                 USING self . prompt_objects [prompt_tag_array [1]] . value , 
+                       self . prompt_objects [prompt_tag_array [2]] . value ,
+                       self . prompt_objects [prompt_tag_array [3]] . value 
+                 RETURNING is_valid
+    ENDIF
+
+    IF (g_number_of_prompts = 4) THEN
+
+        CALL_ROUTINE ROUTINE_ONOK
+                 USING self . prompt_objects [prompt_tag_array [1]] . value , 
+                       self . prompt_objects [prompt_tag_array [2]] . value ,
+                       self . prompt_objects [prompt_tag_array [3]] . value ,
+                       self . prompt_objects [prompt_tag_array [4]] . value
+                 RETURNING is_valid
+
+    ENDIF
+
+
+    IF (g_number_of_prompts = 5) THEN
+
+        CALL_ROUTINE ROUTINE_ONOK
+                 USING self . prompt_objects [prompt_tag_array [1]] . value , 
+                       self . prompt_objects [prompt_tag_array [2]] . value ,
+                       self . prompt_objects [prompt_tag_array [3]] . value ,
+                       self . prompt_objects [prompt_tag_array [4]] . value ,
+                       self . prompt_objects [prompt_tag_array [5]] . value
+                 RETURNING is_valid
+
+    ENDIF
+
+
+    RETURN ( is_valid )
+
+ENDROUTINE
+
+  
+
+{----------  Callbacks for identity1 prompt  ----------------------}
+
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE prompt_identity1_leave_prompt                                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  07/07/04     AF              Called when leave identity1 prompt             }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE prompt_identity1_leave_prompt ( self ) 
+
+    IF ( g_number_of_prompts > 1) THEN
+
+        empty_the_array (self . parent_prompt . prompt_objects [prompt_tag_array [2]].choose_array)
+        ensure_default_prompt (self . parent_prompt . prompt_objects [prompt_tag_array [2]].choose_array)
+
+    ENDIF
+
+    IF ( g_number_of_prompts > 2) THEN
+
+        empty_the_array (self . parent_prompt . prompt_objects [prompt_tag_array [3]].choose_array)
+        ensure_default_prompt (self . parent_prompt . prompt_objects [prompt_tag_array [3]].choose_array)
+    
+    ENDIF
+
+    IF ( g_number_of_prompts > 3) THEN
+
+        empty_the_array (self . parent_prompt . prompt_objects [prompt_tag_array [4]].choose_array)
+        ensure_default_prompt (self . parent_prompt . prompt_objects [prompt_tag_array [4]].choose_array)
+    
+    ENDIF
+
+    IF ( g_number_of_prompts > 4) THEN
+
+        empty_the_array (self . parent_prompt . prompt_objects [prompt_tag_array [5]].choose_array)
+        ensure_default_prompt (self . parent_prompt . prompt_objects [prompt_tag_array [5]].choose_array)
+    
+    ENDIF
+
+    IF ( g_number_of_prompts > 1) THEN
+
+        CALL_ROUTINE ROUTINE_LIST_IDENTITY2
+                 USING self . parent_prompt . prompt_objects [prompt_tag_array [2]].choose_array,
+                       self.value
+
+   ENDIF
+
+ENDROUTINE   {  prompt_identity1_leave_prompt  }
+
+
+
+
+{----------  Callbacks for identity2 prompt  ----------------------}
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE prompt_identity2_leave_prompt                                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  07/07/04     AF              Called when leave identity2 prompt             }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE prompt_identity2_leave_prompt ( self ) 
+
+    IF ( g_number_of_prompts > 2) THEN
+
+        empty_the_array (self . parent_prompt . prompt_objects [prompt_tag_array [3]].choose_array)
+        ensure_default_prompt (self . parent_prompt . prompt_objects [prompt_tag_array [3]].choose_array)
+    
+    ENDIF
+
+    IF ( g_number_of_prompts > 3) THEN
+
+        empty_the_array (self . parent_prompt . prompt_objects [prompt_tag_array [4]].choose_array)
+        ensure_default_prompt (self . parent_prompt . prompt_objects [prompt_tag_array [4]].choose_array)
+    
+    ENDIF
+
+
+    IF ( g_number_of_prompts > 4) THEN
+
+        empty_the_array (self . parent_prompt . prompt_objects [prompt_tag_array [5]].choose_array)
+        ensure_default_prompt (self . parent_prompt . prompt_objects [prompt_tag_array [5]].choose_array)
+    
+    ENDIF
+
+
+    IF ( g_number_of_prompts > 2) THEN
+
+        CALL_ROUTINE ROUTINE_LIST_IDENTITY3
+                 USING self . parent_prompt . prompt_objects [prompt_tag_array [3]] .choose_array,
+                       self . parent_prompt . prompt_objects [prompt_tag_array [1]] . value, 
+                       self.value
+
+    ENDIF
+
+ENDROUTINE    
+
+
+
+
+{----------  Callbacks for identity3 prompt  ----------------------}
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE prompt_identity3_leave_prompt                                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  07/07/04     AF              Called when leave identity3 prompt             }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE prompt_identity3_leave_prompt ( self ) 
+
+
+    IF ( g_number_of_prompts > 3) THEN
+
+        empty_the_array (self . parent_prompt . prompt_objects [prompt_tag_array [4]].choose_array)
+        ensure_default_prompt (self . parent_prompt . prompt_objects [prompt_tag_array [4]].choose_array)
+
+    ENDIF
+
+
+    IF ( g_number_of_prompts > 4) THEN
+
+        empty_the_array (self . parent_prompt . prompt_objects [prompt_tag_array [5]].choose_array)
+        ensure_default_prompt (self . parent_prompt . prompt_objects [prompt_tag_array [5]].choose_array)
+    
+    ENDIF
+
+   IF ( g_number_of_prompts > 3) THEN
+ 
+
+        CALL_ROUTINE ROUTINE_LIST_IDENTITY4
+                 USING self . parent_prompt . prompt_objects [prompt_tag_array [4]] .choose_array,
+                       self . parent_prompt . prompt_objects [prompt_tag_array [1]] . value, 
+                       self . parent_prompt . prompt_objects [prompt_tag_array [2]] . value, 
+                       self.value
+    ENDIF
+
+
+ENDROUTINE    
+
+
+
+
+
+{----------  Callbacks for identity4 prompt  ----------------------}
+
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE prompt_identity4_leave_prompt                                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  07/07/04     AF              Called when leave identity4 prompt             }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE prompt_identity4_leave_prompt ( self ) 
+
+
+    IF ( g_number_of_prompts > 4) THEN
+
+        empty_the_array (self . parent_prompt . prompt_objects [prompt_tag_array [5]].choose_array)
+        ensure_default_prompt (self . parent_prompt . prompt_objects [prompt_tag_array [5]].choose_array)
+    
+
+        CALL_ROUTINE ROUTINE_LIST_IDENTITY5
+                 USING self . parent_prompt . prompt_objects [prompt_tag_array [5]] .choose_array,
+                       self . parent_prompt . prompt_objects [prompt_tag_array [1]] . value, 
+                       self . parent_prompt . prompt_objects [prompt_tag_array [2]] . value, 
+                       self . parent_prompt . prompt_objects [prompt_tag_array [3]] . value, 
+                       self.value
+    ENDIF
+
+ENDROUTINE    
+
+
+
+{----------  Callbacks for identity5 prompt  ----------------------}
+
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE prompt_identity5_leave_prompt                                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  07/07/04     AF              Called when leave identity5 prompt             }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE prompt_identity5_leave_prompt ( self ) 
+
+ENDROUTINE    
+
+
+
+{ ----------------- end of callbacks  ------------------}
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE ensure_default_prompt                                               }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  09-JUL-2004  AF              If a prompt array is empty, ensures "-----" is }
+{                               not displayed                                  }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE ensure_default_prompt (prompt_array)
+
+   IF (size_of_array (prompt_array) = 0) THEN
+
+       prompt_array [1,1] = ""
+       prompt_array [1,2] = EMPTY
+
+   ELSE
+
+      { This is only required for SM2000 because the prompt window shrinks to 
+        length of longest display text
+      }
+      prompt_array [1,1] = PAD ( prompt_array [1,1], " ", ID_PROMPT_WIDTH)
+
+   ENDIF
+
+ENDROUTINE     {  ensure_default_prompt  }
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE empty_the_array                                                     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  09-JUL-2004  AF             emptys an array                                 }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE empty_the_array  (the_array)
+
+   DECLARE i
+
+   i = size_of_array (the_array)
+   WHILE (i > 0) DO
+
+      array_remove_slice (the_array, 1, i)   
+      i = i - 1
+
+   ENDWHILE
+
+ENDROUTINE     { empty_the_array  }
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE check_write_transaction                                             }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  17-DEC-1997  ER              This checks if the process is already in a     }
+{                               write_transaction, and if not, starts one.     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE check_write_transaction
+
+    IF NOT transaction_is_write() THEN
+
+       START WRITE TRANSACTION WRITE_TRANS_NAME
+
+    ENDIF
+
+ENDROUTINE
+
+
+
+
+
+{------   end of standard routines  -------------------------------}
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE get_db_link_list                                                    }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  08/07/04     AF              Gets list of database links                    }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE get_db_link_list  (id_array)
+
+   DECLARE id, i
+
+   id = GLOBAL ("MILL_DATABASE_LINK_NAME")
+
+    i = 0
+    IF (STRIP(id) <> "") THEN
+
+       i = i + 1
+       id_array [i,1] = id
+       id_array [i,2] = id
+
+    ENDIF
+ 
+ENDROUTINE   {  get_db_link_list }
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE get_entity_list                                                     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  08/07/04     AF              Gets list of mapped entities for database links}
+{                                                                              }
+{==============================================================================}
+
+ROUTINE get_entity_list  (id_array)
+
+    DECLARE id, i
+
+
+    id = SELECT DISTINCT mill_component_map . mill_project
+
+
+    i = 0
+    WHILE (id <> EMPTY) DO
+
+        i = i + 1
+        id_array [i,1] = id
+        id_array [i,2] = id
+
+        NEXT mill_component_map
+        id = SELECT mill_component_map . mill_project
+
+    ENDWHILE
+
+ENDROUTINE    {  get_entity_list  }
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE get_mapped_anal_list                                                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  08/07/04     AF              Gets list of mapped analysis that fits criteria}
+{                                                                              }
+{==============================================================================}
+
+ROUTINE get_mapped_anal_list (id_array, entity)
+
+    DECLARE id, i
+
+
+   IF (entity = EMPTY) THEN
+
+       RETURN
+
+    ENDIF
+
+
+    id = SELECT DISTINCT mill_component_map . analysis
+                  WHERE mill_project = entity
+
+    i = 0
+    WHILE (id <> EMPTY) DO
+
+        i = i + 1
+        id_array [i,1] = id
+        id_array [i,2] = id
+
+        NEXT mill_component_map 
+        id = SELECT mill_component_map . analysis
+
+    ENDWHILE
+
+ENDROUTINE    {  get_mapped_anal_list  }
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE get_mapped_anal_ver_list                                            }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  08/07/04     AF              Get list of analysis version that fits criteria}
+{                                                                              }
+{==============================================================================}
+
+ROUTINE get_mapped_anal_ver_list (id_array,  entity, the_anal)
+
+    DECLARE id, i
+
+
+   IF (entity = EMPTY) OR
+       (the_anal = EMPTY) THEN
+
+       RETURN
+
+    ENDIF
+
+   id = SELECT DISTINCT mill_component_map . analysis_version
+                  WHERE mill_project = entity
+		    AND analysis = the_anal
+
+    i = 0
+    WHILE (id <> EMPTY) DO
+
+        i = i + 1
+        id_array [i,1] = id
+        id_array [i,2] = id
+
+        NEXT mill_component_map  
+        id = SELECT mill_component_map . analysis_version
+
+    ENDWHILE
+
+ENDROUTINE    {  get_mapped_anal_ver_list  }
+
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE get_all_anal_vers                                                   }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  08/07/04     AF              Gets all analysis versions for given analysis  }
+{                               that are not mapped                            }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE get_all_anal_vers (id_array, entity, the_anal, anal_ver)
+
+    DECLARE id, i, mapped_anal_ver
+
+
+   IF  (entity = EMPTY) OR
+       (the_anal = EMPTY) OR (anal_ver = EMPTY) THEN
+
+       RETURN
+
+    ENDIF
+
+    id = SELECT DISTINCT versioned_analysis . analysis_version
+                  WHERE removeflag = FALSE
+                  AND identity = the_anal
+                  AND analysis_version <> anal_ver
+
+    i = 0
+    WHILE (id <> EMPTY) DO
+
+        { check is it mapper first}
+        mapped_anal_ver = SELECT mill_component_map . analysis_version
+                             WHERE mill_project = entity
+		               AND analysis = the_anal
+		               AND analysis_version = id
+
+ 
+        IF (mapped_anal_ver = EMPTY) THEN
+
+           i = i + 1
+           id_array [i,1] = id
+           id_array [i,2] = id
+
+        ENDIF
+
+
+        NEXT versioned_analysis 
+        id = SELECT versioned_analysis . analysis_version
+
+
+    ENDWHILE
+
+
+ENDROUTINE    {  get_all_anal_vers  }
+
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE update_res_map                                                      }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  08/07/04     AF              Called from send to update result              }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE update_res_map ( entity, anal, anal_ver, unmapped_ver)
+
+     DECLARE copy_array, i, j, the_comp, comp_array, found
+
+ 
+    ARRAY copy_array   ARRAYSIZE (0,7)
+    ARRAY comp_array   ARRAYSIZE (0)
+
+
+
+   { Check for no new version first}
+
+   IF (entity = EMPTY) OR
+       (anal = EMPTY) OR (anal_ver = EMPTY) THEN
+
+        flashmessage (CTXT_PROMPTS_NOT_POPULATE, TRUE)
+
+        RETURN (FALSE)
+
+    ELSEIF ( unmapped_ver = EMPTY ) THEN
+
+        flashmessage (CTXT_NO_NEW_VER, TRUE)
+
+        RETURN (FALSE)
+
+    ENDIF
+
+
+    { 
+      This just copies the same mapping exactly 
+      If components in new analysis version different, 
+      that will be handled in the same way as if any analysis changes,
+      no need to duplicate that here 
+    }
+
+    select_copy_data ( entity,
+                       "",
+                       entity,
+                       "",
+                       anal, 
+                       anal_ver,    
+                       unmapped_ver,                   
+                       copy_array )
+
+
+
+ { If a component not in new analysis, then dont add it in here }
+
+    get_sm_anal_comps (comp_array, anal, unmapped_ver)
+
+    i = 0
+    
+    WHILE (i < SIZE_OF_ARRAY (copy_array)) DO
+
+        i = i + 1
+
+        the_comp = STRIP(SUBSTRING (copy_array [i, 1], 21, 40))
+
+        j = 0
+        found = FALSE          
+
+        { Make sure this component exists in new analysis }
+
+        WHILE (found = FALSE) AND
+               (j < SIZE_OF_ARRAY (comp_array)) DO
+
+            j = j + 1
+
+            IF (STRIP(the_comp) = STRIP(comp_array [j])) THEN              
+
+                found = TRUE
+
+            ENDIF
+
+        ENDWHILE
+
+        IF (found = FALSE) THEN
+            
+            copy_array [i, 7] = TRUE { set internal remove flag }  
+
+        ENDIF
+
+    ENDWHILE
+
+
+
+
+    IF (create_copy_data ( copy_array ) = TRUE)
+
+        flashmessage (CTXT_COMPLETED, TRUE)
+
+    ENDIF
+
+    RETURN (TRUE)
+
+ENDROUTINE    {  update_res_map }
+
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE copy_data                                                           }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  28/11/01     DK              Prompt for Job and Level.                      }
+{  08/07/04     AF              Modified original to use for anal ver copy ONLY}
+{  25/10/05     AF              Changed the_anal parameter from reference to   }
+{                               value, otherwise it can be set to EMPTY,       }
+{                               affecting the calling routine. This corrects an}
+{                               error found by OQ script 6.2 step 11           }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE select_copy_data ( from_project, 
+                           VALUE from_db_link,
+                           to_project,
+                           VALUE to_db_link,
+                           VALUE the_anal,                 { AF 25/10/05 changed to VALUE }
+                           old_anal_ver, 
+                           new_anal_ver, 
+                           copy_array )
+  
+    DECLARE count, the_key, the_comp, the_mill_comp, 
+            the_mill_type, the_injection 
+
+    count = 1
+    
+    the_anal = SELECT MILL_COMPONENT_MAP . analysis
+                WHERE mill_project = from_project
+                  AND analysis = the_anal 
+                  AND analysis_version = old_anal_ver
+               ORDER ON order_num
+
+    WHILE the_anal <> EMPTY DO
+
+        the_comp         = SELECT MILL_COMPONENT_MAP . component
+        the_mill_comp    = SELECT MILL_COMPONENT_MAP . mill_analyte
+        the_mill_type    = SELECT MILL_COMPONENT_MAP . mill_type
+        the_injection    = SELECT MILL_COMPONENT_MAP . injection
+
+        the_key = PAD(STRIP(the_anal     )," ",10):new_anal_ver:
+                  PAD(STRIP(the_comp     )," ",40):
+                  PAD(STRIP(the_mill_comp)," ",40):
+                  PAD(STRIP(to_project   )," ",20):
+                  PAD(STRIP(the_mill_type)," ",20):
+                  PAD(STRIP(the_injection)," ",10)
+
+     
+        copy_array[count, 1] = the_key
+        copy_array[count, 2] = SELECT MILL_COMPONENT_MAP . anal_description
+        copy_array[count, 3] = SELECT MILL_COMPONENT_MAP . enable
+        copy_array[count, 4] = SELECT MILL_COMPONENT_MAP . res_type
+        copy_array[count, 5] = SELECT MILL_COMPONENT_MAP . inject_comment
+        copy_array[count, 6] = SELECT MILL_COMPONENT_MAP . order_num
+        copy_array[count, 7] = FALSE    { remove flag used by this report }
+
+        count = count + 1
+
+        NEXT MILL_COMPONENT_MAP
+        the_anal = SELECT MILL_COMPONENT_MAP . analysis
+
+    ENDWHILE
+
+ENDROUTINE    {  select_copy_data  }
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE create_copy_data                                                    }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  28/11/01     DK              Prompt for Job and Level.                      }
+{  08/07/04     AF              Modified original to use for anal ver copy ONLY}
+{                                                                              }
+{==============================================================================}
+
+ROUTINE create_copy_data ( copy_array)
+
+    DECLARE count, the_key, check_ok, is_commit, the_table, status
+
+    status = TRUE
+    the_table = "mill_component_map"
+    count = 1
+    is_commit = FALSE
+
+    WHILE count <= SIZE_OF_ARRAY(copy_array) DO
+
+
+        { AF Jun 05 Added removed check (copy_array[count, 7])  }
+
+        IF (copy_array[count, 7] = FALSE) THEN
+
+            the_key = copy_array[count, 1]
+  
+            RESERVE ENTRY 'the_table', the_key, check_ok
+
+            IF (check_ok <> EMPTY) THEN
+
+                flashmessage(check_ok,TRUE)
+                status = FALSE
+
+            ELSE
+
+                check_write_transaction()
+
+                ASSIGN 'the_table' . anal_description = copy_array[count, 2]
+                ASSIGN 'the_table' . enable           = copy_array[count, 3]
+                ASSIGN 'the_table' . res_type         = copy_array[count, 4]
+                ASSIGN 'the_table' . inject_comment   = copy_array[count, 5]
+                ASSIGN 'the_table' . order_num        = copy_array[count, 6]
+
+                UPDATE 'the_table'
+                is_commit = TRUE
+
+            ENDIF
+
+        ENDIF
+
+        count = count + 1
+
+    ENDWHILE
+
+    IF is_commit THEN
+
+        COMMIT
+
+    ELSE
+
+        ROLLBACK
+
+    ENDIF
+
+
+    RETURN (status)
+
+ENDROUTINE    {  create_copy_data  }
+
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE get_sm_anal_comps                                                   }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  09/07/04     AF              Gets components for a SampleManager analysis   }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE get_sm_anal_comps (comp_array, VALUE the_anal, VALUE the_anal_ver)
+
+    DECLARE comp, i
+
+    comp  = SELECT VERSIONED_COMPONENT . name
+                 WHERE analysis         = the_anal
+                 AND analysis_version   = the_anal_ver
+                 ORDER ON order_number
+
+
+    i = 0
+    WHILE comp <> EMPTY DO
+
+        i = i + 1
+        comp_array [i] = comp
+
+
+        NEXT VERSIONED_COMPONENT
+        comp  = SELECT VERSIONED_COMPONENT . name
+
+    ENDWHILE
+
+
+ENDROUTINE   {   get_sm_anal_comps   }
+
+
+
+
+
+

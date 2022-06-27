@@ -1,0 +1,767 @@
+{******************************************************************************
+*
+* Module Name   : $prompt_window
+*
+* Purpose       : Prompt in a window returning the id,
+*                 Prompt in a window and call a provided routine.
+*
+* Document Ref. : EMU/T/MERGE_REVIEW/3/2
+*
+* Specification :
+*
+* Portability   : Not Checked
+*
+* Re-entrant    :
+*
+*******************************************************************************}
+
+SET COMPILE_OPTION DECLARE
+
+JOIN STANDARD_LIBRARY std_array
+JOIN STANDARD_LIBRARY std_array_select
+JOIN STANDARD_LIBRARY std_prompt
+JOIN STANDARD_LIBRARY std_class
+JOIN STANDARD_LIBRARY std_vgl
+
+JOIN LIBRARY $CRITERIA_EDIT
+JOIN LIBRARY $CRITERIA_SAVED
+JOIN LIBRARY $CRITERIA_CACHE
+JOIN LIBRARY $CRITERIA_LIB
+
+JOIN LIBRARY $LIB_UTILS
+
+ENABLE WINDOWS
+
+{******************************************************************************}
+
+CONSTANT two_button_width   = 21
+CONSTANT three_button_width = 32
+
+{******************************************************************************}
+
+	GLOBAL
+
+	ROUTINE vgl_prompt_in_window ( VALUE table        ,
+			               VALUE message      ,
+			               VALUE header_mess  ,
+			               VALUE help_context ,
+			                     key0_value   )
+
+{
+*	Prompts in a window for the table identity
+*
+*******************************************************************************}
+
+	RETURN ( prompt_window_prompt_in_window ( table        ,
+	                                          message      ,
+	                                          header_mess  ,
+	                                          help_context ,
+	                                          " "          ,
+	                                          " "          ,
+						  FALSE        ,
+	                                          key0_value   ))
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	GLOBAL
+
+	ROUTINE labtable_prompt_in_window ( VALUE lte_report   ,
+					    VALUE table        ,
+					    VALUE message      ,
+					    VALUE header_mess  ,
+					    VALUE help_context ,
+						  key0_value   )
+
+{
+*	Prompts in a window for the table identity. Called from labtablib.
+*
+*******************************************************************************}
+
+	RETURN ( prompt_window_prompt_in_window ( table        ,
+	                                          message      ,
+	                                          header_mess  ,
+	                                          help_context ,
+	                                          lte_report   ,
+	                                          " "          ,
+						  FALSE        ,
+	                                          key0_value   ))
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	GLOBAL
+
+	ROUTINE vgl_prompt_for_new_in_window ( VALUE table        ,
+			                       VALUE message      ,
+			                       VALUE header_mess  ,
+			                       VALUE help_context ,
+			                             key0_value   )
+
+{
+*	Prompts in a window for a new table identity
+*
+*******************************************************************************}
+
+	RETURN ( prompt_window_prompt_in_window ( table        ,
+	                                          message      ,
+	                                          header_mess  ,
+	                                          help_context ,
+	                                          " "          ,
+	                                          " "          ,
+						  TRUE         ,
+	                                          key0_value   ))
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	GLOBAL
+
+	ROUTINE vgl_call_from_window ( VALUE table        ,
+	                               VALUE message      ,
+	                               VALUE header_mess  ,
+	                               VALUE help_context ,
+	                               VALUE library_name ,
+	                               VALUE routine_name )
+
+{
+*	Prompts in a window for the table identity then calls the routine
+*	provided.
+*
+*******************************************************************************}
+
+	DECLARE key0_value
+
+	RETURN ( prompt_window_prompt_in_window ( table        ,
+	                                          message      ,
+	                                          header_mess  ,
+	                                          help_context ,
+	                                          library_name ,
+	                                          routine_name ,
+						  FALSE        ,
+	                                          key0_value   ))
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE prompt_window_prompt_in_window ( VALUE table        ,
+	                                         VALUE message      ,
+	                                         VALUE header_mess  ,
+	                                         VALUE help_context ,
+	                                         VALUE library_name ,
+	                                         VALUE routine_name ,
+	                                         VALUE new_key0     ,
+	                                               key0_value   )
+
+{
+*	Prompts in a window for the identity
+*
+*******************************************************************************}
+
+	DECLARE key0_fields, window_width, window_height, window_column,
+		window_row , text_array, max_text_length, form, loop,
+		temp_select_array, max_total_length, start_column, class, text,
+		select_array, return_value, field_size, finished, default_value
+
+	ARRAY key0_fields
+	ARRAY temp_select_array ARRAY_SIZE ( 0 , 3 )
+	ARRAY select_array      ARRAY_SIZE ( 0 , 3 )
+
+	return_value = FALSE
+	key0_value = ""
+
+	criteria_cache_initialise ( )
+
+	array_copy ( temp_select_array ,
+		     select_array      )
+
+	GET_TABLE_DETAILS 'table' , "KEY0_FIELD" , key0_fields
+
+	key0_to_text ( key0_fields      ,
+		       text_array       ,
+		       max_text_length  ,
+		       max_total_length ,
+		       table            ,
+		       message		)
+
+	IF strip ( toupper ( table )) = "SAMPLE" THEN
+
+		max_total_length = max_total_length + 20
+
+	ENDIF
+
+	IF help_context = EMPTY THEN
+
+		help_context = GLOBAL ( "STD_EDITOR_HELP" )
+
+	ENDIF
+
+	IF GLOBAL ( "TERMTYPE" ) = "GUI" THEN
+
+		max_total_length = max_total_length + 7
+
+		IF ( help_context = " " ) THEN
+			window_width = find_max_number ( two_button_width ,
+			                                 max_total_length )
+		ELSE
+			window_width = find_max_number ( three_button_width ,
+			                                 max_total_length   )
+		ENDIF
+
+	ELSE
+		window_width = max_total_length 
+	ENDIF
+
+	window_width = find_max_number ( LENGTH ( header_mess ) + 4 ,
+		                         window_width               )
+
+	start_column = 2
+
+	window_height = find_min_number ( size_of_array ( text_array )    ,
+		                          GLOBAL ( "SCREEN_HEIGHT" ) - 10 )
+
+	window_column = ( ( GLOBAL ( "SCREEN_WIDTH" ) - window_width ) DIV 2 )
+
+  	window_row = ( ( GLOBAL ( "SCREEN_HEIGHT" ) - ( window_height - 4 ) )
+			    DIV 2 )
+
+	IF NOT ( GLOBAL ( "TERMTYPE" ) = "GUI" ) THEN
+
+		window_height = window_height + 1
+
+	ENDIF
+
+	PROMPT OBJECT form
+		CLASS PROMPT_CLASS_FORM
+		WITH ( column           = window_column                ,
+		       row              = window_row                   ,
+		       width            = window_width                 ,
+		       height           = window_height                ,
+		       full_height      = size_of_array ( text_array ) ,
+		       border           = TRUE                         ,
+		       header           = header_mess                  ,
+		       confirm_required = FALSE			       ,
+		       user_info        = key0_fields 		       ,
+		       return_behaviour = FORM_RETURN_LEAVE            ,
+		       proportional     = TRUE                         ,
+		       help_context     = help_context                 )
+
+	form . add_frame ( "", 1, 1, window_height, window_width )
+
+	loop = 0
+	WHILE ( loop < size_of_array ( text_array ) ) DO
+
+		loop = loop + 1
+		text = PAD ( text_array [ loop ], " ", max_text_length )
+
+		form . add_display ( text                  ,
+			             start_column          ,
+			             loop                  ,
+			             PROMPT_RENDITION_BOLD +
+		                     PROMPT_RENDITION_RAISED )
+
+		GET_FIELD_DETAILS 'table' . 'key0_fields [ loop ]' ,
+					"FIELD_SIZE" , field_size
+
+		IF new_key0 THEN
+		
+			GET_FIELD_DETAILS 'table' .  'key0_fields [ loop ]' , 
+			                  "DEFAULT_VALUE" , default_value
+			
+			IF ( NOT BLANK ( default_value ) ) THEN
+
+				PROMPT OBJECT  form . prompt_objects [ loop ]
+				  ON LINE loop
+				  FROM start_column + max_text_length + 2
+				  FORMAT 'table' . 'key0_fields [ loop ]'
+				  WITH ( value = default_value )
+
+			
+			ELSE
+			
+				PROMPT OBJECT  form . prompt_objects [ loop ]
+				  ON LINE loop
+				  FROM start_column + max_text_length + 2
+				  FORMAT 'table' . 'key0_fields [ loop ]'
+				  
+			ENDIF
+
+		ELSE
+
+			PROMPT OBJECT  form . prompt_objects [ loop ]
+			  ON LINE loop
+			  FROM start_column + max_text_length + 2
+			  BROWSE ON 'table' . 'key0_fields [ loop ] '
+			  WITH ( mandatory_array      = temp_select_array         ,
+			         always_validate      = TRUE	                  ,
+				 then_select          = TRUE                      ,
+				 vgl_library          = GLOBAL("CURRENT_LIBRARY") ,
+			         leave_prompt_routine = "select_leave_prompt"     ,
+				 user_info            = select_array		  )
+
+		ENDIF
+
+		{**************************************************}
+		{ If this routine has been called from an LTE call }
+		{ the ident object callback routine if it exists   }
+		{**************************************************}
+
+		IF NOT BLANK ( library_name ) THEN
+
+		{**************************************************}
+		{ Added For SM-Millennium.                         }
+		{**************************************************}
+
+                        DECLARE option
+                        option = "REMOVERESTORE"
+
+		        CALL_ROUTINE "prompt_object_routine"
+				IN LIBRARY library_name
+				USING form . prompt_objects [ loop ] ,
+			        key0_fields [ loop ],
+                                option
+
+
+			IF vgl_validate_routine (
+					library_name                  ,
+					"ident_prompt_object_routine" ) THEN
+
+
+
+				CALL_ROUTINE "ident_prompt_object_routine"
+					IN LIBRARY library_name
+					USING form . prompt_objects [ loop ] ,
+					      key0_fields [ loop ]
+
+			ENDIF
+
+		ENDIF
+
+		{*************************************************************}
+		{* Make a decent range for Packed Decimal Values             *}
+		{*************************************************************}
+
+		class = object_get_class_name ( form . prompt_objects [ loop ] )
+	
+		IF class = "STDPROMPTCLASSFIELDPACKEDDECIMAL" THEN
+
+			form . prompt_objects [ loop ] . minimum = 0
+
+		ENDIF
+
+	ENDWHILE
+
+	form . start_prompt ( )
+
+	REPEAT
+	
+		key0_value = ""
+
+		form . wait_prompt  ( )
+
+		finished = TRUE
+
+		IF ( form . get_lastkey ( ) = "DO" ) OR
+		   ( form . get_lastkey ( ) = "RETURN" ) THEN
+
+			return_value = reselect_record ( form        ,
+			                                 text_array  ,
+			                                 table       ,
+			                                 key0_fields ,
+			                                 key0_value  )
+
+			IF new_key0 THEN
+
+				return_value = NOT return_value
+
+				IF NOT return_value THEN
+				
+					finished = FALSE
+								
+					flash_message ( "DB_ID_EXISTS" , TRUE )
+
+				ENDIF
+
+			ELSEIF routine_name <> " " THEN
+
+				finished = FALSE
+
+				IF return_value THEN
+
+					CALL_ROUTINE routine_name
+					             USING key0_value
+					             IN LIBRARY library_name
+
+				ELSE
+
+					flash_message (
+					    "$PROMPT_WINDOW_NO_RECORD" , TRUE )
+
+				ENDIF
+
+			ENDIF
+
+		ENDIF
+
+	UNTIL finished
+
+	form . end_prompt   ( )
+
+	form . set_globals ( )
+
+	RETURN ( return_value )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+	ROUTINE reselect_record ( form        ,
+	                          text_array  ,
+	                          table       ,
+	                          key0_fields ,
+	                          key0_value  )
+
+{
+*	Called when the prompt left to restrict the browse.
+*
+*******************************************************************************}
+
+	DECLARE loop, field_type, new_select_array
+
+	ARRAY new_select_array  ARRAY_SIZE ( 0 , 3 )
+
+	loop = 0
+
+	WHILE ( loop < size_of_array ( text_array ) ) DO
+
+		loop = loop + 1
+
+		GET_FIELD_DETAILS 'table' . 'key0_fields [ loop ]' ,
+				"DATA_TYPE" , field_type
+
+		IF field_type = "Packed decimal" THEN
+
+			form . prompt_objects [ loop ] . value =
+			PAD ( form . prompt_objects [ loop ] . value, " ",10 )
+
+			form . prompt_objects [ loop ] . value =
+			         JUSTIFY ( form . prompt_objects [ loop ]
+			                               . value , "RIGHT" )
+
+		ENDIF
+
+		key0_value = key0_value : form . prompt_objects [ loop ] . value
+
+		array_select_add ( new_select_array                       ,
+		                   ARRAY_SELECT_EQ                        ,
+		                   key0_fields [ loop ]                   ,
+		                   form . prompt_objects [ loop ] . value )
+
+		IF loop <> size_of_array ( text_array ) THEN
+
+			array_select_add ( new_select_array ,
+			                   ARRAY_SELECT_AND ,
+			                   EMPTY            ,
+			           EMPTY            )
+		ENDIF
+
+	ENDWHILE
+
+	array_select ( table            ,
+	               FALSE            ,
+	               new_select_array )
+
+	RETURN ( SELECT 'table' . 'key0_fields [ 1 ]' <> EMPTY )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+	ROUTINE select_leave_prompt ( self )
+
+{
+*	Called when the prompt left to restrict the browse.
+*
+*******************************************************************************}
+
+	DECLARE count, mand_array, form, prompts, field, val, prmt, version
+
+	GET_TABLE_DETAILS 'self . table', "VERSION_FIELD", version
+
+	IF self . text <> self . original_text THEN
+
+		ARRAY mand_array
+		form    = self . parent_prompt
+		prompts = SIZE_OF_ARRAY ( form . user_info )
+		count   = 1
+
+		WHILE ( count < prompts ) DO
+
+			field = form . user_info [ count ]
+			val   = form . prompt_objects [ count ] . text
+
+			{******************************************************}
+			{* Define the Mandatory Array                         *}
+			{******************************************************}
+
+			IF NOT BLANK ( val ) THEN
+			
+				ARRAY_SELECT_ADD ( mand_array, ARRAY_SELECT_EQ,
+				                   field,      val            )
+
+			ENDIF
+
+			count = count + 1
+			prmt  = form . prompt_objects [ count ]
+
+			ARRAY_COPY ( prmt . mandatory_array, mand_array )
+
+			{******************************************************}
+			{* Reset Subsequent Prompts                           *}
+			{******************************************************}
+
+			IF ( prmt . tag > self . tag ) THEN
+
+				prmt . set_text ( "" )
+
+			ENDIF
+
+			{******************************************************}
+			{* Set the Value for the Version                      *}
+			{******************************************************}
+
+			IF  ( form . user_info [ count ] = version )
+			AND ( prmt . tag > self . tag              ) THEN
+
+				set_version_value ( prmt )
+
+			ENDIF
+
+		ENDWHILE
+
+	ENDIF
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+	ROUTINE set_version_value ( self )
+
+{
+*	Called to set the default value in a version prompt.
+*
+*******************************************************************************}
+
+	DECLARE version_field, remove_field
+
+	GET_TABLE_DETAILS 'self . table'  ,
+	                  "VERSION_FIELD" ,
+	                  version_field
+
+	GET_TABLE_DETAILS 'self . table'  ,
+	                  "REMOVE_FIELD" ,
+	                  remove_field
+
+	IF ( version_field = self . field ) THEN
+
+		DECLARE temp_array, version_number
+
+		ARRAY temp_array ARRAY_SIZE ( 0 , 3 )
+
+		array_copy ( temp_array             ,
+		             self . mandatory_array )
+
+		IF ( remove_field <> EMPTY ) AND
+		   GLOBAL ( "HIDE_DELETED" ) THEN
+
+			array_select_add ( temp_array       ,
+			                   ARRAY_SELECT_AND ,
+			                   EMPTY            ,
+			                   EMPTY            )
+
+			array_select_add ( temp_array                 ,
+			                   ARRAY_SELECT_EQ            ,
+			                   remove_field               ,
+			                   global ( "BROWSE_REMOVED" ))
+
+		ENDIF
+
+		version_number = array_select_max ( self . table ,
+		                                    self . field ,
+		                                    temp_array   )
+
+		IF version_number <> EMPTY THEN
+
+			self . value = strip ( version_number )
+			self . text  = self . value
+
+			self .repaste ( )
+
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+	ROUTINE key0_to_text (       key0_fields      ,
+		       	             text_array       ,
+		       	             max_text_length  ,
+		       	             max_total_length ,
+		       	       VALUE table            ,
+			       VALUE message	      )
+
+{
+*
+* 	Takes the key0 array and finds the text for those fields
+*
+*******************************************************************************}
+
+        DECLARE count, field_size , use_message
+
+	ARRAY text_array
+
+	max_text_length  = 0
+	max_total_length = 0
+
+	use_message = ( message <> "" ) AND
+	              ( size_of_array ( key0_fields ) = 1 )
+
+	count = 0
+
+	WHILE count < size_of_array ( key0_fields ) DO
+
+		count = count + 1
+
+		IF use_message THEN
+
+			text_array [ count ] = message
+
+		ELSE
+
+			text_array [ count ] = criteria_cache_field_title
+						( table                 ,
+				                  key0_fields [ count ] )
+
+		ENDIF
+
+		IF GLOBAL ( "TERMTYPE" ) = "GUI" THEN
+			strip_the_colon ( text_array [ count ] )
+		ELSE
+			add_the_colon ( text_array [ count ] )
+		ENDIF
+
+		max_text_length = find_max_number (
+		                           max_text_length                    ,
+		                           LENGTH ( text_array [ count ]) + 1 )
+
+	ENDWHILE
+
+	count = 0
+
+	WHILE count < size_of_array ( key0_fields ) DO
+
+		count = count + 1
+
+		IF GLOBAL ( "TERMTYPE" ) <> "GUI" THEN
+
+			IF LENGTH ( text_array [ count ]) <
+			   ( max_text_length - 1 )        THEN
+
+				strip_the_colon ( text_array [ count ] )
+				text_array [ count ] = PAD (
+				                        text_array [ count ],
+				                        " "                 ,
+				                        max_text_length - 3 )
+				add_the_colon ( text_array [ count ] )
+
+			ENDIF
+
+		ENDIF
+
+		GET_FIELD_DETAILS 'table' . 'key0_fields [ count ]' ,
+					"FIELD_SIZE" , field_size
+
+		max_total_length = find_max_number (
+		                            max_total_length             ,
+		                            max_text_length + field_size )
+
+	ENDWHILE
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE strip_the_colon ( string_to_strip )
+
+{
+*	Remove trailing colons and dots.
+*
+*******************************************************************************}
+
+	DECLARE last_char
+
+	string_to_strip = strip ( string_to_strip )
+
+	last_char = substring ( string_to_strip, length ( string_to_strip ), 1 )
+
+	WHILE ( last_char = ":" ) OR ( last_char = "." ) DO
+
+		string_to_strip = strip ( substring ( string_to_strip,
+		                                      1,
+		                                      length ( string_to_strip )
+		                                                       - 1 ))
+
+		last_char = substring ( string_to_strip,
+		                        length ( string_to_strip ), 1 )
+
+	ENDWHILE
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE add_the_colon ( string_to_add )
+
+{
+*	Adds a colon to the end of the string if its not got one
+*
+*******************************************************************************}
+
+	DECLARE last_char, check_str
+
+	check_str = strip ( string_to_add )
+
+	last_char = substring ( check_str, length ( check_str ), 1 )
+
+	IF ( last_char <> ":" ) AND ( last_char <> ">" ) THEN
+
+		string_to_add = string_to_add : " :"
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+
+ROUTINE BROWSE_EXIST_MILL_USERS ( user_prompt_object )
+
+    DECLARE selected_user_id
+
+    CALL_ROUTINE "BROWSE_EXIST_USER_ID" 
+              IN LIBRARY "$SMMILL_SECURITY_LTE"
+           USING user_prompt_object 
+       RETURNING selected_user_id
+
+   RETURN ( selected_user_id )
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+

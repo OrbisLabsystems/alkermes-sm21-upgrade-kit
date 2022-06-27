@@ -1,0 +1,366 @@
+{*******************************************************************************
+*
+* Module Name   : OLS_LIMSML_QUEUE
+*
+* Purpose       : Sample LIMSML retry queue processing
+*
+* Document Ref  : N/a
+*
+* Version 1.1
+*******************************************************************************} 
+
+SET NOTPROTECTED
+SET NAME "DEFER/"
+SET COMPILE_OPTION DECLARE
+ENABLE WINDOWS
+
+
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_STRUCTURE
+JOIN STANDARD_LIBRARY STD_VGL
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN STANDARD_LIBRARY STD_MESSAGE
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN STANDARD_LIBRARY STD_CLIENT
+JOIN STANDARD_LIBRARY STD_TRANSFER
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $PROMPT_LIST  
+JOIN LIBRARY OLS_LIMSML_SAMPLE
+JOIN LIBRARY OLS_LIMSML_DOC
+
+
+wdt_processing ()
+
+
+GLOBAL ROUTINE wdt_processing
+
+	DECLARE rec, status, dir, dummy, ols_doc, actions_array,  
+			latest_time, has_errors, retry_count, started_trans,  
+			array_records , i
+
+	status = EMPTY
+	dummy = EMPTY
+	has_errors = FALSE
+	latest_time = NOW - GLOBAL ("OLS_IM_RETRY_INT")
+
+	ols_limsml_doc_define ()
+
+	ARRAY array_records
+
+	rec = SELECT ols_im_data.identity FOR UPDATE
+			WHERE status = 2  
+			  AND last_attempt_date < latest_time
+			  AND retry_count < GLOBAL ("OLS_IM_MAX_RETRY_COUNT")
+			  ORDER ON created_on
+
+
+	WHILE (rec <> EMPTY) DO
+
+		IF (rec <> LOCKED) THEN
+			array_records [size_of_array (array_records) + 1] = rec
+		ENDIF
+
+		NEXT ols_im_data
+		rec = SELECT ols_im_data.identity 
+
+	ENDWHILE
+
+	{ manual retries }
+
+	rec = SELECT ols_im_data.identity FOR UPDATE
+			WHERE status = 4  
+			  ORDER ON created_on
+
+
+	WHILE (rec <> EMPTY) DO
+
+		IF (rec <> LOCKED) THEN
+			array_records [size_of_array (array_records) + 1] = rec
+		ENDIF
+
+		NEXT ols_im_data
+		rec = SELECT ols_im_data.identity 
+
+	ENDWHILE
+
+
+	i = 0
+
+	WHILE (i < size_of_array (array_records)) DO
+
+		i = i + 1
+		rec = array_records [i]
+
+		dir = GLOBAL ("OLS_IM_DATA_LOCN")
+
+		status = read_stored_limsml_doc (ols_doc, actions_array,
+				dir:STRIP(rec):".d")
+
+		IF (status=EMPTY) THEN
+
+			processing_main (ols_doc, actions_array, dummy, TRUE, has_errors, rec)
+
+			started_trans = FALSE
+
+			IF (NOT transaction_is_write ()) THEN
+
+				START WRITE TRANSACTION "RetryWriteErrors"
+				started_trans = TRUE
+
+			ENDIF
+
+			{ Need select again or else crash } 
+
+			rec = SELECT ols_im_data.identity FOR UPDATE
+					WHERE identity = rec
+
+			{ Should not be empty or locked,  crash if it is }
+
+			IF (NOT has_errors) THEN
+
+				ASSIGN ols_im_data . status = 3
+				UPDATE ols_im_data 
+
+			ELSE
+
+				retry_count = SELECT ols_im_data . retry_count
+				retry_count = retry_count + 1
+				ASSIGN ols_im_data . retry_count = retry_count
+				ASSIGN ols_im_data . last_attempt_date = NOW
+				ASSIGN ols_im_data . status = 2
+				UPDATE ols_im_data 
+
+			ENDIF
+
+			IF (started_trans) THEN
+
+				COMMIT
+			ENDIF
+
+		ENDIF
+
+	ENDWHILE
+
+
+	IF (transaction_is_write ()) THEN
+
+		COMMIT
+
+	ENDIF
+
+	START WRITE TRANSACTION "RetryWriteErrors"
+
+	{ Deletes }
+
+	rec = SELECT ols_im_data.identity FOR UPDATE
+			WHERE status = 3
+
+	WHILE (rec <> EMPTY) DO
+
+		DELETE ols_im_data
+
+		rec = SELECT ols_im_data.identity FOR UPDATE
+			WHERE status = 3
+
+	ENDWHILE
+
+	COMMIT
+
+ENDROUTINE 
+
+
+GLOBAL ROUTINE rmb_view_errors ( rmb_object, object, data )
+
+	DECLARE id
+
+	data . set_first ( )
+ 
+	{ only do 1 }
+
+	IF ( data . current <> EMPTY ) THEN
+ 
+		id = SELECT ols_im_data . identity
+		         IN OBJECT data . current	
+	
+
+		view_error_messages (id)
+
+	ENDIF
+
+ENDROUTINE
+
+
+GLOBAL ROUTINE rmb_retry ( rmb_object, object, data )
+
+	DECLARE rec, started_t
+
+	data . set_first ( )
+ 
+	{ only do 1 }
+
+	IF ( data . current <> EMPTY ) THEN
+ 
+		started_t = FALSE
+		IF (NOT transaction_is_write()) THEN
+			START WRITE TRANSACTION "IM"
+			started_t = TRUE
+		ENDIF
+
+		rec = SELECT ols_im_data . identity  
+		         IN OBJECT data . current	
+	
+		rec = SELECT ols_im_data . identity FOR UPDATE
+			WHERE identity = rec
+
+		IF (rec <> LOCKED) AND (rec <> EMPTY)  THEN
+
+			ASSIGN ols_im_data . status  = 4 
+			UPDATE ols_im_data  
+
+		ENDIF
+
+		IF (started_t) THEN
+			COMMIT
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE
+
+
+
+{ View error messages 
+}
+ROUTINE view_error_messages (VALUE unique_id)
+
+	DECLARE check_ok, error_file, dir, txt, array_lines, i
+
+	ARRAY array_lines   ARRAYSIZE (0)
+
+	dir = GLOBAL ("OLS_IM_ERROR_LOCN")
+	error_file = dir:STRIP(unique_id):".e"
+
+	FILE OPEN error_file, check_ok
+
+	IF (check_ok = EMPTY) THEN
+
+		WHILE (check_ok = EMPTY) DO
+
+			FILE READ error_file , txt, check_ok
+
+			IF (check_ok = EMPTY) THEN
+				i = size_of_array (array_lines ) + 1
+				array_lines  [i] = txt
+			ENDIF
+
+		ENDWHILE
+		 
+
+		FILE CLOSE error_file , check_ok
+
+	ELSE
+
+		flashmessage ("Error opening file. ":STRIP(check_ok), true)
+	ENDIF
+
+	setup_error_display_form ( array_lines)	
+
+ENDROUTINE
+
+
+
+ROUTINE setup_error_display_form ( array_lines)
+
+    DECLARE form,  can_leave, ret,i
+    DECLARE lst, the_header, form_height,  frm_width
+
+    the_header  = "Errors"
+    form_height = 15
+    frm_width = 100
+
+    ret = FALSE
+
+    set_up_std_prompt_list_class ( )
+
+    PROMPT OBJECT form
+        CLASS PROMPT_CLASS_FORM
+        WITH ( width  = frm_width                                  ,
+               row    = 5                                   ,
+               column = 10                                  ,
+               height = form_height                          ,
+               header = the_header                          ,
+               footer = "<DO> to Continue, <EXIT> to Cancel",
+               proportional = TRUE                          ,
+               return_behaviour = FORM_RETURN_LEAVE     ,
+               user_info = ""  )
+
+    form . add_frame ( "" ,   1, 1, form_height, form.width )
+
+
+    {  The list box   }
+    PROMPT OBJECT lst CLASS "STD_PROMPT_LIST"
+    lst . row                  = 1
+    lst . column               = 2
+    lst . height               = form_height - 1
+    lst . width                = frm_width - 2
+    lst . vgl_library          = global ( "current_library" )
+{
+    lst . browse_routine       = "list_samps_browse"
+    lst . enter_prompt_routine = "list_samps_enter_prompt"
+    lst . leave_prompt_routine = "list_samps_leave_prompt"
+    lst . select_routine       = "list_samps_select"
+    lst . validation_routine   = "list_samps_validation"
+}
+
+    lst . full_screen          = FALSE
+{    lst . selected_routine     = "list_samps_selected" 
+}
+{    lst . style               = lst.style   + LIST_STYLE_CHECK_BOXES }
+
+    ARRAY lst . user_info = ""
+
+
+    lst . add_column ("" ,frm_width-2 )
+     
+
+    lst . SetView ( LIST_LIST_VIEW ) 
+
+    form . add_prompt ( lst )
+
+    { Add data }
+    i = 0
+    WHILE (i < SIZE_OF_ARRAY (array_lines) ) DO
+
+        i = i + 1
+        lst.insert_item (STRING(i), 0)
+        lst.set_item (1, array_lines[i])
+
+    ENDWHILE
+
+    { Display the form }
+
+    form . start_prompt ()
+
+    REPEAT
+
+        form . wait_prompt  ()
+
+        can_leave = TRUE
+
+        IF (form . get_lastkey () <> "EXIT" ) THEN
+
+            ret = TRUE          
+
+        ENDIF
+
+    UNTIL  (can_leave) OR (form . get_lastkey () = "EXIT" ) 
+ 
+
+    form . end_prompt ()
+
+
+    RETURN (ret)
+
+
+ENDROUTINE     

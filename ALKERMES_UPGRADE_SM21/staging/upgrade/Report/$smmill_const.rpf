@@ -1,0 +1,51 @@
+{==============================================================================}
+{                                                                              }
+{  ORBIS INFORMATION SYSTEMS                                                   }
+{                                                                              }
+{  Filename         : $SMMILL_CONST.RPF                                        }
+{  Version          :                                                          }
+{  Document Ref.    :                                                          }
+{  Author           : D. Kelly                                                 }
+{  Date Created     : 07-Feb-2002                                              }
+{  Description      : SM-Millennium Interface Constants Library                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{                                                                              }
+{  Ver.     Date        By          Description                                }
+{  ----     ----        --          -----------                                }
+{  1.0      07-Feb-2002 DK          Release version                            }
+{                                                                              }
+{==============================================================================}
+
+SET COMPILE_OPTION DECLARE
+
+GLOBAL CONSTANT VIAL_NO              = 1
+GLOBAL CONSTANT SAMP_NAME            = 2
+GLOBAL CONSTANT SAMP_TYPE            = 3
+GLOBAL CONSTANT NO_INJECT            = 4
+GLOBAL CONSTANT SS_METHOD            = 5
+GLOBAL CONSTANT SS_FUNCTION          = 6
+GLOBAL CONSTANT SS_INJ_VOL           = 7
+GLOBAL CONSTANT SS_RUN_TIME          = 8
+GLOBAL CONSTANT SS_INJ_DELAY         = 9
+GLOBAL CONSTANT SS_SAMP_WEIGHT       = 10
+GLOBAL CONSTANT SS_DILUTION          = 11
+GLOBAL CONSTANT THE_TYPE             = 12
+
+
+GLOBAL CONSTANT GLOBAL_PROJECT       = "All Projects"
+
+GLOBAL CONSTANT OWNER_ONLY           = 0
+GLOBAL CONSTANT OWNER_AND_GROUP      = 1
+GLOBAL CONSTANT OWNER_GROUP_WORLD    = 2
+GLOBAL CONSTANT ADMINISTRATOR_GROUP  = "Administrators"
+
+GLOBAL CONSTANT CUSTOM_FIELD_1       = "SMP_Vial_No"
+GLOBAL CONSTANT CUSTOM_FIELD_2       = "SMP_Sample_ID"
+GLOBAL CONSTANT CUSTOM_FIELD_3       = "SMP_Result_Mapped"
+
+GLOBAL CONSTANT HELP_REGISTRY_KEY    = "HKEY_LOCAL_MACHINE\SOFTWARE\LabSystems\SampleManager Client\HelpFilePath"
+GLOBAL CONSTANT HELP_FILE_NAME       = "SM-Millenium Help v1.chm"
+

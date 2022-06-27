@@ -1,0 +1,55 @@
+MESSAGE GROUP "CAL_SCHED_"
+
+MESSAGE = "FULL_DAYS"
+TEXT    = "Monday"
+TEXT    = "Tuesday"
+TEXT    = "Wednesday"
+TEXT    = "Thursday"
+TEXT    = "Friday"
+TEXT    = "Saturday"
+TEXT    = "Sunday"
+
+MESSAGE = "DAYS"
+TEXT    = "Mon"
+TEXT    = "Tue"
+TEXT    = "Wed"
+TEXT    = "Thu"
+TEXT    = "Fri"
+TEXT    = "Sat"
+TEXT    = "Sun"
+
+MESSAGE = "MONTH_WEEK"
+TEXT    = "First"
+TEXT    = "Second"
+TEXT    = "Third"
+TEXT    = "Last"
+
+MESSAGE = "INVAL_LOR"
+TEXT    = "Invalid library ([]) and/or routine ([])"
+
+MESSAGE = "CREATE_TIMERQ_FAIL"
+TEXT    = "Failed to create timer entry : []"
+
+MESSAGE = "TIMERQ_CREATE_TRANS"
+TEXT    = "Creating timer queue records"
+
+MESSAGE = "TIMERQ_DEL_TRANS"
+TEXT    = "Deleting timer queue records"
+
+MESSAGE = "TIMERQ_REM_FAIL"
+TEXT    = "Cannot remove event. Timer queue entry record locked."
+
+MESSAGE = "UPDATE_FIELD"
+TEXT    = "Update field [] in table []"
+
+MESSAGE = "UPDATE_FAIL"
+TEXT    = "Failed to update field [] in table [] : []"
+
+MESSAGE = "TIMERQ_NOT_EXIST"
+TEXT    = "Timer queue record ([]) does not exist"
+
+MESSAGE = "TIMERQ_LOCKED"
+TEXT    = "Timer queue record ([]) locked"
+
+MESSAGE = "PROG_HEAD"
+TEXT    = "Pull Login Progress"

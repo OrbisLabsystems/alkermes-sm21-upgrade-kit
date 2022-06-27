@@ -1,0 +1,323 @@
+ENABLE WINDOWS
+SET NAME "DEFER/"
+
+JOIN STANDARD_LIBRARY STD_PROMPT
+
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $LIB_GRID
+
+
+{============================================================================================}
+
+GLOBAL ROUTINE prompt_for ( test_list, wks_name )
+
+    DECLARE anal_check, form
+
+    anal_check = FALSE
+
+    setup_form ( test_list, wks_name, form )
+    setup_grid ( grid, test_list, wks_name, form )
+
+    form . start_prompt()
+
+        REPEAT
+            form . wait_prompt()
+
+	        count = 1
+
+	        WHILE (grid.user_info [ count, 1] <> EMPTY) AND (anal_check = FALSE) DO
+                	IF ( grid.user_info [ count, 1] = TRUE ) THEN
+		        	anal_check = TRUE
+		            ENDIF
+  	                count = count + 1	
+	                ENDWHILE
+
+	       IF (form.get_lastkey() = "DO") AND (anal_check = FALSE) THEN
+		        flash_message("You must select one analysis from the list", TRUE)
+           ENDIF
+        UNTIL (form.get_lastkey() = "EXIT") OR ( anal_check = TRUE)
+        
+        IF ( form.get_lastkey() = "EXIT") THEN
+            EXIT
+        ENDIF 
+
+    repopulate_array (test_list, grid)
+
+    form . end_prompt ()
+
+
+ENDROUTINE {end prompt_for}
+
+{============================================================================================}
+
+
+ROUTINE setup_form ( test_list, wks_name, form )
+
+    wks_name   = PAD ( STRIP( wks_name )   , " " , 20 )
+
+    CREATE OBJECT PROMPT_CLASS_FORM, form
+
+    form . row    = 1
+    form . column = 10
+    form . width  = 60
+    form . height = 14
+
+    form . header = "ANALYSIS SELECTION SCREEN"
+    form . footer = "Press <DO> to Save, <EXIT> to Quit"
+
+    form . border = TRUE
+
+    form . add_display ( "Worksheet ID:    "      ,
+                           2                     ,
+                           1                      ,
+                          PROMPT_RENDITION_RAISED )
+
+    form . add_display ( wks_name                 ,
+                          16                      ,
+                          1                       ,
+                         PROMPT_RENDITION_LOWERED )
+
+
+    form . add_frame ( "", 1,1,1,59)
+    form . add_frame ( "", 1,3,12,59)
+
+ENDROUTINE
+
+{================================================================================}
+
+
+ROUTINE setup_grid ( grid, test_list, wks_name, form )
+
+    CREATE OBJECT "STD_GRID_EDITOR" , grid
+
+    ARRAY grid . user_info ARRAYSIZE (0,4)
+
+    grid . row          = 3
+    grid . column       = 2
+    grid . width        = 55
+    grid . height       = 12
+    grid . cell_rows    = 0
+    grid . cell_columns = 3
+
+    grid . column_size [1] = 10
+    grid . column_size [2] = 30
+    grid . column_size [3] = 20
+
+
+    grid . title_size_top = 1
+    grid . title_rendition_top = PROMPT_RENDITION_BOLD
+
+    grid . title_text_top [1, 1] = "Select"
+    grid . title_text_top [2, 1] = "Analysis"
+    grid . title_text_top [3, 1] = "Test Version"
+
+    grid . title_separator_top    = GRID_SEPARATOR_BOTH
+    grid . column_separator [ 1 ] = GRID_SEPARATOR_BOTH
+    grid . column_separator [ 2 ] = GRID_SEPARATOR_BOTH
+    grid . column_separator [ 3 ] = GRID_SEPARATOR_BOTH
+
+    grid . display_cell_routine   = "DISPLAY_GRID_CELL"
+    grid . prompt_cell_routine    = "PROMPT_GRID_CELL"
+
+    pop_grid ( grid, test_list, wks_name )
+
+   	
+
+    form  . add_prompt ( grid )
+
+   
+ENDROUTINE
+
+{===========================================================================================}
+
+
+ROUTINE must_enter (self)
+
+    IF ( (self . text = EMPTY ) or ( self . text = " ") ) THEN
+
+        RETURN ( FALSE )
+
+    ELSE
+
+        RETURN ( TRUE )
+
+    ENDIF
+
+
+ENDROUTINE
+
+{============================================================================================}
+
+ROUTINE display_grid_cell ( self              ,
+                            VALUE cell_column ,
+                            VALUE cell_row    ,
+                            window            ,
+                            VALUE column      ,
+                            VALUE row         ,
+                            VALUE cell_width  ,
+                            VALUE cell_height )
+
+    {flashmessage ( self. user_info [1,1], TRUE )}
+
+ IF ( cell_column = 1 ) then
+
+		display self . user_info [ cell_row , cell_column ]
+			AT column , row
+			IN WINDOW window
+			TO column + cell_width - 1
+			FORMAT BOOLEAN
+			WITH ( IS_CHECK = TRUE ,
+                        FALSE_WORD = "-" ,
+			TRUE_WORD = "*" ,
+                        VALUE = "-"      ,
+			PARENT_PROMPT = self )
+
+	ELSE IF  ( cell_column = 3) THEN
+
+		display self. user_info [cell_row, cell_column]
+		AT column, row
+		IN WINDOW window
+		TO column + cell_width + 1
+		
+
+	ELSE 
+		
+    	DISPLAY self . user_info [ cell_row, cell_column ]
+        AT column, row
+        IN WINDOW window
+        TO column + cell_width - 1
+
+	ENDIF
+
+  ENDIF
+
+ENDROUTINE
+
+
+{============================================================================================}
+
+ROUTINE prompt_grid_cell ( self              ,
+                            VALUE cell_column ,
+                            VALUE cell_row    ,
+                            window            ,
+                            VALUE column      ,
+                            VALUE row         ,
+                            VALUE cell_width  ,
+                            VALUE cell_height )
+
+    IF ( cell_column = 1 ) then
+
+        PROMPT FOR self . user_info [ cell_row , cell_column ]
+        AT column , row
+	IN WINDOW window
+	TO column + cell_width - 1
+	BROWSE ON BOOLEAN
+	WITH ( IS_CHECK = TRUE ,
+	FALSE_WORD = "-" ,
+	TRUE_WORD = "*" ,
+	PARENT_PROMPT = self )
+
+    	ELSE IF ( cell_column = 3) THEN 
+
+
+		PROMPT FOR self . user_info [ cell_row, cell_column]
+		AT column, row
+		IN WINDOW window
+		TO column + cell_width - 1
+		WITH ( display_only = TRUE, 
+		PARENT_PROMPT = self )
+
+    	ELSE
+
+        PROMPT FOR self . user_info [ cell_row , cell_column ]
+        AT column , row
+        IN WINDOW window
+    	TO column + cell_width - 1
+        WITH ( display_only = TRUE ,
+	PARENT_PROMPT = self )
+
+   ENDIF
+
+ENDIF
+
+ENDROUTINE
+
+{==========================================================================================}
+
+ROUTINE pop_grid ( grid, test_list, wks_name)
+
+    ARRAY grid_arr
+
+    grid_arr = grid . user_info
+
+    row_idx = 1
+
+
+    dis_anal = SELECT test . analysis
+                WHERE ( test_number = test_list[row_idx])
+
+    version = SELECT test . test_count
+
+
+    IF ( dis_anal <> EMPTY ) THEN
+
+
+        WHILE ( dis_anal <> empty ) DO
+
+            grid_arr [ row_idx, 1 ] = "-"
+            grid_arr [ row_idx, 2 ] = dis_anal
+            grid_arr [ row_idx, 3 ] = version
+	    grid_arr [ row_idx, 4 ] = test_list[row_idx]
+
+            row_idx = row_idx + 1
+
+            IF ( test_list[row_idx] <> EMPTY ) THEN
+
+                dis_anal = SELECT test . analysis
+                            WHERE ( test_number = test_list[row_idx])
+
+		version = SELECT test . test_count
+
+            ELSE
+
+                dis_anal = EMPTY
+
+            ENDIF
+
+        ENDWHILE
+
+        grid . cell_rows = row_idx - 1
+
+    ELSE
+
+        flashmessage ( "No tests are assigned to this sample" , TRUE )
+
+    ENDIF
+
+ENDROUTINE
+
+{==========================================================================================}
+
+ROUTINE repopulate_array(test_list, grid)
+
+	DECLARE count, test_count
+	ARRAY test_list
+	count = 1
+	test_count = 1
+						
+
+	WHILE (grid.user_info[count, 1] <> EMPTY)
+
+	    IF grid.user_info[count, 1] = TRUE THEN
+		
+                test_list [test_count] = grid.user_info[count, 4]
+                      test_count = test_count + 1		
+        ENDIF
+     count = count + 1
+
+	ENDWHILE
+
+	
+ENDROUTINE
+
+{============================================================================================}

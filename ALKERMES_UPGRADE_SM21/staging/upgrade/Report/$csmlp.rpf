@@ -1,0 +1,1327 @@
+{******************************************************************************
+*
+* Module Name   : $CSMLP.RPF
+*
+* Purpose       : Compare sample with multi level product
+*
+* Document Ref. : SE/T/TVGL-WORK-REPORTS/1/3
+*
+* Specification :
+*
+* Portability   : Not Checked
+*
+* Re-entrant    :
+*
+********************************************************************************
+*
+*  Ref   Date        Name             Comment
+*  ===== ==========  ===============  =========================================
+*  1.1   05-Mar-07   V. Molloy        Thermo fix where product versions > 99
+*
+*******************************************************************************}
+
+ENABLE WINDOWS
+SET NAME "DISPLAY/"
+SET NOTPROTECTED
+
+JOIN STANDARD_LIBRARY std_prompt
+JOIN STANDARD_LIBRARY std_message
+JOIN STANDARD_LIBRARY std_array_select
+JOIN STANDARD_LIBRARY std_utils
+
+JOIN LIBRARY $lib_utils
+JOIN LIBRARY $csm_conf   { User definable constants }
+JOIN LIBRARY $lib_csmlp
+JOIN LIBRARY $lib_mlps
+
+SET COMPILE_OPTION DECLARE
+
+{ NOTE : $CSMLP.RPF no longer contains code for background MLP checking.
+	 This stuff is now in the report $BACK_CSMLP.RPF. }
+main()
+EXIT
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE initialise_constants
+
+	{ Define the constants used in the form }
+
+	{ Indices for the grid . user_info array }
+
+	CONSTANT GRID_INFO_COL = 1
+	CONSTANT GRID_BOLD_COL = 2
+
+	{ Indices for the items setup array }
+
+	CONSTANT TEXT_MSG_DATA    = 1
+	CONSTANT ROW_DATA         = 2
+	CONSTANT PROMPT_DATA      = 3
+	CONSTANT VALUE_DATA       = 4
+	CONSTANT LENGTH_DATA      = 5
+
+	{ Constants for fields on the form }
+
+	CONSTANT SAMPLE_PROMPT_FLD  = 1
+	CONSTANT DYNAMIC_PROMPT_FLD = 2
+	CONSTANT PRODUCT_PROMPT_FLD = 3
+	CONSTANT VERSION_PROMPT_FLD = 4
+	CONSTANT LEVEL_PROMPT_FLD   = 5
+	CONSTANT GRID_PROMPT_FLD    = 6
+
+	CONSTANT NUM_PROMPT_FLDS    = 6   {  Everything after this is a
+					     form display field }
+	CONSTANT ID_TEXT_FLD      = 6
+	CONSTANT JOB_ID_FLD       = 7
+	CONSTANT STATUS_FLD       = 8
+	CONSTANT DYNAMIC_ID_FLD   = 9
+	CONSTANT DYNAMIC_NAME_FLD = 10
+	CONSTANT PRODUCT_NAME_FLD = 11
+
+	CONSTANT NUM_SCREEN_FLDS  = 11  { From here are form . user_info stuff}
+
+	{ Indices for the form . user_info array }
+
+	CONSTANT FORM_COMPARISON_FLD = 14
+	CONSTANT FORM_IN_SPEC_FLD    = 15
+
+	{ Constants defining how the screen is laid out }
+
+	CONSTANT PROMPT_TEXT_WIDTH = 17
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE initialise_form ( form )
+
+	{ Create the form object that all the prompts will be displayed on }
+
+	DECLARE form_height, form_width, form_column
+
+	{ The form is slightly bigger on GUI so the buttons can be fitted }
+
+        IF ( GLOBAL ( "TERMTYPE" ) = "GUI" ) THEN
+		form_height = 20
+		form_width  = 77
+		form_column = 5
+	ELSE
+		form_height = 19
+		form_width  = 58
+		form_column = ( GLOBAL( "SCREEN_WIDTH" ) -  form_width ) DIV 2
+	ENDIF
+
+	CREATE OBJECT PROMPT_CLASS_FORM, form
+
+	form . height = form_height
+	form . width  = form_width
+	form . column = form_column
+	form . row    = 7
+	form . border = TRUE
+	form . pasted = TRUE
+	form . header = GET_USER_MESSAGE ( "CSMLP_FORM_HEADER",1 )
+	form . footer = GET_USER_MESSAGE ( "CSMLP_FORM_FOOTER",1 )
+	form . active_prompt  = 1
+	form . return_behaviour = FORM_RETURN_WRAP
+	form . proportional   = TRUE
+	form . button_style   = FORM_BUTTON_NONE
+	form . help_context   = "$CSMLP_HELP"
+	form . vgl_library    = GLOBAL ( "CURRENT_LIBRARY" )
+	form . select_routine = "SELECT_KEY_ROUTINE"
+
+	initialise_form_flds ( form . user_info )
+
+ 	update_form_fld ( form, FORM_COMPARISON_FLD, FALSE )
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE add_form_prompts ( form )
+
+	DECLARE sample_prompt, product_prompt, version_prompt, level_prompt
+	DECLARE dynamic_prompt, txt, prompt_col, separator, choose_array
+	DECLARE grid, display_text
+	DECLARE items, item, prompt_text_column
+
+	ARRAY items
+
+        IF ( GLOBAL ( "TERMTYPE" ) = "GUI" ) THEN
+		prompt_text_column = 2
+	ELSE
+		prompt_text_column = 1
+	ENDIF
+
+	items [ SAMPLE_PROMPT_FLD, TEXT_MSG_DATA ]    = "CSMLP_MSG_4"
+	items [ SAMPLE_PROMPT_FLD, ROW_DATA ] 	      = 1
+	items [ SAMPLE_PROMPT_FLD, PROMPT_DATA ]      = TRUE
+
+	PROMPT OBJECT sample_prompt
+		BROWSE ON sample
+		ON LINE items [ SAMPLE_PROMPT_FLD, ROW_DATA ]
+		FROM prompt_text_column
+		TO   prompt_text_column + PROMPT_TEXT_WIDTH
+		WITH ( vgl_library          = GLOBAL ( "CURRENT_LIBRARY" ),
+		       always_validate      = TRUE,
+		       validation_routine   = "SAMPLE_VALID_ROUTINE",
+		       leave_prompt_routine = "SAMPLE_PROMPT_ROUTINE" )
+
+	items [ SAMPLE_PROMPT_FLD, VALUE_DATA ]       = sample_prompt
+
+	items [ DYNAMIC_PROMPT_FLD, TEXT_MSG_DATA ]    = "CSMLP_MSG_19"
+	items [ DYNAMIC_PROMPT_FLD, ROW_DATA ]         = 7
+	items [ DYNAMIC_PROMPT_FLD, PROMPT_DATA ]      = TRUE
+
+	PROMPT OBJECT dynamic_prompt
+		FORMAT BOOLEAN
+		ON LINE items [ DYNAMIC_PROMPT_FLD, ROW_DATA ]
+		FROM prompt_text_column
+		TO   prompt_text_column + PROMPT_TEXT_WIDTH
+		WITH( is_check = TRUE                                 ,
+		      leave_prompt_routine = "dynamic_prompt_routine" ,
+		      enabled              = FALSE                    )
+
+	items [ DYNAMIC_PROMPT_FLD, VALUE_DATA ]       = dynamic_prompt
+
+	items [ PRODUCT_PROMPT_FLD, TEXT_MSG_DATA ]    = "CSMLP_MSG_7"
+	items [ PRODUCT_PROMPT_FLD, ROW_DATA ] 	       = 9
+	items [ PRODUCT_PROMPT_FLD, PROMPT_DATA ]      = TRUE
+
+	PROMPT OBJECT product_prompt
+		BROWSE ON mlp_header
+		ON LINE items [ PRODUCT_PROMPT_FLD, ROW_DATA ]
+		FROM prompt_text_column
+		WITH ( vgl_library          = GLOBAL ( "CURRENT_LIBRARY" ),
+		       leave_prompt_routine = "PRODUCT_PROMPT_ROUTINE"    ,
+		       enabled              = FALSE                       )
+
+	items [ PRODUCT_PROMPT_FLD, VALUE_DATA ]       = product_prompt
+
+	items [ VERSION_PROMPT_FLD, TEXT_MSG_DATA ]    = "CSMLP_MSG_13"
+	items [ VERSION_PROMPT_FLD, ROW_DATA ] 	       = 11
+	items [ VERSION_PROMPT_FLD, PROMPT_DATA ]      = TRUE
+
+	PROMPT OBJECT version_prompt
+		FORMAT INTEGER
+		ON LINE items [ VERSION_PROMPT_FLD, ROW_DATA ]
+		FROM prompt_text_column
+		WITH ( enabled              = FALSE,
+		       leave_prompt_routine = "VERSION_PROMPT_ROUTINE",
+		       minimum		    = 1 )
+
+	items [ VERSION_PROMPT_FLD, VALUE_DATA ]       = version_prompt
+
+	items [ LEVEL_PROMPT_FLD, TEXT_MSG_DATA ]    = "CSMLP_MSG_8"
+	items [ LEVEL_PROMPT_FLD, ROW_DATA ] 	     = 13
+	items [ LEVEL_PROMPT_FLD, PROMPT_DATA ]      = TRUE
+
+	ARRAY choose_array
+	choose_array [ 1,1 ] = GET_USER_MESSAGE( "CSMLP_ALL_LEVELS",1 )
+	choose_array [ 1,2 ] = GET_USER_MESSAGE( "CSMLP_ALL_LEVELS",1 )
+
+	PROMPT OBJECT level_prompt
+		CHOOSE OUTOF choose_array
+		ON LINE items [ LEVEL_PROMPT_FLD, ROW_DATA ]
+		FROM prompt_text_column
+		TO   prompt_text_column + PROMPT_TEXT_WIDTH
+		with( enter_prompt_routine = "enter_level_prompt_routine" ,
+		      enabled              = FALSE                        )
+
+	items [ LEVEL_PROMPT_FLD, VALUE_DATA ]       = level_prompt
+
+	items [ ID_TEXT_FLD, TEXT_MSG_DATA ]    = "CSMLP_MSG_5"
+	items [ ID_TEXT_FLD, VALUE_DATA ]       = " "
+	items [ ID_TEXT_FLD, LENGTH_DATA ]      = 30
+	items [ ID_TEXT_FLD, ROW_DATA ]         = 2
+	items [ ID_TEXT_FLD, PROMPT_DATA ]      = FALSE
+
+	items [ JOB_ID_FLD, TEXT_MSG_DATA ]    = "CSMLP_MSG_6"
+	items [ JOB_ID_FLD, VALUE_DATA ]       = " "
+	items [ JOB_ID_FLD, LENGTH_DATA ]      = 20
+	items [ JOB_ID_FLD, ROW_DATA ]         = 2
+	items [ JOB_ID_FLD, PROMPT_DATA ]      = FALSE
+
+	items [ STATUS_FLD, TEXT_MSG_DATA ]    = "CSMLP_MSG_10"
+	items [ STATUS_FLD, VALUE_DATA ]       = " "
+	items [ STATUS_FLD, LENGTH_DATA ]      = 2
+	items [ STATUS_FLD, ROW_DATA ]         = 3
+	items [ STATUS_FLD, PROMPT_DATA ]      = FALSE
+
+	items [ DYNAMIC_ID_FLD, TEXT_MSG_DATA ]    = "CSMLP_MSG_20"
+	items [ DYNAMIC_ID_FLD, VALUE_DATA ]       = " "
+	items [ DYNAMIC_ID_FLD, LENGTH_DATA ]      = 10
+	items [ DYNAMIC_ID_FLD, ROW_DATA ]         = 5
+	items [ DYNAMIC_ID_FLD, PROMPT_DATA ]      = FALSE
+
+	items [ DYNAMIC_NAME_FLD, TEXT_MSG_DATA ]    = "CSMLP_MSG_21"
+	items [ DYNAMIC_NAME_FLD, VALUE_DATA ]       = " "
+	items [ DYNAMIC_NAME_FLD, LENGTH_DATA ]      = 34
+	items [ DYNAMIC_NAME_FLD, ROW_DATA ]         = 6
+	items [ DYNAMIC_NAME_FLD, PROMPT_DATA ]      = FALSE
+
+	items [ PRODUCT_NAME_FLD, TEXT_MSG_DATA ]    = "CSMLP_MSG_9"
+	items [ PRODUCT_NAME_FLD, VALUE_DATA ]       = " "
+	items [ PRODUCT_NAME_FLD, LENGTH_DATA ]      = 34
+	items [ PRODUCT_NAME_FLD, ROW_DATA ]         = 10
+	items [ PRODUCT_NAME_FLD, PROMPT_DATA ]      = FALSE
+
+	CREATE OBJECT PROMPT_CLASS_GRID, grid
+
+	grid . column 	= 2
+	grid . row 	= 15
+	grid . height 	= 5
+	grid . border	= TRUE
+	grid . cell_columns = 1
+	grid . cell_rows = 0
+	grid . display_cell_routine = "DISPLAY_GRID_CELL"
+	grid . prompt_cell_routine  = "PROMPT_GRID_CELL"
+	grid . enabled = FALSE
+
+        IF ( GLOBAL ( "TERMTYPE" ) <> "GUI" ) THEN
+		{ In non-GUI mode want to be able to up arrow off grid }
+		grid . off_top_routine  = "PROMPT_GRID_OFF_TOP"
+	ENDIF
+
+	{ On the GUI make room for buttons on the right of the grid }
+
+        IF ( GLOBAL ( "TERMTYPE" ) = "GUI" ) THEN
+		grid . width = ( form . width - 19 )
+	ELSE
+		grid . width = ( form . width - 2 )
+	ENDIF
+
+	grid . column_size [ 1 ] = grid . width
+	ARRAY grid . user_info
+
+	items [ GRID_PROMPT_FLD, TEXT_MSG_DATA ] = ""
+	items [ GRID_PROMPT_FLD, ROW_DATA ] = 0
+	items [ GRID_PROMPT_FLD, PROMPT_DATA ] = TRUE
+	items [ GRID_PROMPT_FLD, VALUE_DATA ] = grid
+
+	{ If character cell then put a colon on display text }
+
+	IF ( GLOBAL ( "TERMTYPE" ) <> "GUI" ) THEN
+		separator = ":"
+	ELSE
+		separator = ""
+	ENDIF
+
+	prompt_col = prompt_text_column + PROMPT_TEXT_WIDTH +
+						 LENGTH ( separator ) + 1
+
+	{ Add all the data fields onto the form }
+
+	item = 1
+	REPEAT
+
+		IF ( items [ item, ROW_DATA ] <> 0 ) THEN
+
+			txt = GET_USER_MESSAGE( items [ item, TEXT_MSG_DATA ],1)
+			txt = PAD ( txt, " ", PROMPT_TEXT_WIDTH )
+			txt = txt : separator
+
+			form . add_display ( txt,
+					     prompt_text_column,
+					     items [ item, ROW_DATA ],
+					     PROMPT_RENDITION_RAISED +
+					               PROMPT_RENDITION_BOLD )
+
+			IF ( items [ item, PROMPT_DATA ] ) THEN
+
+			{ Update the column position }
+
+				items [ item, VALUE_DATA ]. column = prompt_col
+
+			ENDIF
+
+		ENDIF
+
+		IF ( items [ item, PROMPT_DATA ] ) THEN
+
+			{ Add to the prompt_objects array }
+
+			form . prompt_objects [ item ] =
+				     items [ item, VALUE_DATA ]
+		ELSE
+
+			{ Put a display object on the form }
+
+			PROMPT OBJECT display_text
+				FORMAT TEXT
+				ON LINE items [ item, ROW_DATA ]
+				FROM prompt_col
+				TO prompt_col + items [ item, LENGTH_DATA ]
+				WITH ( lowered = TRUE )
+
+			form . add_display ( display_text )
+
+		ENDIF
+		item = item + 1
+
+	UNTIL ( items [ item, 1 ] = EMPTY )
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE add_buttons_to_form ( form )
+
+	DECLARE button_prompt, buttons, num, row, caption, button_col
+	ARRAY buttons
+
+	{ Indices for the button array }
+
+	CONSTANT BUTTON_TOP_ROW	= 1
+	CONSTANT BUTTON_WIDTH	= 12
+
+	button_col = form . width - BUTTON_WIDTH - 1
+
+	CONSTANT COMPARE_BUTTON     = 1
+	CONSTANT RESULTS_BUTTON     = 2
+	CONSTANT UPDATE_BUTTON      = 3
+	CONSTANT AUTHORISE_BUTTON   = 4
+	CONSTANT SUMMARY_REP_BUTTON = 5
+	CONSTANT FULL_REP_BUTTON    = 6
+
+	buttons [ COMPARE_BUTTON ]     = "CSMLP_COMPARE_BUTTON"
+	buttons [ RESULTS_BUTTON ]     = "CSMLP_RESULTS_BUTTON"
+	buttons [ UPDATE_BUTTON ]      = "CSMLP_UPDATE_BUTTON"
+	buttons [ AUTHORISE_BUTTON ]   = "CSMLP_AUTHORISE_BUTTON"
+	buttons [ SUMMARY_REP_BUTTON ] = "CSMLP_SUMMARY_REP_BUTTON"
+	buttons [ FULL_REP_BUTTON ]    = "CSMLP_FULL_REP_BUTTON"
+
+	num = 1
+	row = BUTTON_TOP_ROW
+
+	WHILE ( buttons [ num ] <> EMPTY ) DO
+
+		caption = GET_USER_MESSAGE ( buttons [ num ], 1 )
+
+		PROMPT OBJECT button_prompt
+			CLASS "STD_PROMPT_BUTTON"
+			ON LINE row FROM BUTTON_COL TO BUTTON_COL + BUTTON_WIDTH
+			WITH ( caption = caption,
+			       user_info = num,
+		               mouse_click_routine = "BUTTON_PRESSED_ROUTINE" )
+
+		form . add_prompt ( button_prompt )
+
+		num = num + 1
+		row = row + 2
+	ENDWHILE
+
+	{ Finally add the HELP and CLOSE buttons, which send the HELP and
+	  EXIT key respectively }
+
+	PROMPT OBJECT button_prompt
+		CLASS "STD_PROMPT_BUTTON"
+		ON LINE row FROM BUTTON_COL TO BUTTON_COL + BUTTON_WIDTH
+		WITH ( caption = GET_USER_MESSAGE ( "CSMLP_HELP_BUTTON", 1 ),
+		       send_lastkey = "HELP" )
+
+	form . add_prompt ( button_prompt )
+	row = row + 2
+
+	PROMPT OBJECT button_prompt
+		CLASS "STD_PROMPT_BUTTON"
+		ON LINE row FROM BUTTON_COL TO BUTTON_COL + BUTTON_WIDTH
+		WITH ( caption = GET_USER_MESSAGE ( "CSMLP_CLOSE_BUTTON", 1 ),
+		       send_lastkey = "EXIT" )
+
+	form . add_prompt ( button_prompt )
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE add_frames_to_form ( form )
+
+	DECLARE grid, button_col
+
+	grid = get_form_prompt ( form, GRID_PROMPT_FLD )
+
+	{ Frame around the grid }
+
+	form . add_frame ( "" 	      	    ,
+			   grid . column - 1,
+			   grid . row       ,
+			   grid . height    ,
+			   grid . width + 2  )
+
+	{ Frame around the buttons }
+
+	button_col = form . width - BUTTON_WIDTH - 1
+
+	form . add_frame ( "" 	      	    ,
+			   button_col - 1,
+			   BUTTON_TOP_ROW,
+			   15 ,
+			   BUTTON_WIDTH + 3 )
+
+	{ Frame around the sample information }
+
+	form . add_frame ( "", 1, 1  , 3, button_col - 4 )
+	form . add_panel( button_col - 6, 1 , 3, 1, PANEL_H_ALIGN_LEFT + PANEL_H_EXPAND_ON )
+	
+	form . add_frame ( "", 1, 5  , 3, button_col - 4 )
+	form . add_panel( button_col - 6, 5 , 3, 1, PANEL_H_ALIGN_LEFT + PANEL_H_EXPAND_ON )
+
+	form . add_frame ( "", 1, 9  , 3, button_col - 4 )
+	form . add_panel( button_col - 6, 9 , 3, 1, PANEL_H_ALIGN_LEFT + PANEL_H_EXPAND_ON )
+	
+	form . add_frame ( "", 1, 13 , 1, button_col - 4 )
+	form . add_panel( button_col - 6, 13, 1, 1, PANEL_H_ALIGN_LEFT + PANEL_H_EXPAND_ON )
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE main
+
+	DECLARE form
+
+	initialise_form ( form )
+
+	add_form_prompts ( form )
+
+        IF ( GLOBAL ( "TERMTYPE" ) = "GUI" ) THEN
+
+		add_buttons_to_form ( form )
+		add_frames_to_form ( form )
+
+	ENDIF
+
+	form . start_prompt ()
+
+	{ Only EXIT can exit this screen }
+
+	REPEAT
+
+		form . wait_prompt ()
+
+		{ If the DO key has been pressed,
+		  then try to do the comparison }
+
+		IF ( form . get_last_key () = "DO" ) THEN
+
+			sample_compare_operation ( form )
+
+		ENDIF
+
+	UNTIL ( form . get_last_key () = "EXIT" )
+
+	form . end_prompt ()
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE display_grid_cell ( self,
+			    VALUE cell_column,
+			    VALUE cell_row,
+			          window,
+			    VALUE column,
+			    VALUE row,
+			    VALUE cell_width,
+			    VALUE cell_height )
+
+	IF ( self . user_info [ GRID_INFO_COL, cell_row ] <> EMPTY ) THEN
+
+		DISPLAY self . user_info [ GRID_INFO_COL, cell_row ]
+			AT column, row
+			IN WINDOW window
+			TO column + cell_width - 1
+			BOLD = self . user_info [ GRID_BOLD_COL, cell_row ]
+	ENDIF
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE prompt_grid_cell ( self,
+			    VALUE cell_column,
+			    VALUE cell_row,
+			          window,
+			    VALUE column,
+			    VALUE row,
+			    VALUE cell_width,
+			    VALUE cell_height )
+
+	DECLARE bold_flag
+
+	DISPLAY self . user_info [ cell_column, cell_row ]
+		AT column, row
+		IN WINDOW window
+		TO column
+		BOLD INVERSE
+
+	PROMPT IN WINDOW window AT column , row
+
+	IF ( self . user_info [ GRID_BOLD_COL, cell_row ] = TRUE ) THEN
+		bold_flag = TRUE
+	ELSE
+		bold_flag = FALSE
+	ENDIF
+
+	DISPLAY self . user_info [ GRID_INFO_COL, cell_row ]
+		AT column, row
+		IN WINDOW window
+		TO column
+		BOLD = bold_flag
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE prompt_grid_off_top ( self )
+
+	self . parent_prompt . set_position (
+	       self . parent_prompt . active_prompt )
+	self . parent_prompt . set_lastkey ( "CONTINUE" )
+	self . keep_prompting = FALSE
+
+	return ( FALSE )
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE sample_prompt_routine ( self )
+
+	DECLARE sample_id, product_ver, form
+	DECLARE product_id, sample_status, sample_grade, job_text, id_text
+	DECLARE dynamic_id
+
+	IF ( ( self . value <> "" ) AND
+	     ( self . text <> self . original_text ) AND
+	     ( self . last_key <> "EXIT" ) ) THEN
+
+        	sample_id = SELECT sample . id_numeric
+		       		WHERE id_numeric = self . value
+		id_text	      = SELECT sample . id_text
+		product_id    = SELECT sample . product_name
+		sample_status = SELECT sample . status
+		dynamic_id    = SELECT sample . dynamic_product
+		sample_grade  = SELECT sample . grade_name
+		job_text      = SELECT sample . job_name
+
+		self . value = sample_id
+
+		IF ( SELECT sample . product_version > 0 ) THEN
+	   		product_ver = SELECT sample . product_version
+		ELSE
+			mlp_get_version ( product_id, product_ver )
+		ENDIF
+
+		product_ver = STRIP ( product_ver )
+
+		{ Get the form that this prompt is sitting on }
+
+		form = self . parent_prompt
+
+		update_form_fld ( form, ID_TEXT_FLD , id_text )
+		update_form_fld ( form, JOB_ID_FLD  , job_text )
+		update_form_fld ( form, STATUS_FLD  , sample_status )
+
+		update_dynamic_product_info ( form, dynamic_id )
+
+		update_product_info ( form,
+			      	      product_id,
+			      	      sample_grade,
+			      	      product_ver )
+
+
+	ENDIF
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE update_product_info ( form,
+			      VALUE product_id,
+			      VALUE grade,
+			      VALUE product_ver )
+
+	DECLARE product_name, max_product_ver, version_prompt
+	DECLARE grid, mlp_exists, dynamic_mlp_exists, level_enabled
+
+	IF ( product_id = "" ) THEN
+
+		grade = ""
+		product_ver = 0
+	   	product_name = ""
+		mlp_exists = FALSE
+
+	ELSE
+		mlp_exists = TRUE
+
+		product_name = SELECT mlp_header . product_code
+			            WHERE identity = product_id
+
+		IF product_name = EMPTY THEN
+	   		product_name = " "
+		ENDIF
+
+		IF ( grade = " " ) THEN
+	      		grade = GET_USER_MESSAGE( "CSMLP_ALL_LEVELS",1 )
+		ENDIF
+
+		mlp_get_version ( product_id, max_product_ver )
+
+		IF ( product_ver = 0 ) THEN
+			product_ver = max_product_ver
+		ENDIF
+
+		version_prompt = get_form_prompt ( form, VERSION_PROMPT_FLD )
+		version_prompt . maximum = max_product_ver
+
+       {1.1 Modification to report supplied by LabSystems implemented on 260599 } 
+       {MK 26/05/99                                                         } 
+
+                IF max_product_ver > 99 THEN
+
+                    version_prompt.width = 3
+                    version_prompt.length = 3
+
+                ELSEIF max_product_ver > 9 THEN
+
+                    version_prompt.width = 2
+                    version_prompt.length = 2
+
+                ELSE
+
+                    version_prompt.width = 1
+                    version_prompt.length = 1
+
+                ENDIF
+
+
+      {/1.1 End of Modifications }
+
+
+	ENDIF
+
+	update_form_fld ( form, PRODUCT_PROMPT_FLD, product_id   )
+	update_form_fld ( form, VERSION_PROMPT_FLD, product_ver  )
+	update_form_fld ( form, LEVEL_PROMPT_FLD  , grade        )
+	update_form_fld ( form, PRODUCT_NAME_FLD  , product_name )
+
+	form . prompt_objects [PRODUCT_PROMPT_FLD] . set_enabled( TRUE )
+	form . prompt_objects [VERSION_PROMPT_FLD] . set_enabled( mlp_exists )
+
+	dynamic_mlp_exists = ( get_dynamic_product_from_form( form ) <> NULL )
+
+	level_enabled = mlp_exists OR dynamic_mlp_exists
+
+	form . prompt_objects [ LEVEL_PROMPT_FLD ] .
+						set_enabled ( level_enabled )
+
+
+	{ Clear the rest of the grid }
+
+	grid = get_form_prompt ( form, GRID_PROMPT_FLD )
+
+	initialise_grid ( grid )
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE update_dynamic_product_info ( form,  VALUE dynamic_product )
+
+	DECLARE exists, dynamic_prompt, dynamic_name
+
+	dynamic_name = SELECT mlp_header . product_code
+				WHERE identity = dynamic_product
+
+	update_form_fld ( form, DYNAMIC_ID_FLD  , dynamic_product )
+	update_form_fld ( form, DYNAMIC_NAME_FLD, dynamic_name    )
+
+	exists = ( dynamic_product <> NULL )
+
+	dynamic_prompt = get_form_prompt ( form, DYNAMIC_PROMPT_FLD )
+	dynamic_prompt . value = exists
+	dynamic_prompt . set_text( exists )
+
+	form . prompt_objects [ DYNAMIC_PROMPT_FLD ] . set_enabled ( exists )
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE dynamic_prompt_routine( self )
+
+	DECLARE form, mlp_exists, dynamic_mlp_exists, level_enabled
+
+	form = self . parent_prompt
+
+	mlp_exists         = NOT BLANK( get_form_fld ( form, PRODUCT_PROMPT_FLD ) )
+	dynamic_mlp_exists = ( get_dynamic_product_from_form( form ) <> NULL )
+
+	level_enabled = mlp_exists OR dynamic_mlp_exists
+
+	form . prompt_objects [ LEVEL_PROMPT_FLD ] . set_enabled ( level_enabled )
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE product_prompt_routine ( self )
+
+	DECLARE sample_grade, form, product_ver,
+		sample_id, sample_product, entered_product
+
+	IF ( ( self . text <> self . original_text ) AND
+	     ( self . last_key <> "EXIT" ) ) THEN
+
+		{ Get the form that this prompt is sitting on }
+
+		form = self . parent_prompt
+
+		entered_product = ""
+		product_ver = 0
+		sample_grade = ""
+
+		IF ( self . value <> "" ) THEN
+
+			entered_product = self . text
+
+			{ If the selected product is the same as the sample
+		  	  table take the version number from the sample,
+			  else take the latest version }
+
+			sample_id = get_form_fld ( form, SAMPLE_PROMPT_FLD )
+
+			sample_product = SELECT sample . product
+						WHERE id_numeric = sample_id
+
+			IF ( sample_product = entered_product ) THEN
+				product_ver = SELECT sample . product_version
+				sample_grade = SELECT sample . grade_code
+			ENDIF
+
+		ENDIF
+
+		update_product_info ( form,
+			      	      entered_product,
+			      	      sample_grade,
+			      	      product_ver )
+	ENDIF
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE enter_level_prompt_routine ( self )
+
+	DECLARE form
+
+	form = self . parent_prompt
+
+	update_levels_array ( self, form )
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE initialise_grid ( grid )
+
+	DECLARE row_num, blank_array, form
+	ARRAY blank_array
+
+	row_num = grid . cell_rows
+
+	WHILE ( row_num >= 1 )
+		grid . remove_row ( row_num )
+		row_num = row_num - 1
+	ENDWHILE
+
+	{ Blank the user info array as well }
+
+	grid . user_info = blank_array
+	grid . cell_rows = 0
+
+	grid . redisplay_contents ()
+
+	{ Once the grid is empty switch it off }
+
+	grid . set_enabled ( FALSE )
+
+	{ Get the form that this prompt is sitting on }
+
+	form = grid . parent_prompt
+
+	{ Set the comparison not done flag }
+
+	update_form_fld ( form, FORM_COMPARISON_FLD, FALSE )
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE sample_valid_routine ( self )
+
+	DECLARE ok
+
+	ok = self . value <> ""
+
+	IF ( NOT ok ) THEN
+		flash_message ( "CSMLP_BLANK_SAMPLE", TRUE )
+	ENDIF
+
+	self . repaste ()
+
+	RETURN ( ok )
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE update_form_fld ( form,
+			  VALUE fld_num,
+			  VALUE fld_value )
+
+	DECLARE prompt_object, display_text
+
+	IF ( fld_num <= NUM_PROMPT_FLDS ) THEN
+
+		{ The field is a prompt object }
+
+		prompt_object = form . prompt_objects [ fld_num ]
+
+		prompt_object . set_text ( fld_value )
+
+	ELSEIF ( fld_num <= NUM_SCREEN_FLDS ) THEN
+
+		{ The field is a fixed text display object }
+
+		display_text = form . display_objects [
+						  fld_num - NUM_PROMPT_FLDS ]
+
+
+		display_text . set_text ( fld_value )
+
+	ELSE
+
+		{ The field is a form . user_info field }
+
+		form . user_info [ fld_num - NUM_SCREEN_FLDS ] = fld_value
+
+	ENDIF
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE verify_sample_data ( form )
+
+	{ Return TRUE if a sample, product, version, and level have been
+	  entered }
+
+	DECLARE ok, dynamic_prompt
+
+	dynamic_prompt = get_form_prompt ( form, DYNAMIC_PROMPT_FLD )
+
+	ok = ( get_form_fld ( form, SAMPLE_PROMPT_FLD ) <> "" ) AND
+	     (  ( dynamic_prompt . value = TRUE ) OR
+	        ( get_form_fld ( form, PRODUCT_PROMPT_FLD ) <> "" ) AND
+	        ( get_form_fld ( form, VERSION_PROMPT_FLD ) <> "" ) AND
+	        ( get_form_fld ( form, LEVEL_PROMPT_FLD   ) <> "" )  )
+
+	RETURN ( ok )
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE select_key_routine ( form )
+
+	{ Routine called when SELECT key is pressed }
+
+	DECLARE options, option, menu_ptr
+
+	IF ( NOT verify_sample_data ( form ) ) THEN
+
+		flash_message ( "CSMLP_NO_MENU_YET", FALSE )
+
+	ELSE
+		ARRAY options
+
+		message_fetch ( "CSMLP_MENU", menu_ptr )
+
+		options [ 1,1 ] = "*"
+		options [ 1,2 ] = GET_USER_MESSAGE ( "CSMLP_MENU_TITLE", 1 )
+		options [ 2,1 ] = message_get_text ( menu_ptr, 1)
+		options [ 2,2 ] = message_get_text ( menu_ptr, 2)
+		options [ 2,3 ] = 1
+		options [ 3,1 ] = message_get_text ( menu_ptr, 3)
+		options [ 3,2 ] = message_get_text ( menu_ptr, 4)
+		options [ 3,3 ] = 2
+		options [ 4,1 ] = message_get_text ( menu_ptr, 5)
+		options [ 4,2 ] = message_get_text ( menu_ptr, 6)
+		options [ 4,3 ] = 3
+		options [ 5,1 ] = message_get_text ( menu_ptr, 7)
+		options [ 5,2 ] = message_get_text ( menu_ptr, 8)
+		options [ 5,3 ] = 4
+
+		{ Add the authorise option if the sample hasn't already
+		  been authorised }
+
+		IF ( get_form_fld ( form, STATUS_FLD ) <> "A" ) THEN
+
+			options [ 6,1 ] = message_get_text ( menu_ptr, 9)
+			options [ 6,2 ] = message_get_text ( menu_ptr, 10)
+			options [ 6,3 ] = 5
+		ENDIF
+
+		CHOOSE option OUTOF options AT 50,7
+
+		IF ( LASTKEY <> "EXIT" ) THEN
+
+
+			IF ( option = 1 ) THEN
+
+				report_operation ( form, "FULL" )
+
+			ELSEIF ( option = 2 ) THEN
+
+				report_operation ( form, "SUMMARY" )
+
+			ELSEIF ( option = 3 ) THEN
+
+				display_results_operation ( form )
+
+			ELSEIF ( option = 4 ) THEN
+
+				update_sample_operation ( form )
+
+			ELSEIF ( option = 5 ) THEN
+
+				authorise_sample_operation ( form )
+
+			ENDIF
+
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE sample_compare_operation ( form )
+
+	DECLARE sample_id, prod_id, prod_ver, level_id, rep_reqd, full_rep
+	DECLARE sample_inspec, rep_fname, output_grid, dynamic_product
+
+	IF ( verify_sample_data ( form ) ) THEN
+
+		output_grid = form . prompt_objects [ GRID_PROMPT_FLD ]
+
+		output_grid     = get_form_prompt ( form, GRID_PROMPT_FLD )
+		sample_id       = get_form_fld ( form, SAMPLE_PROMPT_FLD )
+		prod_id         = get_form_fld ( form, PRODUCT_PROMPT_FLD )
+		prod_ver        = get_form_fld ( form, VERSION_PROMPT_FLD )
+		level_id        = get_level_from_form ( form )
+		dynamic_product = get_dynamic_product_from_form ( form )
+
+   		rep_reqd = FALSE
+   		full_rep = FALSE
+
+		initialise_grid ( output_grid )
+
+   		csmlp_dynamic_sample ( sample_id       ,
+				       prod_id         ,
+				       prod_ver        ,
+				       dynamic_product ,
+				       level_id
+				       rep_reqd        ,
+				       full_rep        ,
+				       output_grid     ,
+				       sample_inspec   ,
+				       rep_fname       )
+
+		update_form_fld ( form, FORM_COMPARISON_FLD, TRUE )
+		update_form_fld ( form, FORM_IN_SPEC_FLD, sample_inspec )
+
+		{ Turn on the grid so the user can look at it }
+
+		output_grid . set_enabled ( TRUE )
+
+	ENDIF
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE get_form_fld ( form,
+		       VALUE fld_num )
+
+	DECLARE fld_value, prompt_object, fixed_array
+
+	IF ( fld_num <= NUM_PROMPT_FLDS ) THEN
+
+		{ The field is a prompt object }
+
+		prompt_object = form . prompt_objects [ fld_num ]
+		fld_value = prompt_object . text
+
+	ELSEIF ( fld_num <= NUM_SCREEN_FLDS ) THEN
+
+		{ The field is a fixed text display object }
+
+		fixed_array = form . static_text [ fld_num - NUM_PROMPT_FLDS ]
+		fld_value = fixed_array [ 1 ]
+
+	ELSE
+
+		{ The field is a form . user_info field }
+
+		fld_value = form . user_info [ fld_num - NUM_SCREEN_FLDS ]
+
+	ENDIF
+
+	RETURN ( fld_value )
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE get_form_prompt ( form,
+		       	  VALUE fld_num )
+
+	DECLARE prompt_object
+
+	IF ( fld_num <= NUM_PROMPT_FLDS ) THEN
+
+		{ The field is a prompt object }
+
+		prompt_object = form . prompt_objects [ fld_num ]
+
+	ELSE
+
+		prompt_object = EMPTY
+
+	ENDIF
+
+	RETURN ( prompt_object )
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE initialise_form_flds ( form_user_info )
+
+	DECLARE flds
+	ARRAY flds
+
+	form_user_info = flds
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE version_prompt_routine ( self )
+
+	DECLARE grid
+
+	IF ( ( self . value <> "" ) AND
+	     ( self . text <> self . original_text ) AND
+	     ( self . last_key <> "EXIT" ) ) THEN
+
+		grid = get_form_prompt ( self . parent_prompt, GRID_PROMPT_FLD )
+		initialise_grid ( grid )
+
+	ENDIF
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE update_levels_array ( level_prompt, form )
+
+	DECLARE levels_array, level_num, choose_position, choose_array
+	DECLARE product_identity, product_version, dynamic_product
+	DECLARE all_levels_mess
+
+	ARRAY choose_array
+
+	product_identity = get_form_fld ( form, PRODUCT_PROMPT_FLD )
+	product_version  = get_form_fld ( form, VERSION_PROMPT_FLD )
+	dynamic_product  = get_dynamic_product_from_form ( form )
+
+	lib_mlps_get_levels_all ( product_identity ,
+				  product_version  ,
+				  dynamic_product  ,
+				  levels_array     )
+
+	{ Always put the 'all levels' level on }
+
+	all_levels_mess = GET_USER_MESSAGE( "CSMLP_ALL_LEVELS",1 )
+	choose_array [ 1, 1 ] = all_levels_mess
+	choose_array [ 1, 2 ] = all_levels_mess
+
+	level_num = 2
+	choose_position = 1
+
+	WHILE choose_position <= size_of_array( levels_array ) DO
+
+		choose_array [ level_num,1 ] = levels_array [ choose_position ]
+		choose_array [ level_num,2 ] = levels_array [ choose_position ]
+
+		level_num = level_num + 1
+		choose_position = choose_position + 1
+
+	ENDWHILE
+
+
+	level_prompt . choose_index = 1
+ 	level_prompt . choose_array = choose_array
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE display_results_operation ( form )
+
+  	MENUPROC 249,
+		 get_form_fld ( form, SAMPLE_PROMPT_FLD )  : ",$EXIT"
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE get_level_from_form ( form )
+
+	DECLARE level_id
+
+	level_id  = get_form_fld ( form, LEVEL_PROMPT_FLD )
+
+	IF ( level_id = GET_USER_MESSAGE ( "CSMLP_ALL_LEVELS",1 ) ) THEN
+		level_id = ""
+	ENDIF
+
+	RETURN ( level_id )
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE get_dynamic_product_from_form ( form )
+
+	DECLARE sample_id, dynamic_prompt, use_dynamic_mlp, dynamic_mlp
+
+	sample_id = get_form_fld ( form, SAMPLE_PROMPT_FLD )
+
+	dynamic_prompt = get_form_prompt ( form, DYNAMIC_PROMPT_FLD )
+	use_dynamic_mlp = dynamic_prompt . value
+
+	IF use_dynamic_mlp THEN
+		dynamic_mlp = SELECT sample . dynamic_product
+				WHERE id_numeric = sample_id
+	ELSE
+		dynamic_mlp = NULL
+	ENDIF
+
+	RETURN( dynamic_mlp )
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE report_operation ( form,
+			   VALUE report_type )
+
+	DECLARE w_report
+
+	{ Call the report option in $LIB_CSMLP }
+
+	do_report ( get_form_fld ( form, PRODUCT_PROMPT_FLD ),
+		    get_form_fld ( form, VERSION_PROMPT_FLD ),
+		    get_dynamic_product_from_form ( form ),
+		    get_level_from_form ( form ),
+		    get_form_fld ( form, SAMPLE_PROMPT_FLD ),
+		    get_form_fld ( form, FORM_IN_SPEC_FLD ),
+		    get_form_fld ( form, FORM_COMPARISON_FLD ),
+		    TRUE,
+		    report_type,
+		    w_report )
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE update_sample_operation ( form )
+
+	update_sample ( get_form_fld ( form, SAMPLE_PROMPT_FLD ),
+			get_form_fld ( form, PRODUCT_PROMPT_FLD ),
+			get_form_fld ( form, VERSION_PROMPT_FLD ),
+			get_level_from_form ( form ),
+			get_form_fld ( form, FORM_IN_SPEC_FLD ),
+			get_form_fld ( form,FORM_COMPARISON_FLD ) )
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE authorise_sample_operation ( form )
+
+	DECLARE sample_id, final_status
+
+	sample_id = get_form_fld ( form, SAMPLE_PROMPT_FLD )
+
+	authorise_sample ( sample_id,
+			   get_form_fld ( form,FORM_COMPARISON_FLD ),
+			   get_form_fld ( form, FORM_IN_SPEC_FLD ),
+			   get_form_fld ( form, PRODUCT_PROMPT_FLD ),
+			   get_form_fld ( form, VERSION_PROMPT_FLD ),
+		    	   get_level_from_form ( form ) )
+
+	{ Display the latest status }
+
+	final_status = SELECT sample . status
+			WHERE id_numeric = sample_id
+
+	update_form_fld ( form,
+			  STATUS_FLD,
+			  final_status )
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE button_pressed_routine ( self )
+
+	DECLARE form, button
+
+	form = self . parent_prompt
+	button = self . user_info
+
+	IF ( button = COMPARE_BUTTON ) THEN
+
+		sample_compare_operation ( form )
+
+	ELSEIF ( button = RESULTS_BUTTON ) THEN
+
+		display_results_operation ( form )
+
+	ELSEIF ( button = UPDATE_BUTTON ) THEN
+
+		update_sample_operation ( form )
+
+	ELSEIF ( button = AUTHORISE_BUTTON ) THEN
+
+		authorise_sample_operation ( form )
+
+	ELSEIF ( button = SUMMARY_REP_BUTTON ) THEN
+
+		report_operation ( form, "SUMMARY" )
+
+	ELSEIF ( button = FULL_REP_BUTTON ) THEN
+
+		report_operation ( form, "FULL" )
+
+	ENDIF
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}

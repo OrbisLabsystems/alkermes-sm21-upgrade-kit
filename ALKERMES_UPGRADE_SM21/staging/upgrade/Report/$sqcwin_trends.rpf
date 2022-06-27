@@ -1,0 +1,1125 @@
+{******************************************************************************
+*
+* Module Name   : sqcwin_trends
+*
+* Purpose       : Routines for use by sqc trend lte.
+*                 
+*
+*******************************************************************************}
+
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN STANDARD_LIBRARY STD_GENERAL
+JOIN STANDARD_LIBRARY STD_MESSAGE
+JOIN STANDARD_LIBRARY STD_PROMPT
+
+
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $LIB_GRID
+
+JOIN LIBRARY $SQCWIN_GLBL
+
+SET COMPILE_OPTION DECLARE
+SET NOTPROTECTED
+ENABLE WINDOWS
+set name "defer/"
+
+
+
+CONSTANT TREND_POINT_HEADER_SCREEN_CLASS  = "STD_TREND_POINT_HEADER_SCREEN"
+
+
+DECLARE screen_info
+
+{******************************************************************************}
+
+ROUTINE trend_points_screen ( VALUE identifier      ,
+                              VALUE copy_identifier ,
+			      VALUE operation       )
+
+{ 
+* Main trend point editting routine.
+* 
+* 
+*
+* Parameters   : identifier, copy_identifier, operation
+* Return Value : n/a
+*
+*******************************************************************************}
+
+    trend_point_initialise ()
+
+    IF identifier <> screen_info . trend_id THEN
+
+        screen_info . trend_id      = identifier
+        screen_info . copy_trend_id = copy_identifier
+        screen_info . mode          = operation
+        screen_info . collection    = EMPTY
+        read_trend_points ( screen_info, TRUE )
+
+    ELSE
+
+        screen_info . trend_id      = identifier
+        screen_info . copy_trend_id = copy_identifier
+        screen_info . mode          = operation
+        read_trend_points ( screen_info, FALSE )
+
+    ENDIF
+
+    IF ( operation = "ADD" ) THEN
+
+        IF ( screen_info . collection . size ( ) = 0 ) THEN
+
+            add_default_trend_points ( screen_info )
+
+        ELSE
+
+            trend_point_screen   ( screen_info )
+
+        ENDIF
+
+    ELSEIF ( operation = "DISPLAY"  ) THEN
+
+        screen_info . mod = FALSE
+        trend_point_screen   ( screen_info )
+
+    ELSEIF ( operation = "MODIFY"  ) THEN
+
+        trend_point_screen   ( screen_info )
+
+    ELSEIF ( operation = "SAVE" ) THEN
+
+        IF ( screen_info . mod ) THEN
+
+            save_trend_points ( screen_info )
+
+        ENDIF
+
+    ELSEIF ( operation = "QUIT" ) THEN
+
+	SET GLOBAL "LIBRARY_INITIALISED" TO FALSE
+
+    ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+GLOBAL ROUTINE trend_point_initialise
+
+{ 
+* Trend point initialisation routine.
+* 
+* 
+*
+* Parameters   : n/a
+* Return Value : n/a
+*
+*******************************************************************************}
+
+	IF NOT global ( "library_initialised" ) THEN
+
+        globals_initialise ()
+	lib_grid_initialise ()
+	trend_point_class_define ()
+	
+    	CREATE OBJECT trend_point_header_screen_class, screen_info
+
+		SET GLOBAL "LIBRARY_INITIALISED" TO TRUE
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE trend_point_class_define
+
+{ 
+* Definition of trend point classes
+* 
+* 
+*
+* Parameters   : n/a
+* Return Value : n/a
+*
+*******************************************************************************}
+
+    DEFINE CLASS TREND_POINT_HEADER_SCREEN_CLASS
+
+	PROPERTIES
+
+            "TREND_ID"       ,
+	    "COPY_TREND_ID"  ,
+	    "MODE"           ,
+            "COLLECTION"     ,
+	    "ACTIVE"         ,
+            "DELETED"        ,
+	    "INSERT_NEW_ENTRY",
+            "TREND_TYPE"     ,
+            "TREND_PARAMETER",
+            "MOD"
+
+
+        INITIALISATION
+
+    END CLASS
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE std_trend_point_header_screen_class_initialisation ( self )
+
+{ 
+* Initialisation routine for std_trend_point_header_screen class
+* 
+* 
+*
+* Parameters   : self
+* Return Value : n/a
+*
+*******************************************************************************}
+
+	ARRAY self . trend_parameter ARRAYSIZE (  2 , 2 )
+	ARRAY self . trend_type      ARRAYSIZE ( 15 , 2 )
+
+	    self . trend_parameter [ 1 , 1 ] = GET_USER_MESSAGE ( "SQCWIN_TREND_PAR_1" ,1 )
+	    self . trend_parameter [ 1 , 2 ] = 1
+	    self . trend_parameter [ 2 , 1 ] = GET_USER_MESSAGE ( "SQCWIN_TREND_PAR_2" ,1 )
+	    self . trend_parameter [ 2 , 2 ] = 2
+
+	    self . trend_type [1,1]  = TREND_NUMBER_1
+	    self . trend_type [1,2]  = 1
+	    self . trend_type [2,1]  = TREND_NUMBER_2
+	    self . trend_type [2,2]  = 2
+	    self . trend_type [3,1]  = TREND_NUMBER_3
+	    self . trend_type [3,2]  = 3
+	    self . trend_type [4,1]  = TREND_NUMBER_4
+	    self . trend_type [4,2]  = 4
+	    self . trend_type [5,1]  = TREND_NUMBER_5
+	    self . trend_type [5,2]  = 5
+	    self . trend_type [6,1]  = TREND_NUMBER_6
+	    self . trend_type [6,2]  = 6
+	    self . trend_type [7,1]  = TREND_NUMBER_7
+	    self . trend_type [7,2]  = 7
+	    self . trend_type [8,1]  = TREND_NUMBER_8
+	    self . trend_type [8,2]  = 8
+	    self . trend_type [9,1]  = TREND_NUMBER_9
+	    self . trend_type [9,2]  = 9
+	    self . trend_type [10,1] = TREND_NUMBER_10
+	    self . trend_type [10,2] = 10
+	    self . trend_type [11,1] = TREND_NUMBER_11
+	    self . trend_type [11,2] = 11
+	    self . trend_type [12,1] = TREND_NUMBER_12
+	    self . trend_type [12,2] = 12
+	    self . trend_type [13,1] = TREND_NUMBER_13
+	    self . trend_type [13,2] = 13
+	    self . trend_type [14,1] = TREND_NUMBER_14
+	    self . trend_type [14,2] = 14
+	    self . trend_type [15,1] = TREND_NUMBER_15
+	    self . trend_type [15,2] = 15
+
+	    self . collection = EMPTY
+
+	    self . trend_id = ""
+
+	    self . mod      = TRUE
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE read_trend_points (       screen_info ,
+                            VALUE do_read     )
+
+{ 
+* Routine to read trend points from database into a collection.
+* 
+* 
+*
+* Parameters   : screen_info, do_read
+* Return Value : n/a
+*
+*******************************************************************************}
+
+DECLARE select_array
+
+	ARRAY select_array
+
+	IF ( ( screen_info . collection = EMPTY ) AND ( do_read ) ) THEN
+
+	    CREATE OBJECT "STD_OBJECT_DATABASE",  screen_info . collection
+
+	    screen_info . collection . initialise ( "SQCWIN_TREND_POINT" )
+
+	    array_select_add (  select_array           ,
+				ARRAY_SELECT_EQ        ,
+				"TREND_ID"             ,
+				screen_info . trend_id )
+
+	    array_select_add ( select_array           ,
+			       ARRAY_SELECT_ORDER     ,
+			       "TREND_NUMBER"         ,
+			       ARRAY_SELECT_ASCENDING )
+
+	    IF screen_info . mode = "DISPLAY" THEN
+
+		screen_info . collection . select ( select_array )
+
+	    ELSE
+
+		screen_info . collection . select_for_update ( select_array )
+
+	    ENDIF
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE trend_point_screen   ( screen_info )
+
+{ 
+* Routine to display and prompt for trend points.
+* 
+* 
+*
+* Parameters   : screen_info
+* Return Value : n/a
+*
+*******************************************************************************}
+
+DECLARE form, grid
+
+	CREATE OBJECT PROMPT_CLASS_form, form
+	CREATE OBJECT PROMPT_CLASS_GRID, grid
+
+	create_trend_point_grid ( grid, screen_info )
+	create_trend_point_form ( form, grid, screen_info )
+
+	form . start_prompt ( )
+
+	form . prompt_objects [ 3 ] . set_enabled ( screen_info . mod )
+	form . prompt_objects [ 4 ] . set_enabled ( screen_info . mod )
+
+	form . wait_prompt  ( )
+	form . end_prompt   ( )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE create_trend_point_grid ( grid_object ,
+                                  screen_info )
+
+{ 
+* Routine to create the grid for the trend points.
+* 
+* 
+*
+* Parameters   : grid_object, screen_info
+* Return Value : n/a
+*
+*******************************************************************************}
+
+    grid_object . user_info = screen_info
+
+	grid_object . width   = 72
+	grid_object . height  = 19
+	grid_object . column   = 1
+	grid_object . row      = 1
+
+	grid_object . border   = FALSE
+
+	grid_object . vgl_library          = global ( "current_library" )
+
+	grid_object . prompt_cell_routine  = "trend_point_prompt"
+	grid_object . display_cell_routine = "trend_point_display"
+
+        grid_object . insert_routine     = "trend_point_insert"
+	grid_object . remove_routine     = "trend_point_remove"
+        grid_object . off_bottom_routine = "trend_point_off_bottom"
+
+	grid_object . cell_columns = 5
+	grid_object . cell_rows    = get_nondelete_size ( screen_info )
+
+        IF ( grid_object . cell_rows = 0 ) THEN
+
+            grid_object . cell_rows = 1
+
+        ENDIF
+
+	setup_columns ( grid_object )
+
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE setup_columns ( grid_object )
+
+{ 
+* Routine to set up the grid columns.
+* 
+* 
+*
+* Parameters   : grid_object
+* Return Value : n/a
+*
+*******************************************************************************}
+
+	grid_object . column_size [ 1 ] = 5
+	grid_object . column_size [ 2 ] = 15
+	grid_object . column_size [ 3 ] = 5
+	grid_object . column_size [ 4 ] = 8
+	grid_object . column_size [ 5 ] = 40
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE load_data_into_grid ( grid_object,
+                              collection )
+
+{ 
+* Routine to load the grid from the collection.
+* 
+* 
+*
+* Parameters   : grid_object, collection
+* Return Value : n/a
+*
+*******************************************************************************}
+
+DECLARE row
+
+	collection . set_first ( )
+
+	WHILE ( collection . current <> EMPTY ) DO
+
+	    IF NOT ( collection . current . deleted ) THEN
+
+		row = SELECT sqcwin_trend_point . trend_number IN OBJECT collection . current
+		grid_object . user_info [ 1 , row ] = SELECT sqcwin_trend_point . trend_factor_one
+		    IN OBJECT collection . current
+		grid_object . user_info [ 1 , row ] = SELECT sqcwin_trend_point . trend_factor_one
+		    IN OBJECT collection . current
+
+	    ENDIF
+
+	    collection . set_next ( )
+
+	ENDWHILE
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE create_trend_point_form ( form        ,
+                                  grid        ,
+                                  screen_info )
+
+{ 
+* Routine to create the trend point form.
+* 
+* 
+*
+* Parameters   : form, grid, screen_info
+* Return Value : n/a
+*
+*******************************************************************************}
+
+DECLARE horizontal_buttons, header_mess, footer_mess
+
+	header_mess = GET_USER_MESSAGE ( "SQCWIN_TREND_TEX_2", 1 )
+	footer_mess = ""
+
+	ARRAY horizontal_buttons
+
+	create_form_buttons ( horizontal_buttons )
+
+	lib_grid_create_form  ( grid                               ,
+						form                               ,
+					screen_info . mode = "MODIFY"      ,
+						0                                  ,
+						header_mess                        ,
+						footer_mess                        ,
+						horizontal_buttons                 )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE trend_point_prompt (          self        ,
+                                VALUE cell_column ,
+                                VALUE cell_row    ,
+                                      window      ,
+                                VALUE column      ,
+                                VALUE row         ,
+                                VALUE cell_width  ,
+                                VALUE cell_height )
+
+{ 
+* Routine to prompt for a trend point.
+* 
+* 
+*
+* Parameters   : self, cell_coluumn, cell_row, window, column, row,
+*                cell_width, cell_height
+* Return Value : n/a
+*
+*******************************************************************************}
+
+DECLARE field_name, field_value, display_value, parameter_value,
+        factor_two_value, lower_value
+
+	self . user_info . collection . set_by_index_number ( "KEY0", cell_row )
+
+	IF ( cell_column = 1 ) THEN
+
+	    display_value = SELECT sqcwin_trend_point . trend_factor_one
+		      IN OBJECT self . user_info . collection . current
+
+	    PROMPT FOR display_value
+		BROWSE ON INTEGER
+		AT column, row
+		IN WINDOW window
+		TO column + cell_width - 1
+
+	    factor_two_value = SELECT sqcwin_trend_point . trend_factor_two
+			  IN OBJECT self . user_info . collection . current
+	    IF ( display_value > factor_two_value ) THEN
+
+		ASSIGN sqcwin_trend_point . trend_factor_two
+		    IN OBJECT self . user_info . collection . current = display_value
+		self . redisplay_cell ( 3 , cell_row )
+
+	    ENDIF
+
+	ELSEIF ( cell_column = 2 ) THEN
+
+	    field_value = SELECT sqcwin_trend_point . trend_parameter
+		      IN OBJECT self . user_info . collection . current
+	    display_value = field_value
+
+	    PROMPT FOR display_value
+		AT column, row
+		IN WINDOW window
+		TO column + cell_width - 1
+		CHOOSE OUTOF self . user_info . trend_parameter
+
+	ELSEIF ( cell_column = 3 ) THEN
+
+	    parameter_value = SELECT sqcwin_trend_point . trend_parameter
+		      IN OBJECT self . user_info . collection . current
+
+	    lower_value = SELECT sqcwin_trend_point . trend_factor_one
+			      IN OBJECT self . user_info . collection . current
+
+	    IF ( parameter_value = 2 ) THEN
+
+		display_value = ""
+		PROMPT FOR display_value
+		    AT column, row
+		    IN WINDOW window
+		    TO column + cell_width - 1
+
+	    ELSE
+
+		display_value = SELECT sqcwin_trend_point . trend_factor_two
+			  IN OBJECT self . user_info . collection . current
+
+		PROMPT FOR display_value
+		    BROWSE ON INTEGER
+		    AT column, row
+		    IN WINDOW window
+		    TO column + cell_width - 1
+		    WITH ( minimum = lower_value )
+
+	    ENDIF
+
+	ELSEIF ( cell_column = 4 ) THEN
+
+	    display_value = GET_USER_MESSAGE ( "SQCWIN_TREND_DIS_1" ,1 )
+	    PROMPT FOR display_value
+		AT column, row
+		IN WINDOW window
+		TO column + cell_width - 1
+		WITH ( display_only = TRUE)
+
+	ELSEIF ( cell_column = 5 ) THEN
+
+	    field_value = SELECT sqcwin_trend_point . trend_type
+		      IN OBJECT self . user_info . collection . current
+	    display_value = field_value
+
+	    PROMPT FOR display_value
+		AT column, row
+		IN WINDOW window
+		TO column + cell_width - 1
+		CHOOSE OUTOF self . user_info . trend_type
+
+	ENDIF
+
+	IF ( cell_column = 1 ) THEN
+
+	    field_name = "trend_factor_one"
+
+	ELSEIF ( cell_column = 2 ) THEN
+
+	    field_name = "trend_parameter"
+
+	ELSEIF ( cell_column = 3 ) THEN
+
+	    field_name = "trend_factor_two"
+
+	ELSEIF ( cell_column = 5 ) THEN
+
+	    field_name = "trend_type"
+
+	ENDIF
+
+	IF ( cell_column <> 4 ) THEN
+
+	    ASSIGN sqcwin_trend_point . 'field_name'
+		IN OBJECT self . user_info . collection . current = display_value
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE trend_point_display (         self        ,
+                                VALUE cell_column ,
+                                VALUE cell_row    ,
+                                      window      ,
+                                VALUE column      ,
+                                VALUE row         ,
+                                VALUE cell_width  ,
+                                VALUE cell_height )
+
+{ 
+* Routine to display a trend point.
+* 
+* 
+*
+* Parameters   : self, cell_column, cell_row, window, column,
+*                row, cell_width, cell_height
+* Return Value : n/a
+*
+*******************************************************************************}
+
+DECLARE field_value, display_value, parameter_value
+
+	self . user_info . collection . set_by_index_number ( "KEY0", cell_row )
+
+	IF ( cell_column = 1 ) THEN
+
+	    display_value = SELECT sqcwin_trend_point . trend_factor_one
+		      IN OBJECT self . user_info . collection . current
+
+	    DISPLAY display_value
+		FORMAT INTEGER
+		AT column, row
+		IN WINDOW window
+		TO column + cell_width - 1
+		WITH ( justification = PROMPT_JUSTIFY_LEFT )
+
+	ELSEIF ( cell_column = 2 ) THEN
+
+	    field_value = SELECT sqcwin_trend_point . trend_parameter
+		      IN OBJECT self . user_info . collection . current
+	    display_value = self . user_info . trend_parameter [ field_value , 1 ]
+
+	    DISPLAY display_value
+		AT column, row
+		IN WINDOW window
+		TO column + cell_width - 1
+
+	ELSEIF ( cell_column = 3 ) THEN
+
+	    display_value = SELECT sqcwin_trend_point . trend_factor_two
+		      IN OBJECT self . user_info . collection . current
+	    parameter_value = SELECT sqcwin_trend_point . trend_parameter
+		      IN OBJECT self . user_info . collection . current
+	    IF ( parameter_value = 2 ) THEN
+		display_value = ""
+	    ENDIF
+
+	    DISPLAY display_value
+		AT column, row
+		IN WINDOW window
+		TO column + cell_width - 1
+		WITH ( justification = PROMPT_JUSTIFY_LEFT )
+
+	ELSEIF ( cell_column = 4 ) THEN
+
+	    display_value = GET_USER_MESSAGE ( "SQCWIN_TREND_DIS_1" ,1 )
+
+	    DISPLAY display_value
+		AT column, row
+		IN WINDOW window
+		TO column + cell_width - 1
+
+	ELSEIF ( cell_column = 5 ) THEN
+
+	    field_value = SELECT sqcwin_trend_point . trend_type
+		      IN OBJECT self . user_info . collection . current
+	    display_value = self . user_info . trend_type [ field_value , 1 ]
+
+	    DISPLAY display_value
+		AT column, row
+		IN WINDOW window
+		TO column + cell_width - 1
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE save_trend_points ( screen_info )
+
+{ 
+* Routine to save changes made to the trend points.
+* 
+* 
+*
+* Parameters   : screen_info
+* Return Value : n/a
+*
+*******************************************************************************}
+
+	screen_info . collection . invoke_all ( "UPDATE" )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE create_form_buttons ( buttons )
+
+{ 
+* Routine to create buttons for the trend point form
+* 
+* 
+*
+* Parameters   : buttons
+* Return Value : n/a
+*
+*******************************************************************************}
+
+DECLARE button_array, button_count, button_object
+
+	button_count = 1
+
+	ARRAY button_array
+
+		button_array [ 1 , 1 ] = "SMP_PROMPT_BUTTON_CLOSE"
+		button_array [ 1 , 2 ] = "DO"
+		button_array [ 2 , 1 ] = "SMP_PROMPT_BUTTON_INSERT"
+		button_array [ 2 , 2 ] = "INSERT HERE"
+		button_array [ 3 , 1 ] = "SMP_PROMPT_BUTTON_REMOVE"
+		button_array [ 3 , 2 ] = "REMOVE"
+		button_array [ 4 , 1 ] = "SMP_PROMPT_BUTTON_HELP"
+		button_array [ 4 , 2 ] = "HELP"
+
+	    WHILE ( button_count <= 4  )
+
+		CREATE OBJECT LIB_GRID_BUTTON_CLASS, button_object
+
+		button_object . caption = get_user_message (
+				       button_array [ button_count,1 ] , 1 )
+		button_object . send_lastkey = button_array [button_count ,2 ]
+		button_object . use_lastkey = TRUE
+
+		buttons [ button_count ] = button_object
+		button_count = button_count + 1
+
+	    ENDWHILE
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE trend_point_insert ( self )
+
+{ 
+* Routine to insert a trend point into the grid.
+* 
+* 
+*
+* Parameters   : self
+* Return Value : n/a
+*
+*******************************************************************************}
+
+DECLARE row
+
+	IF ( self . current_row < 1 ) THEN
+
+		row = 1
+
+	ELSE
+
+		row = self . current_row
+
+	ENDIF
+
+	self . insert_row ( row , 1 , GRID_SEPARATOR_NONE )
+
+	self . set_position ( 1 , row )
+
+	add_record_to_collection ( self )
+
+	self . redisplay_contents ( )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE add_record_to_collection ( self )
+
+{ 
+* Routine to add a record to the collection at the current row.
+* 
+* 
+*
+* Parameters   : self
+* Return Value : n/a
+*
+*******************************************************************************}
+
+DECLARE trend_number, sqc_trend_id, cur_row, new_record, row_count,
+        parameter, factor_one, factor_two, type, sqc_status
+
+	trend_number = self . cell_rows
+	cur_row = self . current_row
+
+	IF ( self . cell_rows > self . user_info . collection . size ( ) ) THEN
+
+	    self . user_info . collection . set_by_index_number ( "KEY0", cur_row )
+	    sqc_trend_id = SELECT sqcwin_trend_point . trend_id IN OBJECT
+			       self . user_info . collection . current
+
+
+	    CREATE OBJECT "STD_OBJECT_RECORD", new_record
+
+	    new_record . new = TRUE
+	    new_record . table = "SQCWIN_TREND_POINT"
+	    object_add_table ( new_record , "SQCWIN_TREND_POINT" )
+
+	    trend_number = JUSTIFY(PAD(STRIP(STRING(trend_number))," ",2),"RIGHT")
+	    RESERVE ENTRY sqcwin_trend_point
+	    IN OBJECT new_record, sqc_trend_id:trend_number, sqc_status
+
+	    self . user_info . collection . add ( new_record )
+
+	    self . user_info . collection . re_index_all ( )
+
+	ELSE
+
+	    self . user_info . collection . set_by_index_number ( "KEY0",
+								  self . cell_rows )
+	    IF ( self . user_info . collection . current . deleted = TRUE ) THEN
+
+		self . user_info . collection . current . undelete ( )
+
+	    ENDIF
+
+	ENDIF
+
+	row_count = self . user_info . collection . size ( )
+
+	WHILE ( row_count > self . current_row ) DO
+
+	    self . user_info . collection . set_by_index_number ("KEY0", row_count - 1 )
+
+	    parameter   = SELECT sqcwin_trend_point . trend_parameter
+			    IN OBJECT self . user_info . collection . current
+	    factor_one  = SELECT sqcwin_trend_point . trend_factor_one
+			    IN OBJECT self . user_info . collection . current
+	    factor_two  = SELECT sqcwin_trend_point . trend_factor_two
+			    IN OBJECT self . user_info . collection . current
+	    type        = SELECT sqcwin_trend_point . trend_type
+			     IN OBJECT self . user_info . collection . current
+
+	    self . user_info . collection . set_by_index_number ("KEY0", row_count )
+
+	    ASSIGN sqcwin_trend_point . trend_parameter
+		IN OBJECT self . user_info . collection . current = parameter
+	    ASSIGN sqcwin_trend_point . trend_factor_one
+		IN OBJECT self . user_info . collection . current = factor_one
+	    ASSIGN sqcwin_trend_point . trend_factor_two
+		IN OBJECT self . user_info . collection . current = factor_two
+	    ASSIGN sqcwin_trend_point . trend_type
+		IN OBJECT self . user_info . collection . current = type
+
+	    row_count = row_count - 1
+
+	ENDWHILE
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE trend_point_remove ( self )
+
+{ 
+* Routine to remove a trend point.
+* 
+* 
+*
+* Parameters   : self
+* Return Value : n/a
+*
+*******************************************************************************}
+
+DECLARE row
+
+    IF ( self . cell_rows > 1 ) THEN
+
+    	IF ( self . current_row < 1 ) THEN
+
+	    	row = 1
+
+        ELSE
+
+            row = self . current_row
+
+    	ENDIF
+
+    	self . remove_row ( row )
+        remove_record_from_collection ( self, row )
+
+        IF ( row <= self . cell_rows ) THEN
+
+        	self . set_position ( 1 , row )
+
+        ELSE
+
+        	self . set_position ( 1 , row - 1 )
+
+        ENDIF
+
+        self . redisplay_contents ()
+
+    ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE remove_record_from_collection ( self, removed_row )
+
+{ 
+* Routine to remove a record from the collection at the current row.
+* 
+* 
+*
+* Parameters   : self, removed_row
+* Return Value : n/a
+*
+*******************************************************************************}
+
+DECLARE row_count, parameter, factor_one, factor_two, type, rows_to_move,
+        max_row
+
+	rows_to_move = TRUE
+
+	row_count = self . current_row
+		 max_row   = self . cell_rows
+
+	self . user_info . collection . set_by_index_number ( "KEY0",
+							      self . cell_rows + 1 )
+
+	self . user_info . collection . current . delete ( )
+
+	self . user_info . collection . re_index_all ( )
+
+
+	IF ( removed_row <= self . cell_rows ) THEN
+
+	    max_row = self . cell_rows
+
+	ELSEIF ( removed_row > self . cell_rows ) THEN
+
+	    rows_to_move = FALSE
+
+	ENDIF
+
+	IF rows_to_move THEN
+
+	    WHILE ( row_count <= max_row ) DO
+
+		self . user_info . collection . set_by_index_number ( "KEY0",
+								      row_count + 1 )
+
+		parameter   = SELECT sqcwin_trend_point . trend_parameter
+				IN OBJECT self . user_info . collection . current
+		factor_one  = SELECT sqcwin_trend_point . trend_factor_one
+				IN OBJECT self . user_info . collection . current
+		factor_two  = SELECT sqcwin_trend_point . trend_factor_two
+				IN OBJECT self . user_info . collection . current
+		type        = SELECT sqcwin_trend_point . trend_type
+				IN OBJECT self . user_info . collection . current
+
+		self . user_info . collection . set_by_index_number ("KEY0", row_count )
+
+		ASSIGN sqcwin_trend_point . trend_parameter
+		    IN OBJECT self . user_info . collection . current = parameter
+		ASSIGN sqcwin_trend_point . trend_factor_one
+		    IN OBJECT self . user_info . collection . current = factor_one
+		ASSIGN sqcwin_trend_point . trend_factor_two
+		    IN OBJECT self . user_info . collection . current = factor_two
+		ASSIGN sqcwin_trend_point . trend_type
+		    IN OBJECT self . user_info . collection . current = type
+
+		row_count = row_count + 1
+
+	    ENDWHILE
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE trend_point_off_bottom ( self )
+
+{ 
+* Routine to handle moving off the bottom of the trend point grid.
+* 
+* 
+*
+* Parameters   : self
+* Return Value : n/a
+*
+*******************************************************************************}
+
+	trend_point_insert ( self )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE globals_initialise
+
+{ 
+* Routine to initialise globals.
+* 
+* 
+*
+* Parameters   : n/a
+* Return Value : n/a
+*
+*******************************************************************************}
+
+    SET GLOBAL ("lower_integer_value") TO 1
+    SET GLOBAL ("upper_integer_value") TO 99
+    SET GLOBAL ("lower_real_value") TO 0
+    SET GLOBAL ("upper_real_value") TO 100
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE add_default_trend_points ( screen_info )
+
+{ 
+* Routine to add two records to the trend points collection.
+* 
+* 
+*
+* Parameters   : screen_info
+* Return Value : n/a
+*
+*******************************************************************************}
+
+DECLARE new_record, trend_number, sqc_status
+
+    trend_number = 1
+
+    CREATE OBJECT "STD_OBJECT_RECORD", new_record
+
+    new_record . new = TRUE
+    new_record . table = "SQCWIN_TREND_POINT"
+    object_add_table ( new_record , "SQCWIN_TREND_POINT" )
+
+    trend_number = JUSTIFY(PAD(STRIP(trend_number)," ",2),"RIGHT")
+    RESERVE ENTRY sqcwin_trend_point
+    IN OBJECT new_record, screen_info . trend_id:trend_number, sqc_status
+
+    ASSIGN sqcwin_trend_point . trend_parameter IN OBJECT new_record = CONSECUTIVE
+    ASSIGN sqcwin_trend_point . trend_factor_one IN OBJECT new_record = "1"
+    ASSIGN sqcwin_trend_point . trend_factor_two IN OBJECT new_record = "1"
+    ASSIGN sqcwin_trend_point . trend_type IN OBJECT new_record = ABOVE_UPPER_CONTROL
+
+    screen_info . collection . add ( new_record )
+
+    trend_number = trend_number + 1
+
+    CREATE OBJECT "STD_OBJECT_RECORD", new_record
+
+    new_record . new = TRUE
+    new_record . table = "SQCWIN_TREND_POINT"
+    object_add_table ( new_record , "SQCWIN_TREND_POINT" )
+
+    trend_number = JUSTIFY(PAD(STRIP(ROUND(trend_number))," ",2),"RIGHT")
+    RESERVE ENTRY sqcwin_trend_point
+    IN OBJECT new_record, screen_info . trend_id:trend_number, sqc_status
+
+    ASSIGN sqcwin_trend_point . trend_parameter IN OBJECT new_record = CONSECUTIVE
+    ASSIGN sqcwin_trend_point . trend_factor_one IN OBJECT new_record = "1"
+    ASSIGN sqcwin_trend_point . trend_factor_two IN OBJECT new_record = "1"
+    ASSIGN sqcwin_trend_point . trend_type IN OBJECT new_record = BELOW_LOWER_CONTROL
+
+    screen_info . collection . add ( new_record )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE get_nondelete_size ( screen_info )
+
+{ 
+* Routine to get the number of undeleted trend points in the collection.
+* 
+* 
+*
+* Parameters   : screen_info
+* Return Value : undeleted_count
+*
+*******************************************************************************}
+
+DECLARE count, undeleted_count
+
+    undeleted_count = 0
+
+    count = 0
+
+    WHILE ( count < screen_info . collection . size () ) DO
+
+        count = count + 1
+        screen_info . collection . set_by_number ( count )
+
+        IF NOT ( screen_info . collection . current . deleted ) THEN
+
+            undeleted_count = undeleted_count + 1
+
+        ENDIF
+
+    ENDWHILE
+
+    IF undeleted_count = 0 THEN
+
+        undeleted_count = 1
+
+    ENDIF
+
+    RETURN ( undeleted_count )
+
+ENDROUTINE

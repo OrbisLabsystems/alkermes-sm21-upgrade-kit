@@ -1,0 +1,296 @@
+{******************************************************************************
+*
+* ORBIS INFORMATION SYSTEMS
+*
+* Module Name   : LIB_smmill21_EXPLORER
+*
+* Purpose       : Library of routines used by smmill21_EXPLORER to create 
+*                 smmill21 Explorer Interface 
+*
+* Document Ref. :
+*
+* Specification :
+*
+* Portability   : VGSM 3.1
+*
+* Re-entrant    :
+*
+* Author        : Martin Kavanagh
+*
+* Date Created  : 20 March 2001
+*
+*******************************************************************************}
+SET NOTPROTECTED
+
+SET NAME "DISPLAY/"
+
+ENABLE WINDOWS
+
+SET COMPILE_OPTION DECLARE
+
+JOIN LIBRARY $PROMPT_SPLIT
+JOIN LIBRARY $PROMPT_TREE
+JOIN LIBRARY $PROMPT_TAB
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $TOOLBOX
+
+JOIN LIBRARY $PROMPT_LIST
+
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_BROWSE
+JOIN STANDARD_LIBRARY STD_CLIENT
+
+
+{*******************************************************************************}
+
+GLOBAL ROUTINE setup_standard_fields ( self )
+
+{*******************************************************************************}
+
+	PROMPT OBJECT self.ident[self.count]
+			ON LINE 1 FROM 18
+			WITH (	display_only = true,
+				lowered = TRUE, 
+				width = 35)
+
+		self.tab_array[self.count].add_prompt (self.ident[self.count])
+
+		self.tab_array[self.count].add_display (PAD("Tagname"," ",15),1,1,PROMPT_RENDITION_RAISED)
+
+		PROMPT OBJECT self.descript[self.count]
+			ON LINE 3 FROM 18
+			WITH (	display_only = true,
+				lowered = TRUE,
+				width = 35)
+
+		self.tab_array[self.count].add_prompt (self.descript[self.count])
+
+		self.tab_array[self.count].add_display (PAD("Description"," ",15),1,3,PROMPT_RENDITION_RAISED)
+	
+		PROMPT OBJECT self.group[self.count]
+			ON LINE 4 FROM 18
+			WITH (	display_only = true,
+				lowered = TRUE,
+				width = 35)
+
+		self.tab_array[self.count].add_prompt (self.group[self.count])
+
+		self.tab_array[self.count].add_display (PAD("Group ID"," ",15),1,4,PROMPT_RENDITION_RAISED)
+
+
+ENDROUTINE
+
+{*******************************************************************************}
+
+GLOBAL ROUTINE setup_node_field ( self )
+
+{*******************************************************************************}
+
+	PROMPT OBJECT self.node[self.count]
+			ON LINE 6 FROM 18
+			WITH (	display_only = true,
+				lowered = TRUE,
+				width = 35)
+
+		self.tab_array[self.count].add_prompt (self.node[self.count])
+
+		self.tab_array[self.count].add_display (PAD("IP21 Node"," ",15),1,6,PROMPT_RENDITION_RAISED)
+
+ENDROUTINE
+
+{*******************************************************************************}
+
+GLOBAL ROUTINE setup_anal_comp_fields ( self ) 
+
+{*******************************************************************************}
+
+	PROMPT OBJECT self.anal[self.count]
+			ON LINE 8 FROM 18
+			WITH (	display_only = true,
+				lowered = TRUE,
+				width = 35)
+
+	self.tab_array[self.count].add_prompt (self.anal[self.count])
+	self.tab_array[self.count].add_display (PAD("Analysis"," ",15),1,8,PROMPT_RENDITION_RAISED)
+	
+	PROMPT OBJECT self.comp[self.count]
+		ON LINE 9 FROM 18
+		WITH (  display_only = true,
+			lowered = TRUE,
+			width = 35)
+		
+	self.tab_array[self.count].add_prompt (self.comp[self.count])
+	self.tab_array[self.count].add_display (PAD("Component Name"," ",15),1,9,PROMPT_RENDITION_RAISED)
+
+ENDROUTINE
+
+{*******************************************************************************}
+
+ GLOBAL ROUTINE the_browse ( self )
+
+{*******************************************************************************}
+
+    DECLARE browse_array, counter, the_anal, component, form
+
+    form = self.parent_prompt
+
+    ARRAY browse_array ARRAYSIZE(0,2)
+
+    counter =0
+
+    the_anal =  form.anal[form.count].value
+    component = SELECT versioned_component.name
+                 WHERE ANALYSIS = the_anal
+
+
+    WHILE (component <> EMPTY) DO
+
+        counter = counter + 1
+        browse_array[counter,1] = component
+        browse_array[counter,2] = SELECT versioned_component.analysis
+
+        NEXT versioned_component
+
+        component = SELECT versioned_component. name
+
+    ENDWHILE
+
+    browse_on_array (10, self.value, browse_array)
+    self.text = self.value
+    self . repaste ( )
+
+ENDROUTINE
+
+{*******************************************************************************}
+
+GLOBAL ROUTINE setup_buttons ( self )
+
+{*******************************************************************************}
+
+	PROMPT OBJECT self.add_but[self.count]
+	CLASS PROMPT_CLASS_BUTTON
+	ON LINE self.tabs.height - 3 FROM 2
+	WITH (	width = 10 ,
+		caption = "Add",
+		mouse_click_routine = "button_action",
+		enabled = FALSE )
+
+	self.tab_array[self.count].add_prompt (self.add_but[self.count])
+
+	PROMPT OBJECT self.mod_but[self.count]
+	CLASS PROMPT_CLASS_BUTTON
+	ON LINE self.tabs.height - 3 FROM 14
+	WITH (	width = 10 ,
+		caption = "Modify",
+		mouse_click_routine = "button_action",
+		enabled = FALSE )
+
+	self.tab_array[self.count].add_prompt (self.mod_but[self.count])
+
+	PROMPT OBJECT self.copy_but[self.count]
+	CLASS PROMPT_CLASS_BUTTON
+	ON LINE self.tabs.height - 3 FROM 26
+	WITH (	width = 10 ,
+		caption = "Copy",
+		mouse_click_routine = "button_action",
+		enabled = FALSE )
+
+	self.tab_array[self.count].add_prompt (self.copy_but[self.count])
+
+
+ENDROUTINE
+
+{*******************************************************************************}
+
+ROUTINE button_action ( self ) 
+
+{*******************************************************************************}
+
+    DECLARE choice, item, parent_num, form, return_text
+
+    form = self.parent_prompt.parent_prompt.parent_prompt
+    return_text = form.ident[form.count].text
+    choice = self .caption
+
+    IF form.count = 1 THEN
+
+	IF choice = "Add" THEN
+
+		MENUPROC 1001 
+
+	ELSEIF choice = "Modify" THEN
+
+		MENUPROC 1003 USING return_text
+
+	ELSEIF choice = "Copy" THEN
+
+		MENUPROC 1002 USING return_text
+
+	ENDIF
+
+    ELSEIF form.count = 2 THEN
+
+	IF choice = "Add" THEN
+
+		MENUPROC 1004 
+
+	ELSEIF choice = "Modify" THEN
+
+		MENUPROC 1006 USING return_text
+
+	ELSEIF choice = "Copy" THEN
+
+		MENUPROC 1005 USING return_text
+
+	ENDIF
+
+    ELSEIF form.count = 3 THEN
+
+	IF choice = "Add" THEN
+
+		MENUPROC 1007 
+
+	ELSEIF choice = "Modify" THEN
+
+		MENUPROC 1009 USING return_text
+
+	ELSEIF choice = "Copy" THEN
+
+		MENUPROC 1008 USING return_text
+
+	ENDIF
+
+    ELSEIF form.count = 4 THEN
+
+	IF choice = "Add" THEN
+
+		MENUPROC 1011 
+
+	ELSEIF choice = "Modify" THEN
+
+		MENUPROC 1013 USING return_text
+
+	ELSEIF choice = "Copy" THEN
+
+		MENUPROC 1012 USING return_text
+
+	ENDIF
+
+    ENDIF
+	
+    item = form.smmill_tree.selected
+    parent_num = form.smmill_tree.get_parent(item)
+  
+    IF parentnum = 0 THEN
+	
+	parent_num = item
+
+    ENDIF
+
+    form.smmill_tree.collapse_all ( )
+    form.smmill_tree.expand ( parent_num,tree_expand )	
+
+
+
+ENDROUTINE

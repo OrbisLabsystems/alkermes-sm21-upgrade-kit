@@ -1,0 +1,1865 @@
+{******************************************************************************
+*
+* Module Name   : $SMIDI_LIB_LIMITS
+*
+* Purpose       : Specification management for the general bidirectional interface
+*
+* Document Ref. : 
+*
+* Specification :
+*
+* Portability   : NT, VMS, Unix, Windows 2000
+*
+* Re-entrant:
+*
+*******************************************************************************}
+
+SET NAME "DISPLAY/"
+SET NOTPROTECTED
+SET COMPILE_OPTION DECLARE
+SET COMPILE_OPTION EXP_MESS
+
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_MESSAGE
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_VGL
+
+JOIN LIBRARY $LIB_MLPS
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $LIMIT_MOD
+
+JOIN LIBRARY $SMIDI_LIB_SAP      { all global constants and classes defined    }
+
+JOIN LIBRARY $SMIDI_USER 
+
+{* GLOBAL CONSTANTS ***********************************************************}
+{* LOCAL CONSTANTS ************************************************************}
+
+CONSTANT CHANGE_LEVEL_TRIGGER        = "smidi_user_change_level_info"
+
+{* VARIABLES ******************************************************************}
+
+{******************************************************************************}
+
+ROUTINE gbi_product_header_action_create_mlp( self )
+
+{*       Creates an MLP header - when SMP is version 4.1 or less
+*******************************************************************************}
+
+    DECLARE status, retval
+    retval = TRUE
+
+    self.status_mess_decode ( "GBI_LIMITS_PRODUCT", MSG_1, self.product_id, EMPTY, EMPTY )
+
+    RESERVE ENTRY mlp_header, self.product_id, status
+
+    IF status = EMPTY THEN
+
+        self.new_mlp_link()
+
+        assign mlp_header.entry_code  = self.entry_code
+        assign mlp_header.modified_on = now
+        assign mlp_header.modified_by = operator
+
+        self.map_fields ( "MLP_HEADER" )
+        self.call_trigger ( self.parent, EMPTY, GBI_NEW_MLP_TRIGGER )
+
+        UPDATE MLP_HEADER
+
+    ELSE
+
+        retval  = FALSE
+        self.status_message ( "gbi_product_header_action_create_mlp ":self.product_id:" ":status, MSG_10 )
+
+    ENDIF
+
+    RETURN ( retval )
+
+ENDROUTINE  { create_mlp (only the HEADER) but only when SMP < 4.2 } 
+
+
+{******************************************************************************}
+
+ROUTINE gbi_product_header_action_update_mlp_header( self )
+
+{
+*       Updates an MLP header - when SMP is version 4.1 or less
+*******************************************************************************}
+
+    DECLARE status, retval
+    retval = TRUE
+
+    self.status_message ( "gbi_product_header_action_update_mlp_header ":self.product_id, MSG_1 )
+
+    status = SELECT mlp_header.identity FOR UPDATE
+         WHERE identity = self.product_id
+
+    IF status <> EMPTY THEN
+
+        self.new_mlp_link()
+
+        assign mlp_header.entry_code  = self.entry_code
+        assign mlp_header.modified_on = now
+        assign mlp_header.modified_by = operator
+
+        self.map_fields ( "MLP_HEADER" )
+        self.call_trigger ( self.parent, EMPTY, GBI_NEW_MLP_TRIGGER )
+
+        UPDATE MLP_HEADER
+
+    ELSE
+
+        retval  = FALSE
+        self.status_message ( "gbi_product_header_action_update_mlp_header ":self.product_id:" ":status, MSG_10 )
+
+    ENDIF
+
+    RETURN ( retval )
+
+ENDROUTINE  { update_mlp_header (only the HEADER) but only when SMP < 4.2 } 
+
+{******************************************************************************}
+
+ROUTINE gbi_product_header_action_new_mlp_link( self )
+
+    self.copy_entry_code = self.entry_code            { save the old one for levels      }
+    self.entry_code      = limit_get_entry_code()
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE gbi_product_header_action_assign_sap_levels( self )
+
+    declare count, level_id, status, found
+
+    count  = 1
+    status = ""
+
+    WHILE self.levels[ count, GBI_LEVEL_POS ] <> empty DO
+
+        level_id = self.levels[ count, GBI_LEVEL_POS ]
+
+        IF ( NOT BLANK ( level_id ) ) THEN
+
+            found = SELECT mlp_level.level_id WHERE level_id = level_id
+
+            IF ( found = EMPTY ) THEN
+
+                RESERVE ENTRY MLP_LEVEL, level_id, status
+
+                IF ( status = EMPTY ) THEN
+
+                    self.map_fields("MLP_LEVEL")
+                    self.call_trigger(self.parent, EMPTY, GBI_NEW_LEVEL_TRIGGER )
+                    UPDATE MLP_LEVEL
+
+                    self.status_mess_decode ( "GBI_LIMITS_LEVEL", MSG_5, level_id, EMPTY, EMPTY )
+
+
+                ELSEIF ( INDEX ( TOUPPER ( status ), "EXIST" ) > 0 ) THEN
+
+                    self.status_message ( "Level validated ":self.product_id:self.product_version:level_id:status, MSG_1 )
+
+                ELSE
+
+                    self.status_message ( "**ERROR action_assign_SAP_levels RESERVE level ":level_id:" ":status, MSG_10 )
+
+                ENDIF
+
+            ENDIF   { if it aint empty then the level exists, but the next code assigns to the mlp }
+
+
+            { =========================================================== }
+            { No matter what assign this level to the mlp                 }
+            { =========================================================== }
+
+            RESERVE ENTRY MLP_VALUES, self.entry_code:level_id, status
+
+            IF ( status = EMPTY ) THEN
+
+                ASSIGN MLP_VALUES.min_limit = count
+                ASSIGN MLP_VALUES.TEXT_SPEC = "Y"
+
+                self.call_trigger(self.parent,level_id,GBI_ASSIGN_LEVEL_TRIGGER )
+                UPDATE LIMIT
+
+
+            ELSEIF ( INDEX ( TOUPPER ( status ), "EXIST" ) > 0 ) THEN
+
+                self.status_message ( "Level validated ":self.product_id:self.product_version:level_id:status, MSG_1 )
+
+            ELSE
+
+                self.status_message ( "**ERROR action_assign_SAP_levels RESERVE LIMIT ":self.entry_code:level_id:" ":status, MSG_10 )
+
+            ENDIF
+
+        ENDIF  { not blank level }
+
+        count = count + 1
+
+    ENDWHILE
+
+    self.call_trigger ( self.parent, EMPTY, GBI_ASSIGN_LEVELS_TRIGGER )
+
+ENDROUTINE  { gbi product header action assign sap levels (only the SAP) }
+
+{******************************************************************************}
+
+ROUTINE gbi_product_header_action_copy_lims_levels( self )
+
+    DECLARE found, status, count, copy_levels_array, SAP_level_names
+
+    IF self.copy_version <> EMPTY THEN
+
+        ARRAY copy_levels_array
+        ARRAY SAP_level_names
+
+        count = 1
+        WHILE ( self.levels[count,1] <> EMPTY ) DO
+
+            SAP_level_names[count] = self.levels[count,1]
+            count = count + 1
+
+        ENDWHILE
+
+        { ================================================================= }
+        { Go get all the levels that are on the old version                 }
+        { ================================================================= }
+
+        count = 0
+        found = SELECT MLP_VALUES.LEVEL_ID
+            WHERE ENTRY_CODE = self.copy_entry_code
+
+        WHILE ( found <> EMPTY ) DO
+
+            IF ( NOT smidi_lib_array_contains_slice ( SAP_level_names, found, status ) ) THEN
+
+                IF ( NOT smidi_lib_array_contains_slice ( copy_levels_array, found, status ) ) THEN
+                    count                    = count + 1
+                    copy_levels_array[count] = found
+                ENDIF
+
+            ENDIF
+
+            NEXT MLP_VALUES
+            found = SELECT MLP_VALUES.LEVEL_ID
+
+        ENDWHILE
+
+
+        { =================================================================== }
+        { Got all the old ones, now make them with new entry code             }
+        { =================================================================== }
+
+        count = 1
+
+        WHILE ( count <= SIZE_OF_ARRAY ( copy_levels_array ) ) DO
+
+            found = copy_levels_array[count]
+
+            RESERVE ENTRY MLP_VALUES, self.entry_code:found, status
+
+            IF ( status = EMPTY ) THEN
+
+                ASSIGN MLP_VALUES.min_limit = count
+                ASSIGN MLP_VALUES.TEXT_SPEC = "Y"
+
+                self.call_trigger(self.parent,found,GBI_ASSIGN_LEVEL_TRIGGER )
+                UPDATE MLP_VALUES
+
+    
+            ELSEIF ( INDEX ( TOUPPER ( status ), "EXIST" ) > 0 ) THEN
+
+                self.status_message ( "Level validated ":self.product_id:self.product_version:found:status, MSG_1 )
+
+            ELSE
+
+                self.status_message ( "**ERROR action_copy_lims_levels RESERVE LIMIT ":self.entry_code:found:" ":status, MSG_10 )
+
+            ENDIF
+
+            count = count + 1
+
+        ENDWHILE
+
+        { ============================================================= }
+        { only call the trigger if we really added the LIMS only levels }
+        { ============================================================= }
+
+        IF count > 1 THEN
+            self.call_trigger ( self.parent, EMPTY, GBI_ASSIGN_LEVELS_TRIGGER )
+        ENDIF
+
+    ENDIF   { if we aint copy'in the older version then do none of this }
+
+ENDROUTINE  { copy lims levels }
+
+{******************************************************************************}
+
+ROUTINE gbi_product_header_action_id_exists( self )
+
+    DECLARE retval, found, order_field
+
+    order_field = "PRODUCT_VERSION"    { pre SMP2000 compile with no warning }
+    retval      = -1
+
+    IF self.versioned_header THEN
+        found  = select mlp_header.removeflag where identity = self.product_id
+             order on 'order_field' DESCENDING
+    ELSE
+        found  = select mlp_header.removeflag where identity = self.product_id
+    ENDIF
+
+    IF found <> empty THEN
+
+        retval = 0
+
+        IF NOT found THEN
+            retval = 1
+        ENDIF
+
+        retval = self.call_trigger ( retval, EMPTY, GBI_CHECK_MLP_TRIGGER )
+
+    ENDIF
+
+    return(retval)
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE gbi_product_header_action_latest_version( self )
+
+    DECLARE mlp_ver, mlp_table
+
+    mlp_get_version( self.product_id, mlp_ver )   { $lib_mlps }
+
+    { ================================================================================================= }
+    { $lib_mlps/mlp_get_version does not set the cursor to the latest version - subsequent selects bomb }
+    { ================================================================================================= }
+
+    IF ( mlp_ver = 0 ) THEN
+
+        self.entry_code = create_entry_code()
+
+    ELSE
+
+        self.status_message ( "gbi_product_header_action_latest_version ":self.product_id:mlp_ver, MSG_NONE )
+
+        IF self.versioned_header THEN
+            mlp_table = "MLP_HEADER"
+        ELSE
+            mlp_table = "MLP_VERSIONS"
+        ENDIF
+
+        { --------------------------------------------------------- }
+        { May have a 4.1 system here, so get the right table        }
+        { --------------------------------------------------------- }
+
+        IF mlp_table = "MLP_VERSIONS" THEN
+
+            self.entry_code = SELECT MLP_HEADER.ENTRY_CODE
+                        WHERE IDENTITY = self.product_id
+
+        ELSE
+
+            self.entry_code = SELECT 'mlp_table'.ENTRY_CODE
+                        WHERE IDENTITY      = self.product_id
+                        AND PRODUCT_VERSION = mlp_ver
+
+        ENDIF
+
+
+        IF ( self.entry_code = EMPTY ) | ( self.entry_code = 0 ) THEN
+            self.entry_code = create_entry_code()
+        ENDIF
+
+    ENDIF
+
+    return( mlp_ver )
+
+ENDROUTINE   { gbi_product_header_action_latest_version }
+
+{******************************************************************************}
+
+ROUTINE gbi_product_header_action_version_exists( self )
+
+
+    declare retval, found
+
+    retval = FALSE
+    found  = SELECT mlp_versions.version_comment
+            where ( identity        = self.product_id      )
+            and   ( product_version = self.product_version )
+
+    IF found <> empty THEN
+        retval = self.call_trigger ( retval, EMPTY, GBI_CHECK_MLP_VERSION_TRIGGER )
+    ENDIF
+
+    return(retval)
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE gbi_product_header_action_increment_version( self )
+
+    IF ( self.product_version <> 0 ) THEN
+        self.copy_version = self.product_version
+    ENDIF
+
+    self.product_version = PACKED_DECIMAL ( self.product_version + 1 )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE gbi_product_header_action_create_version( self )
+
+    DECLARE retval, id, status, id_size       
+
+    {**********************************************************************}
+    {                                                                      }
+    { If versioned_header is defined in mlp_header then we are SMP >=4.2   }
+    { which means that the mlp_header and version table are merged into 1  }
+    { table.  If this is not the case then we have to make the mlp_header  }
+    { first, then make the mlp_versions table.                             }
+    {                                                                      }
+    { However, if the copy_version is not 0 then the header already exists }
+    { for the SMPV4.1 and lower systems                                    }
+    {                                                                      }
+    {**********************************************************************}
+
+    IF  self.versioned_header THEN                    { SMP > 4.1                        }
+
+        retval             = TRUE
+        self.current_table = "MLP_HEADER"
+
+    ELSEIF ( self.copy_version = EMPTY ) THEN         { SMP <= 4.1 and ID does not exist }
+
+        retval             = self.create_mlp()
+        self.current_table = "MLP_VERSIONS"
+
+    ELSE                                              { SMP <= 4.1 and ID already exists }
+
+        retval             = self.update_mlp_header()
+        self.current_table = "MLP_VERSIONS"
+
+    ENDIF  { versioned header, a new mlp or a version does different things }
+
+    { ======================================================== }
+    { retval TRUE or set by create_mlp (header) when SMP < 4.2 }
+    { ======================================================== }
+
+    IF retval THEN
+
+        GET_FIELD_DETAILS mlp_components.product_id, "FIELD_SIZE", id_size
+        id = PAD ( self.product_id, " ", id_size ) : PACKED_DECIMAL ( self.product_version ) 
+
+        self.status_mess_decode ( "GBI_LIMITS_VERSION", MSG_1, id, EMPTY, " Table-> ":self.current_table )
+
+        RESERVE ENTRY 'self.current_table', id, status
+
+        IF status = EMPTY THEN
+
+            IF ( self.versioned_header ) THEN
+
+                self.new_mlp_link()
+                ASSIGN MLP_HEADER.ENTRY_CODE = self.entry_code
+
+            ENDIF  { 4.2+ }
+
+            ASSIGN 'self.current_table'.CREATED_DATE = NOW
+
+            IF ( self.copy_version <> EMPTY ) THEN
+
+                IF self.copy_schedules THEN
+                    self.copy_schedules()
+                ENDIF
+
+            ENDIF   { copy version empty then make levels }
+
+            self.map_fields ( self.current_table )
+            self.call_trigger ( self.parent, EMPTY, GBI_NEW_VERSION_TRIGGER )
+
+            UPDATE 'self.current_table', status
+
+            self.assign_sap_levels()
+            self.copy_lims_levels()
+            self.parent.product_version = self.product_version
+
+        ELSE
+
+            self.status_message ( "*** ERROR *** gbi_product_header_action_create_version ":id:" ":status, MSG_10 )
+
+        ENDIF  { retval from reserve entry }
+
+    ENDIF   { retval from Version 4.1 }
+
+    RETURN(retval)
+
+ENDROUTINE  { create mlp version }
+
+{******************************************************************************}
+
+ROUTINE gbi_product_header_action_copy_schedules ( self )
+
+
+    DECLARE identity, old_key, new_key
+
+    self.status_message ( GET_USER_MESSAGE ( "GBI_LIMITS_SCHED", 1 ), MSG_LOW )
+
+    identity = SELECT mlp_schedule.identity
+                   WHERE identity         = self.product_id
+                   AND   identity_version = self.copy_version
+
+    WHILE identity <> EMPTY DO
+
+        old_key = SELECT mlp_schedule.identity         :
+                          SELECT mlp_schedule.identity_version :
+                          SELECT mlp_schedule.mlp_id
+
+        IF self.call_trigger ( self.parent, old_key, GBI_DO_COPY_SCHED_TRIGGER ) THEN
+
+            new_key = SELECT mlp_schedule.identity         :
+                                  self.product_version                 :
+                                  SELECT mlp_schedule.mlp_id  
+
+            RESERVE ENTRY mlp_schedule, new_key COPY_FROM old_key
+            self.call_trigger ( self.parent, identity, GBI_COPY_SCHEDULE_TRIGGER )
+            UPDATE mlp_schedule
+            self.status_mess_decode ( "GBI_LIMITS_SCHED", MSG_1, EMPTY, EMPTY, old_key:" ":new_key )
+        
+        ENDIF
+
+        NEXT mlp_schedule
+        identity = SELECT mlp_schedule.identity
+
+    ENDWHILE
+
+ENDROUTINE { gbi_product_header_action_copy_schedules }
+
+{******************************************************************************}
+
+ROUTINE gbi_product_header_action_insert_limits( self, limit )
+
+    self.limit_details_count = self.limit_details_count + 1
+    self.limit_details[ self.limit_details_count ] = limit
+    limit.header = self
+    limit.master = self
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE gbi_product_header_action_verify_limits( self )
+
+    DECLARE limit_count, limit_rec, retval
+
+    retval      = TRUE
+    limit_count = 1
+    limit_rec   = self.limit_details[ limit_count ]
+
+    WHILE ( limit_rec <> empty ) AND retval DO
+
+        retval      = limit_rec.verify_component ( self.product_id, self.product_version )
+        limit_count = limit_count + 1
+        limit_rec   = self.limit_details[ limit_count ]
+
+    ENDWHILE
+
+    return( retval )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE gbi_product_header_action_update_limits( self )
+
+    DECLARE limit_count, limit_rec, retval
+
+    { ==================================================================== }
+    { First copy all the LIMS only existing components                     }
+    { ==================================================================== }
+
+    IF ( self.copy_comps ) AND ( self.copy_version <> EMPTY ) THEN
+        self.status_message ( "gbi_product_header_action_update_limits ":self.copy_comps:" ":self.copy_version, MSG_LOW )
+        self.copy_existing()        
+    ENDIF
+
+    { ==================================================================== }
+    { Now update the SAP specific limits                                   }
+    { ==================================================================== }
+
+    retval      = TRUE
+    limit_count = 1
+    limit_rec   = self.limit_details[ limit_count ]
+
+    WHILE ( limit_rec <> empty ) AND retval DO
+
+        retval = self.call_trigger ( self.parent, limit_count, GBI_UPDATE_LIMITS_TRIGGER )
+
+        IF retval THEN
+
+            self.status_message ( "gbi_product_header_action_update_limits ":limit_count:limit_rec.analysis_id:limit_rec.component_name, MSG_LOW )
+            limit_rec.update_component ( self.product_id, self.product_version )
+
+            self.components[limit_count] = limit_rec.analysis_id : limit_rec.component_name
+            limit_count                  = limit_count + 1
+            limit_rec                    = self.limit_details[ limit_count ]
+
+        ENDIF
+
+    ENDWHILE
+
+    return ( retval )
+
+ENDROUTINE  { gbi_product_header_action_update_limits }
+
+{******************************************************************************}
+
+ROUTINE gbi_product_header_action_copy_existing ( self )
+
+    DECLARE old, found, analysis, name, limit_rec, count, type, units, places, typical, mt
+
+    mt = EMPTY
+
+    old = SELECT mlp_components.entry_code
+              WHERE ( product_id      = self.product_id   )
+              AND   ( product_version = self.copy_version )
+
+    WHILE old <> EMPTY DO
+
+        count     = 1
+        found     = FALSE
+        analysis  = SELECT mlp_components.analysis_id
+        name      = SELECT mlp_components.component_name
+        limit_rec = self.limit_details [ count ]
+
+        WHILE ( NOT found ) AND ( limit_rec <> EMPTY ) DO
+
+            found     = ( limit_rec.analysis_id = analysis ) AND ( limit_rec.component_name = name )
+            count     = count + 1
+            limit_rec = self.limit_details [ count ]
+
+        ENDWHILE
+
+        { ==================================================================================== }
+        { The limit would not be found when there is a copy of a component that is not for SAP }
+        { ==================================================================================== }
+
+        IF ( NOT found ) AND ( self.call_trigger ( mt, mt, GBI_DO_COPY_COMPONENT_TRIGGER ) ) THEN
+
+            type    = SELECT mlp_components.component_type
+            units   = SELECT mlp_components.units
+            places  = SELECT mlp_components.places
+            typical = SELECT mlp_components.typical_text
+
+            CREATE OBJECT "GBI_PRODUCT_ENTRY", limit_rec
+                limit_rec.analysis_id        = analysis
+                limit_rec.component_name     = name
+                limit_rec.mlp_component_type = type
+                limit_rec.mlp_units          = units
+                limit_rec.mlp_places         = places
+                limit_rec.mlp_target_value   = typical
+                limit_rec.parent             = self
+
+            self.insert_limits ( limit_rec )
+
+        ENDIF
+
+        NEXT mlp_components
+        old = SELECT mlp_components.entry_code
+
+    ENDWHILE
+
+ENDROUTINE { gbi_product_header_action_copy_existing }
+
+{******************************************************************************}
+
+ROUTINE gbi_product_entry_action_verify_component(       self,
+                                                   VALUE product_id  ,
+                                                   VALUE product_version )
+
+
+    DECLARE retval, found, version, len, mlp_comp_type, mlp_units, mlp_places, mlp_typtext, tmpString, message
+
+    GET_FIELD_DETAILS mlp_header.identity, "FIELD_SIZE", len
+
+    product_id = PAD ( product_id, " ", len )
+    version    = PACKED_DECIMAL ( product_version )
+    retval     = TRUE
+
+    found = select mlp_components.entry_code
+                        where ( product_id      = product_id          )
+                        and   ( product_version = version             )
+                        and   ( analysis_id     = self.analysis_id    )
+                        and   ( component_name  = self.component_name )
+
+
+    message = "$gbi_limits/verify_component ":STRIP(self.analysis_id):" ":STRIP(self.component_name):" ":STRIP(product_id):"/":STRIP(version):" "
+
+    IF found <> empty THEN
+
+        mlp_comp_type = SELECT MLP_COMPONENTS.COMPONENT_TYPE
+        mlp_units     = STRIP   ( SELECT MLP_COMPONENTS.UNITS )
+        mlp_places    = NUMERIC ( SELECT MLP_COMPONENTS.PLACES )
+        mlp_typtext   = STRIP   ( SELECT MLP_COMPONENTS.TYPICAL_TEXT )
+
+        IF ( NUMTEXT ( mlp_typtext ) ) THEN
+            mlp_typtext = NUMERIC ( mlp_typtext )
+        ENDIF
+
+        {  ==================================================  }
+        {  Check this entry to see if a new version is needed  }
+        {  ==================================================  }
+
+
+        IF ( self.header.check_mlp_target ) THEN
+            IF ( mlp_typtext <> self.mlp_target_value ) THEN
+                retval = FALSE
+                self.status_message ( message:" target_value ":mlp_typtext:self.mlp_target_value, MSG_HIGH )
+            ENDIF
+        ELSE
+            self.mlp_target_value = mlp_typtext
+        ENDIF
+
+        IF ( retval )  THEN
+            IF ( self.header.check_mlp_units ) THEN
+                IF ( mlp_units <> STRIP ( self.mlp_units ) ) THEN
+                    retval = FALSE
+                    self.status_message ( message:" units ":mlp_units:self.mlp_units, MSG_HIGH )
+                ENDIF
+            ELSE
+                self.mlp_units = mlp_units
+            ENDIF
+        ENDIF
+
+        IF ( retval ) THEN
+            IF ( self.header.check_mlp_type ) THEN
+                IF ( mlp_comp_type <> self.mlp_component_type ) THEN
+                    retval = FALSE
+                    self.status_message ( message:" component_type ":mlp_comp_type:self.mlp_component_type, MSG_HIGH )
+                ENDIF
+            ELSE
+                self.mlp_component_type = mlp_comp_type
+            ENDIF
+        ENDIF
+
+        IF ( retval ) THEN
+            IF ( mlp_places > -1 ) THEN
+                IF ( self.header.check_mlp_places ) THEN
+                    IF( mlp_places < NUMERIC( self.mlp_places )  ) THEN
+                        retval = FALSE
+                        self.status_message ( message:" places ":mlp_places:self.mlp_places, MSG_HIGH )
+                    ENDIF
+                ELSE
+                    self.mlp_places = mlp_places
+                ENDIF
+            ELSE
+                self.mlp_places = mlp_places
+            ENDIF
+        ENDIF
+
+        IF ( retval ) THEN
+            IF ( NOT ( self.verify_limits( found ) ) ) THEN
+                retval = FALSE
+                self.status_message ( message:" LIMITS mismatch ", MSG_HIGH )
+            ENDIF
+        ENDIF
+
+
+        retval = self.call_trigger ( self.parent, retval, GBI_CHECK_COMPONENT_TRIGGER )
+
+    ELSE
+
+        retval = FALSE   { do not have the component defined, so must add it }
+        self.status_message ( message:" component not found ", MSG_HIGH )
+
+    ENDIF
+
+
+    { --------------------------------------------------------------- }
+    { one last chance for an interactive user to veto the new version }
+    { --------------------------------------------------------------- }
+
+    IF ( GLOBAL ( "MODE" ) = "INTERACTIVE" ) THEN
+
+        IF NOT retval THEN
+            tmpString = "MLP components new version ? ":message
+            IF NOT confirm_with_text ( tmpString ) THEN
+                EXIT
+            ENDIF
+        ENDIF
+
+    ENDIF
+
+    return( retval )
+
+ENDROUTINE  { verify component }
+
+{******************************************************************************}
+
+ROUTINE gbi_product_entry_action_verify_limits( self, entry_code )
+
+
+    DECLARE retval, found, level, minval, maxval, phraseval, passval, calcval, lcount, message,
+        m1, m2, m3, m4, m5, lims_max, lims_min, values_set, lims_phrase, lims_bool_pass
+
+    { ----------------------------------------------------------------------------------------------- }
+    {  We have to tell the user why we found a need for a new version so that they can find our bugs  }
+    { ----------------------------------------------------------------------------------------------- }
+
+    retval = TRUE
+    lcount = 1
+
+    IF ( self.get_map_header ( "MLP_UPDATE" ) ) THEN
+
+        WHILE ( lcount <= SIZE_OF_ARRAY ( self.levels ) ) AND retval DO
+
+            level   = self.levels [ lcount, GBI_LEVEL_POS ]
+            message = "Validating level (":STRIP(level):") SAP ["
+
+            IF ( level <> EMPTY ) AND ( NOT BLANK ( level ) ) THEN
+
+                minval    = self.levels [ lcount, GBI_MINIMUM_POS     ]          { 2 }
+                maxval    = self.levels [ lcount, GBI_MAXIMUM_POS     ]          { 3 }
+                phraseval = self.levels [ lcount, GBI_PHRASE_POS      ]          { 4 }
+                passval   = self.levels [ lcount, GBI_PASS_POS        ]          { 5 }
+                calcval   = self.levels [ lcount, GBI_CALCULATION_POS ]          { 6 }
+        
+                            { ================================================================= }
+                values_set = FALSE  { if SAP sets no values, don't make no stinkin version for nutin... }
+                            { what if used to have SAP spec and now you don't ?                 }
+                            { ================================================================= }
+
+                IF ( minval = EMPTY ) | ( minval = STRIP(" ") )THEN
+                    m1     = "empty"
+                    minval = ""
+                ELSE
+                    m1         = minval
+                    values_set = TRUE
+                ENDIF
+
+                IF ( maxval = EMPTY ) | ( maxval = STRIP(" ") ) THEN
+                    m2     = "empty"
+                    maxval = ""
+                ELSE
+                    m2         = maxval
+                    values_set = TRUE
+                ENDIF
+
+                IF ( phraseval = EMPTY ) THEN
+                    m3 = "empty"
+                ELSE
+                    m3         = phraseval
+                    values_set = TRUE
+                ENDIF
+
+                IF ( passval = EMPTY ) THEN
+                    m4 = "empty"
+                ELSE
+                    m4         = passval
+                    values_set = TRUE
+                ENDIF
+
+                IF ( calcval = EMPTY ) THEN
+                    m5 = "empty"
+                ELSE
+                    m5         = calcval
+                    values_set = TRUE
+                ENDIF
+
+                message = message : STRIP(m1):"/":STRIP(m2):"/":STRIP(m3):"/":STRIP(m4):"/":STRIP(m5):"] LIMS <" 
+
+                found = select mlp_values.calculation                { this must be calculation }
+                                    where ( entry_code = entry_code )
+                                    and   ( level_id = level)
+
+                IF found <> empty THEN
+
+                    lims_max       = select mlp_values.max_limit
+                    lims_min       = select mlp_values.min_limit
+                    lims_phrase    = select mlp_values.text_phrase
+                    lims_bool_pass = select mlp_values.boolean_pass
+
+                    IF self.mlp_component_type = "T" THEN
+
+                        IF ( phraseval <> EMPTY ) THEN
+                            IF ( self.get_map_header ( "MLP_PHRASE" ) ) THEN
+                                IF ( lims_phrase <> phraseval )  THEN
+                                    retval  = FALSE
+                                    message = message:STRIP(SELECT mlp_values.text_phrase):"> component type T text_phrase mismatched"
+                                ENDIF
+                            ELSE
+                                self.levels[lcount,GBI_PHRASE_POS] = lims_phrase
+                            ENDIF
+                        ENDIF
+
+                    ELSEIF self.mlp_component_type = "N" THEN
+
+    
+                        IF ( NOT BLANK ( minval ) ) THEN
+                            IF ( lims_min <> minval ) THEN
+                                retval  = FALSE
+                                message = message:STRIP(SELECT mlp_values.min_limit):">  MINIMUM limit mismatched"
+                            ENDIF
+                        ENDIF
+
+
+                        IF ( NOT BLANK ( maxval ) ) THEN
+                            IF ( lims_max <> maxval ) THEN
+                                retval  = FALSE
+                                message = message:STRIP(SELECT mlp_values.max_limit):"> MAXIMUM limit mismatched"
+                            ENDIF
+                        ENDIF
+
+                    ELSEIF self.mlp_component_type = "B" THEN
+
+                        IF passval <> EMPTY THEN
+                            IF ( lims_bool_pass <> passval ) THEN
+                                retval  = FALSE
+                                message = message:STRIP(lims_bool_pass):"> Boolean pass value mismatched"
+                            ENDIF
+                        ENDIF
+
+                    ELSE
+    
+                        retval  = ( INDEX ( self.get_item ( "SMIDI_LIMITS_TYPE" ), self.mlp_component_type ) > 0 )
+                        message = "MLP Type from SAP not valid, must map to N, T or B "
+
+                    ENDIF    { component types }
+
+
+                    {  =========================== }
+                    {  only do calc when others ok }
+                    {  =========================== }
+
+
+                    IF ( retval ) THEN
+                        IF ( calcval <> EMPTY ) THEN
+                            IF ( found <> calcval ) THEN
+                                retval  = FALSE
+                                message = message:"> MLP Calculation mismatched ":found
+                            ENDIF
+                        ENDIF
+                    ENDIF
+
+
+                    {  =================================================================================== }
+                    {  By this time we might have a good MLP, and we definitely have a detailed msg if not }
+                    {  =================================================================================== }
+
+                    retval = self.call_trigger ( self.parent, retval, GBI_VERIFY_LIMITS_TRIGGER )
+
+
+                ELSEIF ( NOT values_set ) THEN
+
+                    message = message:"> no values, no version needed "
+
+                ELSE
+
+                    retval  = NOT ( self.get_map_header ( "MLP_UPDATE" ) )  { not causes new version }
+                    message = message:"> MLP not found, creating a new mlp"
+
+                ENDIF  { found is not empty and values are set }
+                
+                IF ( NOT values_set) THEN
+                    
+                    retval = NOT ( check_removed_sap_spec ( self ) ) 
+                    
+                ENDIF
+
+                { -------------------------------------------------------------- }
+                { If limits don't match, and interactive show user what is wrong }
+                { -------------------------------------------------------------- }
+
+                IF NOT retval THEN
+
+                    self.status_message ( message, MSG_HIGH )
+                    IF ( GLOBAL ( "MODE" ) = "INTERACTIVE" ) THEN
+                        retval = NOT ( confirm_with_text ( "MLP_Version ":message ) )
+                    ENDIF
+
+                ENDIF
+ 
+            ENDIF   { level is not "" }
+
+            lcount = lcount + 1
+
+        ENDWHILE
+
+    ENDIF  { don't check limits at all }
+
+    return( retval )
+
+ENDROUTINE { verify limits }
+
+{******************************************************************************}
+
+ROUTINE gbi_product_entry_action_update_limits( self, entry_code )
+
+    DECLARE level, retval, lcount
+
+    retval = TRUE
+    lcount = 1
+
+    WHILE ( self.levels[ lcount, GBI_LEVEL_POS ] <> empty ) AND retval DO
+
+        level = self.levels [ lcount, GBI_LEVEL_POS ]
+
+        IF NOT BLANK ( level ) THEN
+
+            retval = self.create_limit ( lcount, entry_code:level )
+
+        ENDIF
+
+        lcount = lcount + 1
+
+    ENDWHILE
+
+    return( retval )
+
+ENDROUTINE   { update limits }
+
+{******************************************************************************}
+
+ROUTINE gbi_product_entry_action_update_component ( self, VALUE product_id, VALUE product_version )
+
+    DECLARE retval, found, version, len
+
+    GET_FIELD_DETAILS mlp_header.identity, "FIELD_SIZE", len
+
+    product_id = PAD ( product_id, " ", len )
+    version    = PACKED_DECIMAL ( product_version )
+
+    found = select mlp_components.entry_code
+                        where ( product_id      = product_id          )
+                        and   ( product_version = version             )
+                        and   ( analysis_id     = self.analysis_id    )
+                        and   ( component_name  = self.component_name )
+
+    IF found = EMPTY THEN
+
+        found = self.create_component ( product_id:version:self.analysis_id:self.component_name )
+
+    ENDIF
+
+    { ============================================================================== }
+    { Got the component - get all LIMS only stuff first, then update SAP/LIMS limits }
+    { ============================================================================== }
+
+    retval = TRUE
+
+    IF ( found <> EMPTY ) OR ( found <> ERROR ) THEN
+
+        IF self.header.copy_version <> EMPTY THEN            { empty when NEW MLP created        }
+
+            retval = self.upgrade_limits(found)          { copy the old stuff (LIMS only)    }
+    
+        ENDIF
+
+        { ============================================================ }
+        { If this is an SAP data value then update from the SAP stuff  }
+        { ============================================================ }
+
+        IF retval THEN
+            IF ( OBJECT_GET_CLASS_NAME ( self ) = "QAIMV" )  THEN
+                retval = self.update_limits(found)   { now add the new SAP stuff         }
+            ENDIF
+        ENDIF
+
+    ENDIF   { found from the select or the create had error or empty }
+
+
+    RETURN ( retval )
+
+
+ENDROUTINE  { update component }
+
+{******************************************************************************}
+
+ROUTINE gbi_product_entry_action_upgrade_limits ( self, entry_code )
+
+    DECLARE level, old_ecode, ok, num_SAP_levels
+
+    ok        = TRUE
+    old_ecode = SELECT mlp_components.entry_code
+                    WHERE  product_id      = self.header.product_id
+                    AND    product_version = self.header.copy_version
+                    AND    analysis_id     = self.analysis_id 
+                    AND    component_name  = self.component_name
+
+    IF old_ecode <> EMPTY THEN
+
+        { ===================================================================== }
+        { If the config item for copying existing from LIMS is set then get all }
+        { ===================================================================== }
+
+        IF ( self.get_map_header ( "MLP_COPY_LIMS_ONLY" ) ) THEN
+
+            level = SELECT mlp_values.level_id WHERE entry_code = old_ecode
+
+        ELSE
+
+            num_SAP_levels = SIZE_OF_ARRAY ( self.levels )
+
+
+            { ============================================================ }
+            { In this case we want all the data BUT the SAP stuff          }
+            { ============================================================ }
+
+            IF num_SAP_levels = 4 THEN
+
+                level = SELECT mlp_values.level_id WHERE entry_code = old_ecode
+                    AND  (  ( level_id <> self.levels[1,1] ) AND 
+                        ( level_id <> self.levels[2,1] ) AND
+                        ( level_id <> self.levels[3,1] ) AND
+                        ( level_id <> self.levels[4,1] ) )
+
+            ELSEIF num_SAP_levels = 3 THEN
+
+                level = SELECT mlp_values.level_id WHERE entry_code = old_ecode
+                    AND  (  ( level_id <> self.levels[1,1] ) AND 
+                        ( level_id <> self.levels[2,1] ) AND
+                        ( level_id <> self.levels[3,1] ) )
+
+            ELSEIF num_SAP_levels = 2 THEN
+
+                level = SELECT mlp_values.level_id WHERE entry_code = old_ecode
+                    AND  (  ( level_id <> self.levels[1,1] ) AND 
+                        ( level_id <> self.levels[2,1] ) )
+
+            ELSEIF num_SAP_levels = 1 THEN
+
+                level = SELECT mlp_values.level_id WHERE entry_code = old_ecode
+                    AND ( level_id <> self.levels[1,1] ) 
+
+            ELSE
+
+                level = SELECT mlp_values.level_id WHERE entry_code = old_ecode
+
+            ENDIF   { SAP has a max of 4 levels that you can make of their data }
+
+        ENDIF  { configuration item to copy LIMS no matter what }
+
+        { ====================================================================== }
+        { Now for any other levels get the data and copy to the new version      }
+        { ====================================================================== }
+
+
+        WHILE ( level <> EMPTY ) AND ok DO
+
+            self.status_message ( "$gbi_limits/upgrade_limits-> ":self.header.product_id:self.header.copy_version:
+                        self.analysis_id:self.component_name:old_ecode:level:"->":entry_code:level, MSG_MED )
+
+            ok = self.copy_limit ( old_ecode:level, entry_code:level)
+
+            NEXT mlp_values
+            level = SELECT mlp_values.level_id
+
+        ENDWHILE
+
+    ELSE
+
+        self.status_message ( "$gbi_limits/upgrade_limits-> no component ":self.header.product_id:
+                    self.header.copy_version:self.analysis_id:self.component_name, MSG_MED )
+
+    ENDIF   { old e_code EMPTY }
+
+
+    RETURN ( ok )
+
+
+ENDROUTINE  { upgrade limits }
+
+{******************************************************************************}
+
+ROUTINE gbi_product_entry_action_copy_limit ( self, VALUE old_key, VALUE key )
+
+    DECLARE mt, status, retval
+
+    retval = TRUE
+    mt     = EMPTY
+
+    IF self.call_trigger ( mt, old_key, GBI_DO_COPY_LIMIT_TRIGGER ) THEN
+
+        RESERVE ENTRY mlp_values, key COPY_FROM old_key, status
+
+        IF ( status = EMPTY ) THEN
+            self.map_fields ( "MLP_VALUES" )
+            self.call_trigger ( mt, key, GBI_COPY_LIMIT_TRIGGER )
+            UPDATE mlp_values
+        ELSE
+            retval = FALSE
+        ENDIF
+
+    ENDIF
+
+    RETURN ( retval )
+
+ENDROUTINE { gbi_product_entry_copy_limit }
+
+{******************************************************************************}
+
+ROUTINE gbi_product_entry_action_create_component ( self, VALUE key )
+
+    DECLARE status, ecode, cnum, save_format
+
+    self.status_mess_decode ( "GBI_LIMITS_COMP", MSG_1, key, EMPTY, EMPTY )
+
+    RESERVE ENTRY mlp_components, key, status
+
+    ecode  = INCREMENT( "MLP_COMPS", "ENTRY_CODE" )
+    ecode  = PACKED_DECIMAL ( ecode )
+    
+    { Check the RESERVE ENTRY function returned no error }
+    IF status = EMPTY THEN
+
+	    assign mlp_components.component_type = self.mlp_component_type
+	    assign mlp_components.entry_code     = ecode
+	    assign mlp_components.units          = self.mlp_units
+	    assign mlp_components.places         = self.mlp_places
+
+	    { ---------------------------------------------------------------------- }
+	    { Set the order of this component to retain the order by in this version }
+	    { ---------------------------------------------------------------------- }
+
+	    cnum = SELECT MAX mlp_components.order_num
+		 WHERE PRODUCT_ID      = self.header.product_id
+		 AND   PRODUCT_VERSION = self.header.product_version
+
+	    IF cnum = EMPTY THEN
+		cnum = PACKED_DECIMAL ( 1 )
+	    ELSE
+		cnum = PACKED_DECIMAL ( ( cnum + 1 ) )
+	    ENDIF
+
+	    assign mlp_components.order_num = cnum
+
+	    { ---------------------------------------------------------------------- }
+	    { Set the format of this specific typical text to match the SAP format   }
+	    { ---------------------------------------------------------------------- }
+
+	    IF self.mlp_component_type = "N" THEN
+
+		save_format = GLOBAL ( "FORMAT_TEXT" )
+		CALL_ROUTINE "set_format" USING self.mlp_places IN LIBRARY "$LIB_MLPS"
+
+		self.mlp_target_value              = STRIP ( NUMERIC ( self.mlp_target_value ) )
+		assign mlp_components.typical_text = self.mlp_target_value
+
+		SET FORMAT save_format
+
+	    ENDIF  { mlp_component_type must be numeric for typical text format }
+
+	    { ---------------------------------------------------------------------- }
+	    { Update any user fields from the mapping profile                        }
+	    { ---------------------------------------------------------------------- }
+
+	    self.map_fields ( "MLP_COMPONENTS" )
+
+	    IF ( self.parent = EMPTY ) THEN   
+		self.call_trigger ( self       , key, GBI_NEW_COMPONENT_TRIGGER )   { self=gbiproductentry really new   }
+	    ELSE
+		self.call_trigger ( self.parent, key, GBI_NEW_COMPONENT_TRIGGER )   { self=qaimv           mod existing }
+	    ENDIF
+
+	    UPDATE mlp_components
+
+    ELSE
+
+        self . status_message ( "$smidi_lib_limits\gbi_product_entry_action_create_component --> RESERVE ENTRY failed with the following error message: " : status, MSG_HIGH )
+
+    ENDIF
+
+    RETURN ( ecode )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE gbi_product_entry_action_create_limit ( self, VALUE count, VALUE key )
+
+    DECLARE retval, minval, maxval, phraseval, passval, calcval, status, 
+        level_id, entry_code, record_exists
+
+    retval  = TRUE
+
+    self.status_mess_decode ( "GBI_LIMITS_LIMIT", MSG_1, key, EMPTY, EMPTY )
+
+    minval     = self.levels[ count, GBI_MINIMUM_POS     ]
+    maxval     = self.levels[ count, GBI_MAXIMUM_POS     ]
+    phraseval  = self.levels[ count, GBI_PHRASE_POS      ]
+    passval    = self.levels[ count, GBI_PASS_POS        ]
+    calcval    = self.levels[ count, GBI_CALCULATION_POS ]
+    level_id   = self.levels[ count, 1 ]
+    entry_code = LEFTSTRING ( key, 10 ) 
+
+    record_exists = SELECT MLP_VALUES.MIN_LIMIT FOR UPDATE
+            WHERE LEVEL_ID   = level_id
+            AND   ENTRY_CODE = entry_code
+
+    IF ( record_exists = EMPTY ) THEN
+        RESERVE ENTRY mlp_values, key, status
+    ELSE
+        status = EMPTY
+    ENDIF
+
+    IF ( status <> EMPTY ) THEN
+
+        retval  = FALSE
+        self.status_message ( "*** MLP_VALUES RESERVE ENTRY ":key:" ":status, MSG_10 )
+
+    ELSEIF self.mlp_component_type = "T" THEN
+
+        IF phraseval <> empty THEN
+            assign mlp_values.text_phrase = phraseval
+        ENDIF
+
+    ELSEIF self.mlp_component_type = "N" THEN
+
+        assign mlp_values.min_limit = minval
+        assign mlp_values.max_limit = maxval
+
+    ELSEIF self.mlp_component_type = "B" THEN
+
+        IF passval <> empty THEN
+            assign mlp_values.boolean_pass = passval
+        ENDIF
+
+    ELSE
+
+        retval = FALSE
+        self.status_message ( "gbi_product_entry_action_create_limit error ":STRIP(key):" ":status, MSG_10 )
+
+    ENDIF  { if record exists, or new entry }
+
+    { ======================================================= }
+    { Calc's assigned to all mlp values                       }
+    { ======================================================= }
+
+    IF calcval <> empty THEN
+        assign mlp_values.calculation = calcval
+    ENDIF
+
+    { ======================================================= }
+    { User defined fields for mlp values                      }
+    { ======================================================= }
+
+    IF retval THEN
+
+        self.map_fields ( "MLP_VALUES" )
+        self.call_trigger ( self.parent, key, GBI_NEW_LIMIT_TRIGGER )
+        update mlp_values
+
+    ENDIF   { in some modes the mlp_value will be there an (nothing in it) }
+                { we had a situation where one lot 3 ops makes 3 samples but   }
+                { the "components" were repeated on each sample.               }
+
+    RETURN ( retval )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE smidi_login_action_get_mlp_id ( self, operation )
+
+    DECLARE product
+
+    product = EMPTY
+    product = smidi_lib_get_mapping ( self.mapping_profile, "MLP_HEADER", "IDENTITY", product, operation )
+
+    IF ( product = EMPTY ) OR ( BLANK ( product ) ) THEN
+
+        product = smidi_lib_get_mapping ( self.mapping_profile, "SAMPLE", "WORK_PROFILE", product, operation )
+
+    ENDIF
+
+    { ================================================================================== }
+    { If either of the 2 above ways of finding mlp don't work, then a user trigger must  }
+    { ================================================================================== }
+
+    IF ( product = EMPTY ) OR ( BLANK ( product ) ) THEN
+
+        product = self.call_trigger ( operation, self.mapping_profile, SML_PRODUCT_EMPTY_TRIGGER )
+
+    ENDIF
+
+    { ================================================================================== }
+    { If any of the above found mlp, then call 1 more trigger and then format the id     }
+    { ================================================================================== }
+
+    IF ( product <> EMPTY ) THEN
+
+        product = self.call_trigger  ( operation, product, SML_PRODUCT_FORMAT_TRIGGER )
+        product = self.format_mlp_id ( operation, product )
+
+    ENDIF
+
+    RETURN ( product )    { returning EMPTY causes the processing to fail }
+
+ENDROUTINE { smidi_login_action_get_mlp_id }
+
+{******************************************************************************}
+
+ROUTINE smidi_login_action_format_mlp_id ( self, operation, VALUE id )
+
+    DECLARE len
+
+    GET_FIELD_DETAILS sample.product_name, "FIELD_SIZE", len
+
+    id   = STRIP ( id )
+    
+    IF STRINGLENGTH ( id ) > len THEN
+        id = RIGHTSTRING ( id, len )
+    ELSE
+        id = PAD ( id, " ", len )
+    ENDIF
+
+    RETURN ( id )
+
+ENDROUTINE { smidi_login_action_format_mlp_id }
+
+{******************************************************************************}
+
+ROUTINE smidi_login_action_get_mlp_levels ( self, operation )
+
+    ARRAY operation.levels
+
+    operation.levels [ 1, GBI_LEVEL_POS ] = self.parent.config.get_item ( "QM_TOLERANCE_LEVEL" )
+    operation.levels [ 2, GBI_LEVEL_POS ] = self.parent.config.get_item ( "QM_USER1_LEVEL"     )
+    operation.levels [ 3, GBI_LEVEL_POS ] = self.parent.config.get_item ( "QM_USER2_LEVEL"     )
+
+    self.call_trigger ( operation, EMPTY, SML_GET_LEVELS_TRIGGER )
+
+ENDROUTINE { smidi_login_action_get_mlp_levels }
+
+{******************************************************************************}
+
+ROUTINE smidi_login_action_verify_products_exist ( self )
+
+    DECLARE retval, count, status, operation
+
+    self.status_message ( (GET_USER_MESSAGE ( "SMIDI_LOGIN_VERMLP", 1 )), MSG_MED )
+
+    retval = TRUE
+    count  = 1
+
+    WHILE ( self.operations[count] <> EMPTY ) and retval DO
+
+        operation = self.operations[count]
+        error_context_add_data ( "LOT_NO", operation.lot_no )
+        error_context_add_data ( "OP_NO" , operation.op_no  )
+
+        { ================================================================== }
+        { First get the name of the MLP or previous matnr when already done  }
+        { ================================================================== }
+
+        IF self.product_id = EMPTY THEN
+
+            operation.product_object.product_id = self.get_mlp_id ( operation )
+
+        ELSE
+
+            operation.product_object.product_id = self.product_id
+
+        ENDIF
+
+        { ================================================================== }
+        { Now that we have a name, check if this name is really in the dbase }
+        { ================================================================== }
+
+        IF ( operation.product_object.product_id = EMPTY ) THEN
+
+            retval = FALSE
+
+        ELSE
+
+            operation.product_id = operation.product_object.product_id
+            status               = operation.product_object.id_exists()
+
+            IF status = 1 THEN                                             { exists, find version  }
+
+                IF self.product_ver = EMPTY THEN
+
+                    operation.product_object.product_version = operation.product_object.latest_version()
+
+                ELSE
+
+                    operation.product_object.product_version = self.product_ver 
+
+                ENDIF
+
+
+                IF ( operation.product_object.product_version > 0 ) THEN
+
+                    self.get_mlp_levels ( operation.product_object )
+
+                ENDIF   { otherwise we will do it more than once for op_no's etc. when new mlp }
+
+            ELSEIF status = 0 THEN                                         { been removed           }
+
+                retval  = FALSE
+                self.status_message ( ((GET_USER_MESSAGE ( "SMIDI_LOGIN_MLP_REMOVED",1)):operation.product_id ), MSG_HIGH )
+
+            ELSE                                                           { make a new product     }
+
+                operation.product_object.product_version = 0
+                self.status_message ( GET_USER_MESSAGE ( "SMIDI_LOGIN_NEW_MLP", 1 ):operation.product_object.product_id, MSG_LOW )
+                self.get_mlp_levels ( operation.product_object )
+
+            ENDIF  { status on find of the mlp }
+
+            operation.product_version = operation.product_object.product_version
+
+        ENDIF  { product empty from name map }
+
+        count = count + 1
+
+    ENDWHILE   { all operations have to set their product id for lower routines }
+
+    { ================================================================================= }
+    { Did ALL checks for all MLP's pass ?                                               }
+    { ================================================================================= }
+
+    IF NOT retval THEN
+        operation.error_status ( "F", "GETMLP", SMIDI_BADMLP )
+    ENDIF
+
+    RETURN ( retval )
+
+ENDROUTINE { smidi_login_action_verify_products_exist }
+
+{******************************************************************************}
+
+ROUTINE smidi_login_action_update_product_specs ( self, root )
+
+    DECLARE count, material, ok
+
+    ok    = TRUE
+    count = 1
+
+    WHILE ( root.materials[count] <> EMPTY ) AND ok DO
+
+        material                 = root.materials[count].product_object
+        material.product_version = material.latest_version()
+
+        self.status_mess_decode ( "SMIDI_LOGIN_MODMLP", MSG_LOW, root.lot_no, STRIP(material.product_id):"/":STRIP(material.product_version):" UPDATE->":material.mlp_update, EMPTY  )
+
+        IF ( material.mlp_update ) THEN
+
+            IF ( material.product_version = 0 ) OR ( NOT material.verify_limits() ) THEN
+
+                material.increment_version()
+
+                IF ( material.create_version() ) THEN
+
+                    ok = material.update_limits()
+
+                    IF NOT ok THEN
+                        root.materials[count].error_status ( "F", "MLP", SMIDI_BADMLP )
+                    ENDIF
+
+                ENDIF { the version was created ok }
+    
+            ENDIF  { version=0 new mlp, limits don't match then add new version   }
+
+        ENDIF   { mlp_update false - mapping profile says to not update the materials }
+    
+        count = count + 1
+
+    ENDWHILE
+
+
+    RETURN ( ok )
+
+ENDROUTINE { smidi_login_action_update_product_specs }
+
+
+{******************************************************************************}
+
+ROUTINE qaimv_action_get_level_info ( self )
+
+    DECLARE toler
+    toler = self.get_item ( "QM_TOLERANCE_LEVEL" )
+
+    ARRAY self.levels
+
+    IF self.mlp_component_type = "B" THEN
+
+        self.levels [ 1, GBI_LEVEL_POS ] = toler
+        self.levels [ 1, GBI_PASS_POS  ] = TRUE
+
+    ELSEIF self.mlp_component_type = "T" THEN
+
+        self.levels [ 1, GBI_LEVEL_POS  ] = toler
+        self.levels [ 1, GBI_PHRASE_POS ] = self.get_phrase ( )
+
+    ELSEIF self.mlp_component_type = "N" THEN
+
+        self.get_level_info_n()
+
+    ENDIF 
+
+ENDROUTINE { qaimv_action_get_level_info }
+
+{******************************************************************************}
+
+ROUTINE qaimv_action_get_level_info_n ( self )
+
+    DECLARE level, midval, adjust, save_format
+
+    { --------------------------------------------------------------------------------------- }
+    { Routine to make values from SAP correct whenever they are open ended (no min or no max) }
+    { --------------------------------------------------------------------------------------- }
+
+    set_open_ended_limits ( self )
+
+    { ------------------------------------------------ }
+    { Set the "format" so that decimals places are ok }
+    { ------------------------------------------------ }
+
+    save_format = GLOBAL ( "FORMAT_TEXT" )
+    CALL_ROUTINE "set_format" USING self.decimal_places IN LIBRARY "$LIB_MLPS"
+
+    IF self.valuation_type = "B" THEN
+
+        level = self.get_item ( "QM_TOLERANCE_LEVEL" )
+
+        self.levels[ 1, GBI_LEVEL_POS   ] = level
+        self.levels[ 1, GBI_MINIMUM_POS ] = 0
+        self.levels[ 1, GBI_MAXIMUM_POS ] = self.rejection_no
+
+    ELSEIF self.valuation_type = "C" THEN
+
+        level   = self.get_item ( "QM_TOLERANCE_LEVEL" )
+
+        midval  =   ( NUMERIC(self.upper_tolerance) + NUMERIC(self.lower_tolerance) ) / 2
+        adjust  = ( ( NUMERIC(self.upper_tolerance) - NUMERIC(self.lower_tolerance) ) / 2 ) * ( NUMERIC(self.k_factor) )
+
+        self.levels[ 1, GBI_LEVEL_POS ]    = level
+        self.levels[ 1, GBI_MINIMUM_POS ]  = STRIP ( NUMERIC ( midval - adjust ) )
+        self.levels[ 1, GBI_MAXIMUM_POS ]  = STRIP ( NUMERIC ( midval + adjust ) )
+
+    ELSE
+
+        level = self.get_item ( "QM_TOLERANCE_LEVEL" )
+
+        self.levels[ 1, GBI_LEVEL_POS   ]  = level
+        self.levels[ 1, GBI_MINIMUM_POS ]  = self.lower_tolerance
+        self.levels[ 1, GBI_MAXIMUM_POS ]  = self.upper_tolerance
+
+        level = self.get_item ( "QM_USER1_LEVEL" )
+
+        IF NOT BLANK ( level ) THEN
+
+            self.levels[ 2, GBI_LEVEL_POS   ] = level
+            self.levels[ 2, GBI_MINIMUM_POS ] = self.lower_limit_1
+            self.levels[ 2, GBI_MAXIMUM_POS ] = self.upper_limit_1
+    
+        ENDIF
+
+        level = self.get_item ( "QM_USER2_LEVEL" )
+
+        IF NOT BLANK ( level ) THEN
+
+            self.levels[ 3, GBI_LEVEL_POS   ] = level
+            self.levels[ 3, GBI_MINIMUM_POS ] = self.lower_limit_2
+            self.levels[ 3, GBI_MAXIMUM_POS ] = self.upper_limit_2
+    
+        ENDIF
+
+    ENDIF
+
+    { ------------------------------------------------------------ }
+    { restore format to not be SAP's decimal places for this limit }
+    { ------------------------------------------------------------ }
+
+    SET FORMAT save_format 
+
+    { =================================================================================== }
+    { If you are assigning the mlp_calc to this level or any other fields then do it here }
+    { =================================================================================== }
+
+    IF ( VGL_VALIDATE_ROUTINE ( SMIDI_PROCESS_USER_LIB, CHANGE_LEVEL_TRIGGER ) ) THEN
+        CALLROUTINE CHANGE_LEVEL_TRIGGER IN LIBRARY SMIDI_PROCESS_USER_LIB USING self
+    ENDIF
+
+ENDROUTINE { qaimv_action_get_level_info_n }
+
+{******************************************************************************}
+
+ROUTINE set_open_ended_limits ( self )
+
+    DECLARE save_format
+
+    { ****************   E FORMAT LARGE DECIMAL PLACES ************ }
+
+    save_format = GLOBAL ( "FORMAT_TEXT" )
+    CALL_ROUTINE "set_format" USING self.decimal_places IN LIBRARY "$LIB_MLPS"
+
+    { ======== }
+    { QM_TOLER }
+    { ======== }
+
+    IF ( blank ( self.upper_tolerance ) ) AND ( blank (self.lower_tolerance) ) THEN
+
+        self.status_message("create_SAP_self BLANK Tolerance ":self.char_short, MSG_2 )
+
+    ELSEIF ( NUMERIC(self.upper_tolerance) = 0 ) AND ( NUMERIC(self.lower_tolerance) <> 0 ) THEN
+    
+        self.lower_tolerance = GREAT_EQ : STRIP ( NUMERIC(self.lower_tolerance) )
+        self.upper_tolerance = ""
+
+    ELSEIF ( NUMERIC(self.lower_tolerance) = 0 ) AND ( NUMERIC(self.upper_tolerance) <> 0 ) THEN
+
+        self.lower_tolerance = LESS_EQ : STRIP ( NUMERIC ( self.upper_tolerance ) )
+        self.upper_tolerance = ""
+
+    ELSEIF ( NUMERIC(self.lower_tolerance) > NUMERIC(self.upper_tolerance) ) THEN
+
+        self.lower_tolerance = GREAT_EQ : STRIP ( NUMERIC ( self.lower_tolerance ) )
+        self.upper_tolerance = ""
+
+    ELSEIF BLANK ( self.lower_tolerance ) & NOT BLANK ( self.upper_tolerance ) THEN
+
+        self.lower_tolerance = LESS_EQ : STRIP ( NUMERIC ( self.upper_tolerance ) )
+        self.upper_tolerance = ""
+
+    ELSEIF BLANK ( self.upper_tolerance ) & NOT BLANK ( self.lower_tolerance ) THEN
+
+        self.lower_tolerance = GREAT_EQ : STRIP ( NUMERIC(self.lower_tolerance) )
+        self.upper_tolerance = ""
+
+    ELSE
+
+        self.lower_tolerance = STRIP(NUMERIC(self.lower_tolerance))
+        self.upper_tolerance = STRIP(NUMERIC(self.upper_tolerance))
+    
+    ENDIF
+
+    { ========= }
+    { QM_USER1  }
+    { ========= }
+
+    IF ( blank (self.upper_limit_1) ) AND ( blank (self.lower_limit_1) ) THEN
+
+        self.status_message("create_SAP_self BLANK Limit 1 ":self.char_short, MSG_2 )
+
+    ELSEIF ( NUMERIC(self.upper_limit_1) = 0 ) AND ( NUMERIC(self.lower_limit_1) <> 0 ) THEN
+    
+        self.lower_limit_1 = GREAT_EQ : STRIP ( NUMERIC ( self.lower_limit_1 ) ) 
+        self.upper_limit_1 = ""
+
+    ELSEIF ( NUMERIC(self.lower_limit_1) = 0 ) AND ( NUMERIC(self.upper_limit_1) <> 0 ) THEN
+
+        self.lower_limit_1 = LESS_EQ : STRIP ( NUMERIC ( self.upper_limit_1 ) )
+        self.upper_limit_1 = ""
+
+    ELSEIF ( NUMERIC(self.lower_limit_1) > NUMERIC(self.upper_limit_1) ) THEN
+
+        self.lower_limit_1 = GREAT_EQ : STRIP ( NUMERIC ( self.lower_limit_1 ) )
+        self.upper_limit_1 = ""
+
+    ELSEIF BLANK ( self.lower_limit_1 ) & NOT BLANK ( self.upper_limit_1 ) THEN
+
+        self.lower_limit_1 = GREAT_EQ : STRIP ( NUMERIC ( self.upper_limit_1 ) )
+        self.upper_limit_1 = ""
+
+    ELSEIF BLANK ( self.upper_limit_1 ) & NOT BLANK ( self.lower_limit_1 ) THEN
+
+        self.lower_limit_1 = LESS_EQ : STRIP ( NUMERIC(self.lower_limit_1) )
+        self.upper_limit_1 = ""
+
+    ELSE
+
+        self.lower_limit_1 = STRIP(NUMERIC(self.lower_limit_1))
+        self.upper_limit_1 = STRIP(NUMERIC(self.upper_limit_1))
+    
+    ENDIF
+
+    { ======== }
+    { QM_USER2 }
+    { ======== }
+
+    IF ( blank (self.upper_limit_2) ) AND ( blank (self.lower_limit_2) ) THEN
+
+        self.status_message("create_SAP_self BLANK User 2 ":self.char_short, MSG_NONE )
+
+    ELSEIF ( NUMERIC(self.upper_limit_2) = 0 ) AND ( NUMERIC(self.lower_limit_2) <> 0 ) THEN
+    
+        self.lower_limit_2 = GREAT_EQ : STRIP ( NUMERIC ( self.lower_limit_2 ) )
+        self.upper_limit_2 = ""
+
+    ELSEIF ( NUMERIC(self.lower_limit_2) = 0 ) AND ( NUMERIC(self.upper_limit_2) <> 0) THEN
+
+        self.lower_limit_2 = LESS_EQ : STRIP ( NUMERIC ( self.upper_limit_2 ) )
+        self.upper_limit_2 = ""
+
+    ELSEIF ( NUMERIC(self.lower_limit_2) > NUMERIC(self.upper_limit_2) ) THEN
+
+        self.lower_limit_2 = GREAT_EQ : STRIP ( NUMERIC ( self.lower_limit_2 ) )
+        self.upper_limit_2 = ""
+
+    ELSEIF BLANK ( self.lower_limit_2 ) & NOT BLANK ( self.upper_limit_2 ) THEN
+
+        self.lower_limit_2 = GREAT_EQ : STRIP ( NUMERIC ( self.upper_limit_2 ) )
+        self.upper_limit_2 = ""
+
+    ELSEIF BLANK ( self.upper_limit_2 ) & NOT BLANK ( self.lower_limit_2 ) THEN
+
+        self.lower_limit_2 = LESS_EQ : STRIP ( NUMERIC(self.lower_limit_2) )
+        self.upper_limit_2 = ""
+
+    ELSE
+
+        self.lower_limit_2 = STRIP(NUMERIC(self.lower_limit_2))
+        self.upper_limit_2 = STRIP(NUMERIC(self.upper_limit_2))
+    
+    ENDIF
+
+    SET FORMAT save_format
+
+ENDROUTINE  { set_open_ended_limits }
+
+{******************************************************************************}
+
+ROUTINE qaimv_action_get_mlp_component ( self  )
+
+    IF INDEX ( LIMS_NUMERIC_TYPES, self.result_type ) <> 0 THEN                {"ADGJMP"}
+
+        self.mlp_component_type = "N"
+
+    ELSEIF INDEX ( LIMS_OPTIONAL_TYPES, self.result_type ) <> 0 THEN           {"BEHKNQ"}
+
+        self.mlp_component_type = "T"
+
+    ELSEIF INDEX ( LIMS_DEFECT_OR_BOOLEAN_TYPES, self.result_type ) <> 0 THEN  {"CFILOR"}
+
+        IF self.valuation_type = "B" THEN
+
+            self.mlp_component_type = "N"
+
+        ELSE
+            self.mlp_component_type = "B"
+
+        ENDIF
+
+    ELSE
+
+        self.mlp_component_type = "T"
+
+    ENDIF
+
+    self.mlp_units        = self.char_unit
+    self.mlp_places       = NUMERIC ( self.decimal_places )
+    self.mlp_target_value = STRIP   ( self.target_value   )
+
+ENDROUTINE { qaimv_action_get_mlp_component }
+
+{******************************************************************************}
+{ end $smidi_lib_limits }
+{******************************************************************************}

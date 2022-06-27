@@ -1,0 +1,1079 @@
+{
+
+    Module Name   : INST_CALIB_REPORTS
+
+    Purpose       : Contains routines that are called from the menu to produce instrument
+                             calibration labels (or 'DO NOT USE' labels) and CSR and History reports.
+                             This report contains all the prompts, but it calls into other reports (IMPRINT_CAL_REPORTS
+                              and INST_CALIB_REP_BGR to generate the reports).
+
+    Document Ref. : 
+
+    Specification : 
+
+
+MODIFICATION HISTORY
+====================
+
+SM      Module  Reference                      Date       Name         Description
+------- ------  ----------------------------   ---------  ----------   -----------------
+2000R1  V1.0    Elan-Calibration SDS 0-1.doc   30/10/02   A Finnerty   Created report
+2000R1  V1.1    Change control 2003-046	       16/05/03   AM Fanning   Updated due to PQ printing wrong label	
+2000R1  V1.2    Change Control 2004-081        10/05/04   E Henry      Updated to Print DNU label irrelevent 
+                                                                       of the actual calibration due date
+2000R1  V1.3    Change Control 2004-240        11/11/04   E.Henry      Addition of new label 'Do Not Use Maintenance Required'
+2000R1  V1.4    Call HA002683		       28/11/05	  M.Allen	Modified print_do_not_use_label and
+									print_do_not_use_main_req label routines
+									to allow prompt for calibration type
+9.2	V1.5	CC-ATH-2012-0923	      11/09/12	  M Flattery	Add CSR_GROUP report
+{ --------------------------------------------------------------------------------------------------------------------------------------- }
+
+
+
+
+
+SET NAME "DEFER/"
+ENABLE WINDOWS
+
+SET NOTPROTECTED
+SET COMPILE_OPTION DECLARE
+
+
+JOIN STANDARD_LIBRARY std_vgl
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_WINDOW
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN LIBRARY $lib_utils
+JOIN LIBRARY IMPRINT_CAL_REPORTS
+JOIN LIBRARY INST_CALIB_REP_BGR
+
+CONSTANT PROMPT_DISPLAY_COLUMN = 5
+CONSTANT PROMPT_DISPLAY_LENGTH = 15
+CONSTANT PROMPT_PROMPT_COLUMN  = 25
+CONSTANT PROMPT_PROMPT_WIDTH  = 10
+
+
+{******************************************************************************
+*                                                                              
+*  Routine Name     :  print_cal_label
+*                                                                             
+* Description      :  Displays 'print calibration screen', and prints appropriate label when the user
+*                               selects an instrument, a calibration type and a sequence number.
+*                                                                              
+* Parameters       :  
+*         VALUE option - the menu procedure number
+*                                                                              
+* Return Value     :  none
+*                                                                                                                                                            
+*******************************************************************************}
+ROUTINE print_cal_label  ( option )
+
+    DECLARE main_form
+    DECLARE status
+    DECLARE prompt_object_inst,prompt_object_type,prompt_object_num
+
+
+    CREATE OBJECT "std_form", main_form
+
+    
+    main_form . row    = 3
+    main_form . column = 10
+    main_form . height = 3
+    main_form . width  = 40
+    main_form . header = "Print Instrument Calibration Label"
+    main_form . return_behaviour = FORM_RETURN_LEAVE
+
+
+    PROMPT OBJECT prompt_object_inst
+               BROWSE ON   inst_calibration.instrument
+                ON LINE 1
+                FROM        PROMPT_PROMPT_COLUMN
+                WITH ( ALWAYS_VALIDATE = TRUE,
+                        width = PROMPT_PROMPT_WIDTH
+                      )
+
+
+    PROMPT OBJECT prompt_object_type
+                BROWSE ON TEXT
+                ON LINE 2
+                FROM        PROMPT_PROMPT_COLUMN
+                 WITH ( ALWAYS_VALIDATE = TRUE,
+                        browse_routine = "browse_type_routine",
+                        validation_routine = "validate_type_prompt",
+                        width = PROMPT_PROMPT_WIDTH
+                      )
+
+
+    PROMPT OBJECT prompt_object_num
+               BROWSE ON TEXT {inst_calib_hist.calibration_number} {INTEGER}
+                ON LINE 3
+                FROM        PROMPT_PROMPT_COLUMN
+                WITH ( ALWAYS_VALIDATE = TRUE ,
+                        browse_routine = "browse_seqnum_routine",
+                        validation_routine = "seqnum_validation_routine",
+                        width = PROMPT_PROMPT_WIDTH
+                      )
+
+         
+    main_form . add_prompt( prompt_object_inst )
+    main_form . add_prompt( prompt_object_type )
+    main_form . add_prompt( prompt_object_num )
+    main_form . add_display( PAD( "Instrument", " ", PROMPT_DISPLAY_LENGTH ), PROMPT_DISPLAY_COLUMN, 1, PROMPT_RENDITION_LOWERED )
+    main_form . add_display( PAD( "Type", " ", PROMPT_DISPLAY_LENGTH ), PROMPT_DISPLAY_COLUMN, 2, PROMPT_RENDITION_LOWERED )
+    main_form . add_display( PAD( "Number", " ", PROMPT_DISPLAY_LENGTH ), PROMPT_DISPLAY_COLUMN, 3, PROMPT_RENDITION_LOWERED )
+
+
+
+    main_form . start_prompt()    
+    main_form . wait_prompt()
+
+
+    IF ( main_form . get_lastkey() = "DO" )            
+
+        {    get the result    }
+        status = SELECT inst_calib_hist.status
+                        WHERE (inst_calib_hist.calibration_number = main_form.prompt_objects[3].value)
+                        AND (inst_calib_hist.instrument = main_form.prompt_objects[1].value) 
+                        AND (inst_calib_hist.type = main_form.prompt_objects[2].value)
+
+
+        {     print calibration or 'do not use' label, depending on status     }
+
+        IF ( status = "TRUE" )
+
+            CALL_ROUTINE "imprint_print_cal_label" 
+                USING main_form.prompt_objects[1].value,
+                      main_form.prompt_objects[2].value,
+                      main_form.prompt_objects[3].value
+                IN LIBRARY "imprint_cal_reports"
+      
+        ELSE
+
+	{Updated due to PQ AMF 16/05/03      }
+	{vgl_print_dont_use_label changed to }
+	{imprint_print_dont_use_label        }
+
+            imprint_print_dont_use_label ( main_form.prompt_objects[1].value,
+                                           main_form.prompt_objects[2].value,
+                                           main_form.prompt_objects[3].value )
+
+        ENDIF
+
+
+    ENDIF
+    
+
+    main_form . end_prompt()
+
+
+ENDROUTINE   {  print_cal_label  }
+
+
+
+
+
+{******************************************************************************
+*                                                                              
+*  Routine Name     :  print_do_not_use_label
+*                                                                             
+* Description      :  Displays 'print 'Do Not Use' screen', and prints the label when the user
+*                                selects an instrument, a calibration type and a sequence number.
+*                                                                              
+* Parameters       :  
+*         VALUE option - the menu procedure number
+*                                                                              
+* Return Value     :  none
+*                                                                                                                                                            
+*******************************************************************************}
+ROUTINE print_do_not_use_label  ( option )
+
+    DECLARE main_form
+    DECLARE prompt_object_inst, prompt_object_type
+    DECLARE date_due
+    DECLARE type , cal_no
+
+    CREATE OBJECT "std_form", main_form
+
+    
+    main_form . row    = 2
+    main_form . column = 10
+    main_form . height = 2
+    main_form . width  = 40
+    main_form . header = "Instrument 'Do Not Use' Label"
+    main_form . return_behaviour = FORM_RETURN_LEAVE
+
+
+    PROMPT OBJECT prompt_object_inst
+                BROWSE ON   inst_calibration.instrument
+                ON LINE 1
+                FROM        PROMPT_PROMPT_COLUMN
+                WITH ( ALWAYS_VALIDATE = TRUE,
+                        width = PROMPT_PROMPT_WIDTH
+                      )
+
+
+    PROMPT OBJECT prompt_object_type
+                BROWSE ON TEXT
+                ON LINE 2
+                FROM        PROMPT_PROMPT_COLUMN
+                 WITH ( ALWAYS_VALIDATE = TRUE,
+                        browse_routine = "browse_type_routine",
+                        validation_routine = "validate_type_prompt",
+                        width = PROMPT_PROMPT_WIDTH
+                      )     
+
+    
+    main_form . add_prompt( prompt_object_inst )
+    main_form . add_prompt( prompt_object_type )
+    main_form . add_display( PAD( "Instrument", " ", PROMPT_DISPLAY_LENGTH ), PROMPT_DISPLAY_COLUMN, 1, PROMPT_RENDITION_LOWERED )
+    main_form . add_display( PAD( "Type", " ", PROMPT_DISPLAY_LENGTH ), PROMPT_DISPLAY_COLUMN, 2, PROMPT_RENDITION_LOWERED )
+    
+
+
+    main_form . start_prompt()    
+    main_form . wait_prompt()
+
+
+    IF ( main_form . get_lastkey() = "DO" )            
+
+         {
+            Get next calibration due record, and pass values to infomaker report
+         }
+         date_due = SELECT inst_calib_hist.actual_calib_due
+                                 WHERE (instrument = main_form.prompt_objects[1].value)
+{EH 10-05-04 Modified to print DNU Label irrelevant of actual calibration date}
+                                 {AND (actual_calib_due > NOW)
+                                 ORDER ON actual_calib_due}
+                                 ORDER ON calibration_number
+{EH END OF MOD}
+
+        IF (date_due <> EMPTY)
+
+            {    print here    }
+           
+           
+            cal_no = SELECT inst_calib_hist.calibration_number
+
+           { Background printing routine using VGL Labels }
+{
+            vgl_print_dont_use_label ( inst, type, cal_no)
+}
+           {Interactive printing through imprint }
+
+            imprint_print_dont_use_label ( main_form.prompt_objects[1].value,
+                                           main_form.prompt_objects[2].value, cal_no )
+            
+        ELSE
+
+            {   If no calibration records for this instrument, display error message  }
+
+            type = main_form.prompt_objects[2].value
+
+            IF (type = EMPTY)
+
+                flash_message(GET_USER_MESSAGE ( "INST_CALIB_REPORTS_NO_CAL_DUE_SET" , 1 ), TRUE)             
+
+            ENDIF
+
+        ENDIF
+
+    ENDIF
+
+    main_form . end_prompt()
+
+
+ENDROUTINE   {  print_do_not_use_label    }
+
+
+{New routine for new Do not Use - Maintenance Required Label}
+{VB HA002061 25-Aug-04}
+{******************************************************************************
+*                                                                              
+*  Routine Name     :  print_do_not_use_label_main_req
+*                                                                             
+* Description      :  Displays 'print 'Do Not Use' screen', and prints the label when the user
+*                                selects an instrument, a calibration type and a sequence number.
+*                                                                              
+* Parameters       :  
+*         VALUE option - the menu procedure number
+*                                                                              
+* Return Value     :  none
+*                                                                                                                                                            
+*******************************************************************************}
+ROUTINE print_do_not_use_label_main_req  ( option )
+
+    DECLARE main_form
+    DECLARE prompt_object_inst, prompt_object_type
+    DECLARE date_due
+    DECLARE type, cal_no
+
+    CREATE OBJECT "std_form", main_form
+
+    
+    main_form . row    = 2
+    main_form . column = 10
+    main_form . height = 2
+    main_form . width  = 40
+    main_form . header = "Instrument 'Do Not Use - Maintenance Required' Label"
+    main_form . return_behaviour = FORM_RETURN_LEAVE
+
+
+    PROMPT OBJECT prompt_object_inst
+                BROWSE ON   inst_calibration.instrument
+                ON LINE 1
+                FROM        PROMPT_PROMPT_COLUMN
+                WITH ( ALWAYS_VALIDATE = TRUE,
+                        width = PROMPT_PROMPT_WIDTH
+                      )
+
+    PROMPT OBJECT prompt_object_type
+                BROWSE ON TEXT
+                ON LINE 2
+                FROM        PROMPT_PROMPT_COLUMN
+                 WITH ( ALWAYS_VALIDATE = TRUE,
+                        browse_routine = "browse_type_routine",
+                        validation_routine = "validate_type_prompt",
+                        width = PROMPT_PROMPT_WIDTH
+                      )     
+
+         
+    main_form . add_prompt( prompt_object_inst )
+    main_form . add_prompt( prompt_object_type )
+    main_form . add_display( PAD( "Instrument", " ", PROMPT_DISPLAY_LENGTH ), PROMPT_DISPLAY_COLUMN, 1, PROMPT_RENDITION_LOWERED )
+    main_form . add_display( PAD( "Type", " ", PROMPT_DISPLAY_LENGTH ), PROMPT_DISPLAY_COLUMN, 2, PROMPT_RENDITION_LOWERED )
+    
+
+
+    main_form . start_prompt()    
+    main_form . wait_prompt()
+
+
+    IF ( main_form . get_lastkey() = "DO" )            
+
+         {
+            Get next calibration due record, and pass values to infomaker report
+         }
+         date_due = SELECT inst_calib_hist.actual_calib_due
+                                 WHERE (instrument = main_form.prompt_objects[1].value)
+{AMF 23-APR-04 Modified to print DNU Label irrelevant of actual calibration date}
+                                 {AND (actual_calib_due > NOW)
+                                 ORDER ON actual_calib_due}
+                                 ORDER ON calibration_number
+{AMF END OF MOD}
+
+        IF (date_due <> EMPTY)
+
+            {    print here    }
+            
+            cal_no = SELECT inst_calib_hist.calibration_number
+
+           { Background printing routine using VGL Labels }
+{
+            vgl_print_dont_use_label ( inst, type, cal_no)
+}
+           {Interactive printing through imprint }
+
+            imprint_print_dont_use_label_main_req ( main_form.prompt_objects[1].value,
+                                           	    main_form.prompt_objects[2].value, cal_no )
+            
+        ELSE
+
+            {   If no calibration records for this instrument, display error message  }
+
+            type = main_form.prompt_objects[2].value
+
+            IF (type = EMPTY)
+
+                flash_message(GET_USER_MESSAGE ( "INST_CALIB_REPORTS_NO_CAL_DUE_SET" , 1 ), TRUE)             
+
+            ENDIF
+
+        ENDIF
+
+    ENDIF
+
+    main_form . end_prompt()
+
+
+ENDROUTINE   {  print_do_not_use_label_main_req    }
+
+{VB HA002061 25-Aug-04 End of mods}
+
+
+{******************************************************************************
+*                                                                              
+*  Routine Name     :  browse_type_routine
+*                                                                             
+* Description      :  browse_routine for calibration type prompt
+*                                                                              
+* Parameters       :  
+*         self - the prompt
+*                                                                              
+* Return Value     :  none
+*                                                                                                                                                            
+*******************************************************************************}
+ROUTINE browse_type_routine (self)
+
+    DECLARE main_form
+    DECLARE type,i,comment
+    DECLARE instrument
+    DECLARE types_array ARRAY types_array  ARRAY_SIZE(0,2) 
+
+
+    main_form = self.parent_prompt
+    instrument = main_form.prompt_objects[1].value
+
+    type = SELECT DISTINCT inst_calibration.type
+                  WHERE (inst_calibration.instrument = instrument)
+
+    i=1
+    WHILE type <> EMPTY DO
+
+        {   display any comments also  }
+        comment = SELECT inst_calibration.comments
+
+        types_array[i,1] = type
+        types_array[i,2] = comment
+   
+        NEXT inst_calibration
+        type = SELECT inst_calibration.type
+        i=i+1
+
+    ENDWHILE
+
+
+    browse_on_array (20, self.text, types_array)
+
+    self . user_info = types_array
+    self . repaste ( )
+
+ENDROUTINE   
+
+
+
+
+
+{******************************************************************************
+*                                                                              
+*  Routine Name     :  validate_type_prompt
+*                                                                             
+* Description      :  validation_routine for calibration type prompt
+*                                                                              
+* Parameters       :  
+*         self - the prompt
+*                                                                              
+* Return Value     :  TRUE if value entered is valid, else FALSE
+*                                                                                                                                                            
+*******************************************************************************}
+ROUTINE validate_type_prompt (self)
+
+    DECLARE main_form 
+    DECLARE type, valid, instrument
+
+    main_form = self.parent_prompt    
+    instrument = main_form.prompt_objects[1].value
+    valid = TRUE
+
+    type = SELECT DISTINCT inst_calibration.type
+                 WHERE ( instrument = instrument )
+                 AND ( type = self.value )
+
+
+    IF (type = EMPTY)
+
+        valid = FALSE
+        flash_message (GET_USER_MESSAGE ( "INST_CALIB_REPORTS_INVALID_TYPE" , 1 ), TRUE)
+
+    ENDIF
+   
+
+    RETURN (valid)
+
+ENDROUTINE
+
+
+
+
+
+
+{******************************************************************************
+*                                                                              
+*  Routine Name     :  browse_seqnum_routine
+*                                                                             
+* Description      :  browse_routine for sequence number prompt
+*                                                                              
+* Parameters       :  
+*         self - the prompt
+*                                                                              
+* Return Value     :  none
+*                                                                                                                                                            
+*******************************************************************************}
+ROUTINE browse_seqnum_routine (self)
+  
+    DECLARE main_form
+    DECLARE i,seq_no,date_cal
+    DECLARE seq_no_array ARRAY seq_no_array  ARRAY_SIZE(0,2) 
+    DECLARE instrument, type
+
+    main_form = self.parent_prompt
+    instrument = main_form.prompt_objects[1].value
+    type = main_form.prompt_objects[2].value
+
+
+   
+    seq_no = SELECT inst_calib_hist.calibration_number 
+                        WHERE ( inst_calib_hist.instrument = instrument )                         AND ( inst_calib_hist.type = type )
+
+
+    {    fill array for browsing on with values from database   }
+    i=1
+    WHILE seq_no <> EMPTY DO
+
+        {  will display 'date_calibrated' value  }
+        date_cal = SELECT inst_calib_hist.date_calibrated
+
+        seq_no_array[i,1] = seq_no
+        seq_no_array[i,2] = date_cal
+   
+        NEXT inst_calib_hist
+        seq_no = SELECT inst_calib_hist.calibration_number
+        i=i+1
+
+    ENDWHILE
+
+
+    {   most recent first   }
+    array_sort ( seq_no_array, ARRAY_SORT_DESCENDING )
+
+
+    browse_on_array (20, self.text, seq_no_array)
+
+    self . user_info = seq_no_array
+    self . repaste ( )
+
+ENDROUTINE
+
+
+
+
+{******************************************************************************
+*                                                                              
+*  Routine Name     : seqnum_validation_routine
+*                                                                             
+* Description      :  validation_routine for sequence number prompt
+*                                                                              
+* Parameters       :  
+*         self - the prompt
+*                                                                              
+* Return Value     :  TRUE if value entered is valid, else FALSE
+*                                                                                                                                                            
+*******************************************************************************}
+ROUTINE seqnum_validation_routine (self)
+ 
+    DECLARE valid
+    
+    { 
+      This is only a limited check, the inst_calib_hist table could
+      contain a lot of records, so too many queries could slow the program
+      Only check is value an integer > 0
+    }
+
+    valid = TRUE
+
+    IF ( (index (self.value, "-") <> 0)   
+        OR  (index (self.value, ".") <> 0) )
+      
+
+        valid = FALSE
+
+    ENDIF
+
+
+    IF (self.value = "0")
+
+        valid = FALSE
+
+    ENDIF
+
+
+    IF ( valid = TRUE )
+
+        valid = numtext ( self.value )
+
+    ENDIF
+
+   
+    IF ( valid = FALSE )
+
+        flash_message (GET_USER_MESSAGE ( "INST_CALIB_REPORTS_INVALID_SEQ_NUM" , 1 ),  TRUE)
+
+    ENDIF
+
+
+
+    RETURN (valid)
+
+ENDROUTINE
+
+
+
+
+
+
+{******************************************************************************
+*                                                                              
+*  Routine Name     :  do_cal_history_report
+*                                                                             
+* Description      :  Displays 'Instrument Calibration History' screen', and creates the report when the user
+*                                selects a date range and an instrument
+*                                                                                                                                                            
+* Parameters       :  
+*         VALUE option - the menu procedure number
+*                                                                              
+* Return Value     :  none
+*                                                                                                                                                            
+*******************************************************************************}
+ROUTINE do_cal_history_report( option )
+
+    DECLARE main_form
+    DECLARE prompt_object_inst,prompt_object_start,prompt_object_end
+    DECLARE type_array   ARRAY type_array   ARRAY_SIZE(0)
+    DECLARE inst_array   ARRAY inst_array   ARRAY_SIZE(0)
+    DECLARE instrument, start_date, end_date
+
+
+    CREATE OBJECT "std_form", main_form
+
+    { need this date format for infomaker }
+    SET DATE FORMAT "DD-MON-YZ"
+    
+    main_form . row    = 3
+    main_form . column = 10
+    main_form . height = 3
+    main_form . width  = 40
+    main_form . header = "Instrument Calibration History"
+    main_form . return_behaviour = FORM_RETURN_LEAVE
+
+
+    PROMPT OBJECT prompt_object_inst
+                BROWSE ON inst_calib_hist.instrument
+                ON LINE 1
+                FROM        PROMPT_PROMPT_COLUMN
+                WITH ( ALWAYS_VALIDATE = TRUE,
+                        width = PROMPT_PROMPT_WIDTH
+                      )
+
+    PROMPT OBJECT prompt_object_start
+                BROWSE ON DATE
+                ON LINE 2
+                FROM        PROMPT_PROMPT_COLUMN
+                WITH ( ALWAYS_VALIDATE = TRUE,
+                       value = NOW - interval("365 00:00:00"),
+                        width = PROMPT_PROMPT_WIDTH 
+                      )
+
+
+    PROMPT OBJECT prompt_object_end
+                BROWSE ON DATE
+                ON LINE 3
+                FROM        PROMPT_PROMPT_COLUMN
+                WITH ( ALWAYS_VALIDATE = TRUE,
+                       value = NOW,
+                        validation_routine = "hist_enddate_validation_routine",
+                        width = PROMPT_PROMPT_WIDTH
+                      )
+         
+    main_form . add_prompt( prompt_object_inst )
+    main_form . add_prompt( prompt_object_start )
+    main_form . add_prompt( prompt_object_end )
+    main_form . add_display( PAD( "Instrument", " ", PROMPT_DISPLAY_LENGTH ), PROMPT_DISPLAY_COLUMN, 1, PROMPT_RENDITION_LOWERED )
+    main_form . add_display( PAD( "Start Date", " ", PROMPT_DISPLAY_LENGTH ), PROMPT_DISPLAY_COLUMN, 2, PROMPT_RENDITION_LOWERED )
+    main_form . add_display( PAD( "End Date", " ", PROMPT_DISPLAY_LENGTH ), PROMPT_DISPLAY_COLUMN, 3, PROMPT_RENDITION_LOWERED )
+
+
+    main_form . start_prompt()    
+
+
+    { the screen will only disappear when user clicks CANCEL  }
+
+    REPEAT
+
+
+        main_form . wait_prompt()
+
+
+        IF ( main_form . get_lastkey() = "DO" )            
+
+            instrument = main_form.prompt_objects[1].value
+	    start_date = main_form.prompt_objects[2].value
+	    end_date = main_form.prompt_objects[3].value
+
+
+            { start date cannot be later than end date  }            
+            IF (start_date <= end_date ) 
+  
+                imprint_history_report (  instrument, start_date, end_date )
+
+            ELSE
+
+                flash_message(GET_USER_MESSAGE ( "INST_CALIB_REPORTS_START_LATER_END_DATE" , 1 ),TRUE)
+
+            ENDIF
+
+
+        ENDIF
+
+
+    UNTIL ( main_form . get_lastkey() = "EXIT" )
+
+
+    main_form . end_prompt()
+
+
+    RESTORE DATE FORMAT
+
+
+ENDROUTINE   {  do_cal_history_report    }
+
+
+
+
+
+{******************************************************************************
+*                                                                              
+*  Routine Name     : hist_enddate_validation_routine
+*                                                                             
+* Description      :  validation routine for 'end date' prompt on history window
+*                                                                              
+* Parameters       :  
+*         self - the prompt
+*                                                                              
+* Return Value     :  TRUE if value entered is valid, else FALSE
+*                                                                                                                                                            
+*******************************************************************************}
+ROUTINE hist_enddate_validation_routine (self)
+
+    DECLARE valid, main_form, start_date, end_date
+
+    valid = TRUE  
+    main_form = self.parent_prompt
+    start_date = main_form.prompt_objects[2].value
+    end_date = main_form.prompt_objects[3].value
+
+
+    IF ( start_date > end_date )        
+
+        valid = FALSE
+        flash_message(GET_USER_MESSAGE ( "INST_CALIB_REPORTS_START_LATER_END_DATE" , 1 ),TRUE)
+
+    ENDIF
+
+
+    return (valid)
+
+ENDROUTINE
+
+
+
+
+
+{******************************************************************************
+*                                                                              
+*  Routine Name     :  do_csr
+*                                                                             
+* Description      :  Displays 'Calibration Schedule report' screen', and creates the report when the user
+*                                selects a date range
+*                                                                              
+* Parameters       :  
+*         VALUE option - the menu procedure number
+*                                                                              
+* Return Value     :  none
+*                                                                                                                                                            
+*******************************************************************************}
+ROUTINE do_csr( option )
+
+    DECLARE main_form
+    DECLARE prompt_object_start,prompt_object_end
+    DECLARE csr_interval, start_date, end_date
+
+
+    csr_interval = GLOBAL ("CSR_INTERVAL") 
+
+    CREATE OBJECT "std_form", main_form
+
+    { need this date format for infomaker }
+    SET DATE FORMAT "DD-MON-YZ"
+    
+    main_form . row    = 2
+    main_form . column = 10
+    main_form . height = 2
+    main_form . width  = 40
+    main_form . header = "Calibration Schedule Report"
+    main_form . return_behaviour = FORM_RETURN_LEAVE
+
+
+    PROMPT OBJECT prompt_object_start
+                BROWSE ON DATE
+                ON LINE 1
+                FROM        PROMPT_PROMPT_COLUMN
+                WITH ( ALWAYS_VALIDATE = TRUE,
+                       value = NOW,
+                        width = PROMPT_PROMPT_WIDTH
+                      )
+
+
+    PROMPT OBJECT prompt_object_end
+                BROWSE ON DATE
+                ON LINE 2
+                FROM        PROMPT_PROMPT_COLUMN
+                WITH ( ALWAYS_VALIDATE = TRUE,
+                       value = NOW + csr_interval,
+                       validation_routine = "csr_enddate_validation_routine",
+                        width = PROMPT_PROMPT_WIDTH
+                      )
+         
+    main_form . add_prompt( prompt_object_start )
+    main_form . add_prompt( prompt_object_end )
+    main_form . add_display( PAD( "Start Date", " ", PROMPT_DISPLAY_LENGTH ), PROMPT_DISPLAY_COLUMN, 1, PROMPT_RENDITION_LOWERED )
+    main_form . add_display( PAD( "End Date", " ", PROMPT_DISPLAY_LENGTH ), PROMPT_DISPLAY_COLUMN, 2, PROMPT_RENDITION_LOWERED )
+
+
+
+    main_form . start_prompt()    
+    main_form . wait_prompt()
+
+
+    IF ( main_form . get_lastkey() = "DO" )            
+
+        start_date = main_form.prompt_objects[1].value
+        end_date = main_form.prompt_objects[2].value
+
+        { start date cannot be later than end date  }
+        IF (start_date <= end_date)
+
+            imprint_csr_report ( start_date, end_date )
+
+        ELSE
+
+            flash_message(GET_USER_MESSAGE ( "INST_CALIB_REPORTS_START_LATER_END_DATE" , 1 ),TRUE)
+
+        ENDIF    
+
+    ENDIF
+
+    main_form . end_prompt()
+
+   
+    RESTORE DATE FORMAT
+
+ENDROUTINE   {  do_csr    }
+
+
+
+
+
+
+{******************************************************************************
+*                                                                              
+*  Routine Name     : csr_enddate_validation_routine
+*                                                                             
+* Description      :  validation routine for 'end date' prompt on history window
+*                                                                              
+* Parameters       :  
+*         self - the prompt
+*                                                                              
+* Return Value     :  TRUE if value entered is valid, else FALSE
+*                                                                                                                                                            
+*******************************************************************************}
+ROUTINE csr_enddate_validation_routine (self)
+
+    DECLARE valid,main_form
+    DECLARE start_date, end_date
+
+    valid = TRUE  
+    main_form = self.parent_prompt
+    start_date = main_form.prompt_objects[1].value
+    end_date = main_form.prompt_objects[2].value
+
+
+    IF (start_date > end_date)
+
+        valid = FALSE
+        flash_message(GET_USER_MESSAGE ( "INST_CALIB_REPORTS_START_LATER_END_DATE" , 1 ),TRUE)
+
+    ENDIF
+
+    return (valid)
+
+ENDROUTINE
+
+
+
+
+
+
+{******************************************************************************
+*                                                                              
+* Routine Name     : vgl_print_dont_use_label
+*                                                                             
+* Description      :  Calls a report in INST_CALIB_BGR_REP to print the
+*                     'DO NOT USE' label. That report depends on the calibration type
+*                     (Database entry associated with each calibration type - the report name)                                                        *
+* Parameters       :  
+*         VALUE inst - the instrument
+*         VALUE type - the calibration type
+*         VALUE cal_no - the calibration sequence number
+*                                                                              
+* Return Value     :  TRUE if value entered is valid, else FALSE
+*                                                                                                                                                            
+*******************************************************************************}
+ROUTINE vgl_print_dont_use_label ( VALUE inst, VALUE type, VALUE cal_no)
+
+    DECLARE report, printer_id, label_printer, lib, check_exists
+
+    lib = "inst_calib_rep_bgr"
+
+    {    the report name is in database    }
+    report = STRIP(SELECT inst_calib_types.dnu_label
+                    WHERE (identity = type))
+
+    check_exists = vgl_validate_routine ( lib, report)
+      
+    IF check_exists <> TRUE THEN
+
+        flash_message ("No 'Do Not Use' label report name set for this calibration type", TRUE)
+        
+    ELSE
+
+	label_printer = SELECT instrument . label_printer
+                         WHERE identity = inst
+
+        printer_id = STRIP(label_printer)
+ 
+        SET NAME "PRINTER/":printer_id
+       
+        IF label_printer <> EMPTY THEN
+
+            CALL_ROUTINE report USING inst, type, cal_no
+                     IN LIBRARY lib
+
+        ENDIF
+
+    ENDIF
+
+
+
+ENDROUTINE
+
+{1.5}
+{******************************************************************************
+*                                                                              
+*  Routine Name     :  do_csr_group
+*                                                                             
+* Description      :  Displays 'Calibration Schedule report' screen', and creates the report when the user
+*                                selects a date range and group
+*                                                                              
+* Parameters       :  
+*         VALUE option - the menu procedure number
+*                                                                              
+* Return Value     :  none
+*                                                                                                                                                            
+*******************************************************************************}
+ROUTINE do_csr_group( option )
+
+    DECLARE main_form
+    DECLARE prompt_object_start,prompt_object_end, prompt_object_group
+    DECLARE csr_interval, start_date, end_date, group
+
+
+    csr_interval = GLOBAL ("CSR_INTERVAL") 
+
+    CREATE OBJECT "std_form", main_form
+
+    { need this date format for infomaker }
+    SET DATE FORMAT "DD-MON-YZ"
+    
+    main_form . row    = 2
+    main_form . column = 10
+    main_form . height = 2
+    main_form . width  = 40
+    main_form . header = "Calibration Schedule Report"
+    main_form . return_behaviour = FORM_RETURN_LEAVE
+
+
+    PROMPT OBJECT prompt_object_start
+                BROWSE ON DATE
+                ON LINE 1
+                FROM        PROMPT_PROMPT_COLUMN
+                WITH ( ALWAYS_VALIDATE = TRUE,
+                       value = NOW,
+                        width = PROMPT_PROMPT_WIDTH
+                      )
+
+
+    PROMPT OBJECT prompt_object_end
+                BROWSE ON DATE
+                ON LINE 2
+                FROM        PROMPT_PROMPT_COLUMN
+                WITH ( ALWAYS_VALIDATE = TRUE,
+                       value = NOW + csr_interval,
+                       validation_routine = "csr_enddate_validation_routine",
+                        width = PROMPT_PROMPT_WIDTH
+                      )
+{1.5}
+    PROMPT OBJECT prompt_object_group
+                BROWSE ON instrument.group_id
+		ON LINE 3
+                FROM        PROMPT_PROMPT_COLUMN
+                WITH ( ALWAYS_VALIDATE = TRUE,
+                        width = PROMPT_PROMPT_WIDTH
+                      )
+         
+    main_form . add_prompt( prompt_object_start )
+    main_form . add_prompt( prompt_object_end )
+    main_form . add_prompt( prompt_object_group )
+    main_form . add_display( PAD( "Start Date", " ", PROMPT_DISPLAY_LENGTH ), PROMPT_DISPLAY_COLUMN, 1, PROMPT_RENDITION_LOWERED )
+    main_form . add_display( PAD( "End Date", " ", PROMPT_DISPLAY_LENGTH ), PROMPT_DISPLAY_COLUMN, 2, PROMPT_RENDITION_LOWERED )
+    main_form . add_display( PAD( "Group", " ", PROMPT_DISPLAY_LENGTH ), PROMPT_DISPLAY_COLUMN, 3, PROMPT_RENDITION_LOWERED )
+
+
+
+    main_form . start_prompt()    
+    main_form . wait_prompt()
+
+
+    IF ( main_form . get_lastkey() = "DO" )            
+
+        start_date = main_form.prompt_objects[1].value
+        end_date = main_form.prompt_objects[2].value
+	group = main_form.prompt_objects[3].value
+
+        { start date cannot be later than end date  }
+        IF (start_date <= end_date)
+
+            imprint_csr_group_report ( start_date, end_date, group )
+
+        ELSE
+
+            flash_message(GET_USER_MESSAGE ( "INST_CALIB_REPORTS_START_LATER_END_DATE" , 1 ),TRUE)
+
+        ENDIF    
+
+    ENDIF
+
+    main_form . end_prompt()
+
+   
+    RESTORE DATE FORMAT
+
+ENDROUTINE   {  do_csr_group    }
+
+
+
+
+
+
+
+
+

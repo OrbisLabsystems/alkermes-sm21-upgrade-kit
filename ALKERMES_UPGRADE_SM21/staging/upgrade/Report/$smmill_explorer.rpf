@@ -1,0 +1,1757 @@
+{******************************************************************************
+*
+* ORBIS INFORMATION SYSTEMS
+*
+* Module Name   : SMMILL_EXPLORER
+*
+* Purpose       : Explorer Interface showing all type of SMMILL records
+*                
+*
+* Document Ref. :
+*
+* Specification :
+*
+* Portability   : Not Checked
+*
+* Re-entrant    :
+*
+* Author        : Martin Kavanagh
+*
+* Date Created  : 29 January 2002
+*
+*******************************************************************************}
+{
+SET NOTPROTECTED
+}
+SET NAME "DISPLAY/"
+
+ENABLE WINDOWS
+
+SET COMPILE_OPTION DECLARE
+
+JOIN LIBRARY $PROMPT_SPLIT
+JOIN LIBRARY $PROMPT_TREE
+JOIN LIBRARY $PROMPT_TAB
+JOIN LIBRARY $PROMPT_LIST
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $TOOLBOX
+
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_BROWSE
+JOIN STANDARD_LIBRARY STD_CLIENT
+JOIN STANDARD_LIBRARY STD_UTILS
+
+{ Custom Library for SMMILL21 Interface }
+JOIN LIBRARY $SMMILL_LIB_EXPLORER
+
+set_up_std_prompt_split_class ( )
+set_up_std_prompt_tab_class ( )
+set_up_std_prompt_tree_class ( ) 
+set_up_std_prompt_list_class ( ) 
+
+DECLARE SMMILL_form, first_run
+
+CONSTANT ICON_STRUCTURE         = 27
+CONSTANT ICON_STRUCTURE_SELECT  = 69
+CONSTANT ICON_CONFIGURATION     = 7
+CONSTANT ICON_ACTIVE            = 29
+CONSTANT ICON_MAP_CLOSED	= 39
+CONSTANT ICON_MAP_OPEN		= 69
+CONSTANT ICON_CONFIG		= 7
+CONSTANT ICON_CONFIG_ITEM 	= 84
+CONSTANT ICON_SAMPSET		= 15
+CONSTANT ICON_SAMPSET_SELECT	= 15
+CONSTANT ICON_RESSET		= 40
+CONSTANT ICON_RESSET_SELECT	= 40
+CONSTANT ICON_ERROR		= 22
+CONSTANT ICON_ERROR_SELECT	= 22
+CONSTANT ICON_IUSER		= 102
+CONSTANT ICON_IUSER_SELECT	= 102
+CONSTANT ICON_COMPMAP		= 30
+CONSTANT ICON_COMPMAP_SELECT	= 30
+CONSTANT ICON_CUSMAP		= 26
+CONSTANT ICON_CUSMAP_SELECT	= 26
+CONSTANT ICON_ER_CLOSED		= 10
+CONSTANT ICON_ER_OPEN		= 85
+CONSTANT ICON_PROJECT_CLOSED	= 70
+CONSTANT ICON_PROJECT_OPEN	= 71
+CONSTANT ICON_ANALYSIS		= 57
+CONSTANT ICON_VERSION		=  9
+
+
+first_run = TRUE
+
+define_classes ( SMMILL_form )
+setup_SMMILL_INTERFACE ( SMMILL_form )
+
+
+
+SMMILL_form.start_prompt ( )
+
+IF first_run THEN
+
+	first_run_routine ( SMMILL_form )
+	first_run = FALSE
+
+ENDIF
+
+SMMILL_form.wait_prompt ( )
+SMMILL_form.end_prompt ( )
+
+EXIT
+
+{*******************************************************************************}
+
+ROUTINE define_classes ( SMMILL_form )
+
+{*******************************************************************************}
+
+	DEFINE CLASS "SMMILL_INTERFACE"
+
+		INITIALISATION
+
+		INHERIT PROMPT_CLASS_FORM
+	
+		PROPERTIES
+			"tabs",
+			"tab_array",
+			"grid_array",
+			"list_array",
+			"SMMILL_split",
+			"split_1",
+			"split_2",
+			"SMMILL_tree",
+			"count",
+			"sampset_array",
+			"resset_array",
+			"project_array",
+			"custom_array"
+
+		ACTIONS
+			"add_tabs",
+			"setup_tabs",
+			"setup_tree",
+			"setup_list"
+	END CLASS
+
+
+ENDROUTINE
+
+{*******************************************************************************}
+
+ROUTINE setup_SMMILL_INTERFACE ( SMMILL_form )
+
+{*******************************************************************************}
+
+	
+	CREATE OBJECT "SMMILL_INTERFACE", SMMILL_form
+
+	SMMILL_form.height = 20 {GLOBAL ("GUI_HEIGHT" ) DIV 1}
+	SMMILL_form.width =  135 {GLOBAL ("GUI_WIDTH" ) DIV 1} 
+	SMMILL_form.row	= 1
+	SMMILL_form.column	= 3
+	SMMILL_form.header = "SM-Millenium Interface Explorer"
+
+	SMMILL_form.add_frame (	"Millenium Explorer"	,
+					1,1,
+					SMMILL_form.height - 1,SMMILL_form.width - 1)
+
+	SMMILL_form.return_behaviour = form_return_wrap
+
+	SMMILL_form.button_style = FORM_BUTTON_NONE
+
+	setup_prompts ( SMMILL_form )
+
+ENDROUTINE
+
+{*******************************************************************************}
+
+ROUTINE SMMILL_INTERFACE_CLASS_INITIALISATION (self)
+
+{*******************************************************************************}
+
+	self.count = 1
+	ARRAY self.tab_array
+	ARRAY self.grid_array
+	ARRAY self.list_array
+	ARRAY self.sampset_array
+	ARRAY self.resset_array
+	ARRAY self.project_array
+	ARRAY self.custom_array
+
+
+ENDROUTINE
+
+
+
+{*******************************************************************************}
+
+ROUTINE setup_prompts ( self)
+
+{*******************************************************************************}
+	CREATE OBJECT PROMPT_SPLIT_CLASS, self.SMMILL_split
+
+	self.SMMILL_split.height = self.height - 2
+	self.SMMILL_split.width = self.width  - 5
+	self.SMMILL_split.row = 1
+	self.SMMILL_split.column = 2
+	self.SMMILL_split.set_size (2,1)
+	self.SMMILL_split.set_column_width (1,self.SMMILL_split.width div 4)
+	self.SMMILL_split.set_column_width (2,self.SMMILL_split.width div 1)
+
+	self.add_prompt (self.SMMILL_split)
+
+	CREATE OBJECT "STD_FORM", self.split_1
+	
+	self.split_1.height = self.SMMILL_split.height - 1
+	self.split_1.width = self.SMMILL_split.width div 4 - 2
+	self.split_1.row = 1
+	self.split_1.column = 1
+
+	self.SMMILL_split.add_form (1,1,self.split_1)
+
+	CREATE OBJECT "STD_FORM", self.split_2
+	
+	self.split_2.height = self.SMMILL_split.height - 1
+	self.split_2.width = self.SMMILL_split.width div 1 - {47}35
+	self.split_2.row = 1
+	self.split_2.column = 1 {self.width div 2}
+
+	self.SMMILL_split.add_form (2,1,self.split_2)
+
+
+	CREATE OBJECT PROMPT_TREE_CLASS, self.SMMILL_tree
+
+	self.SMMILL_tree.height = self.split_1.height - 1
+	self.SMMILL_tree.width = self.split_1.width - 1
+	self.SMMILL_tree.row = 1
+	self.SMMILL_tree.column = 1
+	self.SMMILL_tree.use_images = TRUE
+	self.SMMILL_tree.expanded_routine = "tree_exp"
+	self.SMMILL_tree.selected_routine = "selected"
+	self.SMMILL_tree.right_mouse_routine = "mouse_options"
+
+	self.split_1.add_prompt (self.SMMILL_tree)
+
+	self.setup_tree ( )
+
+	CREATE OBJECT PROMPT_TAB_CLASS, smmill_form.tabs
+	
+	self.tabs.height = self.split_2. height 
+	self.tabs.width = self.split_2. width
+	self.tabs.row = 1
+	self.tabs.column = 1
+
+	self.split_2.add_prompt (self.tabs)
+
+	self.add_tabs	( "Sample Sets" )
+	self.add_tabs	( "Result Sets" )
+	self.add_tabs	( "Result Upload Alerts" )
+	self.add_tabs	( "Interface Users" )
+	self.add_tabs	( "Component Mapping" )
+	self.add_tabs	( "Custom Field Mapping" )
+	self.add_tabs	( "Configuration" )
+
+ENDROUTINE
+
+
+{*******************************************************************************}
+
+ROUTINE SMMILL_INTERFACE_ACTION_setup_tree ( self )
+
+{*******************************************************************************}
+
+	DECLARE parent, user_info, sub_parent, tag, pre_tag, project_array,
+		the_date
+
+	ARRAY project_array 
+
+
+	self.smmill_tree.remove_all ( )
+
+{*******************************	Sample Sets Tree	*******************************}
+
+	parent = self.SMMILL_tree.insert_item ("Sample Sets", 0, TREE_INSERT_LAST,
+					ICON_SAMPSET, ICON_SAMPSET, user_info )
+
+	sub_parent = self.SMMILL_tree.insert_item("Projects", parent, TREE_INSERT_SORT, 
+					ICON_TABLES, ICON_TABLES, user_info )
+
+	tag = SELECT mill_int_sset. mill_project_id
+		WHERE mill_project_id <> EMPTY
+		ORDER ON mill_project_id
+
+	pre_tag = "XX"
+
+	WHILE tag <> EMPTY DO
+
+	    tag = STRING(tag)
+
+	    IF tag <> pre_tag THEN
+
+	    	self.SMMILL_tree.insert_item(tag, sub_parent, TREE_INSERT_SORT, 
+					ICON_BOOK_CLOSED, ICON_BOOK_OPEN, user_info) 
+
+	    ENDIF
+
+	    pre_tag = tag
+	    NEXT mill_int_sset
+	    tag = SELECT mill_int_sset . mill_project_id
+
+	ENDWHILE
+
+
+{*******************************	Result Sets Tree	*******************************}
+
+	pre_tag = "XX"
+
+	parent = self.SMMILL_tree.insert_item ("Result Sets", 0, TREE_INSERT_LAST,
+				ICON_RESSET, ICON_RESSET_SELECT, user_info )
+
+	sub_parent = self.SMMILL_tree.insert_item("Projects", parent, TREE_INSERT_SORT, 
+					ICON_TABLES, ICON_TABLES, user_info )
+
+	tag = SELECT mill_int_rset. mill_project_id
+		WHERE mill_project_id <> EMPTY
+		ORDER ON mill_project_id
+
+	pre_tag = "XX"
+
+	WHILE tag <> EMPTY DO
+
+	    tag = STRING(tag)
+
+	    IF tag <> pre_tag THEN
+
+	    	self.SMMILL_tree.insert_item(tag, sub_parent, TREE_INSERT_SORT, 
+					ICON_BOOK_CLOSED, ICON_BOOK_OPEN, user_info )
+
+	    ENDIF
+
+	    pre_tag = tag
+	    NEXT mill_int_rset
+	    tag = SELECT mill_int_rset . mill_project_id
+
+	ENDWHILE
+
+
+{*******************************	Error Tree	*********************************}
+
+	parent = self.SMMILL_tree.insert_item ("Result Upload Alerts", 0, TREE_INSERT_LAST,
+				ICON_ERROR, ICON_ERROR_SELECT, user_info )
+
+	sub_parent = self.SMMILL_tree.insert_item("Today", parent, TREE_INSERT_LAST, 
+				ICON_CALENDAR, ICON_CALENDAR, user_info )
+	
+    	the_date = TODAY
+
+	tag = SELECT mill_error . date_created
+		WHERE date_created >= the_date
+              ORDER ON DATE_CREATED
+
+	WHILE tag <> EMPTY DO
+
+		tag = STRING(tag)
+
+
+		self.SMMILL_tree.insert_item(tag, sub_parent, TREE_INSERT_SORT, 
+		ICON_ER_CLOSED, ICON_ER_OPEN, user_info )
+
+		NEXT mill_error
+		tag = SELECT mill_error . date_created		
+
+	ENDWHILE
+	
+	sub_parent = self.SMMILL_tree.insert_item("Last 7 Days", parent, TREE_INSERT_LAST, 
+				ICON_CALENDAR, ICON_CALENDAR, user_info )
+	
+    	the_date = TODAY - "0007 00:00:00.00"
+
+	tag = SELECT mill_error . date_created
+		WHERE date_created >= the_date
+		ORDER ON date_created
+
+	WHILE tag <> EMPTY DO
+
+		tag = STRING(tag)
+
+		self.SMMILL_tree.insert_item(tag, sub_parent, TREE_INSERT_SORT, 
+		ICON_ER_CLOSED, ICON_ER_OPEN, user_info )
+
+		NEXT mill_error
+		tag = SELECT mill_error . date_created		
+
+	ENDWHILE
+
+	sub_parent = self.SMMILL_tree.insert_item("Last 30 Days", parent, TREE_INSERT_LAST, 
+				ICON_CALENDAR, ICON_CALENDAR, user_info )
+
+    	the_date = TODAY - "0031 00:00:00.00"
+
+	tag = SELECT mill_error . date_created
+		WHERE date_created >= the_date
+              ORDER ON DATE_CREATED
+
+	WHILE tag <> EMPTY DO
+
+		tag = STRING(tag)
+
+		self.SMMILL_tree.insert_item(tag, sub_parent, TREE_INSERT_SORT, 
+		ICON_ER_CLOSED, ICON_ER_OPEN, user_info )
+
+		NEXT mill_error
+		tag = SELECT mill_error . date_created		
+
+	ENDWHILE
+
+
+{*******************************	Interface User Tree	*******************************}
+
+	parent = self.SMMILL_tree.insert_item ("Interface Users", 0, TREE_INSERT_LAST,
+				ICON_IUSER, ICON_IUSER_SELECT, user_info )
+
+
+	tag = SELECT mill_security . lims_user WHERE lims_user <> ""
+               ORDER ON lims_user
+
+
+	WHILE tag <> EMPTY DO
+
+		tag = STRING(tag)
+	
+		self.SMMILL_tree.insert_item(tag, parent, TREE_INSERT_SORT, 
+				ICON_USER, ICON_USER, user_info )
+
+		NEXT mill_security
+		tag = SELECT mill_security . lims_user
+
+	ENDWHILE
+
+
+{*******************************	Component Mapping Tree	*******************************}
+
+	parent = self.SMMILL_tree.insert_item ("Component Mapping", 0, TREE_INSERT_LAST,
+				ICON_DILUTION, ICON_DILUTION, user_info )
+
+	sub_parent = self.SMMILL_tree.insert_item ("Projects", parent, TREE_INSERT_LAST,
+				ICON_TABLES, ICON_TABLES, user_info )
+
+
+	tag = SELECT mill_component_map . mill_project
+		WHERE enable = TRUE
+		ORDER ON mill_project
+	pre_tag = "XX"
+
+	WHILE tag <> EMPTY DO
+
+	    tag = STRING(tag)
+	
+	    IF tag <> pre_tag THEN
+
+		self.SMMILL_tree.insert_item(tag, sub_parent, TREE_INSERT_SORT, 
+				ICON_BOOK_CLOSED, ICON_BOOK_OPEN, user_info )
+
+	    ENDIF
+
+	    pre_tag = tag
+	    NEXT mill_component_map
+	    tag = SELECT mill_component_map . mill_project
+
+	ENDWHILE
+
+
+{*******************************	Custom Field Mapping Tree	*******************************}
+
+	parent = self.SMMILL_tree.insert_item ("Custom Field Mapping", 0, TREE_INSERT_LAST,
+				ICON_CUSMAP, ICON_CUSMAP_SELECT, user_info )
+
+
+	sub_parent = self.SMMILL_tree.insert_item("LIMS / Millenium", parent, TREE_INSERT_LAST, 
+				ICON_ITEM_DOWN, ICON_ITEM_DOWN, user_info )
+	
+	tag = SELECT mill_custom_data_out . project
+		WHERE project <> EMPTY
+
+	pre_tag = "XX"
+
+	WHILE tag <> EMPTY DO
+
+	    tag = STRING(tag)
+	
+	    IF tag <> pre_tag THEN
+
+		self.SMMILL_tree.insert_item(tag, sub_parent, TREE_INSERT_SORT, 
+		ICON_PROJECT_CLOSED, ICON_PROJECT_OPEN, user_info )
+
+	    ENDIF
+
+	    pre_tag = tag
+	    NEXT mill_custom_data_out
+	    tag = SELECT mill_custom_data_out . project
+
+	ENDWHILE
+
+	sub_parent = self.SMMILL_tree.insert_item("Millenium / LIMS", parent, TREE_INSERT_LAST, 
+				ICON_UNDO, ICON_UNDO, user_info )
+	
+    	tag = SELECT mill_custom_data_in . project
+		WHERE project <> EMPTY
+
+	pre_tag = "XX"
+
+	WHILE tag <> EMPTY DO
+
+	    tag = STRING(tag)
+	
+	    IF tag <> pre_tag THEN
+
+		self.SMMILL_tree.insert_item(tag, sub_parent, TREE_INSERT_SORT, 
+		ICON_PROJECT_CLOSED, ICON_PROJECT_OPEN, user_info )
+	    ENDIF
+
+	    pre_tag = tag
+	    NEXT mill_custom_data_in
+	    tag = SELECT mill_custom_data_in . project		
+
+	ENDWHILE
+
+
+{*******************************	Configuration Tree	*******************************}
+
+
+	parent = self.SMMILL_tree.insert_item ("Configuration", 0, TREE_INSERT_LAST,
+				ICON_CONFIG, ICON_CONFIGURATION, user_info )
+
+	tag = SELECT config_header . identity
+		where identity LIKE "MILL%" AND
+                      removeflag = FALSE
+
+	WHILE tag <> EMPTY DO
+
+		tag = STRING(tag)
+
+		self.SMMILL_tree.insert_item(tag, parent, TREE_INSERT_SORT, 
+					ICON_CONFIG_ITEM, ICON_CONFIG, user_info )
+
+		NEXT config_header
+		tag = SELECT config_header . identity
+
+	ENDWHILE
+
+
+ENDROUTINE
+
+
+
+{*******************************************************************************}
+
+ROUTINE SMMILL_INTERFACE_ACTION_add_tabs ( self, VALUE head )
+
+{*******************************************************************************}
+
+	CREATE OBJECT PROMPT_CLASS_FORM, self.tab_array[self.count] 
+
+	self.tabs.set_size (self.tab_array[self.count])
+	self.tab_array[self.count].header = head
+
+
+	CREATE OBJECT "STD_PROMPT_LIST", self.list_array[self.count]
+
+	self.list_array[self.count].height = self.tab_array[self.count].height - 2
+	self.list_array[self.count].width = self.tab_array[self.count].width - 2
+
+	self.list_array[self.count].row = 1
+	self.list_array[self.count].column = 1
+
+	self.list_array[self.count].double_click_routine = "list_dbclick"
+	self.list_array[self.count].use_images = TRUE	
+
+	self.tab_array[self.count].add_prompt(self.list_array[self.count])
+
+	self.tabs.add_form (self.tab_array[self.count])
+
+	self.count = self.count + 1
+
+ENDROUTINE
+
+{*******************************************************************************}
+
+ROUTINE first_run_routine ( self )
+
+{*******************************************************************************}
+
+
+	DECLARE item
+
+	item = self.smmill_tree.get_first_child ( 0 )
+{
+	child = self.smmill_tree.get_next_sibling(item)
+
+	WHILE child <> 0 DO
+
+	    self.smmill_tree.select_item (child)
+	    selected ( self.smmill_tree, child)
+
+	    child = self.smmill_tree.get_next_sibling(child)
+
+	ENDWHILE
+}
+	self.smmill_tree.select_item (item)
+
+	selected ( self.smmill_tree, item)
+
+	self.smmill_tree.expand(item, TREE_EXPAND)
+
+
+ENDROUTINE
+
+
+
+{*******************************************************************************}
+
+ROUTINE tree_exp (self, item_num, expanded)
+
+{*******************************************************************************}
+
+    DECLARE child, parent, child_text, item_text, parent_text, tag, 
+		pre_tag, user_info, sub_parent
+
+
+    IF expanded = FALSE THEN
+
+	item_text = self.get_text ( item_num )
+
+	IF item_text = "Projects" THEN
+
+	    parent = self.get_parent (item_num)
+	    parent_text = self.get_text (parent)
+
+	    IF parent_text = "Sample Sets" THEN
+
+		child = self.get_first_child(item_num)
+	    	child_text = self.get_text(child)
+
+ 	    	WHILE child_text <> EMPTY DO
+
+	   	    tag = SELECT mill_int_sset . mill_sampleset_id
+				WHERE mill_project_id = child_text
+				ORDER ON mill_sampleset_id
+
+		    pre_tag = "XX"
+
+	    	    WHILE tag <> EMPTY DO
+
+		    	tag = STRING(tag)
+
+		    	IF tag <> pre_tag THEN
+
+		    	    self.insert_item(tag, child, TREE_INSERT_SORT, 
+					   ICON_SAMPSET, ICON_SAMPSET_SELECT, user_info )
+
+		    	ENDIF
+
+		    	pre_tag = tag
+		    	NEXT mill_int_sset
+		    	tag = SELECT mill_int_sset . mill_sampleset_id
+
+	    	    ENDWHILE
+
+	    	    child = self.get_next_sibling(child)
+	    	    child_text = self.get_text(child)
+
+	    	ENDWHILE
+
+	    ELSEIF parent_text = "Result Sets" THEN
+
+		child = self.get_first_child(item_num)
+	    	child_text = self.get_text(child)
+
+ 	    	WHILE child_text <> EMPTY DO
+
+	    	    tag = SELECT mill_int_rset . mill_sampleset_id
+				WHERE mill_project_id = child_text
+				ORDER ON mill_sampleset_id
+
+		    pre_tag = "XX"
+
+	    	    WHILE tag <> EMPTY DO
+
+		    	tag = STRING(tag)
+
+		    	IF tag <> pre_tag THEN
+
+		    	    self.insert_item(tag, child, TREE_INSERT_SORT, 
+					   ICON_RESSET, ICON_RESSET_SELECT, user_info )
+
+		    	ENDIF
+
+		    	pre_tag = tag
+		    	NEXT mill_int_rset
+		    	tag = SELECT mill_int_rset . mill_sampleset_id
+
+	    	    ENDWHILE
+
+	    	    child = self.get_next_sibling(child)
+	    	    child_text = self.get_text(child)
+	    	ENDWHILE
+
+	    ELSEIF parent_text = "Component Mapping" THEN
+
+	    	child = self.get_first_child(item_num)
+	    	child_text = self.get_text(child)
+
+ 	    	WHILE child_text <> EMPTY DO
+
+	    	    tag = SELECT mill_component_map . analysis
+				WHERE mill_project = child_text
+				ORDER ON analysis
+
+		    pre_tag = "XX"
+
+	    	    WHILE tag <> EMPTY DO
+
+		    	tag = STRING(tag)
+
+		    	IF tag <> pre_tag THEN
+
+		            self.insert_item(tag, child, TREE_INSERT_SORT, 
+					   ICON_ANALYSIS, ICON_ANALYSIS, user_info )
+
+		    	ENDIF
+
+		    	pre_tag = tag
+		    	NEXT mill_component_map
+		    	tag = SELECT mill_component_map . analysis
+
+	    	    ENDWHILE
+
+	    	    child = self.get_next_sibling(child)
+	    	    child_text = self.get_text(child)
+
+	    	ENDWHILE
+
+	    ENDIF
+
+	ELSEIF item_text = "LIMS / Millenium" THEN
+
+	    child = self.get_first_child(item_num)
+	    child_text = self.get_text(child)
+	
+	    WHILE child_text <> EMPTY DO
+
+	    	tag = SELECT mill_custom_data_out . mill_custom_field
+				WHERE project = child_text
+				ORDER ON order_num
+
+	    	WHILE tag <> EMPTY DO
+
+		    tag = STRING(tag)
+
+		    self.insert_item(tag, child, TREE_INSERT_SORT, 
+					   ICON_CUSMAP, ICON_CUSMAP_SELECT, user_info )
+
+		    NEXT mill_custom_data_out
+		    tag = SELECT mill_custom_data_out . mill_custom_field
+
+	    	ENDWHILE
+
+	    	child = self.get_next_sibling(child)
+	    	child_text = self.get_text(child)
+
+	    ENDWHILE
+
+	ELSEIF item_text = "Millenium / LIMS" THEN
+
+	    child = self.get_first_child(item_num)
+	    child_text = self.get_text(child)
+	
+	    WHILE child_text <> EMPTY DO
+
+	    	tag = SELECT mill_custom_data_in . mill_custom_field
+				WHERE project = child_text
+				ORDER ON order_num
+
+	    	WHILE tag <> EMPTY DO
+
+		    tag = STRING(tag)
+
+		    self.insert_item(tag, child, TREE_INSERT_SORT, 
+					   ICON_CUSMAP, ICON_CUSMAP_SELECT, user_info )
+
+		    NEXT mill_custom_data_in
+		    tag = SELECT mill_custom_data_in . mill_custom_field
+
+	    	ENDWHILE
+
+	    	child = self.get_next_sibling(child)
+	    	child_text = self.get_text(child)
+
+	    ENDWHILE
+
+    ELSE
+
+	sub_parent = self.get_parent(item_num)
+	parent = self.get_parent(sub_parent)
+	parent_text = self.get_text(parent)
+	item_text = self.get_text(item_num)
+
+	IF parent_text = "Component Mapping" THEN
+
+	    child = self.get_first_child(item_num)
+	    child_text = self.get_text(child)
+
+ 	    WHILE child_text <> EMPTY DO
+
+	   	tag = SELECT mill_component_map . analysis_version
+			WHERE analysis = child_text
+			AND mill_project = item_text
+			ORDER ON analysis_version
+
+		pre_tag = "XX"
+
+	    	WHILE tag <> EMPTY DO
+
+		    tag = STRING(tag)
+
+		    IF tag <> pre_tag THEN
+
+		    	self.insert_item(tag, child, TREE_INSERT_SORT, 
+					   ICON_VERSION, ICON_VERSION, user_info )
+
+		    ENDIF
+
+		    pre_tag = tag
+		    NEXT mill_component_map
+		    tag = SELECT mill_component_map . analysis_version
+
+	    	ENDWHILE
+
+	    	child = self.get_next_sibling(child)
+	    	child_text = self.get_text(child)
+
+	    ENDWHILE
+
+	ENDIF
+
+    ENDIF
+
+    ENDIF
+
+{
+    selected (self, item_num )
+}
+ENDROUTINE
+
+
+{*******************************************************************************}
+
+ROUTINE SELECTED ( self, VALUE item)
+
+{*******************************************************************************}
+
+	DECLARE form, parent, name, var_array, var, num, child, child_text, 
+		item_text, the_date, trans_id, trans_array, count, sub_parent, 
+		sub_parent_text, icon, parent_text, set_array, user_name
+
+
+	ARRAY var_array
+	ARRAY trans_array
+	ARRAY set_array
+
+	form = self.parent_prompt.parent_prompt
+	parent = self.get_parent (item)
+
+	
+	IF parent = 0 THEN
+
+		name = self.get_text ( item )
+
+		IF name = "Sample Sets" THEN
+
+			form.count = 1
+
+			form.list_array[form.count] . remove_all_items ( ) 
+			form.list_array[form.count].  clear_columns ( )
+			form.tabs . set_current_tab ( form.count) 
+
+			form.list_array[form.count] . add_column("Projects", 20)
+
+			form.list_array[form.count] . insert_item("Projects", ICON_TABLES)
+
+		ELSEIF name = "Result Sets" THEN
+
+			form.count = 2
+	
+			form.list_array[form.count] . remove_all_items ( ) 
+			form.list_array[form.count].  clear_columns ( )
+			form.tabs . set_current_tab ( form.count )
+			
+			form.list_array[form.count] . add_column("Projects", 20)
+
+			form.list_array[form.count] . insert_item("Projects", ICON_TABLES)
+
+		ELSEIF name = "Result Upload Alerts" THEN
+
+			form.count = 3
+	
+			form.list_array[form.count] . remove_all_items ( ) 
+			form.list_array[form.count].  clear_columns ( )
+			form.tabs . set_current_tab ( form.count )
+			
+			form.list_array[form.count] . add_column("Folders", 20)
+
+			form.list_array[form.count] . insert_item("Today", ICON_CALENDAR)
+			form.list_array[form.count] . insert_item("Last 7 Days", ICON_CALENDAR)
+			form.list_array[form.count] . insert_item("Last 30 Days", ICON_CALENDAR)
+
+		ELSEIF name = "Interface Users" THEN
+
+			form.count = 4
+	
+			form.list_array[form.count] . remove_all_items ( ) 
+			form.list_array[form.count].  clear_columns ( )
+			form.tabs . set_current_tab ( form.count )
+			
+			form.list_array[form.count] . add_column("LIMS User ID", 12)
+			form.list_array[form.count] . add_column("Millennium User ID", 15)
+			form.list_array[form.count] . add_column("Full Name", 15)
+			{form.list_array[form.count] . add_column("Mill Group ID", 10)}
+			form.list_array[form.count] . add_column("Description", 50)
+
+			var = SELECT mill_security . lims_user 
+                               WHERE lims_user <> ""
+                              ORDER ON lims_user
+
+			num = 1
+
+			WHILE var <> EMPTY DO
+
+                                user_name = SELECT personnel . description 
+                                             WHERE identity = var
+
+                                IF user_name = EMPTY THEN
+
+                                    user_name = ""
+
+                                ENDIF
+
+
+				var_array[num,1] = STRIP(var)
+				var_array[num,2] = STRIP(SELECT mill_security . mill_user)
+				var_array[num,3] = STRIP(user_name)
+				{var_array[num,4] = STRIP(SELECT mill_security . mill_group)}
+				var_array[num,4] = STRIP(SELECT mill_security . description)
+
+				
+				form.list_array[form.count] . insert_item (var_array[num , 1], ICON_USER)
+				form.list_array[form.count] . set_item ( 2 , var_array[num , 2] )
+				form.list_array[form.count] . set_item ( 3 , var_array[num , 3] )
+				form.list_array[form.count] . set_item ( 4 , var_array[num , 4] )
+				{form.list_array[form.count] . set_item ( 5 , var_array[num , 5] )}
+
+
+				NEXT mill_security
+				var = SELECT mill_security . lims_user
+				
+			ENDWHILE
+
+			ARRAY var_array
+
+		ELSEIF name = "Component Mapping" THEN
+
+			form.count = 5
+	
+			form.list_array[form.count] . remove_all_items ( ) 
+			form.list_array[form.count].  clear_columns ( )
+			form.tabs . set_current_tab ( form.count )
+			
+			form.list_array[form.count] . add_column("Projects", 10)
+
+
+			form.list_array[form.count] . insert_item("Projects", ICON_TABLES)
+
+		ELSEIF name = "Custom Field Mapping" THEN
+
+			form.count = 6
+	
+			form.list_array[form.count] . remove_all_items ( ) 
+			form.list_array[form.count].  clear_columns ( )
+			form.tabs . set_current_tab ( form.count )
+			
+			form.list_array[form.count] . add_column("Folders", 20)
+
+			form.list_array[form.count] . insert_item("LIMS / Millenium", ICON_ITEM_DOWN)
+			form.list_array[form.count] . insert_item("Millenium / LIMS", ICON_UNDO)
+
+		ELSEIF name = "Configuration" THEN
+
+			form.count = 7		
+	
+			form.list_array[form.count] . remove_all_items ( ) 
+			form.list_array[form.count].  clear_columns ( )
+			form.tabs . set_current_tab ( form.count )
+
+			form.list_array[form.count] . add_column("Identity", 20)
+			form.list_array[form.count] . add_column("Value",12)
+			form.list_array[form.count] . add_column("Description", 40)
+
+			var = SELECT config_header . identity
+				WHERE identity LIKE "MILL%"
+                                AND   removeflag = FALSE
+
+			num = 1
+
+			WHILE var <> EMPTY DO
+
+				var_array[num,1] = STRIP(var)
+				var_array[num,2] = STRIP(SELECT config_header . value)
+				var_array[num,3] = STRIP(SELECT config_header . description)
+
+				
+				form.list_array[form.count] . insert_item (var_array[num , 1], ICON_CONFIG_ITEM)
+				form.list_array[form.count] . set_item ( 2 , var_array[num , 2] )
+				form.list_array[form.count] . set_item ( 3 , var_array[num , 3] )
+
+				NEXT config_header
+
+				var = SELECT config_header . identity
+				
+			ENDWHILE
+
+			ARRAY var_array
+
+		ENDIF
+
+	ELSE
+
+	    name = self.get_text ( parent )
+
+{***************Sample Sets, Result Sets or Component Mapping Projects Folder Selected*********************************}
+
+	    IF (name = "Sample Sets") OR (name = "Result Sets") OR (name = "Component Mapping") THEN
+
+		IF name = "Sample Sets" THEN 
+		
+		    form.count = 1
+
+		ELSEIF name = "Result Sets" THEN
+
+		    form.count = 2	
+
+		ELSEIF name = "Component Mapping" THEN
+
+		    form.count = 5
+			
+		ENDIF
+
+		form.list_array[form.count] . remove_all_items ( ) 
+		form.list_array[form.count].  clear_columns ( )
+		form.tabs . set_current_tab ( form.count) 
+
+		form.list_array[form.count] . add_column("Projects", 20)
+
+		count = 1
+		num = 1
+
+		ARRAY form.project_array
+
+		child = self.get_first_child(item)
+		child_text = self.get_text(child)
+
+		WHILE child_text <> EMPTY DO
+		
+			form.project_array[count] = child_text
+
+			count = count + 1
+			child = self.get_next_sibling(child)
+			child_text = self.get_text(child)
+
+		ENDWHILE
+
+		count = 1
+
+		WHILE count <= SIZEOFARRAY(form.project_array)
+
+		    var = form.project_array[count]
+		    var_array[num,1] = STRIP(var)
+				
+		    form.list_array[form.count] . insert_item (var_array[num , 1], ICON_PROJECT_CLOSED)
+				
+		    count = count + 1
+		
+		ENDWHILE
+
+		ARRAY var_array
+
+{*********************************	Error Sub Folder Selected	**********************************************}
+
+	    ELSEIF name = "Result Upload Alerts" THEN
+
+		form.count = 3
+
+		form.list_array[form.count] . remove_all_items ( ) 
+		form.list_array[form.count].  clear_columns ( )
+		form.tabs . set_current_tab ( form.count) 
+
+
+		form.list_array[form.count] . add_column("Date", 15)
+		form.list_array[form.count] . add_column("Description", 50)
+
+		item_text = self.get_text(item)
+
+		IF STRIP(item_text) = "Today" THEN
+
+		    the_date = TODAY
+
+		ELSEIF STRIP(item_text) = "Last 7 Days" THEN
+
+		    the_date = TODAY - "0007 00:00:00.00"
+
+		ELSEIF STRIP(item_text) = "Last 30 Days" THEN
+
+    		    the_date = TODAY - "0031 00:00:00.00"
+		
+		ENDIF
+
+		trans_id = SELECT mill_error . error_identity
+				WHERE date_created >= the_date
+                           ORDER ON DATE_CREATED
+
+		num = 1
+
+		WHILE trans_id <> EMPTY DO
+
+		    var_array[num,1] = STRIP(SELECT mill_error . date_created)
+		    var_array[num,2] = STRIP(SELECT mill_error . error_string)
+				
+		    form.list_array[form.count] . insert_item (var_array[num , 1], ICON_ERROR)
+		    form.list_array[form.count] . set_item ( 2 , var_array[num , 2] )
+	
+		    NEXT mill_error
+		    trans_id = SELECT mill_error . error_identity
+
+		ENDWHILE
+		
+		ARRAY var_array
+
+
+{****************************** Custom Field Mapping Sub Folders Selected ******************************************}
+	
+	    ELSEIF name = "Custom Field Mapping" THEN
+
+		form.count = 6
+
+		form.list_array[form.count] . remove_all_items ( ) 
+		form.list_array[form.count].  clear_columns ( )
+		form.tabs . set_current_tab ( form.count) 
+
+		form.list_array[form.count] . add_column("Projects", 20)
+
+		child = self.get_first_child(item)
+		child_text = self.get_text(child)
+
+		num = 1
+
+		WHILE child_text <> EMPTY
+
+		    var_array[num,1] = STRIP(child_text)
+				
+		    form.list_array[form.count] . insert_item (var_array[num , 1], ICON_PROJECT_CLOSED)
+				
+		    child = self.get_next_sibling(child)
+		    child_text = self.get_text(child)
+		
+		ENDWHILE
+
+		ARRAY var_array
+
+
+{*********************************Sample OR Result Set Project Selected**************************************************}
+
+	    ELSEIF name = "Projects" THEN
+
+		sub_parent = self.get_parent(parent)
+		sub_parent_text = self.get_text(sub_parent)
+
+		IF sub_parent_text = "Sample Sets" THEN
+
+		    form.count = 1
+		    icon = ICON_SAMPSET
+
+		    form.list_array[form.count] . remove_all_items ( ) 
+	 	    form.list_array[form.count].  clear_columns ( )
+		    form.tabs . set_current_tab ( form.count)
+
+		    form.list_array[form.count] . add_column("SampleSet ID", 15)
+
+		    num = 1
+		    count = 1
+
+		    ARRAY form.sampset_array
+
+		    child = self.get_first_child(item)
+		    child_text = self.get_text(child)
+
+		    WHILE child_text <> EMPTY DO
+
+			form.sampset_array[count] = child_text
+			count = count + 1
+
+			child = self.get_next_sibling(child)
+			child_text = self.get_text(child)
+
+		    ENDWHILE
+
+		    count = 1
+
+		    WHILE count <= SIZEOFARRAY(form.sampset_array) DO
+
+		    	var_array[num,1] = STRIP(form.sampset_array[count])
+				
+		    	form.list_array[form.count] . insert_item (var_array[num , 1], icon)
+				
+			count = count + 1
+		
+		    ENDWHILE
+
+		ELSEIF sub_parent_text = "Result Sets" THEN
+
+		    form.count = 2
+		    icon = ICON_RESSET
+
+		    form.list_array[form.count] . remove_all_items ( ) 
+	 	    form.list_array[form.count].  clear_columns ( )
+		    form.tabs . set_current_tab ( form.count)
+
+		    form.list_array[form.count] . add_column("SampleSet ID", 15)
+
+		    num = 1
+		    count = 1
+
+		    ARRAY form.resset_array
+
+		    child = self.get_first_child(item)
+		    child_text = self.get_text(child)
+
+		    WHILE child_text <> EMPTY DO
+
+			form.resset_array[count] = child_text
+			count = count + 1
+
+			child = self.get_next_sibling(child)
+			child_text = self.get_text(child)
+
+		    ENDWHILE
+
+		    count = 1
+
+		    WHILE count <= SIZEOFARRAY(form.resset_array) DO
+
+		    	var_array[num,1] = STRIP(form.resset_array[count])
+				
+		    	form.list_array[form.count] . insert_item (var_array[num , 1], icon)
+				
+			count = count + 1
+		
+		    ENDWHILE
+
+
+		ELSEIF sub_parent_text = "Component Mapping" THEN
+
+		    form.count = 5
+		    icon = ICON_ANALYSIS
+
+		    form.list_array[form.count] . remove_all_items ( ) 
+	 	    form.list_array[form.count].  clear_columns ( )
+		    form.tabs . set_current_tab ( form.count)
+
+		    form.list_array[form.count] . add_column("Analysis", 15)
+
+		    num = 1
+		    count = 1
+
+		    ARRAY form.resset_array
+
+		    child = self.get_first_child(item)
+		    child_text = self.get_text(child)
+
+		    WHILE child_text <> EMPTY DO
+
+			form.resset_array[count] = child_text
+			count = count + 1
+
+			child = self.get_next_sibling(child)
+			child_text = self.get_text(child)
+
+		    ENDWHILE
+
+		    count = 1
+
+		    WHILE count <= SIZEOFARRAY(form.resset_array) DO
+
+		    	var_array[num,1] = STRIP(form.resset_array[count])
+				
+		    	form.list_array[form.count] . insert_item (var_array[num , 1], icon)
+				
+			count = count + 1
+		
+		    ENDWHILE
+
+		ENDIF
+
+		ARRAY var_array
+
+{*********************************LIMS / Millenium Sub Folder Selected**************************************************}
+	
+	    ELSEIF name = "LIMS / Millenium" THEN
+
+		form.count = 6
+
+		form.list_array[form.count] . remove_all_items ( ) 
+	 	form.list_array[form.count].  clear_columns ( )
+		form.tabs . set_current_tab ( form.count)
+
+		form.list_array[form.count] . add_column("Custom Field", 14)
+		form.list_array[form.count] . add_column("LIMS Table", 12)
+		form.list_array[form.count] . add_column("LIMS Field", 32)
+
+		num = 1
+
+		item_text = self.get_text(item)
+
+		var = SELECT mill_custom_data_out . mill_custom_field
+			WHERE project = item_text
+			ORDER ON order_num
+
+		WHILE var <> EMPTY DO
+
+		    var_array[num,1] = STRIP(var)
+		    var_array[num,2] = STRIP(SELECT mill_custom_data_out . table_name)	
+		    var_array[num,3] = STRIP(SELECT mill_custom_data_out . field_name)
+
+		    form.list_array[form.count] . insert_item (var_array[num , 1], ICON_CUSMAP)
+		    form.list_array[form.count] . set_item ( 2 , var_array[num , 2] )
+		    form.list_array[form.count] . set_item ( 3 , var_array[num , 3] )
+	
+		    NEXT mill_custom_data_out
+		    var = SELECT mill_custom_data_out . mill_custom_field	
+		
+		ENDWHILE
+
+		ARRAY var_array
+
+{*********************************Millenium / LIMS Sub Folder Selected**************************************************}
+	
+	    ELSEIF name = "Millenium / LIMS" THEN
+
+		form.count = 6
+
+		form.list_array[form.count] . remove_all_items ( ) 
+	 	form.list_array[form.count].  clear_columns ( )
+		form.tabs . set_current_tab ( form.count)
+
+		form.list_array[form.count] . add_column("Custom Field", 14)
+		form.list_array[form.count] . add_column("LIMS Table", 12)
+		form.list_array[form.count] . add_column("LIMS Field", 32)
+
+		num = 1
+
+		item_text = self.get_text(item)
+
+		var = SELECT mill_custom_data_in . mill_custom_field
+			WHERE project = item_text
+			ORDER ON order_num
+
+		WHILE var <> EMPTY DO
+
+		    var_array[num,1] = STRIP(var)
+		    var_array[num,2] = STRIP(SELECT mill_custom_data_in . table_name)	
+		    var_array[num,3] = STRIP(SELECT mill_custom_data_in . field_name)
+
+		    form.list_array[form.count] . insert_item (var_array[num , 1], ICON_CUSMAP)
+		    form.list_array[form.count] . set_item ( 2 , var_array[num , 2] )
+		    form.list_array[form.count] . set_item ( 3 , var_array[num , 3] )
+	
+		    NEXT mill_custom_data_in
+		    var = SELECT mill_custom_data_in . mill_custom_field	
+		
+		ENDWHILE
+
+		ARRAY var_array
+
+{*********************************	Other Sub Folder Selected	**************************************************}
+
+	    ELSE
+
+		sub_parent = self.get_parent(parent)
+		sub_parent_text = self.get_text(sub_parent)
+		item_text = self.get_text(item)
+
+		count = 1
+
+		IF sub_parent_text = "Projects" THEN
+
+		    parent = self.get_parent(sub_parent)
+		    parent_text = self.get_text(parent)
+
+		    IF parent_text = "Sample Sets" THEN
+		
+			form.count = 1
+			form.list_array[form.count] . remove_all_items ( ) 
+		    	form.list_array[form.count].  clear_columns ( )
+		    	form.tabs . set_current_tab ( form.count)
+
+		    	{form.list_array[form.count] . add_column("LIMS Sample ID", 15)}
+		    	form.list_array[form.count] . add_column("Vial No", 5)
+		    	form.list_array[form.count] . add_column("Mill Sample ID", 12)
+		    	form.list_array[form.count] . add_column("Sample Type", 8)
+		    	form.list_array[form.count] . add_column("No. Injs", 5)
+		    	form.list_array[form.count] . add_column("Function", 10)
+		    	form.list_array[form.count] . add_column("Method Set", 13)
+		    	form.list_array[form.count] . add_column("Run Time", 7)
+		    	form.list_array[form.count] . add_column("Next Inj. Delay", 9)
+		    	form.list_array[form.count] . add_column("Sample Weight", 9)
+		    	form.list_array[form.count] . add_column("Dilution", 6)
+		    	form.list_array[form.count] . add_column("Inj. Vol", 7) 
+		    	form.list_array[form.count] . add_column("Status", 5) 
+
+
+			var = SELECT mill_int_sset . sm_sample_id
+				WHERE mill_sampleset_id = item_text
+                                AND mill_project_id = name
+                              ORDER ON vial_no
+
+			num = 1
+
+			WHILE var <> EMPTY DO
+			   
+			    {var_array[num, 1] = STRIP(var)}
+			    var_array[num, 1] = STRIP(SELECT mill_int_sset . vial_no)
+			    var_array[num, 2] = STRIP(SELECT mill_int_sset . mill_samplename)
+			    var_array[num, 3] = STRIP(SELECT mill_int_sset . sm_sample_type)
+			    var_array[num, 4] = STRIP(SELECT mill_int_sset . no_of_injections)
+			    var_array[num, 5] = STRIP(SELECT mill_int_sset . function)
+			    var_array[num, 6] = STRIP(SELECT mill_int_sset . method_set)
+			    var_array[num, 7] = STRIP(SELECT mill_int_sset . run_time)
+			    var_array[num, 8] = STRIP(SELECT mill_int_sset . next_inj_delay)
+			    var_array[num, 9] = STRIP(SELECT mill_int_sset . sample_weight)
+			    var_array[num, 10] = STRIP(SELECT mill_int_sset . dilution)
+			    var_array[num, 11] = STRIP(SELECT mill_int_sset . injection_vol)
+			    var_array[num, 12] = STRIP(SELECT mill_int_sset . status)
+
+		    	    form.list_array[form.count] . insert_item (var_array[num , 1], ICON_SAMPSET)
+		    	    form.list_array[form.count] . set_item ( 2 , var_array[num , 2] )
+		    	    form.list_array[form.count] . set_item ( 3 , var_array[num , 3] )
+		    	    form.list_array[form.count] . set_item ( 4 , var_array[num , 4] )
+		    	    form.list_array[form.count] . set_item ( 5 , var_array[num , 5] )
+		       	    form.list_array[form.count] . set_item ( 6 , var_array[num , 6] )
+		    	    form.list_array[form.count] . set_item ( 7 , var_array[num , 7] )
+		    	    form.list_array[form.count] . set_item ( 8 , var_array[num , 8] )
+		    	    form.list_array[form.count] . set_item ( 9 , var_array[num , 9] )
+		    	    form.list_array[form.count] . set_item ( 10, var_array[num ,10] )
+		    	    form.list_array[form.count] . set_item ( 11, var_array[num ,11] )
+		    	    form.list_array[form.count] . set_item ( 12, var_array[num ,12] )
+
+			    NEXT mill_int_sset
+			    var = SELECT mill_int_sset . sm_sample_id
+
+			ENDWHILE
+
+		    ELSEIF parent_text = "Result Sets" THEN
+
+		    	form.count = 2
+		    	form.list_array[form.count] . remove_all_items ( ) 
+		    	form.list_array[form.count].  clear_columns ( )
+		    	form.tabs . set_current_tab ( form.count) 
+
+		    	form.list_array[form.count] . add_column("Vial No", 5)
+		    	form.list_array[form.count] . add_column("LIMS Sample ID", 10)
+		    	form.list_array[form.count] . add_column("Analysis", 8)
+		    	form.list_array[form.count] . add_column("Test Number", 7)
+		    	form.list_array[form.count] . add_column("LIMS Component", 12)
+		    	form.list_array[form.count] . add_column("Mill. Component", 12)
+		    	form.list_array[form.count] . add_column("Result", 6)
+		    	form.list_array[form.count] . add_column("Result Type", 7)
+		    	form.list_array[form.count] . add_column("Result Present", 8)
+		    	form.list_array[form.count] . add_column("No. Injs", 5)
+		    	form.list_array[form.count] . add_column("Inj. Order", 5)
+		    	{form.list_array[form.count] . add_column("User ID", 8) }
+		    	form.list_array[form.count] . add_column("Acquired By", 8) 
+		    	form.list_array[form.count] . add_column("Mill. Timestamp", 9) 
+		    	form.list_array[form.count] . add_column("Instrument No", 9) 
+		    	form.list_array[form.count] . add_column("Date Created", 12) 
+		    	form.list_array[form.count] . add_column("Worksheet ID", 9) 
+		    	form.list_array[form.count] . add_column("Worklist Type", 9) 
+		    	form.list_array[form.count] . add_column("Status", 5) 
+
+
+			var = SELECT mill_int_rset . sample_id_key
+				WHERE mill_sampleset_id = item_text
+                                AND mill_project_id = name
+                              ORDER ON vial_no
+
+			num = 1
+
+			WHILE var <> EMPTY DO
+			   
+			    var_array[num, 1] = SELECT mill_int_rset . vial_no
+			    var_array[num, 2] = STRIP(var)
+			    var_array[num, 3] = STRIP(SELECT mill_int_rset . analysis)
+			    var_array[num, 4] = STRIP(SELECT mill_int_rset . test_number_key)
+			    var_array[num, 5] = STRIP(SELECT mill_int_rset . name_key)
+			    var_array[num, 6] = STRIP(SELECT mill_int_rset . mill_component)
+			    var_array[num, 7] = STRIP(SELECT mill_int_rset . mill_result)
+			    var_array[num, 8] = STRIP(SELECT mill_int_rset . mill_res_type)
+			    var_array[num, 9] = STRIP(SELECT mill_int_rset . mill_result_present)
+			    var_array[num, 10] = STRIP(SELECT mill_int_rset . no_of_injections)
+			    var_array[num, 11] = STRIP(SELECT mill_int_rset . injection_order)
+			    {var_array[num, 12] = STRIP(SELECT mill_int_rset . mill_user_id)}
+			    var_array[num, 12] = STRIP(SELECT mill_int_rset . mill_acquired_by)
+			    var_array[num, 13] = STRIP(SELECT mill_int_rset . mill_timestamp)
+			    var_array[num, 14] = STRIP(SELECT mill_int_rset . mill_instrument_no)
+			    var_array[num, 15] = STRIP(SELECT mill_int_rset . date_created)
+			    var_array[num, 16] = STRIP(SELECT mill_int_rset . sm_worksheet_id)
+			    var_array[num, 17] = STRIP(SELECT mill_int_rset . worklist_type)
+			    var_array[num, 18] = STRIP(SELECT mill_int_rset . status)
+
+		    	    form.list_array[form.count] . insert_item (var_array[num , 1], ICON_RESSET)
+		    	    form.list_array[form.count] . set_item ( 2 , var_array[num , 2] )
+		    	    form.list_array[form.count] . set_item ( 3 , var_array[num , 3] )
+		    	    form.list_array[form.count] . set_item ( 4 , var_array[num , 4] )
+		    	    form.list_array[form.count] . set_item ( 5 , var_array[num , 5] )
+		    	    form.list_array[form.count] . set_item ( 6 , var_array[num , 6] )
+		    	    form.list_array[form.count] . set_item ( 7 , var_array[num , 7] )
+		    	    form.list_array[form.count] . set_item ( 8 , var_array[num , 8] )
+		    	    form.list_array[form.count] . set_item ( 9 , var_array[num , 9] )
+		    	    form.list_array[form.count] . set_item ( 10, var_array[num ,10] )
+		    	    form.list_array[form.count] . set_item ( 11, var_array[num ,11] )
+		    	    {form.list_array[form.count] . set_item ( 12, var_array[num ,12] )}
+		    	    form.list_array[form.count] . set_item ( 12, var_array[num ,12] )
+		    	    form.list_array[form.count] . set_item ( 13, var_array[num ,13] )
+		    	    form.list_array[form.count] . set_item ( 14, var_array[num ,14] )
+		    	    form.list_array[form.count] . set_item ( 15, var_array[num ,15] )
+		    	    form.list_array[form.count] . set_item ( 16, var_array[num ,16] )
+		    	    form.list_array[form.count] . set_item ( 17, var_array[num ,17] )
+		    	    form.list_array[form.count] . set_item ( 18, var_array[num ,18] )
+
+			    NEXT mill_int_rset
+			    var = SELECT mill_int_rset . sample_id_key
+
+			ENDWHILE
+
+		    ELSEIF parent_text = "Component Mapping" THEN
+
+			form.count = 5
+
+			form.list_array[form.count] . remove_all_items ( ) 
+	 		form.list_array[form.count].  clear_columns ( )
+			form.tabs . set_current_tab ( form.count)
+
+			form.list_array[form.count] . add_column("Analysis Version", 12)
+
+			num = 1
+			count = 1
+
+		    	ARRAY form.sampset_array
+
+		    	child = self.get_first_child(item)
+		    	child_text = self.get_text(child)
+
+		    	WHILE child_text <> EMPTY DO
+
+			    form.sampset_array[count] = child_text
+			    count = count + 1
+
+			    child = self.get_next_sibling(child)
+			    child_text = self.get_text(child)
+
+		        ENDWHILE
+
+		    	count = 1
+
+		    	WHILE count <= SIZEOFARRAY(form.sampset_array) DO
+
+		    	    var_array[num,1] = STRIP(form.sampset_array[count])
+				
+		    	    form.list_array[form.count] . insert_item (var_array[num , 1], ICON_VERSION)
+				
+			    count = count + 1
+		
+		        ENDWHILE
+
+		    ENDIF
+
+		    ARRAY var_array
+
+		ELSEIF sub_parent_text = "LIMS / Millenium" THEN
+{
+			flashmessage ("LIMS - MILL", true)
+}
+
+		ELSEIF sub_parent_text = "Millenium / LIMS" THEN
+
+{
+			flashmessage ("Mill - LIMS" , true)
+}
+
+
+		ELSE
+
+		    parent_text = self.get_text(sub_parent)
+		    sub_parent = self.get_parent(sub_parent)
+		    sub_parent = self.get_parent(sub_parent)
+		    sub_parent_text = self.get_text(sub_parent)
+
+		    IF sub_parent_text = "Component Mapping" THEN
+				
+			form.count = 5
+
+			form.list_array[form.count] . remove_all_items ( ) 
+	 		form.list_array[form.count].  clear_columns ( )
+			form.tabs . set_current_tab ( form.count)
+
+			form.list_array[form.count] . add_column("LIMS Component", 15)
+			form.list_array[form.count] . add_column("Mill. Component", 12)
+			form.list_array[form.count] . add_column("Injection", 5)
+			form.list_array[form.count] . add_column("Result Type", 10)
+			form.list_array[form.count] . add_column("Comment", 10)
+			form.list_array[form.count] . add_column("Project", 15)
+			form.list_array[form.count] . add_column("Analysis", 15)
+			form.list_array[form.count] . add_column("Version", 15)
+
+			num = 1
+
+			item_text = self.get_text(item)
+
+			var = SELECT mill_component_map . component
+				WHERE analysis = name
+				AND analysis_version = item_text
+				AND mill_project = parent_text
+				AND enable = TRUE
+				ORDER ON component
+
+			WHILE var <> EMPTY DO
+
+		    	    var_array[num,1] = STRIP(var)
+		    	    var_array[num,2] = STRIP(SELECT mill_component_map . mill_analyte)
+		    	    var_array[num,3] = STRIP(SELECT mill_component_map . injection)
+		    	    var_array[num,4] = STRIP(SELECT mill_component_map . mill_type)
+		    	    var_array[num,5] = STRIP(SELECT mill_component_map . inject_comment)
+		    	    var_array[num,6] = STRIP(SELECT mill_component_map . mill_project)
+		    	    var_array[num,7] = STRIP(SELECT mill_component_map . analysis)
+		    	    var_array[num,8] = STRIP(SELECT mill_component_map . analysis_version)
+
+
+		    	    form.list_array[form.count] . insert_item (var_array[num , 1], ICON_TEST)
+		    	    form.list_array[form.count] . set_item ( 2 , var_array[num , 2] )
+		    	    form.list_array[form.count] . set_item ( 3 , var_array[num , 3] )
+		    	    form.list_array[form.count] . set_item ( 4 , var_array[num , 4] )
+		    	    form.list_array[form.count] . set_item ( 5 , var_array[num , 5] )
+		    	    form.list_array[form.count] . set_item ( 6 , var_array[num , 6] )
+		    	    form.list_array[form.count] . set_item ( 7 , var_array[num , 7] )
+		    	    form.list_array[form.count] . set_item ( 8 , var_array[num , 8] )
+	
+		    	    NEXT mill_component_map
+		    	    var = SELECT mill_component_map . component	
+		
+			ENDWHILE
+
+			ARRAY var_array
+				
+
+		    ENDIF
+		ENDIF
+		
+	    ENDIF
+
+	ENDIF
+	
+ENDROUTINE
+
+{*******************************************************************************}
+
+ROUTINE mouse_options ( self )
+
+{*******************************************************************************}
+{
+flashmessage ("mouse options routine", true)
+}
+ENDROUTINE
+
+{*******************************************************************************}
+
+ROUTINE list_dbclick ( self )
+
+{*******************************************************************************}
+
+    DECLARE form, name, item, mill_name, the_op, the_level, item_name, item_num
+
+    form = self.parent_prompt.parent_prompt.parent_prompt
+
+    the_op = GLOBAL("OPERATOR")
+    the_level = SELECT PERSONNEL . authority
+                 WHERE identity = the_op
+
+    item_name = EMPTY
+
+    IF form.count = 7 THEN
+
+        IF the_level = 10 THEN
+
+	    self.get_first_selected(name)
+   	    menuproc 373 using name
+
+	    item_name = "Configuration"
+
+        ENDIF
+
+    ELSEIF form.count = 4 THEN
+
+        IF the_level = 10 THEN
+
+	    self.get_first_selected(name)
+            mill_name = SELECT MILL_SECURITY . mill_user
+                         WHERE lims_user = name
+
+            MENUPROC 30029 USING name, mill_name
+
+	    item_name = "Interface Users"
+
+        ENDIF
+
+    ELSEIF form.count = 3 THEN
+
+	item = self.get_first_selected(name)
+	name = self.get_item(item,1)
+
+	IF name <> EMPTY THEN
+
+	    flashmessage (name, true)
+
+	ENDIF
+
+	
+    ENDIF
+
+    IF item_name <> EMPTY THEN
+
+	item_num = form.smmill_tree.get_first_child(0)
+	item = form.smmill_tree.get_text( item_num )
+	WHILE item <> EMPTY DO
+
+	    IF item = item_name THEN
+
+		selected ( form.smmill_tree, item_num )
+
+	    ENDIF
+
+	    item_num = form.smmill_tree.get_next_sibling(item_num)
+	    item = form.smmill_tree.get_text( item_num )
+
+	ENDWHILE
+
+    ENDIF
+
+ENDROUTINE
+

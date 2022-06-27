@@ -1,0 +1,36 @@
+SET NAME "DEFER/"
+SET COMPILE_OPTION DECLARE
+
+ROUTINE print_pull_label ( study, layer, time, c, no )
+
+    DECLARE cr_study_id, textual_samp_id
+
+    cr_study_id = SELECT pds_study_pull . created_sample_id
+                   WHERE header       = study
+                     AND layer_factor = layer
+                     AND time_factor  = time
+                     AND c_factor     = c
+                     AND pull_num     = no
+
+    IF cr_study_id <> EMPTY THEN
+
+        textual_samp_id  =   STRIP ( SELECT pds_study_pull.sample_id_text )
+
+        IF textual_samp_id = "------------------------------" THEN
+            textual_samp_id = ""
+        ENDIF
+
+        LITERAL
+
+Study               :   $study______________________
+Layer               :   $layer______________________
+Time Factor         :   $time_______________________
+C Factor            :   $c__________________________
+Pull Number         :   $no_________________________
+Sample Text ID      :   $textual_samp_id____________
+
+$ENDLITERAL
+
+    ENDIF
+
+ENDROUTINE

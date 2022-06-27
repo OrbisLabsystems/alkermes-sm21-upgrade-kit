@@ -1,0 +1,103 @@
+{==============================================================================}
+{                                                                              }
+{  ORBIS INFORMATION SYSTEMS                                                   }
+{                                                                              }
+{  Filename         : $SMMILL_HELP.RPF                                         }
+{  Version          :                                                          }
+{  Document Ref.    :                                                          }
+{  Author           : D. Kelly                                                 }
+{  Date Created     : 19-Jun-2002                                              }
+{  Description      : SM-Millennium Help File Execution                        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{                                                                              }
+{  Ver.     Date        By          Description                                }
+{  ----     ----        --          -----------                                }
+{  1.0      19-Jun-2002 DK          Release version                            }
+{                                                                              }
+{==============================================================================}
+
+SET NAME "DEFER/"
+SET NOTPROTECTED
+SET COMPILEOPTION DECLARE
+ENABLE WINDOWS
+
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN LIBRARY $lib_utils
+JOIN STANDARD_LIBRARY STD_UTILS
+
+JOIN LIBRARY $SMMILL_CONST
+
+DECLARE self
+
+execute_help_file(self)
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE execute_help_file                                                   }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  19-Jun-2002  DK              Executes Help File from path defined in        }
+{                               registry.                                      }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE execute_help_file (self)
+
+    DECLARE Ole_Shell_run, Ole_Shell, fsoObject, fileObject, shortPath, theValue
+
+    {Get the Help File Install Path from the Registry}
+ 
+    CREATE OBJECT "STD_OLE_AUTOMATION", Ole_Shell
+
+    Ole_Shell.Create("WScript.shell")
+    theValue = Ole_Shell.Regread (HELP_REGISTRY_KEY)
+
+    Ole_Shell = EMPTY
+ 
+    {Strip off the standard help file name (smw.hlp) and add the SM-Millennium file name }
+
+    the_value = STRIP(the_value)
+    the_value = LEFTSTRING(the_value, LENGTH(the_value) - 7)
+    the_value = the_value : HELP_FILE_NAME
+
+    {Get the DOS path for this file}
+
+    CREATE OBJECT "STD_OLE_AUTOMATION", fsoObject
+
+    fsoObject.Create("Scripting.FileSystemObject")
+    fileObject = fsoObject.GetFile(theValue)
+    shortPath = FileObject.Shortpath
+    fsoObject = EMPTY
+    FileObject = EMPTY
+
+    { Create the shell automation object }
+
+   CREATE OBJECT "STD_OLE_AUTOMATION", Ole_Shell_run
+
+    Ole_Shell_run.Create("WScript.shell")
+
+    {Run the File using it's DOS file path}
+
+    Ole_Shell_run.Run (shortPath)
+    Ole_Shell_run = EMPTY
+
+ENDROUTINE
+
+

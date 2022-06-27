@@ -1,0 +1,3098 @@
+{******************************************************************************
+*
+* Module Name          : LOGIN_LIB
+*
+* Purpose              : Library of routines to support sample login functions.
+*                        New routines can be added to this library as required
+*                        to support other automatic template completion requirements
+*
+* Portability          : Not Checked
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By             	Description
+* -------   -----------  ----------    	--------------------------------------
+* 1.0       21-Aug-2012  Stuart Patchell 	Release Version 
+*
+* 2.0 	14-Sep-2012	 M. Allen		Added routine for weight check
+*
+* 3.0  	28-Mar-2014  M. Allen		Added routine to get test schedule and 
+*                                         MLP based on sample stage
+*
+* 4.0       31-MAR-2014  Ken Jacobs     Add sample size calculation
+*
+* 4.1       27-MAY-2014  Ken Jacobs     Round calculated number of drums to next whole number
+*
+* 4.2       22-May-2015  M. Flattery    CC Ref CC-ATH-2015-2022, TS Protocol 1600030707 Update for packaged expiry month.
+*
+* 4.3       22-May-2015  M. Flattery    CC Ref CC-ATH-2015-2022, TS Protocol 1600030707 Update to check for correct days in month.
+*
+* 4.4       22-May-2015  M. Flattery    CC Ref CC-ATH-2015-2022, TS Protocol 1600030707 Update expiry date when mfg_date changes.
+*
+* 4.5       22-May-2015  M. Flattery    CC Ref CC-ATH-2015-2022, TS Protocol 1600030707 Update to format date as DD-MON-YYYY on screen.
+*******************************************************************************}
+
+
+SET NOTPROTECTED
+SET NAME "DEFER/"
+SET COMPILEOPTION DECLARE
+ENABLE WINDOWS
+
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN STANDARD_LIBRARY STD_CLIENT
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_TRANSFER
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN STANDARD_LIBRARY STD_BROWSE
+JOIN STANDARD_LIBRARY std_global
+
+JOIN LIBRARY $lib_utils
+JOIN LIBRARY $prompt_imprint
+JOIN LIBRARY $lib_time
+
+JOIN LIBRARY cs_lib_log                                                 {4.0}
+
+CONSTANT TARGET_FILLED_WEIGHT_CLASS = "TARGET_FILLED_WEIGHT_CLASS"      {4.0}
+CONSTANT TABLETS_PER_DRUM_CLASS     = "TABLETS_PER_DRUM_CLASS"          {4.0}
+CONSTANT NUMBER_OF_DRUMS_CLASS      = "NUMBER_OF_DRUMS_CLASS"           {4.0}
+CONSTANT SAMPLE_SIZE_CLASS          = "SAMPLE_SIZE_CLASS"               {4.0}
+
+{??? Testing}
+MENUPROC 168 USING "KEN", "1"
+EXIT
+
+ROUTINE loc_browse_personnel	( 	VALUE column_num ,         { form column }
+                             			VALUE line_num,            { form row    }
+                             			display_id,                { form window }
+                             			VALUE is_display )         { display T/F }
+
+{
+*    Limit location browse to type Personnel
+*
+*******************************************************************************}
+    DECLARE select_array, location
+
+    ARRAY select_array
+
+    array_select_add (select_array, 
+                      ARRAY_SELECT_EQ, 
+                      "location_type",
+                      "PERSONNEL")
+
+
+
+
+    IF ( column_num <> 0 ) AND ( line_num <> 0 ) THEN
+	
+        IF is_display THEN
+
+            DISPLAY location
+                IN WINDOW display_id
+                ON LINE   line_num
+                FROM   column_num
+                FORMAT sample . em_sampled_by
+        ELSE
+
+            PROMPT FOR location
+                IN WINDOW display_id
+                ON LINE   line_num
+                FROM   column_num
+                BROWSE ON location
+                WITH ( display_only  = FALSE, select_array = select_array )
+
+        ENDIF
+    
+	ENDIF
+
+ENDROUTINE {loc_browse_personnel}
+
+ROUTINE prompt_em_sampled_by 	( 	 VALUE column_num ,         { form column }
+                             			VALUE line_num,            { form row    }
+                             			display_id,                { form window }
+                             			VALUE is_display )         { display T/F }
+
+{
+*   Prompts for em_sampled_by, limit location browse to type personnel
+*
+*******************************************************************************}
+    DECLARE select_array, em_sampler
+
+    ARRAY select_array
+
+    em_sampler = SELECT sample . em_sampled_by
+
+    array_select_add (select_array, 
+                      ARRAY_SELECT_EQ, 
+                      "location_type",
+                      "PERSONNEL")
+
+
+	    array_select ("LOCATION", 
+                   FALSE, 
+                   select_array)
+
+
+    IF ( column_num <> 0 ) AND ( line_num <> 0 ) THEN
+	
+        IF is_display THEN
+
+            DISPLAY em_sampler
+                IN WINDOW display_id
+                ON LINE   line_num
+                FROM   column_num
+                FORMAT sample . em_sampled_by
+        ELSE
+
+ 
+
+            PROMPT FOR em_sampler 
+                IN WINDOW display_id
+		    ON LINE line_num
+		    FROM column_num
+                BROWSE ON location . identity 
+                WITH ( display_only  = FALSE, select_array = select_array )
+
+
+        ENDIF
+    
+	ENDIF
+
+		ASSIGN sample .em_sampled_by = em_sampler
+
+
+
+
+
+ENDROUTINE {}
+
+ROUTINE calc_net_weight	( 	VALUE column_num ,         { form column }
+                             			VALUE line_num,            { form row    }
+                             			display_id,                { form window }
+                             			VALUE is_display )         { display T/F }
+
+{
+*    Calculate net weight
+*
+*******************************************************************************}
+    DECLARE gross_wgt, tare_wgt, net_wgt
+
+    gross_wgt = SELECT sample . sample_weight
+
+
+
+    tare_wgt = SELECT sample . tare_weight
+
+    net_wgt = NULL
+
+     IF ((gross_wgt <> 0) AND (gross_wgt <> NULL) AND (tare_wgt <> 0) AND (tare_wgt <> NULL)) THEN
+
+		net_wgt = gross_wgt - tare_wgt
+
+
+	ENDIF 
+
+   IF ( column_num <> 0 ) AND ( line_num <> 0 ) THEN        
+	
+        IF is_display THEN
+
+            DISPLAY net_wgt
+                IN WINDOW display_id
+                ON LINE   line_num
+                FROM   column_num
+                FORMAT sample. net_weight
+
+        ELSE
+
+            PROMPT FOR net_wgt
+                IN WINDOW display_id
+                ON LINE   line_num
+                FROM   column_num
+                FORMAT sample. net_weight
+                WITH ( display_only  = FALSE )
+
+        ENDIF
+	
+    ENDIF
+	
+
+		ASSIGN sample .net_weight = net_wgt
+
+
+
+
+
+ENDROUTINE {}
+
+ROUTINE date_res_req_from_login ( 	VALUE column_num ,         { form column }
+                            		VALUE line_num,            { form row    }
+                            		display_id,                { form window }
+                            		VALUE is_display )         { display T/F }
+
+{
+*    Calculates date results required from Login Date. 
+*
+*******************************************************************************}
+
+    DECLARE context,
+            material,
+            chem_turnaround,
+		micro_turnaround,
+            resreq_date,
+            login_date,
+		samp_type
+
+    login_date  	= SELECT sample . login_date
+    material 	= SELECT sample . material
+    samp_type   	= SELECT sample . sample_type
+    resreqdate 	= NOW
+
+    push_file_descriptor ("SAMPLE", context)
+
+    chem_turnaround  = SELECT materials . chem_turnaround WHERE
+                             article_code = material
+
+    micro_turnaround = SELECT materials . micro_turnaround WHERE
+                             article_code = material
+
+
+    pop_file_descriptor (context)
+
+
+    IF (BLANK(samp_type) OR (STRIP(samp_type) = "")) OR (samp_type = "CHEM") THEN
+
+        IF ( chem_turnaround <> EMPTY ) THEN
+
+            resreq_date = login_date + chem_turnaround
+
+        ELSEIF
+
+            resreq_date = ""
+
+        ENDIF
+
+    ELSEIF (samp_type = "MICRO") THEN
+
+	IF ( micro_turnaround <> EMPTY ) THEN
+
+            resreq_date = login_date + micro_turnaround
+
+        ELSEIF
+
+            resreq_date = ""
+
+        ENDIF
+
+    ENDIF	
+
+    IF ( column_num <> 0 ) AND ( line_num <> 0 ) THEN
+	
+	    IF is_display THEN
+
+            DISPLAY resreq_date
+                IN WINDOW display_id
+                ON LINE   line_num
+                FROM   column_num
+                FORMAT sample . dateresreq
+
+        ELSE
+
+            PROMPT FOR resreq_date
+                IN WINDOW display_id
+                ON LINE   line_num
+                FROM   column_num
+                FORMAT sample . dateresreq
+                WITH ( display_only  = FALSE )
+
+        ENDIF
+	
+	ENDIF
+
+    ASSIGN sample . dateresreq = resreq_date
+
+ENDROUTINE {date_res_req_from_login}
+
+ROUTINE the_test_sched  ( VALUE column_num ,         { form column }
+                          VALUE line_num,            { form row    }
+                          display_id,                { form window }
+                          VALUE is_display )         { display T/F }
+
+{
+*    Assigns the product test schedule to the sample from the product based on the material
+*    This is based on the sample stage
+*
+*******************************************************************************}
+
+    DECLARE material, 
+            test_schedule,
+            stage,
+            short_stage,
+		product,
+		check
+
+    material	= SELECT sample . material
+
+    stage 		= SELECT sample.process_stage
+    short_stage		= SELECT phrase.phrase_id
+			WHERE phrase_type = "PROC_STAGE" and
+				phrase_id = STRIP(stage)
+
+	
+
+
+   product 	= SELECT materials.product
+			WHERE materials.article_code = material
+
+   test_schedule 	= STRIP(product):"_":STRIP(short_stage)
+
+
+   {Check test schedule exists}
+
+  check = SELECT test_sched_header.identity
+	  WHERE identity = test_schedule
+
+
+    IF ( check = EMPTY ) THEN
+
+        
+		test_schedule = ""
+
+		flash_message ("Test schedule does not exist", TRUE)
+	
+    ELSE
+
+	{do nothing}
+
+    ENDIF
+
+    IF is_display THEN
+
+        DISPLAY test_schedule
+            IN WINDOW display_id
+            ON LINE   line_num
+            FROM   column_num
+            FORMAT sample . test_schedule
+
+    ELSE
+
+        PROMPT FOR test_schedule
+            IN WINDOW display_id
+            ON LINE   line_num
+            FROM   column_num
+            FORMAT sample . test_schedule
+            WITH ( display_only = FALSE )
+
+    ENDIF
+
+    ASSIGN sample . test_schedule = test_schedule
+
+ENDROUTINE {the_test_sched}
+
+ROUTINE the_mlp  ( VALUE column_num ,         { form column }
+                          VALUE line_num,            { form row    }
+                          display_id,                { form window }
+                          VALUE is_display )         { display T/F }
+
+{
+*    Assigns the product mlp to the sample from the product based on the material
+*    This is based on the sample stage
+*
+*******************************************************************************}
+
+    DECLARE material, 
+            product,
+		product_version,
+            mlp,
+            stage,
+            short_stage,
+		check
+
+    material	= SELECT sample . material
+
+
+
+    stage 		= SELECT sample.process_stage
+    short_stage		= SELECT phrase.phrase_id
+			WHERE phrase_type = "PROC_STAGE" and
+				phrase_id = STRIP(stage)
+
+
+
+   product 	= SELECT materials.product
+			WHERE materials.article_code = material
+
+   mlp 		= STRIP(product):"_":STRIP(short_stage)	
+
+    product_version     = SELECT MAX mlp_header . product_version
+                          WHERE mlp_header.identity = mlp
+
+
+    IF ((product_version <> EMPTY) AND (STRIP(product_version) <> "")) THEN
+
+        check = "TRUE"
+
+    ELSE
+
+
+	  check = "FALSE"
+
+	
+
+    ENDIF
+
+
+    IF ( check = "FALSE" ) THEN
+
+        mlp = ""
+
+	flash_message ("MLP does not exist", TRUE)
+
+    ENDIF
+
+    IF is_display THEN
+
+        DISPLAY mlp
+            IN WINDOW display_id
+            ON LINE   line_num
+            FROM   column_num
+            FORMAT sample . product
+
+    ELSE
+
+        PROMPT FOR mlp
+            IN WINDOW display_id
+            ON LINE   line_num
+            FROM   column_num
+            FORMAT sample . product
+            WITH ( display_only = FALSE )
+
+    ENDIF
+
+    ASSIGN sample . product = mlp
+
+ENDROUTINE {the_mlp}
+
+
+{ ----------------------------------------------------------------------------------------------- }
+
+
+ROUTINE micro_date_res_req_from_login ( 	VALUE column_num ,         { form column }
+                            		VALUE line_num,            { form row    }
+                            		display_id,                { form window }
+                            		VALUE is_display )         { display T/F }
+
+{
+*    Calculates date results required from Login Date. 
+*
+*******************************************************************************}
+
+    DECLARE context,
+            material,
+		micro_turnaround,
+            login_date,
+		micro_resreq_date
+
+    login_date  	= SELECT sample . login_date
+    material 	= SELECT sample . material
+    micro_resreqdate 	= NOW
+
+    push_file_descriptor ("SAMPLE", context)
+
+
+    micro_turnaround = SELECT materials . micro_turnaround WHERE
+                             article_code = material
+
+
+    pop_file_descriptor (context)
+
+
+
+
+	IF ( micro_turnaround <> EMPTY ) THEN
+
+            micro_resreq_date = login_date + micro_turnaround
+
+        ELSEIF
+
+            micro_resreq_date = ""
+
+        ENDIF
+
+	
+
+    IF ( column_num <> 0 ) AND ( line_num <> 0 ) THEN
+	
+	    IF is_display THEN
+
+            DISPLAY micro_resreq_date
+                IN WINDOW display_id
+                ON LINE   line_num
+                FROM   column_num
+                FORMAT sample . micro_dateresreq
+
+        ELSE
+
+            PROMPT FOR micro_resreq_date
+                IN WINDOW display_id
+                ON LINE   line_num
+                FROM   column_num
+                FORMAT sample . micro_dateresreq
+                WITH ( display_only  = FALSE )
+
+        ENDIF
+	
+	ENDIF
+
+    ASSIGN sample . micro_dateresreq = micro_resreq_date
+
+ENDROUTINE {micro_date_res_req_from_login}
+
+ROUTINE the_test_sched_default  ( 	VALUE column_num ,         { form column }
+                          	    	VALUE line_num,            { form row    }
+                          		display_id,                { form window }
+                          		VALUE is_display )         { display T/F }
+
+{
+*    Assigns the product test schedule to the sample from the product based on the material
+*    This is based on the sample stage
+*
+*******************************************************************************}
+
+    DECLARE material, 
+            test_schedule,
+            stage,
+            short_stage,
+		product,
+		check
+
+    material	= SELECT sample . material
+
+    stage 		= SELECT sample.process_stage
+    short_stage		= SELECT phrase.phrase_id
+			WHERE phrase_type = "PROC_STAGE" and
+				phrase_id = STRIP(stage)
+
+	
+
+
+   product 	= SELECT materials.product
+			WHERE materials.article_code = material
+
+   test_schedule 	= STRIP(product):"_":STRIP(short_stage)
+
+
+   {Check test schedule exists}
+
+  check = SELECT test_sched_header.identity
+	  WHERE identity = test_schedule
+
+
+    IF ( check = EMPTY ) THEN
+
+        test_schedule = STRIP(product)
+
+  	  check = SELECT test_sched_header.identity
+	  		WHERE identity = test_schedule
+
+    	  IF ( check = EMPTY ) THEN
+
+		test_schedule = ""
+
+		flash_message ("Test schedule does not exist", TRUE)
+	
+	  ELSE
+
+		{do nothing}
+
+	 ENDIF
+
+    ELSE
+
+	{do nothing}
+
+    ENDIF
+
+    IF is_display THEN
+
+        DISPLAY test_schedule
+            IN WINDOW display_id
+            ON LINE   line_num
+            FROM   column_num
+            FORMAT sample . test_schedule
+
+    ELSE
+
+        PROMPT FOR test_schedule
+            IN WINDOW display_id
+            ON LINE   line_num
+            FROM   column_num
+            FORMAT sample . test_schedule
+            WITH ( display_only = FALSE )
+
+    ENDIF
+
+    ASSIGN sample . test_schedule = test_schedule
+
+ENDROUTINE {the_test_sched}
+
+ROUTINE the_mlp_default  ( VALUE column_num ,         { form column }
+                          VALUE line_num,            { form row    }
+                          display_id,                { form window }
+                          VALUE is_display )         { display T/F }
+
+{
+*    Assigns the product mlp to the sample from the product based on the material
+*    This is based on the sample stage
+*
+*******************************************************************************}
+
+    DECLARE material, 
+            product,
+		product_version,
+            mlp,
+            stage,
+            short_stage,
+		check
+
+    material	= SELECT sample . material
+
+    stage 		= SELECT sample.process_stage
+    short_stage		= SELECT phrase.phrase_id
+			WHERE phrase_type = "PROC_STAGE" and
+				phrase_id = STRIP(stage)
+
+
+
+   product 	= SELECT materials.product
+			WHERE materials.article_code = material
+
+   mlp 		= STRIP(product):"_":STRIP(short_stage)	
+
+    product_version     = SELECT MAX mlp_header . product_version
+                          WHERE mlp_header.identity = mlp
+
+
+    IF ((product_version <> EMPTY) AND (STRIP(product_version) <> "")) THEN
+
+        check = "TRUE"
+
+    ELSE
+
+	mlp = STRIP(product)
+
+	product_version = SELECT MAX mlp_header . product_version
+                          WHERE mlp_header.identity = mlp
+
+	IF    ((product_version <> EMPTY) AND (STRIP(product_version) <> "")) THEN
+
+        check = "TRUE"
+
+	ELSE
+
+	  check = "FALSE"
+
+	ENDIF
+
+
+
+    ENDIF
+
+
+    IF ( check = "FALSE" ) THEN
+
+        mlp = ""
+
+	flash_message ("MLP does not exist", TRUE)
+
+    ENDIF
+
+    IF is_display THEN
+
+        DISPLAY mlp
+            IN WINDOW display_id
+            ON LINE   line_num
+            FROM   column_num
+            FORMAT sample . product
+
+    ELSE
+
+        PROMPT FOR mlp
+            IN WINDOW display_id
+            ON LINE   line_num
+            FROM   column_num
+            FORMAT sample . product
+            WITH ( display_only = FALSE )
+
+    ENDIF
+
+    ASSIGN sample . product = mlp
+
+ENDROUTINE {the_mlp_default}
+
+ROUTINE the_mlp_sched_default  ( VALUE column_num ,         { form column }
+                          VALUE line_num,            { form row    }
+                          display_id,                { form window }
+                          VALUE is_display )         { display T/F }
+
+{
+*    Assigns the product mlp to the sample from the product based on the material
+*    This is based on the sample stage
+*
+*******************************************************************************}
+
+    DECLARE material, 
+            product,
+		product_version,
+            mlp,
+		test_schedule,
+            stage,
+            short_stage,
+		label_profile,
+		samp_type_label,
+		check
+
+    material	= SELECT sample . material
+
+    samp_type_label = SELECT sample . sample_type
+
+    stage 		= SELECT sample.process_stage
+
+    short_stage		= SELECT phrase.phrase_id
+			WHERE phrase_type = "PROC_STAGE" and
+				phrase_id = STRIP(stage)
+
+
+
+   product 	= STRIP(material)
+
+  
+   IF (short_stage = "NSU") THEN
+
+
+	mlp 		= STRIP(product):STRIP(short_stage)
+
+   ELSE
+
+   	mlp 		= STRIP(product):"_":STRIP(short_stage)
+
+   ENDIF
+
+	
+
+    product_version     = SELECT MAX mlp_header . product_version
+                          WHERE mlp_header.removeflag = "FALSE" AND
+					  mlp_header.modifiable = "TRUE" AND
+					   mlp_header.identity = mlp
+
+
+    IF ((product_version <> EMPTY) AND (STRIP(product_version) <> "")) THEN
+
+        check = "TRUE"
+
+    ELSE
+
+	mlp = STRIP(product)
+
+	product_version = SELECT MAX mlp_header . product_version
+                          WHERE mlp_header.identity = mlp
+
+	IF    ((product_version <> EMPTY) AND (STRIP(product_version) <> "")) THEN
+
+        check = "TRUE"
+
+	ELSE
+
+	  check = "FALSE"
+
+	ENDIF
+
+
+
+    ENDIF
+
+
+    IF ( check = "FALSE" ) THEN
+
+        mlp = ""
+
+	flash_message ("MLP does not exist", TRUE)
+
+    ENDIF
+
+
+   IF (short_stage = "NSU") THEN
+
+
+	test_schedule 	= STRIP(product):STRIP(short_stage)
+
+   ELSE
+
+   test_schedule 	= STRIP(product):"_":STRIP(short_stage)
+
+   ENDIF
+
+   
+
+
+   {Check test schedule exists}
+
+  check = SELECT test_sched_header.identity
+	  WHERE identity = test_schedule AND
+		  modifiable = "TRUE" AND
+		  removeflag = "FALSE"
+
+
+    IF ( check = EMPTY ) THEN
+
+        test_schedule = STRIP(product)
+
+  	  check = SELECT test_sched_header.identity
+	  		WHERE identity = test_schedule
+
+    	  IF ( check = EMPTY ) THEN
+
+		test_schedule = ""
+
+		flash_message ("Test schedule does not exist", TRUE)
+	
+	  ELSE
+
+		{do nothing}
+
+	 ENDIF
+
+    ELSE
+
+	{do nothing}
+
+    ENDIF
+
+   label_profile 	= SELECT materials.label_profile
+			WHERE materials.article_code = material
+
+    	IF (short_stage = "I") OR ((short_stage = "NSU") AND ((material <> "5000551") OR (material <> "5000550")))
+
+	      samp_type_label = "QC_LABEL_1"
+
+	ELSEIF (short_stage = "B") AND ((material <> "5000111") OR (material <> "5000042"))
+
+		samp_type_label = "QC_LABEL_1"
+
+	ELSEIF (short_stage = "B") AND ((material = "5000111") OR (material = "5000042"))
+
+		samp_type_label = "QC_LABEL_7"
+
+	ELSEIF (short_stage = "U") and ((material <> "5000551") OR (material <> "5000001") OR (material <> "5000000"))
+
+		samp_type_label = "QC_LABEL_2"
+
+	ELSEIF (short_stage = "A")
+
+		samp_type_label = "QC_LABEL_1"
+
+	ELSEIF (short_stage = "C") AND ((material = "5000111") OR (material = "5000042"))
+
+		samp_type_label = "QC_LABEL_2"
+
+   	ELSEIF (short_stage = "OF")OR (short_stage = "OF") OR (short_stage = "PB") OR (short_stage = "PD") OR (short_stage = "PS")OR (short_stage = "DS")
+
+	      samp_type_label = "RM_STD"
+
+    	ELSEIF ( label_profile <> EMPTY ) THEN
+
+        
+		samp_type_label = label_profile
+
+    	ELSE
+
+	{do nothing}
+
+    	ENDIF
+
+     IF is_display THEN
+
+        DISPLAY stage
+            IN WINDOW display_id
+            ON LINE   line_num
+            FROM   column_num
+            FORMAT sample . process_stage
+
+    ELSE
+
+        PROMPT FOR stage
+            IN WINDOW display_id
+            ON LINE   line_num
+            FROM   column_num
+            FORMAT sample . process_stage
+            WITH ( display_only = FALSE )
+
+    ENDIF
+
+    ASSIGN sample . process_stage = stage
+
+    ASSIGN sample . product = mlp
+
+    ASSIGN sample . test_schedule = test_schedule
+
+    ASSIGN sample . sample_type = samp_type_label
+
+ENDROUTINE {the_mlp_default}
+
+
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE templatePromptField
+    (
+    VALUE   field   
+    )
+
+    {
+    Description :
+    }
+    
+    DECLARE promptFlag
+    DECLARE copyFlag
+    
+    promptFlag = SELECT template_fields.prompt_flag
+                 WHERE  ( table_name = "SAMPLE" )
+                 AND    ( template_id = ( SELECT sample.template_id ) )
+                 AND    ( field_name = field )
+    copyFlag   = SELECT template_fields.copy_flag
+    
+    IF ( promptFlag = EMPTY )
+    
+        promptFlag = FALSE
+        copyFlag = FALSE
+
+    ENDIF
+    
+    RETURN( promptFlag or copyFlag )
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE updateTargetFilledWeight
+    (
+    VALUE isModify ,
+    VALUE actionType
+    )
+
+    {
+    Description : 4.0
+    }
+    
+    DECLARE self
+    
+    initialiseTargetFilledWeight()
+    
+    CREATE OBJECT TARGET_FILLED_WEIGHT_CLASS, self
+
+    self.logfile.trace( "*** updateTargetFilledWeight" )
+
+    IF ( NOT templatePromptField( "TARGET_FILLED_WEIGHT" ) )
+    
+    self.getTargetNetWeight()
+    self.getEmptyCapsuleWeight()
+    self.calculate()
+    
+    ASSIGN sample.target_filled_weight = self.targetFilledWeight
+    self.logfile.trace2( "targetFilledWeight", STRIP( NUMBER_TO_TEXT( self.targetFilledWeight, "9999999999.9999999999" ) ) )
+    
+    ELSE
+    
+        self.logfile.trace( "Prompt Set TARGET_FILLED_WEIGHT" )
+        
+    ENDIF
+    
+    self.logfile.flush_cache()
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE initialiseTargetFilledWeight
+
+    {
+    Description : 4.0
+    }
+    
+    DEFINE CLASS TARGET_FILLED_WEIGHT_CLASS
+        INITIALISATION
+        PROPERTIES
+            "logfile",
+            "continue",
+            "targetNetWeight",
+            "emptyCapsuleWeight",
+            "targetFilledWeight",
+            "dummy"
+        ACTIONS
+            "getTargetNetWeight",
+            "getEmptyCapsuleWeight",
+            "calculate",
+            "dummy"
+        END CLASS
+    
+    RETURN
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE TARGET_FILLED_WEIGHT_CLASS_class_initialisation
+    (
+            self   
+    )
+
+    {
+    Description : 4.0
+    }
+    
+    cs_lib_log_define_class()
+    CREATE OBJECT LOG_FILE_CLASS, self.logfile
+    self.logfile.module = "SAMPLE_SIZE"
+    self.logfile.cache_flush = CACHE_FLUSH_EVERY_MESSAGE
+    
+    IF  ( global_exists( "TRACE_SAMPLE_SIZE" ) )
+   
+        self.logfile.trace = GLOBAL( "TRACE_SAMPLE_SIZE" )
+
+    ELSE
+    
+        self.logfile.trace = TRUE                                       {???}
+        
+    ENDIF
+    
+    self.continue = TRUE
+    self.targetFilledWeight = 0
+    
+    RETURN
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE TARGET_FILLED_WEIGHT_CLASS_action_getTargetNetWeight
+    (
+            self   
+    )
+
+    {
+    Description : 4.0
+    }
+   
+    IF ( NOT self.continue ) THEN RETURN ENDIF
+    
+    self.targetNetWeight = SELECT sample.target_net_weight
+    
+    IF ( self.targetNetWeight <= 0 )
+    
+        self.continue = FALSE
+        self.logfile.error( "Target Net Weight " 
+                          : STRIP( NUMBER_TO_TEXT( self.targetNetWeight, "9999999999.9999999999" ) ) 
+                          : " <= 0"
+                          )
+
+    ELSE
+    
+        self.logfile.trace2( "targetNetWeight", STRIP( NUMBER_TO_TEXT( self.targetNetWeight, "9999999999.9999999999" ) ) )
+        
+    ENDIF
+    
+    RETURN
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE TARGET_FILLED_WEIGHT_CLASS_action_getEmptyCapsuleWeight
+    (
+            self   
+    )
+
+    {
+    Description : 4.0
+    
+    ??? Currently read from NO_CONTAINERS for testing only
+    }
+   
+    IF ( NOT self.continue ) THEN RETURN ENDIF
+    
+    self.emptyCapsuleWeight = SELECT sample.empty_capsule_weight
+    
+    IF ( self.emptyCapsuleWeight < 0 )
+    
+        self.continue = FALSE
+        self.logfile.error( "Empty capsule weight " 
+                          : STRIP( NUMBER_TO_TEXT( self.emptyCapsuleWeight, "9999999999.9999999999" ) ) 
+                          : " < 0"
+                          )
+        
+    ELSE
+    
+        self.logfile.trace2( "emptyCapsuleWeight", STRIP( NUMBER_TO_TEXT( self.emptyCapsuleWeight, "9999999999.9999999999" ) ) )
+        
+    ENDIF
+    
+    RETURN
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE TARGET_FILLED_WEIGHT_CLASS_action_calculate
+    (
+            self   
+    )
+
+    {
+    Description : 4.0
+    }
+   
+    IF ( NOT self.continue ) THEN RETURN ENDIF
+    
+    self.targetFilledWeight = self.targetNetWeight + self.emptyCapsuleWeight
+    
+    RETURN
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE updateCapsulesPerDrum
+    (
+    VALUE isModify ,
+    VALUE actionType
+    )
+
+    {
+    Description : 4.0
+    }
+    
+    DECLARE self
+    
+    initialiseCapsulesPerDrum()
+    
+    CREATE OBJECT TABLETS_PER_DRUM_CLASS, self
+
+    self.logfile.trace( "*** updateCapsulesPerDrum" )
+
+    IF ( NOT templatePromptField( "CAPSULES_PER_DRUM" ) )
+    
+    self.getQuantityPerDrum()
+    self.getTargetFilledWeight()
+    self.calculate()
+    
+    ASSIGN sample.capsules_per_drum = self.capsulesPerDrum
+    self.logfile.trace2( "capsulesPerDrum", STRIP( NUMBER_TO_TEXT( self.capsulesPerDrum, "9999999999.9999999999" ) ) )
+    
+    ELSE
+    
+        self.logfile.trace( "Prompt Set CAPSULES_PER_DRUM" )
+        
+    ENDIF
+    
+    self.logfile.flush_cache()
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE initialiseCapsulesPerDrum
+    {
+    Description : 4.0
+    }
+    
+    DEFINE CLASS TABLETS_PER_DRUM_CLASS
+        INITIALISATION
+        PROPERTIES
+            "logfile",
+            "continue",
+            "quantityPerDrum",
+            "targetFilledWeight",
+            "capsulesPerDrum",
+            "dummy"
+        ACTIONS
+            "getQuantityPerDrum",
+            "getTargetFilledWeight",
+            "calculate",
+            "dummy"
+        END CLASS
+    
+    RETURN
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE TABLETS_PER_DRUM_CLASS_class_initialisation
+    (
+            self   
+    )
+
+    {
+    Description : 4.0
+    }
+    
+    cs_lib_log_define_class()
+    CREATE OBJECT LOG_FILE_CLASS, self.logfile
+    self.logfile.module = "SAMPLE_SIZE"
+    self.logfile.cache_flush = CACHE_FLUSH_EVERY_MESSAGE
+    
+    IF ( GLOBAL( "MODE" ) <> "INTERACTIVE" ) 
+    
+        self.logfile.flash_error = FALSE
+        
+    ENDIF
+    
+    IF  ( global_exists( "TRACE_SAMPLE_SIZE" ) )
+   
+        self.logfile.trace = GLOBAL( "TRACE_SAMPLE_SIZE" )
+
+    ELSE
+    
+        self.logfile.trace = TRUE                                       {???}
+        
+    ENDIF
+    
+    self.continue = TRUE
+    self.capsulesPerDrum = 0
+    
+    RETURN
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE TABLETS_PER_DRUM_CLASS_action_getQuantityPerDrum
+    (
+            self   
+    )
+
+    {
+    Description : 4.0
+    }
+   
+    IF ( NOT self.continue ) THEN RETURN ENDIF
+    
+    self.quantityPerDrum = SELECT sample.quantity_per_drum
+    
+    IF ( self.quantityPerDrum <= 0 )
+    
+        self.continue = FALSE
+        self.logfile.error( "Quantity per drum " 
+                          : STRIP( NUMBER_TO_TEXT( self.quantityPerDrum, "9999999999.9999999999" ) ) 
+                          : " <= 0"
+                          )
+
+    ELSE
+    
+        self.logfile.trace2( "quantityPerDrum", STRIP( NUMBER_TO_TEXT( self.quantityPerDrum, "9999999999.9999999999" ) ) )
+        
+    ENDIF
+    
+    RETURN
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE TABLETS_PER_DRUM_CLASS_action_getTargetFilledWeight
+    (
+            self   
+    )
+
+    {
+    Description : 4.0
+    
+    ??? Currently read from NO_CONTAINERS for testing only
+    }
+   
+    IF ( NOT self.continue ) THEN RETURN ENDIF
+    
+    self.targetFilledWeight = SELECT sample.target_filled_weight
+    
+    IF ( self.targetFilledWeight <= 0 )
+    
+        self.continue = FALSE
+        self.logfile.error( "Target filled weight " 
+                          : STRIP( NUMBER_TO_TEXT( self.targetFilledWeight, "9999999999.9999999999" ) ) 
+                          : " <= 0"
+                          )
+        
+    ELSE
+    
+        self.logfile.trace2( "targetFilledWeight", STRIP( NUMBER_TO_TEXT( self.targetFilledWeight, "9999999999.9999999999" ) ) )
+        
+    ENDIF
+    
+    RETURN
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE TABLETS_PER_DRUM_CLASS_action_calculate
+    (
+            self   
+    )
+
+    {
+    Description : 4.0
+    }
+   
+    IF ( NOT self.continue ) THEN RETURN ENDIF
+    
+    self.capsulesPerDrum = ( self.quantityPerDrum * 1000000 ) / self.targetFilledWeight
+    
+    RETURN
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE updateNumberOfDrums
+    (
+    VALUE isModify ,
+    VALUE actionType
+    )
+
+    {
+    Description : 4.0
+    }
+    
+    DECLARE self
+    
+    initialiseNumberOfDrums()
+    
+    CREATE OBJECT NUMBER_OF_DRUMS_CLASS, self
+
+    self.logfile.trace( "*** updateNumberOfDrums" )
+
+    IF ( NOT templatePromptField( "NO_DRUMS" ) )
+
+    self.getTheoreticalYield()
+    self.getCapsulesPerDrum()
+    self.calculate()
+    
+        self.logfile.trace2( "numberOfDrums", STRIP( NUMBER_TO_TEXT( self.numberOfDrums, "9999999999.9999999999" ) ) )
+
+        self.numberOfDrums = TRUNC( self.numberOfDrums )
+	  self.numberOfDrums = self.numberOfDrums + 1
+        self.logfile.trace2( "numberOfDrums", STRIP( NUMBER_TO_TEXT( self.numberOfDrums, "9999999999.9999999999" ) ) )
+
+    ASSIGN sample.no_drums = self.numberOfDrums
+
+    ELSE
+    
+        self.logfile.trace( "Prompt Set NO_DRUMS" )
+        
+    ENDIF
+    
+    self.logfile.flush_cache()
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE initialiseNumberOfDrums
+    {
+    Description : 4.0
+    }
+    
+    DEFINE CLASS NUMBER_OF_DRUMS_CLASS
+        INITIALISATION
+        PROPERTIES
+            "logfile",
+            "continue",
+            "theoreticalYield",
+            "capsulesPerDrum",
+            "numberOfDrums",
+            "dummy"
+        ACTIONS
+            "getTheoreticalYield",
+            "getCapsulesPerDrum",
+            "calculate",
+            "dummy"
+        END CLASS
+    
+    RETURN
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE NUMBER_OF_DRUMS_CLASS_class_initialisation
+    (
+            self   
+    )
+
+    {
+    Description : 4.0
+    }
+    
+    cs_lib_log_define_class()
+    CREATE OBJECT LOG_FILE_CLASS, self.logfile
+    self.logfile.module = "SAMPLE_SIZE"
+    self.logfile.cache_flush = CACHE_FLUSH_EVERY_MESSAGE
+    
+    IF ( GLOBAL( "MODE" ) <> "INTERACTIVE" ) 
+    
+        self.logfile.flash_error = FALSE
+        
+    ENDIF
+    
+    IF  ( global_exists( "TRACE_SAMPLE_SIZE" ) )
+   
+        self.logfile.trace = GLOBAL( "TRACE_SAMPLE_SIZE" )
+
+    ELSE
+    
+        self.logfile.trace = TRUE                                       {???}
+        
+    ENDIF
+    
+    self.continue = TRUE
+    self.numberOfDrums = 0
+    
+    RETURN
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE NUMBER_OF_DRUMS_CLASS_action_getTheoreticalYield
+    (
+            self   
+    )
+
+    {
+    Description : 4.0
+    }
+   
+    IF ( NOT self.continue ) THEN RETURN ENDIF
+    
+    self.theoreticalYield = SELECT sample.theoretical_yield
+    
+    IF ( self.theoreticalYield <= 0 )
+    
+        self.continue = FALSE
+        self.logfile.error( "Theoretical Yield " 
+                          : STRIP( NUMBER_TO_TEXT( self.theoreticalYield, "9999999999.9999999999" ) ) 
+                          : " <= 0"
+                          )
+
+    ELSE
+    
+        self.logfile.trace2( "theoreticalYield", STRIP( NUMBER_TO_TEXT( self.theoreticalYield, "9999999999.9999999999" ) ) )
+        
+    ENDIF
+    
+    RETURN
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE NUMBER_OF_DRUMS_CLASS_action_getCapsulesPerDrum
+    (
+            self   
+    )
+
+    {
+    Description : 4.0
+    
+    ??? Currently read from NO_CONTAINERS for testing only
+    }
+   
+    IF ( NOT self.continue ) THEN RETURN ENDIF
+    
+    self.capsulesPerDrum = SELECT sample.capsules_per_drum
+    
+    IF ( self.capsulesPerDrum <= 0 )
+    
+        self.continue = FALSE
+        self.logfile.error( "Capsuler per drum " 
+                          : STRIP( NUMBER_TO_TEXT( self.capsulesPerDrum, "9999999999.9999999999" ) ) 
+                          : " <= 0"
+                          )
+        
+    ELSE
+    
+        self.logfile.trace2( "capsulesPerDrum", STRIP( NUMBER_TO_TEXT( self.capsulesPerDrum, "9999999999.9999999999" ) ) )
+        
+    ENDIF
+    
+    RETURN
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE NUMBER_OF_DRUMS_CLASS_action_calculate
+    (
+            self   
+    )
+
+    {
+    Description : 4.0
+    }
+   
+    IF ( NOT self.continue ) THEN RETURN ENDIF
+    
+    self.numberOfDrums = self.theoreticalYield / self.capsulesPerDrum
+    
+    RETURN
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE updateSampleSize
+    (
+    VALUE isModify ,
+    VALUE actionType
+    )
+
+    {
+    Description : 4.0
+    }
+    
+    DECLARE self
+    
+    initialiseSampleSize()
+    
+    CREATE OBJECT SAMPLE_SIZE_CLASS, self
+
+    self.logfile.trace( "*** updateSampleSize" )
+
+    IF ( NOT templatePromptField( "SAMPLE_SIZE" ) )
+
+    self.getNumberOfDrums()
+    self.getTotalSampleSize()
+    self.calculate()
+    
+    ASSIGN sample.sample_size = self.sampleSize
+    self.logfile.trace2( "sampleSize", self.sampleSize )
+
+    ELSE
+    
+        self.logfile.trace( "Prompt Set SAMPLE_SIZE" )
+        
+    ENDIF
+    
+    self.logfile.flush_cache()
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE initialiseSampleSize 
+
+    {
+    Description : 4.0
+    }
+    
+    DEFINE CLASS SAMPLE_SIZE_CLASS
+        INITIALISATION
+        PROPERTIES
+            "logfile",
+            "continue",
+            "numberOfDrums",
+            "totalSampleSize",
+            "drumSampleSize",
+            "sampleSize",
+            "dummy"
+        ACTIONS
+            "getNumberOfDrums",
+            "getTotalSampleSize",
+            "calculate",
+            "dummy"
+        END CLASS
+    
+    RETURN
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE SAMPLE_SIZE_CLASS_class_initialisation
+    (
+            self   
+    )
+
+    {
+    Description : 4.0
+    }
+    
+    cs_lib_log_define_class()
+    CREATE OBJECT LOG_FILE_CLASS, self.logfile
+    self.logfile.module = "SAMPLE_SIZE"
+    self.logfile.cache_flush = CACHE_FLUSH_EVERY_MESSAGE
+    
+    IF ( GLOBAL( "MODE" ) <> "INTERACTIVE" ) 
+    
+        self.logfile.flash_error = FALSE
+        
+    ENDIF
+    
+    IF  ( global_exists( "TRACE_SAMPLE_SIZE" ) )
+   
+        self.logfile.trace = GLOBAL( "TRACE_SAMPLE_SIZE" )
+
+    ELSE
+    
+        self.logfile.trace = TRUE                                       {???}
+        
+    ENDIF
+    
+    self.continue = TRUE
+    self.sampleSize = ""
+    
+    RETURN
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE SAMPLE_SIZE_CLASS_action_getNumberOfDrums
+    (
+            self   
+    )
+
+    {
+    Description : 4.0
+    }
+   
+    IF ( NOT self.continue ) THEN RETURN ENDIF
+    
+    self.numberOfDrums = SELECT sample.no_drums
+    
+    IF ( self.numberOfDrums <= 0 )
+    
+        self.continue = FALSE
+        self.logfile.error( "Number of drums " 
+                          : STRIP( NUMBER_TO_TEXT( self.numberOfDrums, "9999999999" ) ) 
+                          : " <= 0"
+                          )
+
+    ELSE
+    
+        self.logfile.trace2( "numberOfDrums", STRIP( NUMBER_TO_TEXT( self.numberOfDrums, "9999999999" ) ) )
+        
+    ENDIF
+    
+    RETURN
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE SAMPLE_SIZE_CLASS_action_getTotalSampleSize
+    (
+            self   
+    )
+
+    {
+    Description : 4.0
+    
+    ??? Currently read from NO_CONTAINERS for testing only
+    }
+   
+    IF ( NOT self.continue ) THEN RETURN ENDIF
+    
+    self.totalSampleSize = SELECT sample.total_sample_size
+    
+    IF ( self.totalSampleSize <= 0 )
+    
+        self.continue = FALSE
+        self.logfile.error( "Total sample size " 
+                          : STRIP( NUMBER_TO_TEXT( self.totalSampleSize, "9999999999" ) ) 
+                          : " <= 0"
+                          )
+        
+    ELSEIF ( self.totalSampleSize < self.numberOfDrums )
+
+        self.continue = FALSE
+        self.logfile.error( "Total sample size " 
+                          : STRIP( NUMBER_TO_TEXT( self.totalSampleSize, "9999999999" ) ) 
+                          : " < " 
+                          : STRIP( NUMBER_TO_TEXT( self.totalSampleSize, "9999999999" ) ) 
+                          : " Number of Drums"
+                          )
+    
+    ELSE
+    
+        self.logfile.trace2( "totalSampleSize", STRIP( NUMBER_TO_TEXT( self.totalSampleSize, "9999999999" ) ) )
+        
+    ENDIF
+    
+    RETURN
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE SAMPLE_SIZE_CLASS_action_calculate
+    (
+            self   
+    )
+
+    {
+    Description : 4.0
+    }
+   
+    IF ( NOT self.continue ) THEN RETURN ENDIF
+    
+    DECLARE drumSampleSize
+    DECLARE lastDrumSampleSize
+    
+    drumSampleSize = self.totalSampleSize / self.numberOfDrums
+    self.logfile.trace2( "drumSampleSize", STRIP( NUMBER_TO_TEXT( drumSampleSize, "9999999999.999" ) ) )
+    
+    drumSampleSize = ROUND( drumSampleSize )
+    self.logfile.trace2( "drumSampleSize", STRIP( NUMBER_TO_TEXT( drumSampleSize, "9999999999" ) ) )
+
+    lastDrumSampleSize = self.totalSampleSize - ( ( self.numberOfDrums - 1 ) * drumSampleSize ) 
+    self.logfile.trace2( "lastDrumSampleSize", STRIP( NUMBER_TO_TEXT( lastDrumSampleSize, "9999999999" ) ) )
+    
+    IF ( self.numberOfDrums > 1 )
+
+        IF ( drumSampleSize = lastDrumSampleSize )
+        
+            self.sampleSize = "Drum 1 to " 
+                            : STRIP( NUMBER_TO_TEXT( self.numberOfDrums, "9999999999" ) ) 
+                            : " = "
+                            : STRIP( NUMBER_TO_TEXT( drumSampleSize, "9999999999" ) ) 
+
+        ELSE
+        
+            self.sampleSize = "Drum 1 to " 
+                            : STRIP( NUMBER_TO_TEXT( ( self.numberOfDrums - 1 ), "9999999999" ) ) 
+                            : " = "
+                            : STRIP( NUMBER_TO_TEXT( drumSampleSize, "9999999999" ) ) 
+                            : ", Drum "
+                            : STRIP( NUMBER_TO_TEXT( self.numberOfDrums, "9999999999" ) ) 
+                            : " = "
+                            : STRIP( NUMBER_TO_TEXT( lastDrumSampleSize, "9999999999" ) ) 
+
+        ENDIF
+        
+    ELSE
+    
+        self.sampleSize = "Drum 1 = " 
+                        : STRIP( NUMBER_TO_TEXT( lastDrumSampleSize, "9999999999" ) ) 
+        
+    ENDIF
+    
+    RETURN
+    
+ENDROUTINE
+
+
+{manufacture and expiry routines}
+
+ROUTINE expiry_from_login ( VALUE column_num ,         { form column }
+                            VALUE line_num,            { form row    }
+                            display_id,                { form window }
+                            VALUE is_display )         { display T/F }
+
+{
+*    Calculates Expiry Date from Now. 
+*
+*******************************************************************************}
+
+    DECLARE context,
+            article_code,
+            expiry_interval,
+            expiry_date,
+            group_checking
+
+    group_checking = GLOBAL ("CHECK_GROUPS")
+
+    SET SECURITY FALSE
+
+    expiry_date     = SELECT job_header . expiry_date
+    article_code    = SELECT job_header . material
+
+    push_file_descriptor ("JOB_HEADER", context)
+
+    expiry_interval = SELECT materials . expiry_interval WHERE
+                             article_code = article_code
+
+    pop_file_descriptor (context)
+
+
+    IF (BLANK(expiry_date) OR (STRIP(expiry_date) = "")) THEN
+
+        IF ( expiry_interval <> EMPTY ) THEN
+
+            expiry_date = NOW + expiry_interval
+
+        ELSE
+
+            expiry_date = ""
+
+        ENDIF
+
+    ENDIF
+
+    IF ( expiry_date = EMPTY ) THEN
+
+        expiry_date = ""
+
+    ENDIF
+
+    IF ( column_num <> 0 ) AND ( line_num <> 0 ) THEN
+    
+        IF is_display THEN
+
+            DISPLAY expiry_date
+                IN WINDOW display_id
+                ON LINE   line_num
+                FROM   column_num
+                FORMAT job_header . expiry_date
+
+        ELSE
+
+            PROMPT FOR expiry_date
+                IN WINDOW display_id
+                ON LINE   line_num
+                FROM   column_num
+                FORMAT job_header . expiry_date
+                WITH ( display_only  = FALSE )
+
+        ENDIF
+    
+    ENDIF
+
+    ASSIGN job_header . expiry_date = expiry_date
+
+    SET SECURITY group_checking
+
+ENDROUTINE {expiry_from_login}
+
+
+
+ROUTINE expiry_from_mfg   ( VALUE column_num ,         { form column }
+                            VALUE line_num,            { form row    }
+                            display_id,                { form window }
+                            VALUE is_display )         { display T/F }
+
+{
+*    Calculates Expiry Date from Manufacturing Date. 
+*
+*******************************************************************************}
+
+    DECLARE context,
+            article_code,
+            expiry_interval,
+            expiry_date,
+            mfg_date,
+            group_checking,
+            job_template
+
+    group_checking = GLOBAL ("CHECK_GROUPS")
+
+    SET SECURITY FALSE
+
+    expiry_date     = SELECT job_header . expiry_date
+    article_code    = SELECT job_header . material
+    mfg_date        = SELECT job_header . mfg_date
+    job_template    = SELECT job_header . template_id
+
+
+    push_file_descriptor ("JOB_HEADER", context)
+
+    expiry_interval = SELECT materials . expiry_interval WHERE
+                             article_code = article_code
+
+    pop_file_descriptor (context)
+
+    IF (STRIP(job_template) = "SFP_MARKET") THEN
+
+        IF (STRIP(mfg_date) <> "") THEN
+
+            IF ( expiry_interval <> EMPTY ) THEN
+
+                expiry_date = mfg_date + expiry_interval
+
+            ELSE
+
+                expiry_date = ""
+
+            ENDIF
+
+        ENDIF
+
+     ELSE
+
+        IF (BLANK(expiry_date) AND (STRIP(mfg_date) <> "")) THEN
+
+            IF ( expiry_interval <> EMPTY ) THEN
+
+                expiry_date = mfg_date + expiry_interval
+
+            ELSE
+
+                expiry_date = ""
+
+            ENDIF
+
+        ENDIF
+
+    ENDIF
+
+    IF ( expiry_date = EMPTY ) THEN
+
+        expiry_date = ""
+
+    ENDIF
+    SET DATE FORMAT "DD-MON-YYYY"
+    IF ( column_num <> 0 ) AND ( line_num <> 0 ) THEN
+    
+        IF is_display THEN
+
+            DISPLAY expiry_date
+                IN WINDOW display_id
+                ON LINE   line_num
+                FROM   column_num
+                FORMAT job_header . expiry_date
+
+        ELSE
+
+            PROMPT FOR expiry_date
+                IN WINDOW display_id
+                ON LINE   line_num
+                FROM   column_num
+                FORMAT job_header . expiry_date
+                WITH ( display_only  = FALSE )
+
+        ENDIF
+    
+    ENDIF
+
+    ASSIGN job_header . expiry_date = expiry_date
+
+    SET SECURITY group_checking
+
+ENDROUTINE {expiry_from_mfg}
+
+ROUTINE samp_expiry_from_mfg   ( VALUE column_num ,         { form column }
+                            VALUE line_num,            { form row    }
+                            display_id,                { form window }
+                            VALUE is_display )         { display T/F }
+
+{
+*    Calculates Expiry Date from Manufacturing Date. 
+*
+*******************************************************************************}
+
+    DECLARE context,
+            article_code,
+            expiry_interval,
+            expiry_date,
+            mfg_date,
+            group_checking
+
+    group_checking = GLOBAL ("CHECK_GROUPS")
+
+    SET SECURITY FALSE
+
+    SET DATE FORMAT "DD-MON-YYYY"
+
+    expiry_date = ""
+
+    article_code    = SELECT sample . material
+    mfg_date        = SELECT sample . manufacturing_date
+
+    push_file_descriptor ("SAMPLE", context)
+
+    expiry_interval = SELECT materials . expiry_interval WHERE
+                             article_code = article_code
+
+    pop_file_descriptor (context)
+
+  IF (BLANK(expiry_interval))
+
+	{do nothing}
+
+  ELSE
+ 
+        IF ((STRIP(mfg_date) <> "")) THEN
+
+            IF ( expiry_interval <> EMPTY )  THEN
+
+                expiry_date = mfg_date + expiry_interval
+
+
+            ELSE
+
+                expiry_date = ""
+
+            ENDIF
+
+        ENDIF
+
+  ENDIF
+
+    IF ( expiry_date = EMPTY ) OR (expiry_date = "") THEN
+
+        expiry_date = ""
+
+    ENDIF
+
+    IF ( column_num <> 0 ) AND ( line_num <> 0 ) THEN
+    
+        IF is_display THEN
+
+            DISPLAY expiry_date
+                IN WINDOW display_id
+                ON LINE   line_num
+                FROM   column_num
+                FORMAT sample . bulk_expiry
+
+        ELSE
+
+            PROMPT FOR expiry_date
+                IN WINDOW display_id
+                ON LINE   line_num
+                FROM   column_num
+                FORMAT sample . bulk_expiry
+                WITH ( display_only  = FALSE )
+
+        ENDIF
+    
+    ENDIF
+
+    ASSIGN sample . bulk_expiry = expiry_date
+
+    SET SECURITY group_checking
+
+ENDROUTINE {samp_expiry_from_mfg}
+
+ROUTINE samp_pack_exp_from_mfg   ( VALUE column_num ,         { form column }
+                            VALUE line_num,            { form row    }
+                            display_id,                { form window }
+                            VALUE is_display )         { display T/F }
+
+{
+*    Calculates Packaged Expiry Date from Manufacturing Date. 
+*
+*******************************************************************************}
+
+    DECLARE context,
+            article_code,
+            expiry_interval,
+		pack_expiry_interval,
+            expiry_date,
+            mfg_date,
+            group_checking,
+		day,
+		month,
+		year
+
+    group_checking = GLOBAL ("CHECK_GROUPS")
+
+    SET SECURITY FALSE
+
+    SET DATE FORMAT "DD-MM-YYYY"
+
+
+    expiry_date     = SELECT sample . pack_expiry
+    article_code    = SELECT sample . material
+    mfg_date        = SELECT sample . manufacturing_date
+
+    push_file_descriptor ("SAMPLE", context)
+
+    expiry_interval = SELECT materials . expiry_interval WHERE
+                             article_code = article_code
+
+    pack_expiry_interval = SELECT materials . pack_expiry_int WHERE
+                             article_code = article_code
+
+
+
+  IF BLANK(pack_expiry_interval) 
+
+	{do nothing}
+
+  ELSEIF (pack_expiry_interval <> EMPTY) OR (STRIP(pack_expiry_interval) <> "")  THEN
+
+	expiry_interval = pack_expiry_interval
+
+  ENDIF
+
+    pop_file_descriptor (context)
+
+  IF (BLANK(expiry_interval))
+
+	{do nothing}
+
+  ELSE
+ 
+        IF (STRIP(mfg_date) <> "") THEN {4.4}
+
+            IF ( expiry_interval <> EMPTY )  THEN
+
+                	expiry_date = mfg_date + expiry_interval
+
+
+		    	day = NUMERIC ( SUBSTRING ( expiry_date , 1 , 2 ))
+
+		    	month = NUMERIC ( SUBSTRING ( expiry_date , 4 , 2 ))
+
+{4.2 Subtract 1 month and change year if required}
+
+		    IF month > 1 THEN
+
+		      month = month - 1
+
+		      year = NUMERIC ( SUBSTRING ( expiry_date , 7 , 4 ))
+
+		    ELSEIF month = 1 
+			
+		      month = 12
+
+		      year = NUMERIC ( SUBSTRING ( expiry_date , 7 , 4 ))
+
+			year = year - 1
+
+		    ELSE
+
+			{do nothing}
+
+		    ENDIF
+
+{4.3 Check days}
+		    IF month = 2 THEN
+
+		    	IF day > 28 THEN
+
+				day = 28
+
+			ENDIF
+
+		    ELSEIF month = 4
+			
+		      IF day > 30 THEN
+
+				day = 30
+
+			ENDIF
+
+		    ELSEIF month = 6
+			
+		      IF day > 30 THEN
+
+				day = 30
+
+			ENDIF
+
+
+		    ELSEIF month = 9
+			
+		      IF day > 30 THEN
+
+				day = 30
+
+			ENDIF
+
+		    ELSEIF month = 11
+			
+		      IF day > 30 THEN
+
+				day = 30
+
+			ENDIF
+
+		    ELSE
+
+			{do nothing}
+
+		    ENDIF
+			
+
+		      expiry_date = NUMBER_TO_TEXT ( day , "99" ) : "-": NUMBER_TO_TEXT ( month , "99" ) : "-" : NUMBER_TO_TEXT ( year , "9999" )
+
+			expiry_date = DATE (expiry_date) {4.5}
+
+            ELSE
+
+                expiry_date = ""
+
+            ENDIF
+
+        ENDIF
+
+  ENDIF
+
+      SET DATE FORMAT "DD-MON-YYYY"
+			
+
+    IF ( expiry_date = EMPTY ) OR (expiry_date = "") THEN
+
+        expiry_date = ""
+
+    ENDIF
+
+    IF ( column_num <> 0 ) AND ( line_num <> 0 ) THEN
+    
+        IF is_display THEN
+
+            DISPLAY expiry_date
+                IN WINDOW display_id
+                ON LINE   line_num
+                FROM   column_num
+                FORMAT sample . pack_expiry
+
+        ELSE
+
+            PROMPT FOR expiry_date
+                IN WINDOW display_id
+                ON LINE   line_num
+                FROM   column_num
+                FORMAT sample . pack_expiry
+                WITH ( display_only  = FALSE )
+
+        ENDIF
+    
+    ENDIF
+
+    ASSIGN sample . pack_expiry = expiry_date
+
+    SET SECURITY group_checking
+
+    RESTORE DATE FORMAT
+
+
+ENDROUTINE {samp_pack_exp_from_mfg}
+
+ROUTINE samp_pack_exp_2   ( VALUE column_num ,         { form column }
+                            VALUE line_num,            { form row    }
+                            display_id,                { form window }
+                            VALUE is_display )         { display T/F }
+
+{
+*    Calculates Packaged Expiry Date 2 from packaged date. 
+*
+*******************************************************************************}
+
+    DECLARE pack_expiry,
+            pack_expiry_2,
+            group_checking,
+		day,
+		month,
+		year
+
+    group_checking = GLOBAL ("CHECK_GROUPS")
+
+    SET SECURITY FALSE
+
+    SET DATE FORMAT "DD-MM-YYYY"
+
+
+    pack_expiry     = SELECT sample . pack_expiry
+    pack_expiry_2     = SELECT sample . pack_expiry_2
+
+ 
+
+  IF (BLANK(pack_expiry))
+
+	{do nothing}
+
+  ELSE
+ 
+        IF (STRIP(pack_expiry) <> "") THEN {4.4}
+
+            
+
+                	day = NUMERIC ( SUBSTRING ( pack_expiry , 1 , 2 ))
+
+		    	month = NUMERIC ( SUBSTRING ( pack_expiry , 4 , 2 ))
+		      
+		      year = NUMERIC ( SUBSTRING ( pack_expiry , 7 , 4 ))
+
+			year = year + 1
+
+		      pack_expiry_2 = NUMBER_TO_TEXT ( day , "99" ) : "-": NUMBER_TO_TEXT ( month , "99" ) : "-" : NUMBER_TO_TEXT ( year , "9999" )
+
+    	    		SET DATE FORMAT "DD-MON-YYYY"
+
+		      pack_expiry_2 = date (pack_expiry_2)
+
+        ENDIF
+
+  ENDIF
+
+    IF ( pack_expiry_2 = EMPTY ) OR (pack_expiry_2 = "") THEN
+
+        pack_expiry_2 = ""
+
+    ENDIF
+
+
+  SET DATE FORMAT "DD-MON-YYYY"
+
+    IF ( column_num <> 0 ) AND ( line_num <> 0 ) THEN
+    
+        IF is_display THEN
+
+            DISPLAY pack_expiry_2
+                IN WINDOW display_id
+                ON LINE   line_num
+                FROM   column_num
+                FORMAT sample . pack_expiry_2
+
+        ELSE
+
+            PROMPT FOR pack_expiry_2
+                IN WINDOW display_id
+                ON LINE   line_num
+                FROM   column_num
+                FORMAT sample . pack_expiry_2
+                WITH ( display_only  = FALSE )
+
+        ENDIF
+    
+    ENDIF
+
+    ASSIGN sample . pack_expiry_2 = pack_expiry_2
+
+    SET SECURITY group_checking
+
+    RESTORE DATE FORMAT
+
+
+ENDROUTINE {samp_pack_exp_2}
+
+
+ROUTINE mfg_from_bulk     ( VALUE column_num ,         { form column }
+                            VALUE line_num,            { form row    }
+                            display_id,                { form window }
+                            VALUE is_display )         { display T/F }
+
+{
+*    Gets Manufacturing Date from Bulk (Parent Batch).  XXX - Update to take account of 
+*    possibility of more than one parent batch  - XXX
+*
+*******************************************************************************}
+
+    DECLARE context,
+            mfg_date,
+            parent_batch,
+            parent_mfg,
+            the_job,
+            group_checking
+
+    group_checking = GLOBAL ("CHECK_GROUPS")
+
+    SET SECURITY FALSE
+
+    mfg_date        = SELECT job_header . mfg_date
+    parent_batch    = SELECT job_header . parent_batch
+    the_job         = SELECT job_header . job_name
+
+    push_file_descriptor ("JOB_HEADER", context)
+
+    parent_mfg    = SELECT job_header . mfg_date WHERE
+                           batch_name = STRIP(parent_batch) AND 
+                           job_name <> the_job
+
+ 
+
+    pop_file_descriptor (context)
+    
+
+
+     IF (BLANK(mfg_date) OR (STRIP(mfg_date) = "")) THEN
+  
+         IF ( parent_mfg <> EMPTY ) THEN
+
+             mfg_date = parent_mfg
+
+         ELSE
+ 
+             mfg_date = ""
+
+         ENDIF
+
+    ENDIF
+
+    IF ( mfg_date = EMPTY ) THEN
+
+        mfg_date = ""
+
+    ENDIF
+    SET DATE FORMAT "DD-MON-YYYY"
+    IF ( column_num <> 0 ) AND ( line_num <> 0 ) THEN        
+    
+        IF is_display THEN
+
+            DISPLAY mfg_date
+                IN WINDOW display_id
+                ON LINE   line_num
+                FROM   column_num
+                FORMAT job_header . mfg_date
+
+        ELSE
+
+            PROMPT FOR mfg_date
+                IN WINDOW display_id
+                ON LINE   line_num
+                FROM   column_num
+                FORMAT job_header . expiry_date
+                WITH ( display_only  = FALSE )
+
+        ENDIF
+    
+    ENDIF
+
+    ASSIGN job_header . mfg_date = mfg_date
+
+    SET SECURITY group_checking
+
+ENDROUTINE {mfg_from_bulk}
+
+ROUTINE samp_mfg_from_bulk     ( VALUE column_num ,         { form column }
+                            VALUE line_num,            { form row    }
+                            display_id,                { form window }
+                            VALUE is_display )         { display T/F }
+
+{
+*    Gets Manufacturing Date from Bulk (Parent Batch).  XXX - Update to take account of 
+*    possibility of more than one parent batch  - XXX
+*
+*******************************************************************************}
+
+    DECLARE context,
+            mfg_date,
+            parent_batch,
+            parent_mfg,            group_checking
+
+    group_checking = GLOBAL ("CHECK_GROUPS")
+
+    SET SECURITY FALSE
+
+    mfg_date        = SELECT sample . manufacturing_date
+    parent_batch    = SELECT job_header . parent_batch
+
+
+    push_file_descriptor ("SAMPLE", context)
+
+    parent_mfg    = SELECT sample . manufacturing_date WHERE
+                           use_on_coa = TRUE AND 
+                           job_name = parent_batch
+
+ 
+
+    pop_file_descriptor (context)
+    
+
+
+     IF (BLANK(mfg_date) OR (STRIP(mfg_date) = "")) THEN
+  
+         IF ( parent_mfg <> EMPTY ) THEN
+
+             mfg_date = parent_mfg
+
+         ELSE
+ 
+             mfg_date = ""
+
+         ENDIF
+
+    ENDIF
+
+    IF ( mfg_date = EMPTY ) THEN
+
+        mfg_date = ""
+
+    ENDIF
+    SET DATE FORMAT "DD-MON-YYYY"
+    IF ( column_num <> 0 ) AND ( line_num <> 0 ) THEN        
+    
+        IF is_display THEN
+
+            DISPLAY mfg_date
+                IN WINDOW display_id
+                ON LINE   line_num
+                FROM   column_num
+                FORMAT sample . manufacturing_date
+
+        ELSE
+
+            PROMPT FOR mfg_date
+                IN WINDOW display_id
+                ON LINE   line_num
+                FROM   column_num
+                FORMAT sample . manufacturing_date
+                WITH ( display_only  = FALSE )
+
+        ENDIF
+    
+    ENDIF
+
+    ASSIGN sample. manufacturing_date = mfg_date
+
+    SET SECURITY group_checking
+
+ENDROUTINE {samp_mfg_from_bulk}
+
+ROUTINE samp_exp_from_bulk     ( VALUE column_num ,         { form column }
+                            VALUE line_num,            { form row    }
+                            display_id,                { form window }
+                            VALUE is_display )         { display T/F }
+
+{
+*    Gets Manufacturing Date from Bulk (Parent Batch).  XXX - Update to take account of 
+*    possibility of more than one parent batch  - XXX
+*
+*******************************************************************************}
+
+    DECLARE context,
+            exp_date,
+            parent_batch,
+            parent_exp,            group_checking
+
+    group_checking = GLOBAL ("CHECK_GROUPS")
+
+    SET SECURITY FALSE
+
+    exp_date        = ""
+    parent_batch    = SELECT job_header . parent_batch
+
+
+    push_file_descriptor ("SAMPLE", context)
+
+    parent_exp    = SELECT sample . bulk_expiry WHERE
+                           use_on_coa = TRUE AND 
+                           job_name = parent_batch
+
+
+
+    pop_file_descriptor (context)
+    
+
+
+     IF (BLANK(exp_date) OR (STRIP(exp_date) = "")) THEN
+  
+         IF ( parent_exp <> EMPTY ) THEN
+
+             exp_date = parent_exp
+
+         ELSE
+ 
+             exp_date = ""
+
+         ENDIF
+
+    ENDIF
+
+    IF ( exp_date = EMPTY ) THEN
+
+        exp_date = ""
+
+    ENDIF
+    SET DATE FORMAT "DD-MON-YYYY"
+    IF ( column_num <> 0 ) AND ( line_num <> 0 ) THEN        
+    
+        IF is_display THEN
+
+            DISPLAY exp_date
+                IN WINDOW display_id
+                ON LINE   line_num
+                FROM   column_num
+                FORMAT sample . bulk_expiry
+
+        ELSE
+
+            PROMPT FOR exp_date
+                IN WINDOW display_id
+                ON LINE   line_num
+                FROM   column_num
+                FORMAT sample . bulk_expiry
+                WITH ( display_only  = FALSE )
+
+        ENDIF
+    
+    ENDIF
+
+    ASSIGN sample. bulk_expiry = exp_date
+
+    SET SECURITY group_checking
+
+ENDROUTINE {samp_exp_from_bulk}
+
+
+
+
+ROUTINE expiry_from_mfg_plus1   ( VALUE column_num ,         { form column }
+                                  VALUE line_num,            { form row    }
+                                  display_id,                { form window }
+                                  VALUE is_display )         { display T/F }
+
+{
+*    Calculates Expiry Date from Manufacturing Date using the expiry interval
+*    plus 1 day. 
+*
+*******************************************************************************}
+
+    DECLARE context,
+            article_code,
+            expiry_interval,
+            expiry_date,
+            mfg_date,
+            group_checking,
+            job_template
+
+    group_checking = GLOBAL ("CHECK_GROUPS")
+
+    SET SECURITY FALSE
+
+    expiry_date     = SELECT job_header . expiry_date
+    article_code    = SELECT job_header . material
+    mfg_date        = SELECT job_header . mfg_date
+    job_template    = SELECT job_header . template_id
+
+    push_file_descriptor ("JOB_HEADER", context)
+
+    expiry_interval = SELECT materials . expiry_interval WHERE
+                             article_code = article_code
+
+    pop_file_descriptor (context)
+
+    IF (STRIP(job_template) = "SFP_MARKET") THEN
+
+        IF (STRIP(mfg_date) <> "") THEN
+
+            IF ( expiry_interval <> EMPTY ) THEN
+
+                expiry_date = mfg_date + expiry_interval
+
+            ELSE
+
+                expiry_date = ""
+
+            ENDIF
+
+        ENDIF
+
+     ELSE
+
+        IF (BLANK(expiry_date) AND (STRIP(mfg_date) <> "")) THEN
+
+            IF ( expiry_interval <> EMPTY ) THEN
+
+                expiry_date = mfg_date + expiry_interval
+
+            ELSE
+
+                expiry_date = ""
+
+            ENDIF
+
+        ENDIF
+
+    ENDIF
+
+    IF ( expiry_date = EMPTY ) THEN
+
+        expiry_date = ""
+
+    ENDIF
+
+    IF ( column_num <> 0 ) AND ( line_num <> 0 ) THEN
+    
+        IF is_display THEN
+
+            DISPLAY expiry_date
+                IN WINDOW display_id
+                ON LINE   line_num
+                FROM   column_num
+                FORMAT job_header . expiry_date
+
+        ELSE
+
+            PROMPT FOR expiry_date
+                IN WINDOW display_id
+                ON LINE   line_num
+                FROM   column_num
+                FORMAT job_header . expiry_date
+                WITH ( display_only  = FALSE )
+
+        ENDIF
+    
+    ENDIF
+
+    ASSIGN job_header . expiry_date = expiry_date
+
+    SET SECURITY group_checking
+
+ENDROUTINE {expiry_from_mfg_plus1}
+
+
+
+ROUTINE expiry_from_mfg_months   ( VALUE column_num ,         { form column }
+                                   VALUE line_num,            { form row    }
+                                   display_id,                { form window }
+                                   VALUE is_display )         { display T/F }
+
+{
+*    Calculates Expiry Date from Manufacturing Date using a number of months.
+*    The numbr of months is obtained by dividing the number of days specified 
+*    in the expiry interval by 30 and truncating digits after the decimal
+*    Core and granulate jobs get the expiry from the manufacture directly
+*
+*******************************************************************************}
+
+     DECLARE context,
+            article_code,
+            expiry_interval,
+            expiry_date,
+            mfg_date,
+            group_checking,
+            no_of_months,
+            sub_type
+
+    group_checking = GLOBAL ("CHECK_GROUPS")
+
+    SET SECURITY FALSE
+
+    expiry_date     = SELECT job_header . expiry_date
+    article_code    = SELECT job_header . material
+    mfg_date        = SELECT job_header . mfg_date
+
+    push_file_descriptor ("JOB_HEADER", context)
+
+    expiry_interval = SELECT materials . expiry_interval WHERE
+                             article_code = article_code
+                             
+    sub_type        = SELECT materials . sub_type WHERE 
+                 article_code = article_code
+
+
+    IF expiry_interval <> EMPTY THEN
+
+        no_of_months = TRUNC(LEFTSTRING(expiry_interval, 4) / 30)
+  
+    ENDIF
+
+
+    pop_file_descriptor (context)
+
+IF (sub_type = "CORE") THEN
+
+    IF (BLANK(expiry_date) AND (STRIP(mfg_date) <> "")) THEN
+
+            IF ( expiry_interval <> EMPTY ) THEN
+
+                expiry_date = mfg_date + expiry_interval
+
+            ELSE
+
+                expiry_date = ""
+
+            ENDIF
+
+        ENDIF
+
+
+
+ELSE
+
+        IF (BLANK(expiry_date) AND (STRIP(mfg_date) <> "")) THEN
+
+            IF ( expiry_interval <> EMPTY ) THEN
+
+                 expiry_date = add_months (mfg_date, no_of_months)
+
+            ELSE
+
+                 expiry_date = ""
+
+            ENDIF
+
+        ENDIF
+        
+ENDIF
+
+    IF ( expiry_date = EMPTY ) THEN
+
+        expiry_date = ""
+
+    ENDIF
+
+    IF ( column_num <> 0 ) AND ( line_num <> 0 ) THEN
+    
+        IF is_display THEN
+
+            DISPLAY expiry_date
+                IN WINDOW display_id
+                ON LINE   line_num
+                FROM   column_num
+                FORMAT job_header . expiry_date
+
+        ELSE
+
+            PROMPT FOR expiry_date
+                IN WINDOW display_id
+                ON LINE   line_num
+                FROM   column_num
+                FORMAT job_header . expiry_date
+                WITH ( display_only  = FALSE )
+
+        ENDIF
+    
+    ENDIF
+
+    ASSIGN job_header . expiry_date = expiry_date
+
+    SET SECURITY group_checking
+
+ENDROUTINE {expiry_from_mfg_months}
+
+ROUTINE mfg_from_batch     ( VALUE column_num ,         { form column }
+                                 VALUE line_num,            { form row    }
+                                 display_id,                { form window }
+                                 VALUE is_display )         { display T/F }
+
+{
+*    Gets Manufacturing Date from parent batch . This routine can be used in the SFP-Market 
+*    template so that the manufacturing date does not have to be 
+*    entered for these jobs
+*
+*******************************************************************************}
+
+    DECLARE context,
+            mfg_date,
+            group_checking,
+            parent_batch,
+        parent_mfg
+
+    group_checking = GLOBAL ("CHECK_GROUPS")
+
+    SET SECURITY FALSE
+
+    mfg_date        = SELECT job_header . mfg_date
+    parent_batch    = SELECT job_header . parent_batch
+
+
+    IF (parent_batch <> "") THEN
+ 
+        push_file_descriptor ("JOB_HEADER", context)
+
+        parent_mfg = SELECT job_header . mfg_date WHERE
+                           batch_name = parent_batch                    {1.17}
+
+        pop_file_descriptor (context) 
+
+        {1.17}
+        IF (BLANK(mfg_date) OR (STRIP(mfg_date) = "")) THEN
+  
+            IF ( parent_mfg <> EMPTY ) THEN
+
+                mfg_date = parent_mfg
+
+            ELSE
+ 
+                mfg_date = ""
+
+            ENDIF
+
+        ENDIF   
+        {/1.17} 
+
+    ENDIF
+
+
+ 
+          
+    IF ( mfg_date = EMPTY ) THEN
+
+        mfg_date = ""
+
+    ENDIF
+
+    IF ( column_num <> 0 ) AND ( line_num <> 0 ) THEN        
+    
+        IF is_display THEN
+
+            DISPLAY mfg_date
+                IN WINDOW display_id
+                ON LINE   line_num
+                FROM   column_num
+                FORMAT job_header . mfg_date
+
+        ELSE
+
+            PROMPT FOR mfg_date
+                IN WINDOW display_id
+                ON LINE   line_num
+                FROM   column_num
+                FORMAT job_header . expiry_date
+                WITH ( display_only  = FALSE )
+
+        ENDIF
+    
+    ENDIF
+
+    ASSIGN job_header . mfg_date = mfg_date
+
+    SET SECURITY group_checking
+
+ENDROUTINE {mfg_from_batch}
+
+
+ROUTINE final_inspec_plan  ( VALUE column_num ,         { form column }
+                          VALUE line_num,            { form row    }
+                          display_id,                { form window }
+                          VALUE is_display )         { display T/F }
+
+{
+*    Assigns the inspection plan for the final sample to the sample based on the material
+*    This is based on the material final sample type (sub_type_b)
+*
+*******************************************************************************}
+
+    DECLARE material,
+		stage, 
+            final_sample,
+            inspec_plan
+
+    material	= SELECT sample . material
+
+    stage         = SELECT sample . process_stage
+
+    final_sample 	= SELECT materials .sub_type_b
+					WHERE materials . article_code = material
+	
+    inspec_plan = "SAMP"
+
+	
+
+
+
+
+
+    IF ( stage = final_sample ) THEN
+
+        
+    		inspec_plan = "QA_SAMP"
+
+
+	
+    ELSE
+
+	{do nothing}
+
+    ENDIF
+
+    IF is_display THEN
+
+        DISPLAY inspec_plan
+            IN WINDOW display_id
+            ON LINE   line_num
+            FROM   column_num
+            FORMAT sample . inspection_header
+
+    ELSE
+
+        PROMPT FOR inspec_plan
+            IN WINDOW display_id
+            ON LINE   line_num
+            FROM   column_num
+            FORMAT sample . inspection_header
+            WITH ( display_only = FALSE )
+
+    ENDIF
+
+    ASSIGN sample . inspection_header = inspec_plan
+
+ENDROUTINE {final_inspec_plan}
+
+
+ROUTINE the_sample_type  ( VALUE column_num ,         { form column }
+                          VALUE line_num,            { form row    }
+                          display_id,                { form window }
+                          VALUE is_display )         { display T/F }
+
+{
+*    Assigns the sample type labelto the sample from the based on the stage and material
+*    This is based on the sample stage
+*
+*******************************************************************************}
+
+    DECLARE material,
+		label_profile, 
+            sample_type_label
+
+    material	= SELECT sample . material
+
+
+
+	
+
+
+   label_profile 	= SELECT materials.label_profile
+			WHERE materials.article_code = material
+
+
+
+    IF ( label_profile <> EMPTY ) THEN
+
+        
+		sample_type_label = label_profile
+
+
+	
+    ELSE
+
+	{do nothing}
+
+    ENDIF
+
+    IF is_display THEN
+
+        DISPLAY sample_type_label
+            IN WINDOW display_id
+            ON LINE   line_num
+            FROM   column_num
+            FORMAT sample . sample_type
+
+    ELSE
+
+        PROMPT FOR sample_type_label
+            IN WINDOW display_id
+            ON LINE   line_num
+            FROM   column_num
+            FORMAT sample . sample_type
+            WITH ( display_only = FALSE )
+
+    ENDIF
+
+    ASSIGN sample . sample_type = label_profile
+
+ENDROUTINE {the_sample_type}

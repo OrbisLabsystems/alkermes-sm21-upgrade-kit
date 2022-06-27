@@ -1,0 +1,208 @@
+{******************************************************************************
+*
+* Module Name   : T_MRU_LIST
+*
+* Purpose       : 
+*
+*******************************************************************************}
+
+SET NOTPROTECTED
+SET COMPILE_OPTION DECLARE
+SET NAME "DEFER/"
+
+ENABLE WINDOWS
+
+JOIN STANDARD_LIBRARY STD_DATABASE
+
+JOIN LIBRARY $LIB_INVENTORY
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $VGL_UNIT_TESTER
+
+DECLARE tester
+
+DECLARE low_stock_warning_id, low_stock_warning_amount, low_stock_warning_id_check
+
+low_stock_warning_id       = ""
+low_stock_warning_amount   = 0
+low_stock_warning_id_check = ""
+
+vgl_unit_tester_initialise( )
+
+CREATE OBJECT "VGL_UNIT_TESTER", tester
+
+test_inventory( tester )
+
+tester . report( )
+
+{******************************************************************************}
+
+ROUTINE test_inventory( tester )
+{
+* PRE CONDITION: Must have an inventory header defined with the following:
+*                identity:                 'BUDWEISER'
+*                reporting unit            'l' (litres)
+*                low stock level           50 litres
+*                Callback library          <this library>
+*                low stock level routine   'low_stock_test'
+*
+*
+*******************************************************************************}
+
+	DECLARE new_item, candidates
+
+	inventory_initialise( )
+
+	{ Clear the decks }
+	execute_sql( "DELETE FROM INVENTORY_ITEM WHERE INVENTORY_ID='BUDWEISER'" )
+	execute_sql( "DELETE FROM INVENTORY_ALLOCATION WHERE INVENTORY_ID='BUDWEISER'" )
+	execute_sql( "DELETE FROM INVENTORY_ALLOC_ITEM WHERE INVENTORY_ID='BUDWEISER'" )
+	execute_sql( "COMMIT" )
+
+	{ Check we're clean }
+	tester . eq( inventory_get_unit( "BUDWEISER" ) , "l" )
+	tester . eq( inventory_get_quantity_allocated  ( "BUDWEISER" ) , 0 )
+	tester . eq( inventory_get_quantity_unallocated( "BUDWEISER" ) , 0 )
+	tester . eq( inventory_get_quantity_total      ( "BUDWEISER" ) , 0 )
+
+	{ Add two items }
+	tester . eq( inventory_item_add( "BUDWEISER" , "1_CAN"  ,500 , "ml" ) , EMPTY )
+	tester . eq( inventory_item_add( "BUDWEISER" , "4_PACK" ,2   , "l"  ) , EMPTY )
+
+	{ Check items have been added }
+
+	tester . eq( inventory_item_get_quantity_allocated( "BUDWEISER", "1_CAN"  ) , 0 )
+	tester . eq( inventory_item_get_quantity_allocated( "BUDWEISER", "4_PACK" ) , 0 )
+
+	tester . eq( inventory_item_get_quantity_unallocated( "BUDWEISER", "1_CAN"  ) , 0.5 )
+	tester . eq( inventory_item_get_quantity_unallocated( "BUDWEISER", "4_PACK" ) , 2   )
+
+	tester . eq( inventory_item_get_quantity_total( "BUDWEISER", "1_CAN"  ) , 0.5 )
+	tester . eq( inventory_item_get_quantity_total( "BUDWEISER", "4_PACK" ) , 2   )
+	
+	tester . eq( inventory_get_quantity_allocated  ( "BUDWEISER" ) , 0   )
+	tester . eq( inventory_get_quantity_unallocated( "BUDWEISER" ) , 2.5 )
+	tester . eq( inventory_get_quantity_total      ( "BUDWEISER" ) , 2.5 )
+
+	{ Allocate part of a item (total: 105ml from 1_CAN) }
+	tester . eq( inventory_item_allocate( "BUDWEISER", "1_CAN", 5  , "ml", "Medicinal" ) , EMPTY )
+	tester . eq( inventory_item_allocate( "BUDWEISER", "1_CAN", 0.1, "l" , "Quick swig for thirst" ) , EMPTY )
+
+	{ Check allocation }
+	
+	tester . eq( inventory_item_get_quantity_allocated  ( "BUDWEISER", "1_CAN" ) , 0.105 )
+	tester . eq( inventory_item_get_quantity_unallocated( "BUDWEISER", "1_CAN" ) , 0.395 )	
+	tester . eq( inventory_item_get_quantity_total      ( "BUDWEISER", "1_CAN" ) , 0.5 )
+	
+	
+	tester . eq( inventory_get_quantity_allocated  ( "BUDWEISER" ) , 0.105 )
+	tester . eq( inventory_get_quantity_unallocated( "BUDWEISER" ) , 2.395 )
+	tester . eq( inventory_get_quantity_total      ( "BUDWEISER" ) , 2.5   )
+
+	{ Allocate part of a item (total 1l of 4_PACK) }
+	tester . eq( inventory_item_allocate( "BUDWEISER", "4_PACK", 1, "l", "For footie" ) , EMPTY )
+
+	{ Check allocation }
+	tester . eq( inventory_item_get_quantity_allocated  ( "BUDWEISER", "4_PACK" ) , 1 )
+	tester . eq( inventory_item_get_quantity_unallocated( "BUDWEISER", "4_PACK" ) , 1 )
+	tester . eq( inventory_item_get_quantity_total      ( "BUDWEISER", "4_PACK" ) , 2 )	
+
+	tester . eq( inventory_get_quantity_allocated  ( "BUDWEISER" ) , 1.105 )
+	tester . eq( inventory_get_quantity_unallocated( "BUDWEISER" ) , 1.395 )
+	tester . eq( inventory_get_quantity_total      ( "BUDWEISER" ) , 2.5 )
+
+	{ Check system won't allow an allocation of more than exists }
+	tester . eq( inventory_item_get_quantity_unallocated( "BUDWEISER", "1_CAN" ) , 0.395 )	
+
+	tester . neq( inventory_item_allocate( "BUDWEISER", "1_CAN", 400, "ml", "for bedtime" ) , EMPTY )
+
+	{ Add some items with an expiry date }
+
+	CREATE OBJECT "INVENTORY_ITEM", new_item
+	new_item . inventory_id      = "BUDWEISER"
+	new_item . item_id           = "BARREL_1"
+	new_item . quantity          = 160
+	new_item . unit              = "l"
+	new_item . expiry_date       = NOW + INTERVAL( "2" )
+
+	tester . eq( inventory_item_add_object( new_item ) , EMPTY )
+
+	CREATE OBJECT "INVENTORY_ITEM", new_item
+	new_item . inventory_id      = "BUDWEISER"
+	new_item . item_id           = "BARREL_2"
+	new_item . quantity          = 160
+	new_item . unit              = "l"
+	new_item . expiry_date       = NOW + INTERVAL( "1" )
+
+	tester . eq( inventory_item_add_object( new_item ) , EMPTY )
+
+	CREATE OBJECT "INVENTORY_ITEM", new_item
+	new_item . inventory_id      = "BUDWEISER"
+	new_item . item_id           = "BARREL_3"
+	new_item . quantity          = 160
+	new_item . unit              = "l"
+	new_item . expiry_date       = NOW + INTERVAL( "4" )
+
+	tester . eq( inventory_item_add_object( new_item ) , EMPTY )
+
+	{* Allocate the item that was added using object *}
+	
+	tester . eq( inventory_item_allocate( "BUDWEISER", "BARREL_1", 140, "l", "for party!" ) , EMPTY )
+
+	{* get allocation candidates based on expiry *}
+	
+	candidates = inventory_items_soon_to_expire( "BUDWEISER" )
+
+	tester . eq( inventory_allocate( "BUDWEISER", 250, "l", "Big Party", candidates ) , EMPTY )
+
+	tester . eq( inventory_item_get_quantity_allocated( "BUDWEISER", "BARREL_1" ) , 160 )
+	tester . eq( inventory_item_get_quantity_allocated( "BUDWEISER", "BARREL_2" ) , 160 )
+	tester . eq( inventory_item_get_quantity_allocated( "BUDWEISER", "BARREL_3" ) , 70 )
+
+	{* Check the system gracefully disallows a new item with id that already exists *}
+
+	tester . neq( inventory_item_add( "BUDWEISER" , "BARREL_1" ,200, "l"  ) , EMPTY )
+	
+	{* Check that the low stock warning callback is called when the unallocated *}
+	{* stock falls to or below the specified level                              *}
+
+	tester . eq( inventory_get_quantity_unallocated( "BUDWEISER" ) , 91.395 )
+	
+	candidates = inventory_items_soon_to_expire( "BUDWEISER" )
+	tester . eq( inventory_allocate( "BUDWEISER", 41.395, "l", "to take stock level down to low level amount", candidates ) , EMPTY )
+
+	{* Above allocation should have triggered low_stock_test routine below. *}
+	{* check global variables have been correctly set                       *}
+	tester . eq( low_stock_warning_id, "BUDWEISER" )
+	tester . eq( low_stock_warning_amount, 50 )
+	tester . eq( low_stock_warning_id_check, low_stock_warning_id )
+
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE low_stock_test( VALUE inventory_id, VALUE remaining )
+{
+* Called when the amount remaining falls below the low stock level specified
+* against the header.
+* The applicable inventory_header record is selected as the current VGL row
+*
+* Parameters : inventory_id , the identity of the inventory header
+*              remaining    , the amount remaining
+*
+*******************************************************************************}
+
+	{ Set globals so we can test that the correct values are being passed in }
+	low_stock_warning_id = inventory_id
+	low_stock_warning_amount  = remaining
+	
+	{ Set global so we can test that we can select from the current vgl row  }
+	low_stock_warning_id_check = SELECT inventory_header . identity
+
+ENDROUTINE
+
+
+{******************************************************************************}
+{******************************************************************************}
+{******************************************************************************}
+

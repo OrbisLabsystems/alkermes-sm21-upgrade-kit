@@ -1,0 +1,896 @@
+{******************************************************************************
+*
+* Module Name   : $SAMP_INSPECT.RPF
+*
+* Purpose       : Sample Inspection Screen
+*
+* Document Ref. : SE/T/VGSM320-WORK-INSPECT/1/1
+*
+*******************************************************************************		
+*		
+* Modification History :		
+* 		
+* Version   Date         By             Description		
+* -------   -----------  ----------     ---------------------------------------		
+* 1.0       06-Oct-2016  F. Piccirillo  Changes made to get the Reviewed_audit 
+*                                       field on inspection		
+*******************************************************************************}
+
+SET NAME "/DEFER"
+ENABLE WINDOWS
+SET COMPILE_OPTION DECLARE
+SET NOTPROTECTED
+
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN STANDARD_LIBRARY STD_UTILS
+
+JOIN LIBRARY $LIB_INSPECT
+JOIN LIBRARY $LIB_SAMP_VALIDATE
+JOIN LIBRARY $LIB_UTILS
+
+{******************************************************************************}
+
+CONSTANT SAMP_INSPECT_PASS_PROMPT_ID = "SAMP_INSPECT_PASS_PROMPT_ID"
+
+{******************************************************************************}
+
+inspect_sample()
+
+{******************************************************************************}
+
+GLOBAL
+
+ROUTINE inspect_sample
+
+{
+*
+*   Inspect a sample. Prompt for a valid sample and present user with
+*   inspection screen.
+*
+*******************************************************************************}
+
+DECLARE form                        { form object    }
+DECLARE sample_id                   { prompt objects }
+DECLARE sample_id_text
+DECLARE version
+DECLARE status
+DECLARE mandatory_array , key_press
+DECLARE inspection_required , semi, person
+DECLARE audit_rev                  {1.0 - prompt boolean object}
+
+ARRAY mandatory_array
+
+    IF ( operator = "SYSTEM" ) THEN
+        person = get_operator ()
+    ELSE
+        person = operator
+    ENDIF
+
+    IF ( person <> EMPTY ) THEN
+
+        lib_inspect_set_person ( person )
+
+        CREATE OBJECT "STD_FORM", form
+
+        { Setup form defaults }
+
+        form . header    = GET_USER_MESSAGE ( "SAMP_INSPECT_FORM" ,1 )
+        form . footer    = GET_USER_MESSAGE ( "SAMP_INSPECT_FORM" ,2 )
+        form . row       = 8
+        form . column    = 6
+        form . height    = 8
+        form . return_behaviour = FORM_RETURN_STAY
+        form . button_style     = FORM_BUTTON_NONE
+
+        IF ( GLOBAL ("TERMTYPE") = "GUI" ) THEN
+
+            form . height = 8
+            form . width  = 73
+            semi = ""
+        ELSE
+
+            form . height = 4
+            form . width  = 71
+            semi = ":"
+
+        ENDIF
+
+        {Set up mandatory array }
+
+        array_select_add ( mandatory_array   ,
+                           ARRAY_SELECT_PUSH ,
+                           EMPTY             ,
+                           EMPTY             )
+
+        array_select_add ( mandatory_array          ,
+                           ARRAY_SELECT_EQ          ,
+                           "inspector_personnel_id" ,
+                           person                   )
+
+        array_select_add ( mandatory_array  ,
+                           ARRAY_SELECT_OR  ,
+                           EMPTY            ,
+                           EMPTY            )
+
+        array_select_add ( mandatory_array   ,
+                           ARRAY_SELECT_PUSH ,
+                           EMPTY             ,
+                           EMPTY             )
+
+        array_select_add ( mandatory_array     ,
+                           ARRAY_SELECT_EQ     ,
+                           "role_personnel_id" ,
+                           person              )
+
+	IF GLOBAL ( "APPROVAL_EXCLUDE_SUBMITTER" ) THEN
+
+	        array_select_add ( mandatory_array  ,
+	                           ARRAY_SELECT_AND ,
+	                           EMPTY            ,
+	                           EMPTY            )
+
+	        array_select_add ( mandatory_array        ,
+	                           ARRAY_SELECT_NE        ,
+	                           "inspection_presenter" ,
+	                           person                 )
+
+	ENDIF
+
+        array_select_add ( mandatory_array  ,
+                           ARRAY_SELECT_POP ,
+                           EMPTY            ,
+                           EMPTY            )
+
+        array_select_add ( mandatory_array  ,
+                           ARRAY_SELECT_POP ,
+                           EMPTY            ,
+                           EMPTY            )
+
+        array_select_add ( mandatory_array  ,
+                           ARRAY_SELECT_AND ,
+                           EMPTY            ,
+                           EMPTY            )
+
+        array_select_add ( mandatory_array     ,
+                           ARRAY_SELECT_EQ     ,
+                           "INSPECTION_STATUS" ,
+                           "V"                 )
+
+        PROMPT OBJECT sample_id
+            AT 23, 1
+            BROWSE ON sample_inspect_view
+            THEN SELECT
+            WITH ( VGL_library          = GLOBAL( "CURRENT_LIBRARY" ) ,
+                   leave_prompt_routine = "LEFT_SAMPLE_ID"            ,
+                   mandatory_array      = mandatory_array             ,
+                   select_routine       = "select_routine"            )
+
+        form . add_prompt ( sample_id )
+        form . add_display ( GET_USER_MESSAGE ("SAMP_INSPECT_FORM",6)
+                     :semi,
+                     1, 1, PROMPT_RENDITION_BOLD +
+                       PROMPT_RENDITION_RAISED)
+
+
+        PROMPT OBJECT sample_id_text
+               ON LINE 2 FROM 23
+
+        form . add_display ( sample_id_text )
+        form . add_display ( GET_USER_MESSAGE ("SAMP_INSPECT_FORM",7)
+                      :semi,
+                      1, 2, PROMPT_RENDITION_BOLD +
+                        PROMPT_RENDITION_RAISED )
+
+        PROMPT OBJECT version
+               ON LINE 3 FROM 23
+               WITH ( length = 10   ,
+                      width  = 10   )
+
+        form . add_display ( version )
+        form . add_display ( GET_USER_MESSAGE ("SAMP_INSPECT_FORM",8)
+                      :semi,
+                      1, 3, PROMPT_RENDITION_BOLD +
+                        PROMPT_RENDITION_RAISED )
+
+        PROMPT OBJECT status
+               ON LINE 4 FROM 23
+               WITH ( length = 10   ,
+                      width  = 10   )
+
+        form . add_display ( status )
+        form . add_display ( GET_USER_MESSAGE ("SAMP_INSPECT_FORM",9)
+                     :semi,
+                     1,4,PROMPT_RENDITION_BOLD +
+                     PROMPT_RENDITION_RAISED)
+
+        PROMPT OBJECT inspection_required
+               ON LINE 5 FROM 23
+               WITH ( width = 30               ,
+                      horizontal_scroll = TRUE ,
+                      display_only = TRUE      )
+
+        form . add_prompt ( inspection_required )
+        form . add_display ( GET_USER_MESSAGE ("SAMP_INSPECT_FORM",10)
+                     :semi,
+                     1,5,PROMPT_RENDITION_BOLD +
+                     PROMPT_RENDITION_RAISED)
+
+
+        IF ( GLOBAL ( "TERMTYPE" ) = "GUI" ) THEN
+            add_buttons ( form )
+        ENDIF
+
+        form . start_prompt ()
+
+        REPEAT
+
+            form . wait_prompt ()
+
+            key_press = form . get_lastkey()
+
+            IF ( key_press = "DO" ) THEN
+                authorise_inspection ( sample_id )
+            ENDIF
+
+        UNTIL ( key_press = "EXIT" ) OR ( GLOBAL ( "LABTABLE_MODE" ))
+
+        form . end_prompt ()
+
+        lib_inspect_set_person ( "" )
+
+    ENDIF
+
+ENDROUTINE {sample_inspection}
+
+{******************************************************************************}
+
+ROUTINE select_routine ( self )
+
+{
+*
+*   Called when user hits SELECT in the sample ID prompt.
+*
+*******************************************************************************}
+
+DECLARE menu_array ,
+        choice     ,
+    key_press
+
+ARRAY menu_array
+
+    choice = ""
+
+    IF ( self . text <> EMPTY ) AND ( self . text <> "" ) THEN
+
+        menu_array [1,1] = "*"
+        menu_array [1,2] = GET_USER_MESSAGE ("SAMP_INSPECT_CHOOSE",1)
+
+        menu_array [2,1] = "D"
+        menu_array [2,2] =  GET_USER_MESSAGE ("SAMP_INSPECT_CHOOSE",2)
+        menu_array [2,3] = "display_results"
+
+        menu_array [3,1] = "C"
+        menu_array [3,2] = GET_USER_MESSAGE ("SAMP_INSPECT_CHOOSE",3)
+        menu_array [3,3] = "compare"
+
+            menu_array [4,1] = "S"
+        menu_array [4,2] =  GET_USER_MESSAGE ("SAMP_INSPECT_CHOOSE",4)
+        menu_array [4,3] = "display_sample"
+
+            menu_array [5,1] = "A"
+        menu_array [5,2] =  GET_USER_MESSAGE ("SAMP_INSPECT_CHOOSE",5)
+        menu_array [5,3] = "authorise_inspection"
+
+            menu_array [6,1] = "F"
+        menu_array [6,2] =  GET_USER_MESSAGE ("SAMP_INSPECT_CHOOSE",6)
+        menu_array [6,3] = "fail_inspection"
+
+        menu_array [7,1] = "Q"
+        menu_array [7,2] =  GET_USER_MESSAGE ("SAMP_INSPECT_CHOOSE",7)
+        menu_array [7,3] = "quit"
+
+        key_press = ""
+
+        WHILE (( choice <> "quit") AND ( key_press <> "EXIT" )) DO
+
+            CHOOSE choice OUTOF menu_array AT 5,16
+                    key_press = LASTKEY
+            IF ( key_press <> "EXIT" ) THEN
+                IF choice = "display_results" THEN
+
+                    inspect_display_results ( self )
+
+                ELSEIF choice = "compare" THEN
+
+                    inspect_compare_mlps ( self )
+
+                ELSEIF choice = "display_sample" THEN
+
+                    inspect_display_sample ( self )
+
+                    ELSEIF choice = "authorise_inspection" THEN
+
+                    authorise_inspection ( self )
+
+                    ELSEIF choice = "fail_inspection" THEN
+
+                    fail_inspection ( self )
+
+                ENDIF
+
+            ENDIF
+
+            ENDWHILE
+    ENDIF
+
+ENDROUTINE { select_routine }
+
+{******************************************************************************}
+
+ROUTINE get_inspection_text ( VALUE prompt_text     ,
+                                    inspection_text )
+
+{
+*
+*   Present user with inspection windo. Allows text to be associated
+*   with the inspection.
+*
+*******************************************************************************}
+
+DECLARE form              ,
+    colon             ,
+    inspection_object ,
+    inspection_mess   ,
+    return_val        ,
+        gap
+
+    CREATE OBJECT "STD_FORM", form
+
+    form . header    = GET_USER_MESSAGE ( "SAMP_INSPECT_WINDOW", 1 )
+    form . row       = 15
+    form . column    = 10
+    form . width     = 60
+
+    form . return_behaviour = form_return_leave
+
+    IF ( GLOBAL ( "TERMTYPE" ) = "GUI" ) THEN
+        form . height = 1
+        colon = " "
+        gap = 4
+    ELSE
+        form . height = 2
+        colon = " : "
+        gap = 2
+    ENDIF
+
+    inspection_mess = prompt_text : colon
+    form . add_display ( inspection_mess,
+                         1, 1,
+                         PROMPT_RENDITION_RAISED + PROMPT_RENDITION_BOLD  )
+
+    PROMPT OBJECT inspection_object
+           ON LINE 1 FROM length ( inspection_mess ) + gap
+
+    form . add_prompt ( inspection_object )
+
+    form . start_prompt ( )
+    form . wait_prompt ( )
+
+    inspection_text = inspection_object . text
+
+    return_val = form . get_lastkey ( ) <> "EXIT"
+
+    form . end_prompt ( )
+
+    RETURN ( return_val )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE call_perform_inspection (       self              ,
+                                  VALUE prompt_message    ,
+                                  VALUE inspection_status )
+
+{
+*
+*   Mark the current inspector record as having been inspected.
+*
+*******************************************************************************}
+
+    DECLARE sample_id         ,
+            sel_sample_id     ,
+            inspection_text   ,
+            status
+
+    IF get_inspection_text ( prompt_message  ,
+                             inspection_text ) THEN
+
+        lib_inspect_set_comment ( inspection_text )
+
+	SET GLOBAL "SAMPAUTHNOTE" TO inspection_text
+
+        sample_id = self . parent_prompt . prompt_objects[1]  . text
+
+        IF ( can_authorize ( sample_id ) ) THEN
+
+            sel_sample_id = SELECT sample . id_numeric FOR UPDATE
+                            WHERE id_numeric = sample_id
+
+            IF ( sample_id = sel_sample_id ) THEN
+
+            	IF lib_inspect_user_can_inspect ( "SAMPLE"                  ,
+            	                                  sample_id                 ,
+            	                                  lib_inspect_get_person ( )) THEN
+
+            		lib_inspect_set_user_checked_inspection ( TRUE )
+
+            		START WRITE TRANSACTION "Sample Inspection"
+
+            		CHANGE SAMPLE STATUS TO inspection_status, status
+
+            		IF status = EMPTY THEN
+
+				UPDATE sample
+				lib_samp_validate_process_parent ( sample_id )
+				COMMIT
+
+            		ELSE
+
+				ROLLBACK
+				FLASH_MESSAGE ( status, TRUE )
+
+            		ENDIF
+
+            	ENDIF
+
+            ELSE
+
+                FLASH_MESSAGE ( "SAMP_INSPECT_FAIL_SAMP", TRUE )
+
+            ENDIF
+
+        ELSE
+
+            FLASH_MESSAGE ( "RESULT_ENTRY_OPERATION_DENIED", TRUE )
+
+        ENDIF
+
+        self . parent_prompt . prompt_objects[1] .  value = ""
+        self . parent_prompt . prompt_objects[1] .  text = ""
+        self . parent_prompt . prompt_objects[2] .  value = ""
+        self . parent_prompt . prompt_objects[2] .  text = ""
+
+        self . parent_prompt . display_objects[1] . text = ""
+        self . parent_prompt . display_objects[2] . text = ""
+        self . parent_prompt . display_objects[3] . text = ""
+
+        self . parent_prompt . display_objects[1] . repaste()
+        self . parent_prompt . display_objects[2] . repaste()
+        self . parent_prompt . display_objects[3] . repaste()
+        self . parent_prompt . prompt_objects[2] .  repaste()
+        self . parent_prompt . prompt_objects[1] .  repaste()
+
+        self . parent_prompt . active_prompt =
+          self . parent_prompt . prompt_objects[1] . tag
+
+        self . parent_prompt . repaste()
+
+    ENDIF
+
+ENDROUTINE { call_perform_inspection }
+
+{******************************************************************************}
+
+ROUTINE authorise_inspection ( self )
+
+{
+*
+*   Mark the current inspector record as having been inspected.
+*
+*   Parameters: self, Reference to sample form
+*
+*******************************************************************************}
+
+	DECLARE sample_id ,
+	        insp_status
+
+	sample_id = self . parent_prompt . prompt_objects[1]  . text
+
+	sample_id = SELECT sample . id_numeric
+	            WHERE id_numeric = sample_id
+
+	IF sample_id <> EMPTY THEN
+
+		insp_status = sample_needs_inspection ( )
+
+		IF LENGTH ( insp_status ) = 1 THEN
+
+			call_perform_inspection ( self                                          ,
+			                          GET_USER_MESSAGE ( "SAMP_INSPECT_WINDOW", 2 ) ,
+			                          APPR_INSPECT                                  )
+
+		ELSE
+
+			FLASH_MESSAGE ( GET_USER_MESSAGE ( insp_status, 1 ), TRUE )
+
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE { authorise_inspection }
+
+{******************************************************************************}
+
+ROUTINE fail_inspection ( self )
+
+{
+*
+*   Mark the current inspector record as having failed inspected.
+*
+*   Parameters: self, Reference to sample form
+*
+*******************************************************************************}
+
+    call_perform_inspection ( self                                          ,
+                              GET_USER_MESSAGE ( "SAMP_INSPECT_WINDOW", 3 ) ,
+                              APPR_REJECTED                                 )
+
+ENDROUTINE { fail_inspection }
+
+{******************************************************************************}
+
+ROUTINE left_sample_id ( self )
+
+    DECLARE form,
+            status,
+            id_text,
+            version,
+            inspection_required
+
+    IF self . get_lastkey ( ) <> "EXIT" THEN
+
+        form    = self . parent_prompt
+
+        id_text = form . display_objects [ 1 ]
+        id_text . text = SELECT sample_inspect_view . id_text IN OBJECT self
+        id_text . repaste ()
+
+        version = form . display_objects [ 2 ]
+        version . text = STRIP (STRING (SELECT sample_inspect_view . version IN OBJECT self ))
+        version . repaste ()
+
+        status = form . display_objects [ 3 ]
+        status . text = SELECT sample_inspect_view . inspection_status
+                        IN OBJECT self
+        status . repaste ()
+
+        inspection_required = form . prompt_objects [ 2 ]
+        inspection_required . set_text(SELECT sample_inspect_view . inspection_reason
+                              IN OBJECT self)
+	  inspection_required . status_text = SELECT sample_inspect_view . inspection_reason
+                              IN OBJECT self
+        inspection_required . repaste ()
+
+    ENDIF
+
+ENDROUTINE { left_sample_id }
+
+{******************************************************************************}
+
+ROUTINE add_buttons ( form )
+
+DECLARE authorise_button       ,
+        fail_button            ,
+    display_results_button ,
+    display_sample_button  ,
+    compare_mlps_button    ,
+    col                    ,
+    button_width           ,
+    close_button
+
+    col = 2
+    button_width = 8
+
+
+    form . add_frame ( "" , 1 , 7 , 1, 73 )
+
+    PROMPT OBJECT fail_button
+        CLASS "STD_PROMPT_BUTTON"
+        ON LINE form.height-1  FROM col TO col + BUTTON_WIDTH
+        WITH ( caption =  GET_USER_MESSAGE ("SAMP_INSPECT_BUTTON",1),
+               mouse_click_routine = "fail_inspection"              )
+
+    col = col + button_width + 44
+
+    PROMPT OBJECT authorise_button
+        CLASS "STD_PROMPT_BUTTON"
+        ON LINE form . height -1  FROM col TO col + BUTTON_WIDTH
+        WITH ( caption =  GET_USER_MESSAGE ("SAMP_INSPECT_BUTTON",2) ,
+               mouse_click_routine = "authorise_inspection"          )
+
+
+    col = col + button_width + 2
+
+        PROMPT OBJECT close_button
+        CLASS "STD_PROMPT_BUTTON"
+        ON LINE form.height-1  FROM col TO col + BUTTON_WIDTH
+        WITH ( caption =  GET_USER_MESSAGE ("SAMP_INSPECT_BUTTON",3) ,
+               send_last_key = "EXIT"                                )
+
+    col = col + button_width + 2
+
+
+    button_width = 14
+
+    PROMPT OBJECT display_results_button
+        CLASS "STD_PROMPT_BUTTON"
+        ON LINE 1  FROM 59 TO 59 + BUTTON_WIDTH
+        WITH ( caption =  GET_USER_MESSAGE ("SAMP_INSPECT_BUTTON",4) ,
+               mouse_click_routine = "inspect_display_results"       )
+
+
+
+    PROMPT OBJECT display_sample_button
+        CLASS "STD_PROMPT_BUTTON"
+        ON LINE 3  FROM 59 TO 59 + BUTTON_WIDTH
+        WITH ( caption =  GET_USER_MESSAGE ("SAMP_INSPECT_BUTTON",5) ,
+               mouse_click_routine = "inspect_display_sample"        )
+
+
+
+    PROMPT OBJECT compare_mlps_button
+        CLASS "STD_PROMPT_BUTTON"
+        ON LINE 5  FROM 59 TO 59 + BUTTON_WIDTH
+        WITH ( caption =  GET_USER_MESSAGE ("SAMP_INSPECT_BUTTON",6) ,
+               mouse_click_routine = "inspect_compare_mlps"          )
+
+
+    form . add_prompt ( fail_button            )
+    form . add_prompt ( authorise_button       )
+    form . add_prompt ( close_button           )
+    form . add_prompt ( display_results_button )
+    form . add_prompt ( display_sample_button  )
+    form . add_prompt ( compare_mlps_button    )
+
+ENDROUTINE { add_buttons }
+
+{******************************************************************************}
+
+ROUTINE inspect_display_results ( self )
+
+DECLARE sample_id,
+    option_num
+
+    sample_id = self . parent_prompt . prompt_objects[1] . text
+
+    option_num = 249 { MENUNUMBER ( "DSR" ) }
+    MENUPROC option_num USING sample_id, "$EXIT"
+
+        self . parent_prompt . repaste()
+
+ENDROUTINE { inspect_display_results }
+
+{******************************************************************************}
+
+ROUTINE inspect_display_sample ( self )
+
+DECLARE sample_id,
+    option_num
+
+    sample_id = self . parent_prompt . prompt_objects[1] . text
+
+    option_num = 47 { MENUNUMBER ( "DSE" ) }
+    MENUPROC option_num USING sample_id, "$EXIT"
+
+    self . parent_prompt . repaste()
+
+ENDROUTINE { inspect_display_sample }
+
+{******************************************************************************}
+
+ROUTINE inspect_compare_mlps ( self )
+
+DECLARE sample_id,
+    option_num
+
+    sample_id = self . parent_prompt . prompt_objects[1] . text
+
+    option_num = 15011 { MENUNUMBER ( "CSM" ) }
+    MENUPROC option_num USING sample_id
+
+    self . parent_prompt . repaste()
+
+ENDROUTINE { inspect_compare_mlps }
+
+{******************************************************************************}
+
+ROUTINE get_operator
+
+DECLARE p_form        ,
+    person_prompt ,
+    semi
+
+
+    CREATE OBJECT "STD_FORM", p_form
+
+    { Setup form defaults }
+
+    IF ( GLOBAL ( "TERMTYPE" ) = "GUI" ) THEN
+        semi = ""
+    ELSE
+        semi = ":"
+    ENDIF
+
+    p_form . header       =  GET_USER_MESSAGE ("SAMP_INSPECT_FORM",3)
+    p_form . footer       =  GET_USER_MESSAGE ("SAMP_INSPECT_FORM",4)
+    p_form . row          = 9
+    p_form . column       = 25
+    p_form . height       = 1
+    p_form . width        = 35
+
+    PROMPT OBJECT person_prompt
+        AT 16,1
+        BROWSE ON personnel
+        WITH (  always_validate = TRUE             ,
+            validation_routine = "validate_person" )
+
+
+    p_form . add_prompt ( person_prompt )
+
+    p_form . add_display (  GET_USER_MESSAGE ("SAMP_INSPECT_FORM",5):semi ,
+                1 ,1 , PROMPT_RENDITION_BOLD +
+                       PROMPT_RENDITION_RAISED)
+
+    p_form . start_prompt ()
+    p_form . wait_prompt ()
+    p_form . end_prompt ()
+
+    IF ( p_form . get_lastkey() ="EXIT" ) THEN
+        person_prompt . text = EMPTY
+    ENDIF
+
+    RETURN ( person_prompt . text )
+
+ENDROUTINE { get_operator }
+
+{******************************************************************************}
+
+ROUTINE validate_person ( self )
+
+DECLARE return_value
+
+    return_value = FALSE
+
+    IF ( self . value <> "" ) AND ( self . value <> EMPTY ) THEN
+        return_value = TRUE
+    ENDIF
+
+    RETURN ( return_value )
+
+ENDROUTINE { validate_person }
+
+{******************************************************************************}
+
+ROUTINE can_authorize ( VALUE sample_id )
+
+{
+*	Check to see if the user is allowed to authorize this Sample.
+*
+*******************************************************************************}
+
+	DECLARE can_do, results
+
+	IF ( GLOBAL( "RESULT_AUTHORISE_OWN" ) )
+
+		can_do = TRUE
+
+	ELSE
+
+		results = SELECT COUNT samp_test_result
+		          WHERE ( id_numeric = sample_id )
+		          AND   ( result_entered_by = lib_inspect_get_person ( ))
+		          AND   ( ( result_status = "E" ) OR ( result_status = "M" ) )
+		          AND   ( result_type <> "K" )
+
+		can_do = ( results = 0 )
+
+	ENDIF
+
+	RETURN ( can_do )
+
+ENDROUTINE { can_authorize }
+
+{******************************************************************************}
+{ Explorer Aux Submit callbacks                                                }
+{******************************************************************************}
+
+ROUTINE samp_inspect_aux_field_pass ( prompt_object ,
+                                      prompt_value  )
+
+	PROMPT OBJECT prompt_object
+		BROWSE ON BOOLEAN
+		WITH ( is_check = TRUE )
+
+	prompt_object . prompt_id = SAMP_INSPECT_PASS_PROMPT_ID
+	prompt_value  = TRUE
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE samp_inspect_aux_user_action ( self , data )
+
+{
+*	Handle the inspection callback
+*
+*******************************************************************************}
+
+	DECLARE inspection_passed
+
+	inspection_passed = self . get_prompt_value ( SAMP_INSPECT_PASS_PROMPT_ID )
+
+	RETURN (  samp_inspect_aux_inspect ( self, data, inspection_passed ) )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE samp_inspect_aux_web_pass ( self , data )
+
+{
+*	Pass an inspection used by the web
+*
+*******************************************************************************}
+
+	RETURN ( samp_inspect_aux_inspect ( self , data, "TRUE" ) )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE samp_inspect_aux_web_fail ( self , data )
+
+{
+*	Fail an inspection used by the web
+*
+*******************************************************************************}
+
+	RETURN ( samp_inspect_aux_inspect ( self, data, "FALSE" ) )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE samp_inspect_aux_inspect ( self , data, VALUE inspection_passed )
+
+{
+*	Pass or Fail an inspection.
+*
+*******************************************************************************}
+
+	DECLARE inspection_text ,
+	        status_change
+
+	inspection_text = SELECT sample . authorisation_notes IN OBJECT data
+
+	lib_inspect_set_comment ( inspection_text )
+	SET GLOBAL "SAMPAUTHNOTE" TO inspection_text
+
+	IF inspection_passed THEN
+		status_change = "I"
+	ELSE
+		status_change = "R"
+	ENDIF
+
+	self . change_status ( self . data . current ,
+	                       status_change         )
+
+	RETURN ( TRUE )
+
+ENDROUTINE
+
+{******************************************************************************}
+{******************************************************************************}
+{******************************************************************************}

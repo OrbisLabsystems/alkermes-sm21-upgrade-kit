@@ -1,0 +1,593 @@
+{==============================================================================}
+{                                                                              }
+{  ORBIS INFORMATION SYSTEMS                                                   }
+{                                                                              }
+{  Filename         : TOC_RECOVER_FILES_2.RPF                                  }
+{  Version          : 2.0                                                      }
+{  Document Ref.    : OR01019-1                                                }
+{  Author           : Damian Kelly                                             }
+{  Date Created     : 13/03/01                                                 }
+{  Responsible      :                                                          }
+{  Description      : This program selects TOC files from the remote TOC       }
+{                     instrument PC based on date inputs. The files are        }
+{                     processed in order and archived on the LIMS server.      }
+{                     Processed Files are then deleted from the remote         }
+{                     instrument PC.                                           }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Libraries Used           Routine             Description                    }
+{  --------------           -------             -----------                    }
+{                                                                              }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{                                                                              }
+{  Ver.     Date        By          Description                                }
+{  ----     ----        --          -----------                                }
+{  1.0      13/03/01    DK          Release Version                            }
+{  2.0      06/08/02    MK          Modified to process each instrument in the }
+{				    result output file separately. i.e. logs in}
+{				    a separate sample for each instrument and  }
+{				    to not allow todays date or a date in the  }
+{				    future to be selected		       }
+{                                                                              }
+{                                                                              }
+{==============================================================================}
+
+SET COMPILE_OPTION DECLARE
+ENABLE WINDOWS
+
+SET NAME "DEFER\"
+SET NOTPROTECTED
+
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN LIBRARY $LIB_UTILS
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_TRANSFER
+
+JOIN LIBRARY TOC_COPY_FILE_2
+JOIN LIBRARY TOC_PROCESS_RESULTS2
+
+main()
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE main                                                                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  13/03/01     DK              Main Routine for Report.                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE main
+
+    DECLARE the_form, from_date, to_date, file_array, file_count, the_date,
+            instrument_file, lims_file, check_exists, arc_date, files_exist
+
+    ARRAY file_array
+    file_count = 1   
+    files_exist = FALSE
+
+    user_entry (the_form)
+
+    the_form . start_prompt ()
+
+    REPEAT
+
+       the_form . wait_prompt ()
+
+    UNTIL ( the_form . get_lastkey () = "EXIT" ) OR
+          ( the_form . get_lastkey () = "DO"   )
+
+    the_form . end_prompt ()
+
+    IF ( the_form . get_lastkey () = "DO"   ) THEN
+
+      from_date = the_form . prompt_objects[1] . text
+      to_date   = the_form . prompt_objects[2] . text
+
+      get_files ( file_array,
+                  from_date,
+                  to_date )
+
+      WHILE file_array[file_count,1] <> EMPTY DO
+
+          instrument_file = STRIP(file_array[file_count,1])
+          lims_file       = STRIP(file_array[file_count,2])
+
+          check_exists = FILE EXISTS(instrument_file)
+
+          IF check_exists THEN
+
+              files_exist = TRUE
+
+              FILE COPY instrument_file, lims_file
+
+              check_exists = FILE EXISTS(lims_file)
+
+              IF check_exists THEN
+
+                  arc_date = file_array[file_count,4]
+                  the_date = file_array[file_count,5]
+
+                  output_message("Processing File ":STRIP(file_array[file_count,3]):", Please Wait...........")
+
+                  process_file(lims_file,
+                               instrument_file,
+                               the_date,
+                               arc_date)
+
+                  output_message("Finished Processing File ":STRIP(file_array[file_count,3]))
+
+              ELSE
+
+                  flashmessage("Failed to copy TOC File ":STRIP(file_array[file_count,3]):" to the server!", TRUE)
+
+              ENDIF
+
+          ENDIF
+
+          file_count = file_count + 1
+
+      ENDWHILE
+
+      IF files_exist = FALSE THEN {No Files Found}
+
+          flashmessage("No files found for selected dates!", TRUE)
+
+      ENDIF
+
+      output_message("Completed!")
+
+    ENDIF
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE user_entry                                                          }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  13/03/01     DK              Main Routine for Report.                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE user_entry (entry_form)
+
+   DECLARE button, header_txt, prompt_obj
+
+   CREATE OBJECT PROMPT_CLASS_FORM, entry_form
+
+   header_txt =  "Recover TOC Files"
+
+   entry_form . height = 20
+   entry_form . width  = 30
+   entry_form . header = header_txt
+   entry_form . footer = "FIND to Browse, DO to finish, EXIT to quit"
+   entry_form . row    = ( GLOBAL ( "SCREEN_HEIGHT" ) - 5 ) / 2
+   entry_form . column = ( GLOBAL ( "SCREEN_WIDTH" ) - 40 ) / 2
+   entry_form . border = TRUE
+
+
+   PROMPT OBJECT prompt_obj
+       FORMAT TEXT
+       AT 10, 1
+       WITH ( bold = TRUE,
+              raised = TRUE,
+              value = "DATE",
+              width = 20)
+
+   entry_form . add_display ( "From Date: ", 3 , 1 , PROMPT_RENDITION_RAISED )
+
+   PROMPT OBJECT prompt_obj
+       FORMAT DATE
+       AT 16, 1
+       WITH (allow_date = TRUE,
+             allow_time = FALSE,
+             value = " ",
+             validation_routine = "check_from_date",
+             value = TODAY - "0001 00:00:00.00")
+
+   entry_form . add_prompt  ( prompt_obj )
+
+
+  PROMPT OBJECT prompt_obj
+      FORMAT TEXT
+      AT 10 , 1
+      WITH ( bold = TRUE,
+             raised = TRUE,
+             value = "DATE",
+             width = 20)
+
+   entry_form . add_display ( "To Date: ", 3 , 3 , PROMPT_RENDITION_RAISED)
+
+
+  PROMPT OBJECT prompt_obj
+      FORMAT DATE
+      AT 16, 3
+      WITH (allow_date = TRUE,
+            allow_time = FALSE,
+            validation_routine = "check_to_date",
+            value = TODAY - "0001 00:00:00.00" )
+
+  entry_form . add_prompt  ( prompt_obj )
+
+                                       { ======================================}
+                                       { if running program for windows create }
+                                       { buttons on the form                   }
+                                       { ===================================== }
+
+   IF GLOBAL ( "TERMTYPE" ) = "GUI" THEN
+
+      entry_form . button_style = FORM_BUTTON_NONE
+      entry_form . height = 6
+      entry_form . width  = 35
+
+      entry_form . add_frame ( "Select Dates to Select TOC Files" , 1 , 1 , 3 , entry_form . width - 1)
+
+      PROMPT OBJECT button
+        CLASS "STD_PROMPT_BUTTON"
+        ON LINE 5 FROM entry_form . width - 30
+        WITH (  caption      = get_user_message ( "SMP_PROMPT_BUTTON_OK" , 1 ),
+                enabled      = TRUE,
+                width        = 10,
+                send_lastkey = "DO")
+
+      entry_form . add_prompt ( button )
+
+      PROMPT OBJECT button
+        CLASS "STD_PROMPT_BUTTON"
+        ON LINE 5 FROM entry_form . width - 15
+        WITH ( caption      = get_user_message ( "SMP_PROMPT_BUTTON_CANCEL" , 1 ),
+               enabled      = TRUE,
+               width        = 10,
+               send_lastkey = "EXIT")
+
+      entry_form . add_prompt ( button )
+
+
+   ENDIF
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE check_from_date                                                     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  13/03/01     DK              Main Routine for Report.                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE check_from_date ( self )
+
+    DECLARE from_date, can_leave, today_date
+
+    can_leave = FALSE
+
+    today_date = TODAY
+
+    from_date = self . text
+
+    from_date = DATE (from_date)
+
+    IF STRIP(from_date) <> "" THEN
+
+	    IF from_date >= today_date THEN
+
+	    	flashmessage ("Cannot select todays date or date in the future because file is still active or does not exist!", TRUE)
+	    	can_leave = FALSE
+
+	    ELSE
+
+            	can_leave = TRUE
+            	self . parent_prompt . set_position(2)
+
+	    ENDIF
+    ELSE
+
+        can_leave = FALSE
+        flashmessage("You must select a Date!", TRUE)
+
+    ENDIF
+
+    RETURN(can_leave)
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE check_to_date                                                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  13/03/01     DK              Main Routine for Report.                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE check_to_date ( self )
+
+    DECLARE can_leave, from_date, to_date, today_date
+
+    can_leave = FALSE
+    from_date = self . parent_prompt . prompt_objects[1] . text
+    to_date   = self . text
+
+    from_date = DATE (from_date)
+    to_date = DATE (to_date)
+
+    today_date = TODAY
+
+    IF STRIP(to_date) <> "" THEN
+ 
+
+	IF to_date >= today_date THEN
+
+	    flashmessage ("Cannot select todays date or date in the future because file is still active or does not exist!", TRUE)
+	    can_leave = FALSE
+
+	ELSEIF to_date >= from_date THEN
+
+            can_leave = TRUE
+
+	ELSE
+
+            flashmessage("The selected To Date is before the selected From Date!", TRUE)
+
+            can_leave = FALSE
+
+        ENDIF
+
+    ELSE
+
+        can_leave = FALSE
+        flashmessage("You must select a Date!", TRUE)
+
+    ENDIF
+
+    RETURN(can_leave)
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE get_files                                                           }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  13/03/01     DK              Main Routine for Report.                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE get_files ( file_array,
+                    from_date,
+                    to_date )
+
+    DECLARE file_count, file_date
+
+    file_count = 1
+
+    file_date = DATE (from_date)
+    to_date = DATE (to_date)
+
+    SET DATE FORMAT "MONDZ"
+
+    IF file_date = to_date THEN
+
+        file_array[file_count, 1] = "smp$toc_mapped_drive_2:":file_date:TOC_FILE_EXTENSION
+        file_array[file_count, 2] = "SMP$TOCDATA_2:":file_date:TOC_FILE_EXTENSION
+        file_array[file_count, 3] = file_date:TOC_FILE_EXTENSION
+        file_array[file_count, 4] = STRING(file_date)
+  
+        RESTORE DATE FORMAT
+
+        file_array[file_count, 5] = file_date
+
+
+
+    ELSE
+
+        REPEAT
+
+            file_array[file_count, 1] = "smp$toc_mapped_drive_2:":file_date:TOC_FILE_EXTENSION
+            file_array[file_count, 2] = "SMP$TOCDATA_2:":file_date:TOC_FILE_EXTENSION
+            file_array[file_count, 3] = file_date:TOC_FILE_EXTENSION
+            file_array[file_count, 4] = STRING(file_date)
+
+            RESTORE DATE FORMAT
+
+            file_array[file_count, 5] = file_date
+
+            SET DATE FORMAT "MONDZ"
+
+            file_date = file_date + "0001 00:00:00.00"
+            file_count = file_count + 1
+
+        UNTIL file_date = to_date + "0001 00:00:00.00"
+
+    ENDIF
+
+    RESTORE DATE FORMAT
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE process_file                                                        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  13/03/01     DK              Main Routine for Report.                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE process_file (file_name,
+                      inst_file,
+                      the_date,
+                      arc_date)
+
+    DECLARE result_array, samp_id, test_array, summary_test, maintanence_times, 
+            summ_notes_res, arc_file, toc_instrument, count, samp_template
+
+
+    ARRAY result_array
+    ARRAY test_array
+    ARRAY maintanence_times
+
+    summ_notes_res = ""
+
+    arc_file = "SMP$TOC_ARCDATA_2:":arc_date:ARC_TOC_FILE_EXT
+
+    FILE COPY file_name, arc_file
+
+    count = 0
+
+{==============================================================================}
+{Orbis 6-Aug-02 - Modified so that the file is processed for multiple samples  }
+{   		  from NCD suite					       }
+{==============================================================================}
+
+    REPEAT 
+
+    	ARRAY result_array
+    	ARRAY test_array
+    	ARRAY maintanence_times
+
+	count =  count + 1
+	
+	IF count = 1 THEN 
+
+		toc_instrument = TOC_INSTRUMENT_1
+		samp_template  = TOC_SAMPLE_TEMPLATE_1
+	ELSEIF count = 2 THEN
+
+		toc_instrument = TOC_INSTRUMENT_2
+		samp_template  = TOC_SAMPLE_TEMPLATE_2
+	ELSEIF count = 3 THEN
+
+		toc_instrument = TOC_INSTRUMENT_3
+		samp_template  = TOC_SAMPLE_TEMPLATE_3
+	ENDIF
+
+    	CALL_ROUTINE "parse_file"
+        	USING file_name,          
+              	result_array,
+		toc_instrument 
+    	IN LIBRARY "TOC_PROCESS_RESULTS2"
+
+    	IF SIZE_OF_ARRAY(result_array) > 0 THEN
+
+        	CALL_ROUTINE "check_toc_maintanence"
+            	USING maintanence_times,
+                  the_date,
+		  toc_instrument
+        	IN LIBRARY "TOC_PROCESS_RESULTS2"          
+
+        	CALL_ROUTINE "create_sample_tests_and_results"
+            	USING samp_id,
+                  test_array,
+                  result_array,
+                  summary_test,
+                  maintanence_times,
+                  summ_notes_res,
+		  samp_template,
+		  toc_instrument
+        	IN LIBRARY "TOC_PROCESS_RESULTS2"
+
+        	CALL_ROUTINE "check_result_limits" 
+            	USING samp_id,
+                  test_array,
+                  summary_test,
+                  summ_notes_res
+        	IN LIBRARY "TOC_PROCESS_RESULTS2"
+
+    	ENDIF
+
+    UNTIL count = NO_TOC_INSTRUMENTS
+
+
+{==============================================================================}
+{Orbis 6-Aug-02 - EOM							       }
+{==============================================================================}
+
+    { DELETE FILE AFTER PARSING }
+
+    IF GLOBAL("PLATFORM") = "NT" THEN
+
+        FILE DELETE file_name
+        FILE DELETE inst_file
+
+    ENDIF
+
+ENDROUTINE
+
+
+
+
+

@@ -1,0 +1,363 @@
+{******************************************************************************
+*
+* Module Name   : QC_MICRO_LABEL
+*
+* Purpose       : Micro label printing program
+*
+* Document Ref. :
+*
+* Specification :
+*
+*
+* Re-entrant    : Yes
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By                 Description
+* -------   -----------  ----------         ---------------------------------------
+* 1.0       24-Jul-2018  Liam Dawson        Add create_print_event. This replaces
+*                                           the update_sample routine.
+* 1.1       27-Jul-2018  Liam Dawson        Add default printer
+* 1.2       02-Nov-2018  Liam Dawson        Update printing to use R_PCNL routines
+*                                           extensive change to print_sample_label_menu
+*                                                     
+*******************************************************************************}
+SET NOTPROTECTED
+SET COMPILE_OPTION DECLARE
+SET NAME "DEFER/"
+
+ENABLE WINDOWS
+
+JOIN STANDARD_LIBRARY std_database
+JOIN STANDARD_LIBRARY std_client
+JOIN STANDARD_LIBRARY std_prompt
+JOIN STANDARD_LIBRARY std_class
+
+JOIN LIBRARY $lib_utils
+JOIN LIBRARY $prompt_imprint
+
+JOIN LIBRARY lib_print_event   { 1.0 }
+
+CONSTANT LABEL_PRINT_FORM   = "label_form"
+
+EXIT
+
+{***************************************************************************************}
+
+    GLOBAL
+
+    ROUTINE print_sample_label_menu ( VALUE option )
+    
+{
+*   Print the QC_MICRO sample label from the menu
+*
+****************************************************************************************}
+
+    DECLARE samp_id, label_form, printer_id,
+            event_ok, win_printer_id, actual_printer_used,
+            curr_printer, full_name, msg, infomaker_link, 
+            tab_name, num_copies, curr_lib, continue
+
+    infomaker_link      = "QC_MICRO"    
+    tab_name            = "SAMPLE"      
+    num_copies          = 1
+    curr_lib            = GLOBAL("CURRENT_LIBRARY")
+    actual_printer_used = ""
+
+    create_label_form ( label_form )
+    
+    label_form . start_prompt ()
+    
+    REPEAT
+    
+        label_form . wait_prompt ()
+        
+        IF ( label_form . get_lastkey () = "DO" ) THEN
+        
+            samp_id    = label_form . sample_id . value
+            printer_id = label_form . printer_id . value
+
+            { Prompt for Print Reason }
+
+            CALL_ROUTINE "create_print_event"
+            IN LIBRARY "lib_print_event"
+            USING tab_name, samp_id, curr_lib
+            RETURNING event_ok                   
+
+            IF ( event_ok <> EMPTY ) THEN
+
+                flash_message( event_ok, true)
+
+            ELSE
+
+                { Set label printer before print }
+
+                CALL_ROUTINE "get_win_printer_details" 
+                IN LIBRARY "R_PCNL"
+                USING printer_id
+                RETURNING win_printer_id
+
+                IF (win_printer_id <> "") THEN
+
+                    full_name = FALSE
+                    msg = " " 
+
+                    CALL_ROUTINE "set_label_printer"
+                    IN LIBRARY "R_PCNL"
+                    USING win_printer_id, full_name, actual_printer_used, msg
+                    RETURNING curr_printer
+
+                ENDIF
+
+                { Prompt for continue if no printer }
+
+                continue = TRUE
+
+                IF (actual_printer_used = "") THEN
+
+                    continue = confirm_with_text ("Printer ":STRIP(printer_id):" not found, do you want to print to the default printer ?")
+
+                ENDIF
+
+                IF continue THEN
+
+                    { Print label }
+
+                    CALL_ROUTINE "infomaker_label"
+                    IN LIBRARY "R_PCNL"
+                    USING samp_id, infomaker_link, num_copies
+
+                    { Set back printer }
+
+                    IF (win_printer_id <> "") AND ( actual_printer_used <> "" ) THEN
+
+                        full_name = TRUE
+                        msg = " "
+
+                        CALL_ROUTINE "set_label_printer"
+                        IN LIBRARY "R_PCNL"
+                        USING curr_printer, full_name, actual_printer_used, msg
+
+                    ENDIF
+
+                ENDIF
+
+            ENDIF
+
+        ENDIF
+        
+    UNTIL ( label_form . get_lastkey () = "EXIT" )
+
+    label_form . end_prompt ()
+
+ENDROUTINE
+
+
+{******************************************************************************}
+
+    ROUTINE define_lable_print_form_class
+
+{
+*   Defines the form class
+*
+*******************************************************************************}
+
+    IF ( NOT ( class_defined ( LABEL_PRINT_FORM ) ) ) THEN
+
+        DEFINE CLASS LABEL_PRINT_FORM
+
+            INHERIT
+
+                PROMPT_CLASS_FORM
+
+            PROPERTIES
+
+                "sample_id"   ,
+                "printer_id"
+
+            ACTIONS
+
+                "add_prompts" ,
+                "add_buttons"
+
+        END CLASS
+
+    ENDIF
+
+ENDROUTINE
+
+
+{***************************************************************************************}
+
+    ROUTINE create_label_form ( label_form )
+    
+{
+*   Creates the form to select the sample and printer to print a sample label
+*
+****************************************************************************************}
+
+    define_lable_print_form_class ()
+
+    CREATE OBJECT LABEL_PRINT_FORM, label_form
+
+    label_form . header           = "Print Sample Label"
+    label_form . height           = 6
+    label_form . width            = 40
+    label_form . row              = 5
+    label_form . column           = 5
+    label_form . return_behaviour = FORM_RETURN_STAY
+    label_form . button_style     = FORM_BUTTON_NONE
+
+    label_form . add_prompts ()
+    label_form . add_buttons ()
+
+ENDROUTINE
+
+
+{******************************************************************************}
+
+    ROUTINE label_form_action_add_buttons ( label_form )
+
+{
+*   Add the form buttons
+*
+*******************************************************************************}
+
+DECLARE button_line, do_button, exit_button, button_col, button_width,
+        button_gap
+
+    button_line  = label_form . height - 1
+    button_width = 10
+    button_gap   = 2
+
+    button_col   = label_form . width - ( ( button_width + button_gap ) * 2 )
+
+    PROMPT OBJECT do_button
+    CLASS PROMPT_CLASS_BUTTON
+    ON LINE button_line
+    FROM button_col
+    WITH ( width        = button_width ,
+           caption      = "Print"      ,
+           send_lastkey = "DO"         )
+
+    label_form . add_prompt ( do_button )
+
+    button_col = label_form . width - ( button_width + button_gap )
+
+    PROMPT OBJECT exit_button
+    CLASS PROMPT_CLASS_BUTTON
+    ON LINE button_line
+    FROM button_col
+    WITH ( width        = button_width ,
+           caption      = "Exit"       ,
+           send_lastkey = "EXIT"       )
+
+    label_form . add_prompt ( exit_button )
+
+ENDROUTINE
+
+
+{******************************************************************************}
+
+    ROUTINE label_form_action_add_prompts ( label_form )
+
+{
+*   Add the form controls
+*
+*******************************************************************************}
+
+    label_form . add_display ( "Sample Id"             ,
+                               2                       ,
+                               2                       ,
+                               PROMPT_RENDITION_RAISED )
+
+    PROMPT OBJECT label_form . sample_id
+        ON LINE 2
+        FROM 20 TO label_form . width - 6
+        BROWSE ON sample
+        WITH ( lowered = TRUE )
+
+    label_form . add_prompt ( label_form . sample_id )
+
+    label_form . add_display ( "Printer Id"            ,
+                               2                       ,
+                               3                       ,
+                               PROMPT_RENDITION_RAISED )
+
+    PROMPT OBJECT label_form . printer_id
+        ON LINE 3
+        FROM 20 TO label_form . width - 6
+        BROWSE ON printer
+        WITH ( lowered = TRUE ,
+               value   = GLOBAL("LABEL_ID")   ) {1.1}
+        
+
+    label_form . add_prompt ( label_form . printer_id )
+
+
+ENDROUTINE
+
+
+{***************************************************************************************}
+
+    ROUTINE print_sample_label ( VALUE report_id  ,
+                                 VALUE samp_id    ,
+                                 VALUE printer_id )
+    
+{
+*   Calls Infomaker to print the sample label
+*
+****************************************************************************************}
+
+    DECLARE pbl_name, logical_name, imprint_report
+   
+    pbl_name = "labels.pbl"
+
+    define_imprint_class ( )
+
+    CREATE OBJECT IMPRINT, imprint_report
+
+    imprint_report . create_ole_object( )
+    imprint_report . reset_ole_object( )
+    imprint_report . add_parameter ( samp_id )
+    imprint_report . report  = report_id
+    imprint_report . preview = TRUE
+
+    IF GLOBAL ( "OLEIMPRINT_SERVER_SIDE" ) THEN
+
+        imprint_report . library = lib_utils_logical_containing_file ( "smp$imprint" ,
+                                                                       pbl_name      )
+
+        IF imprint_report . library <> EMPTY THEN
+            imprint_report . library = imprint_report . library : "\" : pbl_name
+        ELSE
+            imprint_report . library = pbl_name
+        ENDIF
+
+    ELSE
+
+        imprint_report . library = CLIENT_GET_IMPRINT_PATH ( ) : "\" : pbl_name
+
+    ENDIF
+
+    IF ( printer_id <> EMPTY ) THEN
+    
+        logical_name = SELECT printer . logical_name
+                           WHERE identity = printer_id
+
+        imprint_report . set_printer ( logical_name )
+        imprint_report . preview = FALSE
+        
+    ENDIF
+    
+    imprint_report . generate ( )
+
+    imprint_report . ole_object = EMPTY
+
+ENDROUTINE
+
+{***************************************************************************************}
+{***************************************************************************************}
+

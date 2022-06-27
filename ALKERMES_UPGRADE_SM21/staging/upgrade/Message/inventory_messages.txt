@@ -1,0 +1,101 @@
+
+MESSAGE GROUP "INV_MANAGEMENT_"
+
+MESSAGE       = "DECREMENT_FAILED"
+TEXT          = "Insufficient batch in stock - decrement failed"
+
+MESSAGE       = "MOVE_BATCH_FAILED"
+TEXT          = "Cannot move batch to the same location"
+
+MESSAGE       = "ALLOCATION_FAILED"
+TEXT          = "Insufficient batch in stock - allocation failed"
+
+MESSAGE       = "UNIT_CONVERT_FAILED"
+TEXT          = "unit convert failed"
+
+MESSAGE       = "RECORD_NOT_FOUND"
+TEXT          = "Inventory record does not exist"
+
+MESSAGE       = "RESERVE_FAILED"
+TEXT          = "Cannot reserve record"
+
+MESSAGE       = "RECORD_ALREADY_EXIST"
+TEXT          = "Inventory record already exist"
+
+MESSAGE       = "IDENTITY_MESSAGE"
+TEXT          = "Identity"
+
+MESSAGE       = "MODIFIED_ON_MESSAGE"
+TEXT          = "Modified On"
+
+MESSAGE       = "MODIFIED_BY_MESSAGE"
+TEXT          = "Modified By"
+
+MESSAGE       = "RE_ORDER_MESSAGE"
+TEXT          = "Re-order Amount"
+
+MESSAGE       = "SUPPLY_LEVEL_MESSAGE"
+TEXT          = "Low Supply Level"
+
+MESSAGE       = "QUANTITY_MESSAGE"
+TEXT          = "Quantity"
+TEXT          = "Allocated"
+
+MESSAGE       = "UNIT_MESSAGE"
+TEXT          = "Unit"
+
+MESSAGE       = "LIST_OF_BATCHES"
+TEXT          = "List of batches for inventory "
+
+MESSAGE       = "LIST_OF_ALLOCATIONS"
+TEXT          = "List of allocated batches for inventory "
+
+MESSAGE       = "LIST_OF_EXPIRED_BATCHES"
+TEXT          = "List of all expired inventory batches"
+
+MESSAGE       = "LIST_OF_LOW_SUPPLY"
+TEXT          = "List of all low supply inventory batches"
+
+MESSAGE       = "LOCATION_HISTORY"
+TEXT          = "Inventory Material Location History"
+
+MESSAGE       = "DATE_ALLOCATION"
+TEXT	      = "Allocation Made Between "
+
+MESSAGE       = "BATCH_USAGE"
+TEXT          = "Batch used by "
+
+MESSAGE       = "BATCH_MESSAGE"
+TEXT          = "Batch"
+TEXT          = "Number"
+TEXT          = "Internal Batch Id"
+
+MESSAGE       = "DATE_MESSAGES"
+TEXT          = "Date"
+TEXT          = "Received"
+TEXT          = "Retest"
+TEXT          = "Expired"
+
+MESSAGE       = "LAST_MESSAGES"
+TEXT          = "Last"
+TEXT          = "Tested"
+TEXT          = "By"
+TEXT          = "Weighed"
+
+MESSAGE       = "WEIGHT_MESSAGE"
+TEXT          = "Current"
+TEXT          = "Weight"
+
+MESSAGE       = "RECORD_MESSAGES"
+TEXT          = "Inventory"
+TEXT          = "Id"
+TEXT          = "Entry Code"
+TEXT          = "Usage"
+TEXT          = "Location"
+TEXT          = "Expired"
+TEXT          = "Stock"
+TEXT          = "Item Id"
+TEXT          = "Item Name"
+TEXT          = "Entered"
+TEXT          = "Entry"
+TEXT          = "Code"

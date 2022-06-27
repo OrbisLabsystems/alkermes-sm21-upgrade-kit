@@ -1,0 +1,87 @@
+{******************************************************************************
+*
+* Module Name          : EM_LIB
+*
+* Purpose              : General Routines used by the Environmental Monitoring Module
+*
+* Portability          : Not Checked
+*
+* Author               : Maria Allen
+*
+* Date created         : 06-Jun-2012
+*
+* Version              : 1.0
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By             Description
+* -------   -----------  ----------     ---------------------------------------
+* 1.0       06-Jun-2012  Maria Allen	Release Version
+*
+*******************************************************************************}
+
+SET NOTPROTECTED
+SET NAME "DEFER/"
+SET COMPILEOPTION DECLARE
+ENABLE WINDOWS
+
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_OUTPUT
+JOIN STANDARD_LIBRARY STD_CLIENT
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN standard_library std_dde
+
+JOIN LIBRARY $lib_utils
+
+{
+*  Display the EM room plan
+*
+*******************************************************************************}
+
+GLOBAL ROUTINE display_em_file (self)
+
+
+
+    DECLARE filename, location_id, program_path, status
+
+
+	prompt_in_window ("LOCATION" , "Select Area", "Area Locations", EMPTY, location_id )
+
+
+
+    filename = SELECT location.filepath
+		WHERE location.identity = location_id
+
+
+       filename = STRIP (filename) 
+
+
+
+
+
+   IF  NOT BLANK (filename)THEN
+
+
+		program_path = client_get_file_association (filename)
+
+
+		dde_winexec (program_path : "  "  : filename ,"SW_SHOW",status)
+		
+
+
+    ELSE
+
+
+
+        flash_message("No file available, check filename", true)
+
+    ENDIF
+
+ 
+
+ENDROUTINE {display_em_file}
+
+

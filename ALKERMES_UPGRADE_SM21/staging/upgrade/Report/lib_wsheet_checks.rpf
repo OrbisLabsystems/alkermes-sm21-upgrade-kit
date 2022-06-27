@@ -1,0 +1,890 @@
+
+{******************************************************************************
+*
+* Module Name          : LIB_WSHEET_CHECKS
+*
+* Purpose              : Routines for custom operator approval checks
+*
+* Portability          : Not Checked
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By             Description
+* -------   -----------  ----------     ---------------------------------------
+* 1.0       18-Jul-2005  J. O'Neill     Release Version 
+* 1.1       07-Apr-2006  Vincent Molloy Changes to take account of the WSHEET_INFO
+*                                       grid which replaced direct prompts on the
+*                                       form.
+* 1.2       29-Sep-2006  Vincent Molloy Corrected flag and reason so they are 
+*                                       written against the correct row in wsheet_info
+* 1.3       18-Dec-2006  Vincent Molloy	Updated calibration check routine to account 
+*                                       for situation where results are entered 
+*                                       against a date prior to the latest calibration
+*                                       but where that date had a valid calibration record
+* 1.4       18-Dec-2006  Vincent Molloy Updated check_calibration routine to ensure 
+*                                       that the reason and flag field are reset to 
+*                                       blank in the event that an uncalibrated
+*                                       instrument is replaced with a calibrated one
+*
+* 1.5       08-AUG-2012  Ken Jacobs     Add checkStockBatch
+*
+* 1.6       09-AUG-2012  Ken Jacobs     Add checkAnalyst, checkAnalysisTraining
+*
+* 1.7       09-AUG-2012  Ken Jacobs     Add checkInstrument, checkInstrumentTraining
+*                                       checInstrumentCalibration etc.
+*
+* 1.8       14-AUG-2012  Ken Jacobs     When analysts entered, also check instrument 
+*                                       training
+*
+* 1.9       25-SEP-2012  Ken Jacobs     Remove original validation routines
+*
+*******************************************************************************}
+
+SET NAME "DEFER/"
+SET COMPILE_OPTION DECLARE
+
+JOIN LIBRARY $LIB_UTILS
+
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT                                  {1.5}
+
+JOIN LIBRARY $lib_training_record                                       {1.6}
+JOIN LIBRARY $lib_text                                                  {1.8}
+
+JOIN LIBRARY PROMPT_ROUTINES
+JOIN LIBRARY WSHEET_CHECKS                                              {1.8}
+JOIN LIBRARY WSHEET_INFO                                                {1.8}
+
+CONSTANT Debug = FALSE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE checkAnalyst
+    (
+            personnelPromptObject   
+    )
+
+    {
+    Description :
+    1.6, 1.8
+    }
+    
+    DECLARE valid
+    DECLARE grid
+    DECLARE wsheetForm
+    DECLARE test
+    DECLARE analysis
+    DECLARE analysisVersion
+    DECLARE analysisDate
+    DECLARE analyst
+    DECLARE instrument
+    
+    analyst = personnelPromptObject.value
+    
+    IF ( analyst = "" )
+    
+        valid = TRUE
+        
+    ELSE
+    
+        grid         = personnelPromptObject.parentPrompt
+        wsheetForm   = grid.parentPrompt
+        test         = wsheetForm.test_number
+
+        getAnalysisDate( personnelPromptObject, analysisDate )
+        getInstrument( personnelPromptObject, instrument )
+        getAnalysisFromTest( test, analysis, analysisVersion )
+    
+        IF ( checkAnalysisTraining( analysis, analysisVersion, analyst, analysisDate ) )
+
+            IF ( instrument = "" )
+            
+                valid = TRUE
+                
+            ELSE
+            
+                IF ( checkInstrumentTraining( instrument, analyst, analysisDate ) )
+
+                    valid = TRUE
+
+                ELSE
+
+                    valid = FALSE
+
+                ENDIF
+
+            ENDIF
+            
+        ELSE
+
+            valid = FALSE
+
+        ENDIF
+
+    ENDIF
+    
+    RETURN( valid )
+
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE checkAnalysisTraining
+    (
+    VALUE   analysis,
+    VALUE   analysisVersion,
+    VALUE   analyst,
+    VALUE   analysisDate
+    )
+
+    {
+    Description :
+    1.6
+    }
+    
+    DECLARE valid
+    
+    IF ( analysisDate = "" )
+
+        valid = FALSE
+        flash_message( "Analysis Date not entered. Unable to check analyst. Analysis Date must be entered before the Analyst", TRUE )
+            
+    ELSE
+
+        IF ( lib_tr_analysis_approved_kj( analysis, analysisVersion, analyst, analysisDate ) )
+
+            valid = TRUE
+
+        ELSE
+
+            valid = FALSE
+            flash_message( "User is not trained for analsyis", TRUE ) 
+
+        ENDIF
+
+    ENDIF
+
+    RETURN( valid )
+
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE checkInstrument
+    (
+            instrumentPromptObject   
+    )
+
+    {
+    Description :
+    1.7
+    }
+    
+    DECLARE valid
+    DECLARE instrument
+    DECLARE analysisDate
+    DECLARE analyst
+    DECLARE failures
+    DECLARE reason
+    
+    instrument = instrumentPromptObject.value
+    
+    IF ( instrument = "" )
+    
+        valid = TRUE
+        
+    ELSE
+    
+        getAnalysisDate( instrumentPromptObject, analysisDate )
+        getAnalyst( instrumentPromptObject, analyst )
+
+        IF ( analyst = "" )
+
+            valid = TRUE
+            
+        ELSE
+        
+            IF ( checkInstrumentTraining( instrument, analyst, analysisDate ) )
+
+                valid = TRUE
+
+            ELSE
+
+                valid = FALSE
+
+            ENDIF
+
+        ENDIF
+        
+        IF ( valid )
+        
+            IF ( checkInstrumentCalibration( instrument, analysisDate, failures ) )
+            
+                valid = TRUE
+                
+            ELSE
+
+                flash_message( failures, TRUE )
+                valid = TRUE
+
+                reason = prompt_reason (GET_USER_MESSAGE("WSHEET_CHECKS_REASON_OOC_INST", 1))
+
+                instrumentPromptObject.parent_prompt.parent_prompt.values[instrumentPromptObject.parent_prompt.current_row, 3]  = reason
+                instrumentPromptObject.parent_prompt.parent_prompt.values[instrumentPromptObject.parent_prompt.current_row, 4]  = "XI"    {1.2}
+                
+            ENDIF
+            
+        ENDIF
+        
+    ENDIF
+    
+    RETURN( valid )
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE checkInstrumentTraining
+    (
+    VALUE   instrument,
+    VALUE   analyst,
+    VALUE   analysisDate
+    )
+
+    {
+    Description :
+    1.7
+    }
+
+    DECLARE valid
+    
+    IF ( analysisDate = "" )
+
+        valid = FALSE
+        flash_message( "Analysis Date not entered. Unable to check instrument. Analysis Date must be entered before the Instrument", TRUE )
+
+    ELSE
+
+        IF ( lib_tr_instrument_approved_kj( instrument, analyst, analysisDate ) )
+
+            valid = TRUE
+
+        ELSE
+
+            valid = FALSE
+            flash_message( "User is not trained for instrument", TRUE ) 
+
+        ENDIF
+
+    ENDIF
+        
+    RETURN( valid )
+
+ENDROUTINE
+
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE checkInstrumentCalibration
+    (
+    VALUE   instrument,
+    VALUE   analysisDate,
+            failures
+    )
+
+    {
+    Description :
+    1.7
+    }
+    
+    DECLARE valid
+    DECLARE instrumentPart
+    DECLARE mandatoryPart
+    DECLARE messages            ARRAY messages      ARRAY_SIZE(0,2)
+    DECLARE message
+    
+    valid = TRUE
+    failures = ""
+    
+    addMessage( messages, "DEBUG", "Results of Instrument Calibration Checks - Change debug constant to switch off" )
+    addMessage( messages, "", "Analysis Date " : analysisDate )
+    
+    instrumentPart = SELECT instrument_part_link.instrument_part
+                     WHERE  ( instrument = instrument )
+                     ORDER ON order_number
+    
+    WHILE ( instrumentPart <> EMPTY )
+    
+        mandatoryPart = SELECT instrument_part_link.mandatory
+        
+        IF  ( instrumentPart = "" )
+        
+            IF ( mandatoryPart = TRUE )
+        
+                valid = FALSE 
+                message = "Missing mandatory part of type " : SELECT instrument_part_link.instrument_part_template
+                addMessage( messages, FALSE, message ) 
+                failures = failures : message : ". "
+
+            ELSE
+            
+                addMessage( messages, TRUE, "Ignoring missing optional part of type " : SELECT instrument_part_link.instrument_part_template )
+                
+            ENDIF                
+
+        ELSE
+        
+            IF ( checkInstrumentOrPartCalibration( instrumentPart, AnalysisDate, "INSTRUMENT_PART", "INSTRUMENT_PART_EVENT", messages, failures ) )
+
+                {OK}  
+            
+            ELSE
+            
+                valid = FALSE
+                
+            ENDIF                
+        
+        ENDIF
+        
+        NEXT instrument_part_link
+        instrumentPart = SELECT instrument_part_link.instrument_part
+        
+    ENDWHILE        
+
+    IF ( checkInstrumentOrPartCalibration( instrument, AnalysisDate, "INSTRUMENT", "INSTRUMENT_EVENT", messages, failures ) )
+
+        {OK}
+
+    ELSE
+
+        valid = FALSE
+
+    ENDIF                
+    
+    addMessage( messages, valid, "Overall Calibration Check Result" )
+    
+    showMessages( messages )
+
+    RETURN( valid )
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE checkInstrumentOrPartCalibration
+    (
+    VALUE   item,
+    VALUE   analysisDate,
+    VALUE   itemTable,
+    VALUE   eventTable,
+            messages,
+            failures
+    )
+
+    {
+    Description :
+    1.7
+    item is either an instrument or an instrument part
+    }
+    
+    DECLARE calibrationRequired
+    DECLARE dateCalibrated
+    DECLARE dateCalibrationDue
+    DECLARE valid
+    DECLARE message
+    
+    calibrationRequired = SELECT 'itemTable'.requires_calibration
+                          WHERE  ( identity = item )
+                          
+    IF ( calibrationRequired <> EMPTY )
+    
+        IF ( calibrationRequired = TRUE )
+        
+            dateCalibrated = SELECT 'eventTable'.entered_on
+                             WHERE  ( 'itemTable' = item )              { primary table name is same af field name in event table }
+                             AND    ( event_type = "CALIB" )
+                             AND    ( entered_on <= analysisDate )     { date calibrated }
+                             AND    ( next_calib_date >= analysisDate )
+
+            IF ( dateCalibrated <> EMPTY )
+
+                valid = TRUE
+                dateCalibrationDue = SELECT 'eventTable'.next_calib_date
+                addMessage( messages, TRUE, lib_text_identity_to_text( itemTable ) : " " : STRIP( item ) : " calibrated, " : dateCalibrated : ", Next Due " : dateCalibrationDue )
+                
+            ELSE
+            
+                valid = FALSE
+                message = lib_text_identity_to_text( itemTable ) : " " : STRIP( item ) : " not calibrated"
+                addMessage( messages, FALSE, message ) 
+                failures = failures : message : ". "
+                
+            ENDIF
+            
+        ELSE
+        
+            valid = TRUE
+            addMessage( messages, TRUE, lib_text_identity_to_text( itemTable ) : " " : STRIP( item ) : " does not require calibration" )
+            
+        ENDIF
+        
+    ELSE
+    
+        valid = FALSE
+        message = lib_text_identity_to_text( itemTable ) : " " : STRIP( item ) : " not found"
+        addMessage( messages, FALSE, message ) 
+        failures = failures : message : ". "
+        
+    ENDIF
+    
+    IF ( checkAvailability( item, analysisDate, itemTable, eventTable, messages, failures ) )
+
+        {OK}
+
+    ELSE
+
+        valid = FALSE
+
+    ENDIF
+    
+    RETURN( valid )
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE checkAvailability
+    (
+    VALUE   item,
+    VALUE   analysisDate,
+    VALUE   itemTable,
+    VALUE   eventTable,
+            messages,
+            failures
+    )
+
+    {
+    Description :
+    1.7
+    UNAVAIL & AVAIL events should always come in pairs
+    Select the last one of either before analysis date.
+    If last one was AVAIL then OK
+    If no last one, also OK - instrument cretaed as available
+    
+    }
+    
+    DECLARE valid
+    DECLARE eventType
+    DECLARE message
+    
+    eventType = SELECT 'eventTable'.event_type
+                WHERE  ( 'itemTable' = item )
+                AND    (   ( event_type = "UNAVAIL" )
+                        OR ( event_type = "AVAIL" )
+                       )
+                AND    ( entered_on < analysisDate )
+                ORDER ON entered_on DESCENDING
+
+    IF ( eventType = EMPTY )
+    
+        valid = TRUE
+        addMessage( messages, TRUE, lib_text_identity_to_text( itemTable ) : " " : STRIP( item ) : " created as available" )
+        
+    ELSEIF ( eventType = "AVAIL" )
+    
+        valid = TRUE
+        addMessage( messages, TRUE, lib_text_identity_to_text( itemTable ) : " " : STRIP( item ) : " made available on " : SELECT 'eventTable'.entered_on )
+        
+    ELSE
+    
+        valid = FALSE
+        message = lib_text_identity_to_text( itemTable ) : " " : STRIP( item ) : " made unavailable on " : SELECT 'eventTable'.entered_on
+        addMessage( messages, FALSE, message ) 
+        failures = failures : message : ". "
+        
+    ENDIF
+    
+    RETURN( valid )
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE addMessage
+    (
+            messages,
+    VALUE   status,
+    VALUE   messageText            
+    )
+
+    {
+    Description :
+    1.7
+    }
+    
+    DECLARE i
+    
+    i = size_of_array( messages ) + 1
+    messages[i,1] = status
+    messages[i,2] = messageText
+    
+    RETURN
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE showMessages
+    (
+            messages   
+    )
+
+    {
+    Description :
+    1.7
+    }
+    
+    IF ( Debug )
+    
+        SET NAME "display/"
+
+        DECLARE i
+        DECLARE temp
+
+        i = 1
+        WHILE ( i <= size_of_array( messages ) )
+
+            temp = LEFTSTRING( messages[i,1], 10 ) : " " : messages[i,2]
+
+LITERAL
+$temp_______________________________________________________________________________________________________________________________
+$ENDLITERAL
+
+            i = i + 1
+
+        ENDWHILE        
+
+        FLUSH_LITERAL
+
+    ENDIF
+    
+    RETURN
+    
+ENDROUTINE
+
+{******************************************************************************}
+
+
+
+
+GLOBAL ROUTINE check_standard_expiry (self)
+
+{
+* Summary    : Checks if standard version chosen is expired
+*              
+* Parameters : Self
+*           
+* Return     : Boolean
+*
+*******************************************************************************}
+
+    
+    DECLARE the_analysis_date,
+            the_standard,
+            standard_id,
+            standard_version,
+            expiry_date,
+            expired,
+            reason
+    
+    {Get analysis date from form - prompt 1}
+    {assumption that the the first prompt is the analysis date}
+
+    IF (STRIP(self.parent_prompt.parent_prompt.values[1,1]) = GET_USER_MESSAGE("WSHEET_CHECKS_DATE", 1)) THEN
+        
+        the_analysis_date =  self.parent_prompt.parent_prompt.values[1,2]
+            
+    ELSE
+            
+        the_analysis_date = NOW
+            
+    ENDIF
+            
+    the_analysis_date = DATE(the_analysis_date)
+
+    the_standard      = self . text
+
+    IF (STRIP(the_standard) = "") THEN
+
+        expired = FALSE
+
+    ELSE
+
+        standard_id      = LEFTSTRING (the_standard, 10)
+        standard_version = RIGHTSTRING(the_standard, 10)
+
+        expiry_date = SELECT standard_versions . expiry_date WHERE
+                             identity = standard_id AND
+                             version  = standard_version
+
+        IF ((expiry_date <> EMPTY) AND (STRIP(expiry_date) <> "")) THEN
+
+            expiry_date = DATE (expiry_date)
+  
+           IF ( expiry_date < the_analysis_date )  THEN
+
+               expired = TRUE
+   
+           ELSE
+ 
+               expired = FALSE
+
+           ENDIF
+
+        ELSE
+
+            expired = FALSE
+
+        ENDIF
+
+        IF expired THEN
+
+            reason = prompt_reason (GET_USER_MESSAGE("WSHEET_CHECKS_REASON_EXPIRED_STD", 1))
+
+            self . parent_prompt . parent_prompt . values [self . parent_prompt . current_row, 3]  = reason
+            self . parent_prompt . parent_prompt . values [self . parent_prompt . current_row, 4]  = "XS"       {1.2}
+
+
+        ELSE
+
+            self . parent_prompt . parent_prompt . values [self . parent_prompt . current_row, 3]  = ""
+            self . parent_prompt . parent_prompt . values [self . parent_prompt . current_row, 4]  = ""         {1.2}
+
+        ENDIF
+       
+  
+    ENDIF
+    
+    RETURN (TRUE)
+
+ENDROUTINE {check_standard_expiry}
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE checkStockBatch
+    (
+            stockBatchPromptObject   
+    )
+
+    {
+    Description :
+    1.5
+    }
+    
+    DECLARE analysisDate
+    DECLARE stockBatchId
+    DECLARE valid
+    DECLARE expiryDate
+
+    stockBatchId  = stockBatchPromptObject.value
+    getAnalysisDate( stockBatchPromptObject, analysisDate )
+    
+    IF ( stockBatchId = "" )
+    
+        valid = TRUE
+        
+    ELSE
+    
+        expiryDate = SELECT stock_batch.expiry_date
+                     WHERE  ( stock_batch_id = stockBatchId )
+
+        IF ( expiryDate >= analysisDate )  
+        OR ( expiryDate = DATE( "" ) )
+
+            valid = TRUE
+            setReasonAndFlag( stockBatchPromptObject, ( "Analysis Date = " : analysisDate : ", Expiry Date = " : expiryDate ), "" )
+
+        ELSE
+
+            valid = FALSE
+            flash_message( "Stock Batch expired " : expiryDate : ", Choose a different batch", TRUE) 
+
+        ENDIF
+
+    ENDIF
+    
+    RETURN( valid )
+    
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE getAnalysisDate
+    (
+            currentPromptObject,
+            analysisDate
+    )
+
+    {
+    Description :
+    1.5
+    }
+
+    DECLARE firstPromptIdentity
+    DECLARE firstPromptValue
+    
+    firstPromptIdentity = currentPromptObject.parent_prompt.parent_prompt.values[1,1]
+    firstPromptValue    = currentPromptObject.parent_prompt.parent_prompt.values[1,2]
+    
+    IF ( firstPromptIdentity = GET_USER_MESSAGE( "WSHEET_CHECKS_DATE", 1 ) )
+        
+        analysisDate = firstPromptValue 
+            
+    ELSE
+            
+        analysisDate = NOW
+            
+    ENDIF
+            
+    analysisDate = DATE( analysisDate )
+    
+    RETURN( analysisDate <> DATE( "" ) )
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE getAnalyst
+    (
+            currentPromptObject,
+            analyst
+    )
+
+    {
+    Description :
+    1.7
+    }
+
+    DECLARE secondPromptIdentity
+    DECLARE secondPromptValue
+    
+    secondPromptIdentity = currentPromptObject.parent_prompt.parent_prompt.values[2,1]
+    secondPromptValue    = currentPromptObject.parent_prompt.parent_prompt.values[2,2]
+    
+    IF ( secondPromptIdentity = GET_USER_MESSAGE( "WSHEET_CHECKS_ANALYST", 1 ) )
+        
+        analyst = secondPromptValue 
+            
+    ELSE
+            
+        analyst = OPERATOR
+            
+    ENDIF
+            
+    RETURN( analyst <> "" )
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE getInstrument
+    (
+            currentPromptObject,
+            instrument
+    )
+
+    {
+    Description :
+    1.8
+    }
+
+    DECLARE counter
+    DECLARE found
+    DECLARE form
+    DECLARE table
+    
+    form = currentPromptObject.parent_prompt.parent_prompt
+    instrument = ""
+    
+    counter = 1
+    found = FALSE
+    
+    WHILE ( counter <= size_of_array( form.values ) )
+    AND   ( found = FALSE )
+
+        getTableName( form.details[TYPE_COL, counter], form.details[TBLE_COL, counter], form.details[FILD_COL, counter], table )
+        
+        IF ( form.values[counter,1] = "INSTRUMENT" )
+        OR ( table = "INSTRUMENT" )
+        
+            found = TRUE
+            instrument = form.values[counter,2]
+
+        ENDIF
+        
+        counter = counter + 1
+        
+    ENDWHILE        
+            
+    RETURN( instrument <> "" )
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE setReasonAndFlag
+    (
+            currentPromptObject,
+    VALUE   reason,
+    VALUE   flag
+    )
+
+    {
+    Description :
+    1.5
+    }
+    
+    DECLARE grid
+    DECLARE form
+    
+    grid = currentPromptObject.parent_prompt  
+    form = grid.parent_prompt
+    
+    form.values[grid.current_row,3]  = reason
+    form.values[grid.current_row,4]  = flag         
+    
+    RETURN
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE getAnalysisFromTest
+    (
+    VALUE   test,
+            analysis,
+            analysisVersion
+    )
+
+    {
+    Description :
+    1.6
+    }
+    
+    analysis = SELECT test.analysis
+               WHERE  ( test_number = test )
+    analysisVersion = SELECT test.analysis_version
+    
+    RETURN( analysis <> EMPTY )
+    
+ENDROUTINE
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  

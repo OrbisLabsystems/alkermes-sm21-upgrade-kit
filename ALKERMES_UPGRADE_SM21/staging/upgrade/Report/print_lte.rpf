@@ -1,0 +1,1760 @@
+{******************************************************************************
+*
+* Module Name   : PRINT_LTE
+*
+* Purpose       : Print an LTE via InforMaker Copy of $PRINT_LTE but 
+*                 prints correct details for tables with more than 2 key0 fields
+*
+* Document Ref  : 
+*
+* Specification :
+*
+* Portability   : Not Checked
+*
+* Re-entrant    : No
+*
+*******************************************************************************}
+{
+* Modification History
+*
+* Version       Date          Modification            Description
+* --------      ---------    ------------------       -------------------------
+* 1.0           17-June-2004  AMFanning               Created to allow print 
+*                                                     function to work on tables with
+*                                                     tables where number key0 fields > 3
+*
+* 1.1           13-Jul-2004   AMFanning               Modified so packed decimal values 
+*                                                     are not striped
+*
+********************************************************************************}
+
+SET COMPILE_OPTION DECLARE
+SET NOTPROTECTED
+SET NAME "DEFER/"
+ENABLE WINDOWS
+
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_BROWSE
+JOIN STANDARD_LIBRARY STD_CLIENT
+JOIN STANDARD_LIBRARY STD_DDE
+JOIN STANDARD_LIBRARY STD_MESSAGE
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_STRUCTURE
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_WINDOW
+
+JOIN LIBRARY $PROMPT_IMPRINT
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $IMPRINT_HEADINGS
+JOIN LIBRARY $CRITERIA_EDIT
+JOIN LIBRARY $CRITERIA_LIB
+JOIN LIBRARY $CRITERIA_SAVED
+
+GLOBAL CONSTANT PRINT_LTE_CLASS = "PRINT_LTE"
+
+CONSTANT ITEM_VALUE         = 1
+CONSTANT ITEM_TYPE          = 2
+CONSTANT ITEM_X             = 3
+CONSTANT ITEM_Y             = 4
+CONSTANT ITEM_HEIGHT        = 5
+CONSTANT ITEM_WIDTH         = 6
+CONSTANT ITEM_DATA_TYPE     = 7
+CONSTANT ITEM_HEADING       = 8
+CONSTANT ITEM_SM_DATA_TYPE  = 9
+CONSTANT ITEM_BLANK_NEXT    = 10
+
+CONSTANT MESSAGE_POSITION    = 1
+CONSTANT TYPE_POSITION       = 2
+CONSTANT BLANK_POSITION      = 3
+CONSTANT FIELD_NAME_POSITION = 4
+
+CONSTANT DEFAULT_Y_POSITION   = 2200
+CONSTANT APPROVAL_Y_POSITION  = 2400
+CONSTANT CUSTOM_Y_POSITION    = 700
+CONSTANT LANDSCAPE_WIDTH      = 7600
+CONSTANT START_X_POSITION     = 83
+CONSTANT FIELD_SPACING        = 200
+CONSTANT CHAR_WIDTH           = 75
+CONSTANT CAPITAL_COMPENSATION = 200
+CONSTANT VERTICAL_SPACING     = 45
+CONSTANT DEFAULT_HEIGHT       = 180
+CONSTANT DATE_WIDTH           = 11
+CONSTANT DECODE_WIDTH         = 20
+CONSTANT DEFAULT_DETAIL       = "300"
+CONSTANT TAB                  = ASCII ( 9 )
+CONSTANT Q                    = ASCII ( 34 )
+CONSTANT CR_LF                = ASCII ( 13 ) : ASCII ( 10 )
+
+CONSTANT COLOUR_NAVY  = "8388608"
+CONSTANT COLOUR_WHITE = "553648127"
+CONSTANT COLOUR_BLACK = "33554432"
+
+CONSTANT NORMAL_WEIGHT = "400"
+CONSTANT BOLD_WEIGHT   = "700"
+
+CONSTANT SYNTAX_TRAILER = " font.family=" : Q : "2" : Q : " font.pitch=" : Q : "2" : Q : 
+                          " font.charset=" : Q : "0" : Q : " background.mode=" : Q : "1" 
+                          : Q : " background.color=" : Q : COLOUR_WHITE : Q : " ) " : CR_LF
+
+CONSTANT STATUS_DECODE_STRING = " values=" : Q : "Authorised	A/Completed	C/Entered	E/"
+                                : "On Hold	H/Inspection	I/Modified	M/In Progress	P/Rejected	R/"
+                                : "Suspended	S/Unavailable	U/Awaiting Preparation	W/Cancelled	X/"
+                                : "Available	V/" : Q
+
+CONSTANT STANDARDS_DECODE_STRING = " values=" : Q : "Time	T/Usage	U/Time and Usage	B/" : Q
+
+	
+{******************************************************************************}
+
+	GLOBAL
+
+	ROUTINE define_print_lte_class
+
+{
+*
+* 	Define the print lte class
+*
+* 	Parameters   : N/a
+* 	Return Value : N/a
+*
+*******************************************************************************}
+
+	define_imprint_class ( )
+
+	DEFINE CLASS PRINT_LTE_CLASS
+
+		INHERIT IMPRINT
+
+		INITIALISATION
+
+		PROPERTIES "labtable"           ,
+		           "display_data"       ,
+		           "max_heading_width"  ,
+		           "file_to_open"       ,
+		           "tbl_name"           ,
+		           "key0_id"            ,
+		           "version_id"         ,
+		           "key0_width"         ,
+		           "key0_fields"        ,
+		           "key0_total"         ,
+		           "modified_by"        ,
+		           "exported_syntax"    ,
+		           "composite_syntax"   ,
+		           "default_import"     ,
+		           "description_report" ,
+		           "report_heading"     ,
+		           "modified_on"        ,
+		           "approval_status"
+
+		ACTIONS    "print"                    ,
+		           "calculate_positions"      ,
+		           "calc_next_y"              ,
+		           "extended_report"          ,
+		           "modify_syntax"            ,
+		           "get_width"                ,
+		           "update_max_width"         ,
+		           "set_file_name"            ,
+		           "find_and_replace"         ,
+		           "add_retrieval"            ,
+		           "add_headings"             ,
+		           "add_identities"           ,
+		           "add_description"          ,
+		           "add_report"               ,
+		           "tab_separate"             ,
+		           "construct_syntax"         ,
+		           "normal_report"            ,
+		           "decode_datatype"          ,
+		           "read_a_file"              ,
+		           "process_array"            ,
+		           "add_title"                ,
+		           "chars_only"               ,
+		           "string_val"               ,
+		           "is_status"                ,
+		           "add_status_decode_string" ,
+		           "create_text_criteria"     ,
+		           "generate_syntax" 
+
+	END CLASS
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE print_lte_class_initialisation ( self )
+
+{
+*
+*	Define the print lte class
+*
+*	Parameters   : N/a
+*	Return Value : N/a
+*
+*******************************************************************************}
+
+	ARRAY self . display_data ARRAYSIZE ( 0 , 10 )
+
+	self . syntax = INFOMAKER_RELEASE_VERSION : INFOMAKER_DATAWINDOW_HEADER
+	self . max_heading_width = 0
+	self . exported_syntax = ""
+	self . composite_syntax = INFOMAKER_RELEASE_VERSION : INFOMAKER_DATAWINDOW_HEADER : 
+	                          INFOMAKER_HEADER_BAND : INFOMAKER_DETAIL_BAND :
+	                          INFOMAKER_SUMMARY_BAND : INFOMAKER_FOOTER_BAND : 	                          "table(column=(type=char(10) updatewhereclause=yes name=a dbname="
+	                          : Q : "a" : Q : " ) unbound = " : Q : "yes" : Q : " arguments=((" 
+	                          : Q : "DATE_AND_TIME" : Q : ", string)) ) " 
+	                          : CR_LF : INFOMAKER_TODAYS_DATE : INFOMAKER_FOOTER_LINE 
+	                          : INFOMAKER_PAGE_NUMBERING
+
+ENDROUTINE
+
+
+{******************************************************************************}
+
+	ROUTINE Print_Initialise ( Object_Variable )
+
+{
+*	Create the main print_lte object and define some settings
+*
+*	Parameters   : Object_Variable - A reference that will be the created object 
+*	Return Value : N/a
+*
+*******************************************************************************}
+
+	define_print_lte_class ( )
+	CREATE OBJECT PRINT_LTE_CLASS , Object_Variable
+
+	Object_Variable . create_ole_object()
+	Object_Variable . reset_ole_object()
+
+	Object_Variable . set_report ( "" )
+	Object_Variable . set_PBL_library ( Object_Variable . library )
+	Object_Variable . set_runtime_library ( Object_Variable . rtime_lib )
+	Object_Variable . ole_object . ?"create_temp_library"? ( )
+
+	Object_Variable . login()
+
+ENDROUTINE
+
+
+{******************************************************************************}
+
+	ROUTINE print_lte_action_process_array ( self               ,
+	                                         array_to_process   ,
+	                                         VALUE allow_blanks )
+
+{
+*	Create the main print_lte object and define some settings
+*
+*	Parameters   : Object_Variable - A reference that will be the created object 
+*	Return Value : N/a
+*
+*******************************************************************************}
+
+	DECLARE loop_index , db_width , db_data_type , heading_width, count
+
+	count         = 1
+	loop_index    = 1
+	heading_width = 0
+
+	WHILE ( array_to_process [ loop_index , 1 ] <> EMPTY ) DO
+
+		IF ( array_to_process [ loop_index, TYPE_POSITION ] <> "ROUTINE" ) THEN
+
+			GET_FIELD_DETAILS  'self . tbl_name' .
+			                   'array_to_process [ loop_index , FIELD_NAME_POSITION ]',
+			                   "DATA_TYPE"  ,
+			                   db_data_type
+
+			GET_FIELD_DETAILS 'self . tbl_name' .
+			                  'array_to_process [ loop_index , FIELD_NAME_POSITION ]',
+			                  "FIELD_SIZE",
+			                  db_width
+
+			IF ( db_width > 40 ) AND ( db_data_type = "Text" ) THEN
+
+				db_width = LENGTH ( SELECT 'self . tbl_name' .
+				                           'array_to_process [ loop_index , FIELD_NAME_POSITION ]' )
+
+			ENDIF
+
+			get_real_field_name ( self . tbl_name  ,
+			                      array_to_process [ loop_index , FIELD_NAME_POSITION ] ,
+			                      self . display_data [ count , ITEM_VALUE     ] )
+
+			self . display_data [ count , ITEM_TYPE          ] = "COLUMN"
+			self . display_data [ count , ITEM_X             ] = 0
+			self . display_data [ count , ITEM_Y             ] = 0
+			self . display_data [ count , ITEM_HEIGHT        ] = DEFAULT_HEIGHT
+
+			IF ( db_data_type = "Date" ) THEN
+				self . display_data [ count , ITEM_WIDTH         ] = DATE_WIDTH
+			ELSEIF ( ( self . is_status ( self . display_data [ count , ITEM_VALUE ] , db_width ) ) OR  
+				   ( self . display_data [ count , ITEM_VALUE ] = "EXPIRY_TYPE" )             )
+				self . display_data [ count , ITEM_WIDTH         ] = DECODE_WIDTH
+			ELSE
+				self . display_data [ count , ITEM_WIDTH         ] = db_width
+			ENDIF
+
+			self . display_data [ count , ITEM_DATA_TYPE     ] = self . decode_datatype ( db_data_type )
+			self . display_data [ count , ITEM_SM_DATA_TYPE  ] = STRIP ( db_data_type )
+			self . display_data [ count , ITEM_HEADING       ] = 
+			       self . chars_only ( array_to_process [ loop_index , MESSAGE_POSITION ] )
+
+			IF ( allow_blanks ) THEN
+				self . display_data [ count , ITEM_BLANK_NEXT    ] = 
+				       array_to_process [ loop_index, BLANK_POSITION ]
+			ELSE
+				self . display_data [ count , ITEM_BLANK_NEXT    ] = FALSE
+			ENDIF
+
+			heading_width = self . get_width ( LENGTH ( self . display_data [ count , ITEM_HEADING ] ) )
+			self . update_max_width ( heading_width )
+			count = count + 1
+
+		ENDIF
+
+		loop_index = loop_index + 1
+        
+	ENDWHILE
+
+ENDROUTINE
+
+
+{******************************************************************************}
+
+	GLOBAL 
+
+	ROUTINE print_lte ( labtable )
+
+{
+*	Print out the LTE record to Imprint
+*
+*	Parameters   : Labtable - contains all details on the table & fields
+*	Return Value : N/a
+*
+*******************************************************************************}
+
+	DECLARE lte , key0_index
+
+	Print_Initialise ( lte )
+
+	key0_index = 1
+
+	lte . exported_syntax = lte . 
+	                        ole_object . 
+	                        ?"export_syntax"? ( "r_" : STRIP ( TOLOWER ( labtable . lte_report ) ) )
+
+	lte . labtable = labtable
+	lte . tbl_name = labtable . name_of_table
+	lte . key0_total = labtable . number_key0_fields
+	lte . report_heading = get_user_message ( "LTE_PRINT_PRINT_HEAD" , 1 )
+	lte . report_heading = expand_message ( lte . report_heading                ,
+	                                        lte . labtable . user_name_of_table )
+
+	ARRAY lte . key0_fields ARRAYSIZE ( lte . key0_total )
+
+	WHILE ( lte . key0_total >= key0_index ) DO
+
+		lte . key0_fields [ key0_index ] = labtable . key0_fields [ key0_index ]
+		key0_index = key0_index + 1
+
+	ENDWHILE
+
+	IF labtable . has_approval THEN
+
+                FORMAT lte . approval_status
+                       FROM SELECT 'labtable . name_of_table' . 'labtable . approval_field'
+                       USING 'labtable . name_of_table' . 'labtable . approval_field'
+
+	ELSE
+
+		lte . approval_status = ""
+
+	ENDIF
+
+	GET_FIELD_DETAILS 'lte . tbl_name' . 'lte . key0_fields [ 1 ]',
+	                  "FIELD_SIZE" ,
+	                  lte . key0_width
+
+	lte . key0_id    = STRIP ( LEFTSTRING  ( labtable . identity , lte . key0_width ) )
+	lte . version_id = RIGHTSTRING ( labtable . identity , 
+	                                 STRINGLENGTH ( labtable . identity ) - lte . key0_width )
+
+	IF ( LEFTSTRING ( lte . version_id , 1 ) <> " " ) THEN
+		lte . version_id = STRIP ( lte . version_id )
+	ENDIF
+
+	lte . set_file_name ( )
+
+	lte . process_array ( labtable . prompt_details , FALSE )
+	lte . add_retrieval ( )
+
+	IF labtable . has_approval THEN
+
+		lte . calculate_positions ( APPROVAL_Y_POSITION ) 
+
+	ELSE
+
+		lte. calculate_positions ( DEFAULT_Y_POSITION )
+
+	ENDIF
+
+	lte . modify_syntax ( ) 
+	lte . add_identities ( ) 
+	lte . add_headings ( ) 
+	lte . add_title ( ) 
+
+	lte . default_import = lte . 
+	                       ole_object . 
+	                       ?"import_report"? ( lte . syntax )
+
+	IF ( lte . exported_syntax = "" ) THEN     { Add the imported report to the composite }
+
+		lte . normal_report ( )
+
+	ELSE	   { A composite report exists for this lte }
+
+		lte . extended_report ( )
+
+	ENDIF
+
+	IF ( FILE EXISTS ( lte . file_to_open ) ) THEN	{ There is an long description available }
+		lte . add_description ( )
+	ENDIF     
+
+	lte . report_from_syntax ( ) 
+
+ 	lte . ole_object = EMPTY
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE print_lte_action_calculate_positions ( self                   ,
+	                                               VALUE start_y_position )
+
+{
+*
+*	Calculate the x,y positions of items on the report.
+*
+*	Parameters   : N/a
+*	Return Value : N/a
+*
+*******************************************************************************}
+
+	DECLARE loop_index , next_y
+
+	loop_index = 1
+	next_y = start_y_position
+
+	WHILE ( self . display_data [ loop_index , ITEM_VALUE ] <> EMPTY ) DO
+
+		IF ( self . display_data [ loop_index , ITEM_TYPE ] <> "ROUTINE" ) THEN
+
+			self . display_data [ loop_index , ITEM_Y ] = next_y
+			self . display_data [ loop_index , ITEM_X ] = self . max_heading_width +
+			                                              FIELD_SPACING
+			self . display_data [ loop_index , ITEM_WIDTH ] = 
+			self . get_width ( self . display_data [ loop_index , ITEM_WIDTH  ] )
+
+		ENDIF
+
+		IF ( self . display_data [ loop_index , ITEM_BLANK_NEXT ] ) THEN
+			self . calc_next_y ( next_y , loop_index )
+		ENDIF
+
+		self . calc_next_y ( next_y , loop_index )
+
+		loop_index = loop_index + 1
+
+	ENDWHILE
+
+ENDROUTINE
+
+	
+{******************************************************************************}
+
+	ROUTINE print_lte_action_get_width ( self                  ,
+	                                     VALUE number_of_chars )
+
+{
+*
+*	Calculate the width in 1/1000 th's of an inch for a particular
+*	number of characters. 
+*
+*	Parameters   : number_of_chars - integer value for the length
+*	               of the field
+*	Return Value : powerbuilder_width - 1/1000th's of an inch
+*	               occupied in PB
+*
+*******************************************************************************}
+
+	DECLARE powerbuilder_width
+
+	powerbuilder_width = ROUND ( number_of_chars * CHAR_WIDTH ) 
+	                     + CAPITAL_COMPENSATION
+
+	RETURN ( powerbuilder_width )
+
+ENDROUTINE
+
+
+{******************************************************************************}
+
+	ROUTINE print_lte_action_modify_syntax ( self )
+
+{
+*
+*	Use the values calculated in the display_data array to update
+*	the report syntax so that the fields and headings appear in
+*	the right positions
+*
+*	Parameters   : N/A
+*	Return Value : N/A
+*
+*******************************************************************************}
+
+	DECLARE loop_index
+
+	loop_index = 1
+
+	WHILE ( self . display_data [ loop_index , ITEM_VALUE ] <> EMPTY ) DO
+
+		self . generate_syntax ( loop_index )
+		loop_index = loop_index + 1
+
+	ENDWHILE
+
+	IF ( FILE EXISTS ( self . file_to_open ) ) THEN
+
+		self . syntax = self . syntax : self . construct_syntax ( "FULL DESCRIPTION"                    ,
+		                                                          STRIP ( STRING ( 3200 ) )             ,
+		                     STRIP ( STRING ( self . display_data [ loop_index - 1 , ITEM_Y ] + 300 ) ) ,
+		                                                          COLOUR_NAVY                           ,
+		                                                          BOLD_WEIGHT                           ,
+		                                                          "header"                              ,
+		                                                          EMPTY                                 )
+	ENDIF
+
+	self . find_and_replace ( "height=" , "height=" :
+	                          STRIP ( STRING ( self . display_data [ loop_index - 1 , ITEM_Y ] + 500 ) ) 
+	                          : " " , "header(" , " " , self . syntax )
+
+ENDROUTINE
+
+
+{******************************************************************************}
+
+	ROUTINE print_lte_action_generate_syntax ( self              ,
+	                                           VALUE array_index )
+
+{
+*
+*	Generate the infomaker syntax for a column or text item
+*
+*	Parameters   : Array_index - index into the display_data array
+*	Return Value : N/A
+*
+*******************************************************************************}
+
+	DECLARE new_syntax
+
+	{ do the text part first }
+
+	new_syntax = "text ( band=header alignment=" : Q : "0" : Q : " text=" : Q :
+	             self . display_data [ array_index , ITEM_HEADING ] : Q : " border=" :
+	             Q : "0" : Q : " color=" : Q : COLOUR_NAVY : Q : " x=" : Q :
+	             STRIP ( STRING ( START_X_POSITION ) ) : Q : " y=" : Q : 
+	             STRIP ( STRING ( self . display_data [ array_index , ITEM_Y ] ) ) : Q :
+	             " height=" : Q : STRIP ( STRING ( self . display_data [ array_index , ITEM_HEIGHT ] ))
+	             : Q : " width=" : Q : 
+	             STRIP ( STRING ( self . display_data [ array_index , ITEM_X ] - FIELD_SPACING ))
+	             : Q : " font.face=" : Q : "Arial" : Q : " font.height=" : Q : "-10" : Q
+	             : " font.weight=" : Q : "700" : Q : SYNTAX_TRAILER
+
+	self . syntax = self . syntax : new_syntax
+
+	new_syntax = "column ( band=header id=" : STRIP ( STRING ( array_index ) ):
+	             " alignment=" : Q : "0" : Q : " tabsequence=32766 border=" :
+	             Q : "0" : Q : " color=" : Q : COLOUR_BLACK : Q : " x=" : Q :
+	             STRIP ( STRING ( self . display_data [ array_index , ITEM_X ] ) ) : Q : " y=" : Q : 
+	             STRIP ( STRING ( self . display_data [ array_index , ITEM_Y ] ) ) : Q : " height=" : Q : 
+	             STRIP ( STRING ( self . display_data [ array_index , ITEM_HEIGHT ] ) ) : Q : " width=" : Q : 
+	             STRIP ( STRING ( self . display_data [ array_index , ITEM_WIDTH ] ) ) : Q : 
+	             " name=" : STRIP ( STRING ( self . display_data [ array_index , ITEM_VALUE ] ) ) :
+	             " edit.limit=0 edit.case=any edit.autoselect=yes font.face=" : Q : "Arial"
+	             : Q : " font.height=" : Q : "-10" : Q : " font.weight=" : Q : "400" : Q 
+
+			IF ( self . display_data [ array_index , ITEM_SM_DATA_TYPE ] = "Boolean" ) OR 
+			   ( self . display_data [ array_index , ITEM_SM_DATA_TYPE ] = "Date"    ) OR
+			   ( self . is_status ( self . display_data [ array_index , ITEM_VALUE ] ,
+			     self . display_data [ array_index , ITEM_WIDTH         ] )          ) OR
+			   ( self . display_data [ array_index , ITEM_VALUE ] = "EXPIRY_TYPE"    ) THEN
+
+				new_syntax = new_syntax : " edit.codetable=yes "
+			ENDIF
+
+			IF ( self . display_data [ array_index , ITEM_SM_DATA_TYPE ] = "Date"    ) THEN
+				new_syntax = new_syntax : "format=" : Q : "dd-mmm-yyyy" : Q 
+			ELSE
+				new_syntax = new_syntax : "format=" : Q : "[general]" : Q 
+			ENDIF
+
+			new_syntax = new_syntax : SYNTAX_TRAILER
+
+	self . syntax = self . syntax : new_syntax
+
+ENDROUTINE
+
+
+{*******************************************************************************}
+
+	ROUTINE print_lte_action_find_and_replace( self              , 
+	                                           VALUE find_str    ,
+	                                           VALUE replace_str ,
+	                                           VALUE the_band    ,
+	                                           VALUE next_char   ,
+	                                           in_string         )
+
+{ 
+*
+*	This is a routine that will search the syntax in the labtab imprint object
+*	for the find string in a particular band and it will replace it with the *	replace string
+*
+*	Parameters  self        : the imprint class
+*	            find_str    : string that you want to find
+*	            replace_str : string that is going to replace the find string
+*	            the_band    : the band in which to replace the string
+*	            next_char   : normally a space but sometimes you replace a string at the end of the band
+*	Returns     N/A
+*
+*******************************************************************************}
+
+{	temp_string_len - is the length of the string passed to the function
+	main_string_len - is the length of the remaining part of the passed string 	index_of_find -  is the index of the first letter of the string to be
+	                 replaced in the passed string
+	index_of_column -  is the index of the first letter of the string the column
+	                   where the field to replace resides 
+	temp_string_1 - holds the remainder of the passed string
+	temp_string_2 - holds from the beginning of the find_str to the end of the string
+	intermediate_string - is needed because you don't know how many letter/numbers
+	                      are going to follow the = sign
+	next_space - stores the index of the next space or whatever char was passed to the routine }
+
+	DECLARE intermediate_string, main_string_len, index_of_find, temp_string_1, next_space,
+	temp_string_len, index_of_column, temp_string_2, the_string
+
+	the_string = in_string
+
+	main_string_len = LENGTH ( the_string )	
+
+	index_of_column = INDEX ( the_string , the_band )	{ Find the starting point of the band }
+
+	temp_string_1 = RIGHTSTRING( the_string, ( main_string_len - index_of_column ) + 1 ) { Copy }
+
+	temp_string_len = LENGTH ( temp_string_1 )  { find length of new string }
+
+	index_of_find = INDEX ( temp_string_1, find_str )    { find the individual item in the new string }
+
+	temp_string_2 = RIGHTSTRING ( temp_string_1, ( temp_string_len - index_of_find ) + 1 ) { copy }
+
+	next_space =  ( temp_string_len - LENGTH ( temp_string_2 ) ) + INDEX ( temp_string_2 , next_char ) 
+
+	intermediate_string = LEFTSTRING(temp_string_1, index_of_find - 1) :
+	                      replace_str :
+	                      RIGHTSTRING ( temp_string_1 , ( temp_string_len - next_space ) )
+
+	{ Intermediate string now contains the replaced string to the end of the syntax }
+
+	the_string = LEFTSTRING ( the_string, index_of_column - 1) :
+	             intermediate_string                        { Join with start of the syntax }
+
+	in_string = the_string
+
+ENDROUTINE { find_and_replace }
+
+{******************************************************************************}
+
+	ROUTINE print_lte_action_add_retrieval ( self )
+
+{
+*
+*	Calculate the powerbuilder retrieval syntax for the select statement
+*
+*	Parameters   : N/a
+*	Return Value : N/a
+*
+*******************************************************************************}
+{Modified by AMF 17-June-2003}
+{Modified by AMF 13-Jul-2004 }
+	DECLARE retrieval_syntax , table_syntax , loop_index , where_clause ,
+	        col_name_used, count, current_width, tot_width,
+                key0_field_value, len
+        count = 1
+
+	retrieval_syntax = "retrieve=" : Q : "PBSELECT( VERSION(400) TABLE(NAME=~" 
+	                   : Q : self . tbl_name : "~" : Q : " )"
+
+	{ Construct the table statement }
+
+	loop_index = 1
+
+	table_syntax = "table(":ASCII(13)
+
+	WHILE ( self . display_data [ loop_index , ITEM_VALUE ] <> EMPTY ) DO
+
+		table_syntax = table_syntax : "column=(type=" : 
+		               self . display_data [ loop_index , ITEM_DATA_TYPE ]
+		
+		IF ( self . display_data [ loop_index , ITEM_DATA_TYPE ] <> "Datetime" ) THEN
+
+			table_syntax = table_syntax : 
+			               STRIP ( self . display_data [ loop_index , ITEM_WIDTH ] ) : ")"
+
+		ENDIF
+
+		table_syntax = table_syntax : " updatewhereclause=yes "
+
+		IF ( self . display_data [ loop_index , ITEM_SM_DATA_TYPE ] = "Date" ) THEN
+
+			col_name_used = self . display_data [ loop_index , ITEM_VALUE ]
+
+			table_syntax = table_syntax : "name=" : col_name_used : " dbname=" : Q 
+			                            : col_name_used : Q : " values=":Q:" 	??-??-0000/ 	??-Jan-1900/" : Q
+
+			retrieval_syntax = retrieval_syntax : "COLUMN(NAME=~" : Q : self . tbl_name 
+			                                    : "." : col_name_used : "~" : Q : ") "
+
+		ELSE
+
+			col_name_used = self . display_data [ loop_index , ITEM_VALUE ]
+
+			table_syntax = table_syntax : " updatewhereclause=yes name=" : col_name_used
+			                            : " dbname=" : Q : col_name_used : Q
+
+			retrieval_syntax = retrieval_syntax : "COLUMN(NAME=~" : Q : 
+			                   self . tbl_name : "." : col_name_used : "~" : Q : ") "
+		ENDIF
+
+		IF ( self . display_data [ loop_index , ITEM_SM_DATA_TYPE ] = "Boolean") THEN
+
+			table_syntax = table_syntax : " values=":Q:"Yes	T/ No	F/":Q
+
+		ENDIF
+		
+		IF ( self . is_status ( self . display_data [ loop_index , ITEM_VALUE ] ,
+		                        self . display_data [ loop_index , ITEM_WIDTH ] )) THEN
+
+			table_syntax = table_syntax :
+			               self . add_status_decode_string (
+			                        self . display_data [ loop_index , ITEM_VALUE ])
+
+		ENDIF
+
+		IF ( self . display_data [ loop_index , ITEM_VALUE ] = "EXPIRY_TYPE" ) THEN
+
+			table_syntax = table_syntax : STANDARDS_DECODE_STRING
+
+		ENDIF
+
+		table_syntax = table_syntax : " )" : CR_LF
+
+		loop_index = loop_index + 1
+	ENDWHILE
+
+	where_clause = "WHERE(    EXP1 =~" : Q : self . tbl_name : "." : self . key0_fields [ 1 ] 
+	               : "~" : Q : "    OP =~" : Q : "=~" : Q : "    EXP2 =~" : Q : "'" : 
+	               self . key0_id : "'~" : Q 
+
+{amf addition 17-Jun-2004}
+	{IF ( self . key0_total >= 2 ) THEN
+       
+
+                VERSION1 = STRIP(LEFTSTRING(self . version_id,10))
+		where_clause = where_clause : "    LOGIC =~" : Q : "and~" : Q : " ) " :
+		               "WHERE(    EXP1 =~" : Q : self . tbl_name : "." : 
+		               self . key0_fields [ 2 ] : "~" : Q : "    OP =~" : Q : "=~" : Q : 
+		               "    EXP2 =~" : Q : "'" : VERSION1 : "'~" 
+		               : Q
+	ENDIF}
+
+{amf addition 17-Jun-2004}
+        tot_width = 0
+        len = STRINGLENGTH(self . version_id)
+
+	IF(self . key0_total > 1)
+  
+
+           WHILE(count < self . key0_total)
+              {get the width of the current field}
+
+	      GET_FIELD_DETAILS 'self . tbl_name' . 'self . key0_fields [ count + 1 ]',
+	                        "FIELD_SIZE" ,
+	                        current_width
+
+              {value of current key0 field is substringed out of the version_id field}
+              IF(tot_width = 0)
+
+                 key0_field_value = SUBSTRING(self . version_id,tot_width + 1,current_width)
+
+              ELSE
+                 key0_field_value = SUBSTRING(self . version_id,tot_width,current_width)
+
+              ENDIF
+
+              {add the current key0 field width on to the total width of fields used so far}
+
+              IF(tot_width = 0)
+                 tot_width = tot_width + current_width + 1
+              ELSEIF(tot_width > len) THEN
+                     tot_width = len
+              ELSE
+                 tot_width = tot_width + current_width 
+              ENDIF
+
+              IF(RIGHTSTRING(key0_field_value,1) = " ") THEN
+                 key0_field_value = STRIP(key0_field_value)
+              ENDIF
+
+              where_clause = where_clause : "    LOGIC =~" : Q : "and~" : Q : " ) " :
+		               "WHERE(    EXP1 =~" : Q : self . tbl_name : "." : 
+		               self . key0_fields [ count + 1 ] : "~" : Q : "    OP =~" : Q : "=~" : Q : 
+		               "    EXP2 =~" : Q : "'" : key0_field_value : "'~" 
+		               : Q
+               count = count + 1
+           ENDWHILE
+	ENDIF
+
+{end mod amf}
+	where_clause = where_clause : " ) ) ARG(NAME = ~" : Q : "DATE_AND_TIME~" : Q :
+	                              " TYPE = string) " : Q : " arguments=((" : Q :
+	                              "DATE_AND_TIME" : Q : ", string)) ) " : CR_LF
+
+	retrieval_syntax = retrieval_syntax : CR_LF
+
+	self . syntax = self . syntax : table_syntax : retrieval_syntax : where_clause :
+	                INFOMAKER_HEADER_BAND : INFOMAKER_DETAIL_BAND : 
+	                INFOMAKER_SUMMARY_BAND : INFOMAKER_FOOTER_BAND
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE print_lte_action_decode_datatype ( self              ,
+	                                           VALUE sm_datatype )
+
+{
+*	Convert a SampleManager datatype to a powerbuilder datatype
+*
+*	Parameters   : N/a
+*	Return Value : N/a
+*
+*******************************************************************************}
+
+	DECLARE pb_datatype
+
+	IF ( ( STRIP ( sm_datatype ) = "Text" ) OR ( STRIP( sm_datatype ) = "Boolean" ) 
+	  OR ( STRIP ( sm_datatype ) = "Interval" ) ) THEN
+		pb_datatype = "Char("
+	ELSEIF ( STRIP ( sm_datatype ) = "Real" )
+		pb_datatype = "Decimal("
+	ELSEIF ( STRIP ( sm_datatype ) = "Packed decimal" )
+		pb_datatype = "Char("
+	ELSEIF ( STRIP ( sm_datatype ) = "Integer" )
+		pb_datatype = "Decimal("
+	ELSEIF ( STRIP ( sm_datatype ) = "Date" )
+		pb_datatype = "Datetime"
+	ELSE
+		pb_datatype = sm_datatype
+	ENDIF
+
+	RETURN ( pb_datatype )
+
+ENDROUTINE
+
+
+{******************************************************************************}
+
+	ROUTINE print_lte_action_add_headings ( self )
+
+{ 	Add the headings to the report
+*
+* 	Parameters   : N/a
+* 	Return Value : N/a
+*
+*******************************************************************************}
+
+	DECLARE operator_part
+
+	operator_part = 
+	"text(band=header alignment=" : Q : "0" : Q : " text=" : Q : OPERATOR : Q 
+	: " border=" : Q : "0" : Q : " color=" : Q : "33554432" : Q : " x=" : Q : "1333"
+	: Q : " y=" : Q : "620" : Q : " height=" : Q : "208" : Q : " width=" : Q : "1000"
+	: Q : " font.face=" : Q : "Arial" : Q : " font.height=" : Q : "-10" : Q : " font.weight="
+	: Q : "400" : Q : " font.family=" : Q : "2" : Q : " font.pitch=" : Q : "2" : Q
+	: " font.charset=" : Q : "0" : Q : " background.mode=" : Q : "1" : Q : " background.color="
+	: Q : "536870912" : Q : " )" : CR_LF
+
+	self . syntax = self . syntax : operator_part : INFOMAKER_GEN_BY : INFOMAKER_GEN_ON 
+	                              : INFOMAKER_COMPUTE_DATE
+
+	self . find_and_replace ( "y=" , "y=" : Q : "620" : Q , 
+	                          "text(band=header alignment=" : Q : "0" : Q : " text=" : Q : "Generated By" ,
+	                          " " , self . syntax )
+
+	self . find_and_replace ( "y=" , "y=" : Q : "800" : Q , 
+	                          "text(band=header alignment=" : Q : "0" : Q : " text=" : Q : "Generated On" ,
+	                          " " , self . syntax )
+
+	self . find_and_replace ( "y=" , "y=" : Q : "800" : Q , 
+	                          "compute(band=header alignment=" : Q : "0" : Q : " expression=" : Q : 
+	                          "DATE_AND_TIME" , " " , self . syntax )
+ENDROUTINE
+
+
+{******************************************************************************}
+
+	ROUTINE print_lte_action_update_max_width ( self                ,
+	                                            VALUE heading_width )
+
+{ 	Updates the maximum heading width variable
+*
+* 	Parameters   : heading_width - the width of a heading
+* 	Return Value : N/a
+*
+*******************************************************************************}
+
+	IF ( heading_width > self . max_heading_width ) THEN
+		self . max_heading_width = heading_width
+	ENDIF
+
+ENDROUTINE
+
+
+{******************************************************************************}
+
+	ROUTINE print_lte_action_calc_next_y ( self             ,
+	                                       next_y           , 
+	                                       VALUE loop_index )
+
+{ 	Calculate the vertical position of the next field on the page. Also if the
+*     field spans more than one line it will calculate a new height 
+*
+* 	Parameters   : next_y - reference variable for ther next y position
+*	               loop_index - index to the details of the current field
+* 	Return Value : N/a
+*
+*******************************************************************************}
+
+	DECLARE span_lines_round , available_width , span_lines_unround , new_height
+
+	available_width = LANDSCAPE_WIDTH - self . max_heading_width - FIELD_SPACING
+	new_height = DEFAULT_HEIGHT
+
+	IF ( self . display_data [ loop_index , ITEM_WIDTH ] > available_width ) THEN
+
+		span_lines_unround = self . display_data [ loop_index , ITEM_WIDTH ] /
+		                     available_width
+	
+		span_lines_round   = ROUND ( self . display_data [ loop_index , ITEM_WIDTH ] /
+		                             available_width )
+
+		IF ( span_lines_round < span_lines_unround ) THEN
+			span_lines_round = span_lines_round + 1
+		ENDIF
+
+		new_height = DEFAULT_HEIGHT * span_lines_round
+	      self . display_data [ loop_index , ITEM_HEIGHT ] = new_height
+	      self . display_data [ loop_index , ITEM_WIDTH  ] = available_width
+	ENDIF
+
+	next_y = next_y + new_height + vertical_spacing
+
+ENDROUTINE
+
+
+{******************************************************************************}
+
+	ROUTINE print_lte_action_add_identities ( self )
+	                                         
+{ 	Add the identity , modified on and modified by labels
+*
+* 	Parameters   : n/a
+* 	Return Value : N/a
+*
+*******************************************************************************}
+{amf mod 17-June-2004}
+	DECLARE syntax_string , identities_array , mod_on , mod_by , array_index ,
+	        entities_to_place, count, tot_width, current_width, key0_field_value
+
+        ARRAY key0_field_value
+
+	IF ( self . key0_total = 1 ) THEN
+		mod_on = SELECT 'self . tbl_name' . modified_on
+		          WHERE 'self . tbl_name' . 'self . key0_fields [ 1 ]'
+	      	          = self . key0_id
+
+	{ELSEIF ( self . key0_total = 2 ) THEN
+
+		mod_on = SELECT 'self . tbl_name' . modified_on
+		          WHERE 'self . tbl_name' . 'self . key0_fields [ 1 ]'
+	      	          = self . key0_id 
+	                  AND 'self . tbl_name' . 'self . key0_fields [ 2 ]'
+	      	          = self . version_id}
+        ELSE 
+             count = 1
+             tot_width = 0
+
+             {only less than key0_total because ignore ignore}
+
+             WHILE(count < self . key0_total)
+
+              {get the width of the current field}
+
+	      GET_FIELD_DETAILS 'self . tbl_name' . 'self . key0_fields [ count + 1 ]',
+	                        "FIELD_SIZE" ,
+	                        current_width
+
+              {value of current key0 field is substringed out of the version_id field}
+
+              key0_field_value[count] = STRIP(SUBSTRING(self . version_id,tot_width + 1,tot_width + current_width))
+
+              {add the current key0 field width on to the total width of fields used so far}
+
+              tot_width = tot_width + current_width
+              count = count + 1
+
+              ENDWHILE
+
+              IF(self . key0_total = 2 ) THEN
+
+		mod_on = SELECT 'self . tbl_name' . modified_on
+		          WHERE 'self . tbl_name' . 'self . key0_fields [ 1 ]'
+	      	          = self . key0_id 
+	                  AND 'self . tbl_name' . 'self . key0_fields [ 2 ]'
+	      	          = self . version_id
+
+              ELSEIF(self . key0_total = 3 ) THEN
+
+		mod_on = SELECT 'self . tbl_name' . modified_on
+		          WHERE 'self . tbl_name' . 'self . key0_fields [ 1 ]'
+	      	          = self . key0_id 
+	                  AND 'self . tbl_name' . 'self . key0_fields [ 2 ]'
+	      	          = key0_field_value[1]
+	                  AND 'self . tbl_name' . 'self . key0_fields [ 3 ]'
+	      	          = key0_field_value[2]
+              
+
+              ELSEIF(self . key0_total = 4 ) THEN
+
+		mod_on = SELECT 'self . tbl_name' . modified_on
+		          WHERE 'self . tbl_name' . 'self . key0_fields [ 1 ]'
+	      	          = self . key0_id 
+	                  AND 'self . tbl_name' . 'self . key0_fields [ 2 ]'
+	      	          = key0_field_value[1]
+	                  AND 'self . tbl_name' . 'self . key0_fields [ 3 ]'
+	      	          = key0_field_value[2]
+	                  AND 'self . tbl_name' . 'self . key0_fields [ 4 ]'
+	      	          = key0_field_value[3]
+              ENDIF
+
+ 	ENDIF
+
+	entities_to_place = 6
+
+	mod_by = SELECT 'self . tbl_name'.modified_by
+
+	ARRAY identities_array ARRAYSIZE ( 0 , 5 )
+
+	identities_array [ 1 , 1 ] = "Identity"
+	identities_array [ 1 , 2 ] = STRIP ( STRING ( START_X_POSITION ) )
+	identities_array [ 1 , 3 ] = "1200"
+	identities_array [ 1 , 4 ] = COLOUR_NAVY
+	identities_array [ 1 , 5 ] = BOLD_WEIGHT
+
+	identities_array [ 2 , 1 ] = "Modified On"
+	identities_array [ 2 , 2 ] = STRIP ( STRING ( START_X_POSITION ) )
+	identities_array [ 2 , 3 ] = "1400"
+	identities_array [ 2 , 4 ] = COLOUR_NAVY
+	identities_array [ 2 , 5 ] = BOLD_WEIGHT
+
+	identities_array [ 3 , 1 ] = "Modified By"
+	identities_array [ 3 , 2 ] = STRIP ( STRING ( START_X_POSITION ) )
+	identities_array [ 3 , 3 ] = "1600"
+	identities_array [ 3 , 4 ] = COLOUR_NAVY
+	identities_array [ 3 , 5 ] = BOLD_WEIGHT
+
+	identities_array [ 4 , 1 ] = self . key0_id
+	identities_array [ 4 , 2 ] = "1400"
+	identities_array [ 4 , 3 ] = "1200"
+	identities_array [ 4 , 4 ] = COLOUR_BLACK
+	identities_array [ 4 , 5 ] = NORMAL_WEIGHT
+
+	SET DATE FORMAT IMPRINT_REPORTING_DATE_FORMAT
+
+	identities_array [ 5 , 1 ] = STRIP ( STRING ( mod_on ) )
+	identities_array [ 5 , 2 ] = "1400"
+	identities_array [ 5 , 3 ] = "1400"
+	identities_array [ 5 , 4 ] = COLOUR_BLACK
+	identities_array [ 5 , 5 ] = NORMAL_WEIGHT
+
+	RESTORE DATE FORMAT
+
+	identities_array [ 6 , 1 ] = STRIP ( STRING ( mod_by ) )
+	identities_array [ 6 , 2 ] = "1400"
+	identities_array [ 6 , 3 ] = "1600"
+	identities_array [ 6 , 4 ] = COLOUR_BLACK
+	identities_array [ 6 , 5 ] = NORMAL_WEIGHT
+
+	IF ( self . version_id <> "" ) THEN
+
+		identities_array [ 7 , 1 ] = "Version"
+		identities_array [ 7 , 2 ] = STRIP ( STRING ( START_X_POSITION ) )
+		identities_array [ 7 , 3 ] = "1400"
+		identities_array [ 7 , 4 ] = COLOUR_NAVY
+		identities_array [ 7 , 5 ] = BOLD_WEIGHT
+
+		identities_array [ 8 , 1 ] = self . version_id
+		identities_array [ 8 , 2 ] = "1400"
+		identities_array [ 8 , 3 ] = "1400"
+		identities_array [ 8 , 4 ] = COLOUR_BLACK
+		identities_array [ 8 , 5 ] = NORMAL_WEIGHT
+
+		identities_array [ 2 , 3 ] = "1600"
+		identities_array [ 3 , 3 ] = "1800"
+		identities_array [ 5 , 3 ] = "1600"
+		identities_array [ 6 , 3 ] = "1800"
+
+	ENDIF
+
+	IF self . approval_status <> "" THEN
+
+		identities_array [ 9 , 1 ] = "Approval Status"
+		identities_array [ 9 , 2 ] = STRIP ( STRING ( START_X_POSITION ) )
+		identities_array [ 9 , 4 ] = COLOUR_NAVY
+		identities_array [ 9 , 5 ] = BOLD_WEIGHT
+
+		identities_array [ 10 , 1 ] = self . approval_status
+		identities_array [ 10 , 2 ] = "1400"
+		identities_array [ 10 , 4 ] = COLOUR_BLACK
+		identities_array [ 10 , 5 ] = NORMAL_WEIGHT
+
+		IF self . version_id <> "" THEN
+
+			identities_array [ 9 , 3 ] = "2000"
+			identities_array [ 10 , 3 ] = "2000"
+
+		ELSE
+
+			identities_array [ 9 , 3 ] = "1800"
+			identities_array [ 10 , 3 ] = "1800"
+
+		ENDIF
+
+	ENDIF
+
+	entities_to_place = size_of_array ( identities_array )
+
+	array_index = 1
+
+	WHILE ( array_index <= entities_to_place ) DO
+
+		syntax_string = self . construct_syntax ( identities_array [ array_index , 1 ] , 
+		                                          identities_array [ array_index , 2 ] ,
+	      	                                    identities_array [ array_index , 3 ] ,
+		                                          identities_array [ array_index , 4 ] ,
+	      	                                    identities_array [ array_index , 5 ] ,
+		                                          "header"                             ,
+		                                          EMPTY                                )
+
+		self . syntax = self . syntax : syntax_string
+		array_index = array_index + 1
+
+	ENDWHILE
+
+ENDROUTINE
+
+
+{******************************************************************************}
+
+	ROUTINE print_lte_action_construct_syntax ( self             ,
+	                                            VALUE text_value ,
+	                                            VALUE X_value    ,
+	                                            VALUE Y_value    ,
+	                                            VALUE colour_val ,
+	                                            VALUE weight_val ,
+	                                            VALUE band       ,
+	                                            VALUE the_width  )
+	                                         
+{ 	Construct a text box syntax string for the report based on the text value
+*	, its [ x , y ] position , colour and weight ( bold / normal )
+*
+* 	Parameters   : 
+* 	Return Value : A Syntax string
+*
+*******************************************************************************}
+
+	DECLARE new_syntax , calc_width
+
+	IF ( the_width = EMPTY ) THEN
+		calc_width = self . get_width ( LENGTH ( text_value ) )
+	ELSE
+		calc_width = the_width
+	ENDIF
+
+	new_syntax = "text ( band=" : band : " alignment=" : Q : "0" : Q : " text=" : Q :
+	             text_value : Q : " border=" : Q : "0" : Q : " color=" : Q : 
+	             colour_val : Q : " x=" : Q : x_value : Q : " y=" : Q : 
+	             y_value : Q : " height=" : Q : STRIP ( STRING ( DEFAULT_HEIGHT ) )
+	             : Q : " width=" : Q : STRIP ( STRING ( calc_width ) )
+	             : Q : " font.face=" : Q : "Arial" : Q : " font.height=" : Q : "-10" 
+	             : Q : " font.weight=" : Q : weight_val : Q : SYNTAX_TRAILER
+
+	RETURN ( new_syntax )
+
+ENDROUTINE
+
+
+{******************************************************************************}
+
+	ROUTINE print_lte_action_read_a_file ( self               ,
+	                                       VALUE file_to_open )
+	                                         
+{ 	Construct a text box syntax string for the report based on the text value
+*
+* 	Parameters   : file_to_open - the name of the text file to read through
+* 	Return Value : A Syntax string
+*
+*******************************************************************************}
+
+DECLARE success , file_contents , a_line
+
+	file_contents = ""
+	FILE OPEN file_to_open , success
+
+	IF success = EMPTY THEN
+
+		REPEAT
+
+			FILE READ file_to_open , a_line , success
+
+			IF ( a_line <> EMPTY ) THEN
+				file_contents = file_contents : Q : self . tab_separate ( a_line )
+				                : Q : " , " : CR_LF
+			ENDIF
+
+		UNTIL ( success <> EMPTY )
+
+		FILE CLOSE file_to_open , success
+
+     		IF ( success <> EMPTY ) THEN
+			FLASH_MESSAGE ( "   File Close Error   " , TRUE )
+		ENDIF
+	ENDIF
+
+	RETURN ( file_contents )
+
+ENDROUTINE 
+
+
+{******************************************************************************}
+
+	ROUTINE print_lte_action_add_description ( self )
+	                                         
+{ 	If a description for the record exists in a file then display send it to
+*	Imprint 
+*
+* 	Parameters   : n/a
+* 	Return Value : n/a
+*
+*******************************************************************************}
+
+	DECLARE external_data, external_syntax, success
+
+	external_data = self . read_a_file ( self . file_to_open )
+
+	external_data = "data(" : external_data : " )" : CR_LF
+
+	external_syntax = INFOMAKER_RELEASE_VERSION : INFOMAKER_DATAWINDOW_HEADER : 
+	                  INFOMAKER_HEADER_BAND : INFOMAKER_DETAIL_BAND :
+	                  INFOMAKER_SUMMARY_BAND : INFOMAKER_FOOTER_BAND : 
+	                  "table(column=(type=char(100) updatewhereclause=no name=a_line dbname=" :
+	                  Q : "A_LINE" : Q : " ) )" : CR_LF : external_data :
+	                  "column(band=detail id=1 alignment=" : Q : "0": Q : " tabsequence=32766 border=" 
+	                  : Q : "0" : Q : " color=" : Q : COLOUR_BLACK : Q : "x=": Q : START_X_POSITION : Q
+	                  : "y=": Q : "10": Q : " height=" : Q : "200" : Q : " width=" : Q : 
+	                  STRIP ( STRING ( LANDSCAPE_WIDTH ) ) : Q : " format=": Q : "[general]": Q : 
+	                  " name=a_line edit.limit=0 edit.case=any edit.autoselect=yes  font.face=" :
+	                  Q : "Arial" : Q : " font.height=" : Q : "-10" : Q : " font.weight=" : 
+	                  Q : "400" : Q : " " : SYNTAX_TRAILER
+
+	self . find_and_replace ( "height=" , "height=0 "   , "header("  , " " , external_syntax )
+	self . find_and_replace ( "height=" , "height=220 " , "detail("  , " " , external_syntax )
+	self . find_and_replace ( "height=" , "height=0 "   , "summary(" , " " , external_syntax )
+	self . find_and_replace ( "height=" , "height=0 "   , "footer("  , " " , external_syntax ) 
+
+	self . description_report = self . 
+	                           ole_object . 
+	                           ?"import_report"? ( external_syntax )
+
+	IF ( self . description_report <> "" ) THEN
+		self . syntax = self . syntax : self . add_report ( self . description_report , "450" )
+	ENDIF
+
+	IF ( self . labtable . lte_report = "$LTE_CRITERIA_SAVED " ) THEN
+		FILE DELETE self . file_to_open, success
+	ENDIF
+
+ENDROUTINE
+
+
+{******************************************************************************}
+
+	ROUTINE print_lte_action_extended_report ( self )
+	                                         
+{ 	The reports has an extended report designed for it in Infomaker so thats
+*	the report to call
+*
+* 	Parameters   : n/a
+* 	Return Value : n/a
+*
+*******************************************************************************}
+
+	DECLARE export_start , export_finish , export_middle
+
+	IF ( self . default_import <> "" ) THEN
+
+		export_start = LEFTSTRING ( self . exported_syntax , 
+		                            INDEX ( self . exported_syntax , "report(" ) - 1 )
+
+		export_finish = RIGHTSTRING ( self . exported_syntax , 
+		                              LENGTH ( self . exported_syntax ) -
+		                              INDEX ( self . exported_syntax , "report(" ) + 2 )
+
+		export_middle = self . add_report ( self . default_import , "50" )
+
+		self . syntax = export_start : export_middle : export_finish
+
+		self . add_parameter ( self . key0_id )
+
+		IF ( self . version_id <> "" ) THEN
+			self . add_parameter ( self . version_id )
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE
+
+
+{*******************************************************************************}
+
+	ROUTINE print_lte_action_tab_separate ( self         ,
+	                                        VALUE a_line )
+
+{ 	Replaces all quote symbols ( " ) with ~" do that it can act as a tab
+*	separated external datasource
+*
+* 	Parameters   : a_line - a line of text to search through
+* 	Return Value : temp_string - the string with all quote marks hidden
+*
+*******************************************************************************}
+
+	DECLARE quote_index
+
+	quote_index = INDEX ( a_line , Q )
+
+	IF ( quote_index <> 0 ) THEN
+
+		RETURN ( LEFTSTRING ( a_line , quote_index - 1 ) : "~" : Q :
+		         self . tab_separate ( RIGHTSTRING ( a_line , 
+		                                    LENGTH ( a_line ) - quote_index ) ) )
+	ELSE
+		RETURN ( a_line )
+	ENDIF
+
+ENDROUTINE
+
+
+
+{*******************************************************************************}
+
+	ROUTINE print_lte_action_add_report ( self              ,
+	                                      VALUE report_name ,
+	                                      VALUE y_position  )
+
+{ 	Creates the syntax for a report object.
+*
+* 	Parameters   : report_name - name of the report to be called
+*	               y_position - position of the report in the composite
+* 	Return Value : a syntax string
+*
+*******************************************************************************}
+
+	DECLARE report_string
+
+	report_string = "report(band=detail dataobject=" : Q : report_name : Q : " x=" : Q :
+	                "0" : Q : " y=" : Q : y_position : Q : " height=" : Q : "300"
+	                : Q : " width=" : Q : STRIP ( STRING ( LANDSCAPE_WIDTH ) ) : Q
+	                : " border=" : Q : "0" : Q : " height.autosize=yes criteria=" : Q : Q : 
+	                " nest_arguments=((" : Q : "DATE_AND_TIME" : Q : ")) trail_footer = yes"
+	                : " slideup=directlyabove ) " : CR_LF
+
+	RETURN ( report_string )
+
+ENDROUTINE
+
+
+{*******************************************************************************}
+
+	GLOBAL
+
+	ROUTINE imprint_print_job_report ( job_id         ,
+	                                   prompt_details )
+
+{ 	Creates the syntax for a job report.
+*
+* 	Parameters   :
+* 	Return Value : N/A
+*
+*******************************************************************************}
+
+	DECLARE job_report , new_prompt_details , read_array_index , write_array_index
+
+	read_array_index  = 1
+	write_array_index = 5
+	ARRAY new_prompt_details ARRAYSIZE ( 0 , 4 )
+
+	Print_Initialise ( job_report )
+
+	job_report . report_heading = GET_USER_MESSAGE("SAMP_JOB_TAB_1" ,1)
+	job_report . tbl_name = "JOB_HEADER"
+	job_report . file_to_open = ""
+
+	ARRAY job_report . key0_fields ARRAYSIZE ( 1 )
+	job_report . key0_fields [ 1 ] = "JOB_NAME"
+	job_report . key0_id = job_id
+	job_report . key0_total = 1
+
+	new_prompt_details [ 1 , MESSAGE_POSITION ] = GET_USER_MESSAGE("SAMP_JOB_TAB_2" ,1)
+	new_prompt_details [ 2 , MESSAGE_POSITION ] = GET_USER_MESSAGE("SAMP_JOB_TAB_3" ,1)
+	new_prompt_details [ 3 , MESSAGE_POSITION ] = GET_USER_MESSAGE("SAMP_JOB_TAB_4" ,1)
+	new_prompt_details [ 4 , MESSAGE_POSITION ] = GET_USER_MESSAGE("SAMP_JOB_TAB_5" ,1)
+
+	new_prompt_details [ 1 , TYPE_POSITION ] = "COLUMN"
+	new_prompt_details [ 2 , TYPE_POSITION ] = "COLUMN"
+	new_prompt_details [ 3 , TYPE_POSITION ] = "COLUMN"
+	new_prompt_details [ 4 , TYPE_POSITION ] = "COLUMN"
+
+	new_prompt_details [ 1 , BLANK_POSITION ] = FALSE
+	new_prompt_details [ 2 , BLANK_POSITION ] = FALSE
+	new_prompt_details [ 3 , BLANK_POSITION ] = FALSE
+	new_prompt_details [ 4 , BLANK_POSITION ] = TRUE
+
+	new_prompt_details [ 1 , FIELD_NAME_POSITION ] = "JOB_NAME"
+	new_prompt_details [ 2 , FIELD_NAME_POSITION ] = "DATE_TO_START"
+	new_prompt_details [ 3 , FIELD_NAME_POSITION ] = "DATE_COMPLETED"
+	new_prompt_details [ 4 , FIELD_NAME_POSITION ] = "JOB_STATUS"
+
+	WHILE ( prompt_details [ read_array_index , MESSAGE_POSITION ] <> EMPTY ) DO
+
+		new_prompt_details [ write_array_index , MESSAGE_POSITION ] = 
+		    prompt_details [ read_array_index  , 8 ]
+		new_prompt_details [ write_array_index , TYPE_POSITION ] = "COLUMN"
+		new_prompt_details [ write_array_index , FIELD_NAME_POSITION ] = 
+		    prompt_details [ read_array_index  , MESSAGE_POSITION ]
+		new_prompt_details [ write_array_index , BLANK_POSITION ] = FALSE
+
+		read_array_index  = read_array_index  + 1
+		write_array_index = write_array_index + 1
+
+	ENDWHILE
+
+	job_report . process_array ( new_prompt_details , TRUE )
+	job_report . add_retrieval ( ) 
+	job_report . calculate_positions ( CUSTOM_Y_POSITION ) 
+	job_report . modify_syntax ( ) 
+	job_report . add_title ( ) 
+
+	job_report . default_import = job_report . 
+	                              ole_object . 
+	                              ?"import_report"? ( job_report . syntax )
+
+	job_report . normal_report ( ) 
+
+	job_report . report_from_syntax ( ) 
+	job_report . ole_object = EMPTY
+		
+ENDROUTINE
+
+{*******************************************************************************}
+
+	ROUTINE print_lte_action_add_title ( self )
+
+{ 	Add the title of the report to the syntax
+*
+* 	Parameters   : N/A
+* 	Return Value : N/A
+*
+*******************************************************************************}
+
+	DECLARE report_title
+
+	report_title = 
+	"text(band=header text=" : Q : self . report_heading : Q : " alignment=" : Q : "2" : Q   
+	: " border=" : Q : "0" : Q : " color=" : Q : "8388608" : Q : " x=" : Q : "0"
+	: Q : " y=" : Q : "0" : Q : " height=" : Q : "520" : Q : " width=" : Q 
+	: STRIP ( STRING ( LANDSCAPE_WIDTH ) ) : Q : " font.face=" : Q : "Arial" : Q : " font.height="
+	: Q : "-16" : Q : " font.weight=" : Q : "700" : Q : " font.family=" : Q : "2" : Q 
+	: " font.pitch=" : Q : "2" : Q : " font.charset=" : Q : "0"  
+	: Q : " background.mode=" : Q : "1" : Q : " background.color=" : Q : "553648127" : Q : " )" : CR_LF
+
+	self . syntax = self . syntax : report_title
+
+	self . find_and_replace ( "height=" , "height=10 " , "footer(" , " " , self . syntax )
+	self . find_and_replace ( "height=" , "height=10 " , "detail(" , " " , self . syntax )
+
+ENDROUTINE
+
+
+{*******************************************************************************}
+
+	ROUTINE print_lte_action_normal_report ( self )
+
+{ 	Updates the report syntax for that of a normal report
+*
+* 	Parameters   : N/A
+* 	Return Value : N/A
+*
+*******************************************************************************}
+
+	self . syntax = self . composite_syntax : self . add_report ( self . default_import , "50" )
+	self . find_and_replace ( "processing=" , "processing=5 " ,
+                                "datawindow(" , " " , self . syntax )
+	self . find_and_replace ( "height=" , "height=0 " , "header("    , " " , self . syntax )
+	self . find_and_replace ( "height=" , "height=0 " , "summary("   , " " , self . syntax )
+	self . find_and_replace ( "height=" , "height=900 height.autosize=yes " , 
+                               "detail("  , " " , self . syntax               )
+	self . find_and_replace ( "x2=" , "x2=" : Q : STRIP ( STRING ( LANDSCAPE_WIDTH ) ) : Q
+	                         : " " , "line(" , " " , self . syntax                        )
+	self . find_and_replace ( "x=" , "x=" : Q : "6000" : Q : " " , "compute(band=footer alignment="
+	                         : Q : "1" : Q : " expression=" : Q : "'Page" , " " , self . syntax )
+
+ENDROUTINE
+
+
+{*******************************************************************************}
+
+	ROUTINE print_lte_action_chars_only ( self                 ,
+	                                      VALUE process_string )
+
+{ 	Removes colons and full stops from the heading text fields of the report
+*
+* 	Parameters   : 
+* 	Return Value : N/A
+*
+*******************************************************************************}
+
+	DECLARE return_string
+
+	return_string = SUBSTITUTE ( process_string , ":" , "" )
+	return_string = SUBSTITUTE ( return_string , "." , "" )
+
+	RETURN ( return_string )
+
+ENDROUTINE
+
+			
+{*******************************************************************************}
+
+	ROUTINE print_lte_action_string_val ( self              ,
+	                                      VALUE index_value )
+
+{ 	Converts an integer into a two character string
+*
+* 	Parameters   : index_value - the integer value of a loop index
+* 	Return Value : a two character equivalent of the integer
+*
+*******************************************************************************}
+
+	IF ( index_value > 9 ) THEN
+
+		RETURN ( STRIP ( STRING ( index_value ) ) )
+
+	ELSE
+
+		RETURN ( "0" : STRIP ( STRING ( index_value ) ) )
+
+	ENDIF
+
+ENDROUTINE
+
+
+{*******************************************************************************}
+
+	ROUTINE print_lte_action_is_status ( self              ,
+	                                     VALUE field_name  ,
+	                                     VALUE field_width )
+
+{ 	See if the field is a possible status field
+*
+* 	Parameters   : field_name - the name of the field to check
+* 	               field_width - the database width of the field
+* 	Return Value : Boolean - True if it is a status value
+*
+*******************************************************************************}
+
+	IF ( INDEX ( field_name , "STATUS" ) > 0 ) THEN
+
+		RETURN ( TRUE )
+	ELSE
+		RETURN ( FALSE )
+	ENDIF
+
+ENDROUTINE
+
+
+{*******************************************************************************}
+
+	ROUTINE print_lte_action_add_status_decode_string (       self       ,
+	                                                    VALUE field_name )
+
+{ 	See if the field is a possible status field
+*
+* 	Parameters   : field_name - the name of the field to check
+*
+* 	Return Value : Boolean - True if it is a status value
+*
+*******************************************************************************}
+
+	DECLARE field_phrase_type ,
+	        decode_string     ,
+	        phrase_text
+
+	GET_FIELD_DETAILS 'self . tbl_name'.'field_name' ,
+	                  "PHRASE_ID"                    ,
+	                  field_phrase_type
+
+	decode_string = ""
+
+	IF field_phrase_type <> EMPTY THEN
+
+		phrase_text = SELECT phrase . phrase_text
+		              WHERE  phrase_type = field_phrase_type
+
+		WHILE phrase_text <> EMPTY
+
+			IF BLANK ( decode_string ) THEN
+				decode_string = " values=":Q
+			ENDIF
+
+			decode_string = decode_string :
+			                STRIP ( phrase_text ) : TAB :
+			                STRIP ( SELECT phrase . phrase_id ) : "/"
+
+			NEXT phrase
+			phrase_text = SELECT phrase . phrase_text
+
+		ENDWHILE
+
+		IF NOT BLANK ( decode_string ) THEN
+			decode_string = decode_string : Q
+		ENDIF
+
+	ELSE
+
+		decode_string = STATUS_DECODE_STRING
+
+	ENDIF
+
+	RETURN ( decode_string )
+
+ENDROUTINE
+
+
+{*******************************************************************************}
+
+	ROUTINE print_lte_action_set_file_name ( self )
+
+{ 	Set the name of the extended description file
+*
+*******************************************************************************}
+
+	DECLARE version_ext
+
+	IF ( self . labtable . lte_report = "$LTE_CRITERIA_SAVED " ) THEN
+
+		self . file_to_open = self . create_text_criteria ( )
+
+	ELSE
+		version_ext = ""
+
+		IF ( self . key0_total > 1 ) AND ( STRIP ( self . version_id ) > 1 ) THEN
+
+			version_ext = "_v" : PAD ( "" , "0" , 9 ) : STRIP ( self . version_id )
+
+		ENDIF
+
+		self . file_to_open = STRIP ( self . labtable . directory ) : ":" :
+	        	              STRIP ( self . key0_id ) : version_ext : "." :
+	                	      STRIP ( self . labtable . extension )
+	ENDIF
+
+ENDROUTINE
+
+
+{*******************************************************************************}
+
+	ROUTINE print_lte_action_create_text_criteria ( self )
+
+{ 	Create a text file of the saved criteria so that it can be attached later 
+*
+*******************************************************************************}
+
+DECLARE table, identity, select_array, text_array, max_length, proc_id,	success,
+	line_index, filename
+
+	ARRAY select_array
+
+	table    = self . key0_id
+	identity = self . version_id
+	proc_id  = GLOBAL ( "PROCESS_ID" )
+
+	filename = "smp$textreports:" : proc_id : "_" : STRIP ( TABLE ) : "_" :
+	           STRIP ( identity ) : ".txt"
+
+	FILE CREATE filename, success
+
+	IF ( success = EMPTY ) THEN
+
+		criteria_saved_load_squirrel_check ( table        ,
+							      identity     ,
+							      select_array ,
+							      FALSE        )
+
+		IF criteria_lib_to_text ( select_array         ,
+					  text_array           ,
+					  max_length           ,
+					  table                ,
+					  TRUE { fold and/or } )
+
+			line_index = 1
+
+			WHILE ( text_array [ line_index ] <> EMPTY ) DO
+
+				FILE WRITE filename, text_array [ line_index ], success
+				line_index = line_index + 1
+
+			ENDWHILE
+
+			FILE CLOSE filename, success
+		ENDIF
+	ENDIF
+
+	RETURN ( filename )
+
+ENDROUTINE
+	
+
+
+
+
+

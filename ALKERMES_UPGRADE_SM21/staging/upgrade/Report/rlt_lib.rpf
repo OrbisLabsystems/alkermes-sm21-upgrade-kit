@@ -1,0 +1,1548 @@
+{===========================================================================}
+{                                                                           }
+{  ORBIS INFORMATION SYSTEMS                                                }
+{                                                                           }
+{  Filename         : RLT_LIB.RPF                                           }
+{  Version          : 1.0                                                   }
+{  Document Ref.    : SAP-LIMS Reduced Lot Testing FDS V0.4                 }
+{  Author           : M. Kavanagh                                           }
+{  Date Created     : 25/07/02                                              }
+{  Responsible      :                                                       }
+{  Description      : Library used by Sample Plan functionlaity to implement}
+{                     reduced lot testing on specified product codes        }
+{                     (material numbers) and manufacturers lot numbers that }
+{                     are sent to LIMS via the SM-IDI interface. Sample Plan}
+{                     functionlaity uses a custom rule to monitor the       }
+{                     Product/Lot being logged into LIMS, this rule calls a }
+{                     routine in this library and processes the data.	    }
+{                                                                           }
+{===========================================================================}
+{                                                                           }
+{  Modification History                                                     }
+{                                                                           }
+{  Ver.     Date        By          Description                             }
+{  ----     ----        --          -----------                             }
+{  1.0	    06/03/03    MK      Original Version                        }
+{  1.1	    21/07/06    EH      Modifications to routine rlt_phase_2 to }
+{                                   handle the product LTE fix of not having}
+{                                   the initial record date as NOW). Also   }
+{                                   modified reduced_lot_test_update_db to  }
+{                                   reset product LTE lot_count to 0 if full}
+{                                   testing occurs (previously not done if  }
+{                                   full testing applied due to interval    }
+{                                   being reached Ref CC 06D-0053           }
+{   1.2     04/04/07    AF          SM 901 updates (for the rlt report)     }
+{   1.3     07/03/08    AF          SM92 RLT fix, was preventing processing }
+{   1.4     15/05/08    AF          Data format bug fix                     }
+{                                                                           }
+{===========================================================================}
+
+
+SET NOTPROTECTED
+SET COMPILE_OPTION DECLARE
+SET NAME "DISPLAY/"
+ENABLE WINDOWS
+
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_PROMPT
+
+
+JOIN LIBRARY $sp_login
+JOIN LIBRARY $lib_utils
+JOIN LIBRARY $PROMPT_IMPRINT
+
+GLOBAL CONSTANT SAP_ANALYSIS  = "SAP"
+GLOBAL CONSTANT SAP_COMPONENT = "Testing Criteria"
+CONSTANT SAP_FULL_TEST = "Full Testing Applied"
+CONSTANT SAP_REDU_TEST = "Reduced Testing Applied"
+CONSTANT SAP_EXPIRED   = "Expiry Date has passed"
+CONSTANT IS_INTERACTIVE= FALSE
+CONSTANT USE_RULES     = TRUE
+
+CONSTANT PROMPT_DISPLAY_COLUMN = 4
+CONSTANT PROMPT_DISPLAY_LENGTH = 11
+CONSTANT PROMPT_PROMPT_COLUMN  = 17
+CONSTANT PROMPT_PROMPT_WIDTH  = 10
+CONSTANT FORM_WIDTH = 30
+CONSTANT FORM_HEIGHT = 5
+
+
+smidi_job_login ()
+
+{
+reduced_lot_test_report ( "100109" ) 
+}
+{==============================================================================}
+{                                                                              }
+{  ROUTINE main                                                                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  27/06/02     MK              Main Routine for Report.                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  sp_login		  Value		       sp_login is sample plan object  }
+{==============================================================================}
+
+ 
+ROUTINE MAIN (sp_login )
+
+    DECLARE job_id, status, material_no
+
+{==============================================================================}
+{sp_login is the sample plan login object which contains the job name that is  }
+{being used for the sample plan	and the login time of the job. A single sample }
+{is logged in for each job and is selected from the sample table.	       }
+{==============================================================================}
+
+    sp_login.sampleplan = true
+    job_id = sp_login.job
+
+    IF sp_login.login_time = EMPTY THEN
+
+        EXIT
+
+    ENDIF
+
+    sp_login.expiry_date = SELECT JOB_HEADER . rlt_expiry_date
+                               WHERE job_name = job_id
+    sp_login.retest_date = SELECT JOB_HEADER . rlt_retest_date
+
+    sp_login.samp_id = SELECT sample . id_numeric
+		           WHERE job_name = job_id
+
+
+    sp_login.material_no = STRIP(SELECT sample . product)
+    sp_login.vendor = STRIP(SELECT sample . customer_id)
+    sp_login.lot_no = STRIP(SELECT sample . supplier_lot_no)
+
+
+    material_no = SELECT RLT_VENDOR_PRODUCT . material_no
+                      WHERE vendor = sp_login.vendor
+                      AND material_no = sp_login.material_no
+                      AND removeflag = FALSE
+
+    IF material_no = EMPTY THEN
+
+        sp_login.phase = "phase1"
+        status = rlt_phase_1 ( sp_login )
+
+    ELSE
+
+        sp_login.phase = "phase2"
+        sp_login.lot_count = SELECT RLT_VENDOR_PRODUCT . lot_count
+        sp_login.full_date = SELECT RLT_VENDOR_PRODUCT . full_test_date
+        sp_login.expired = FALSE
+        status = rlt_phase_2 ( sp_login )
+
+    ENDIF
+
+    sp_login.rule_applied = status
+
+    IF status = TRUE THEN
+
+        update_sp_object ( sp_login )
+
+    ENDIF
+
+    RETURN ( FALSE )
+
+ENDROUTINE {main}
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE insert_lot_table                                                    }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  25/07/02     MK              Inserts new manufacturers lot number into      }
+{				Manufacturers_lot table.                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  sp_login		  Value		       sp_login is sample plan object  }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE insert_lot_table ( sp_login )
+
+    DECLARE vendor, material_no, lot_no
+
+    vendor = PAD(sp_login.vendor, " ", 10)
+    material_no = PAD(sp_login.material_no, " ", 10)
+    lot_no = PAD(sp_login.lot_no, " ", 15)
+
+
+    RESERVE ENTRY rlt_manufacturers_lot, vendor:material_no:lot_no
+
+    ASSIGN rlt_manufacturers_lot.retest_date = sp_login.retest_date
+    ASSIGN rlt_manufacturers_lot.expiry_date = sp_login.expiry_date 
+    ASSIGN rlt_manufacturers_lot.full_test_date = sp_login.login_time
+
+    check_write_transaction ( )
+
+    UPDATE rlt_manufacturers_lot
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE update_lot_table                                                    }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  25/07/02     MK              Inserts new manufacturers lot number into      }
+{				Manufacturers_lot table.                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  sp_login		  Value		       sp_login is sample plan object  }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE update_lot_table ( sp_login )
+
+   DECLARE val
+
+    val = SELECT rlt_manufacturers_lot.retest_date FOR UPDATE
+		WHERE vendor = sp_login.vendor
+                AND material_no = sp_login.material_no
+                AND lot_no = sp_login.lot_no
+
+    val = sp_login.retest_date
+
+    check_write_transaction ( )
+
+    ASSIGN rlt_manufacturers_lot.retest_date = val
+
+    UPDATE rlt_manufacturers_lot
+
+ENDROUTINE {update_lot_table}
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE update_lot_fulltest                                                 }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  25/07/02     MK              Updates full test date field on                }
+{				Manufacturers_lot table.                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  sp_login		  Value		       sp_login is sample plan object  }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE update_lot_fulltest ( sp_login )
+
+   DECLARE val
+
+    val = SELECT rlt_manufacturers_lot.full_test_date FOR UPDATE
+		WHERE vendor = sp_login.vendor
+                AND material_no = sp_login.material_no
+                AND lot_no = sp_login.lot_no
+
+    val = sp_login.login_time
+
+    check_write_transaction ( )
+
+    ASSIGN rlt_manufacturers_lot.full_test_date = val
+
+    UPDATE rlt_manufacturers_lot
+
+ENDROUTINE {update_lot_table}
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE update_rlt_vendor_product                                           }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  11/02/02     MK              Updates full_test_Date on rlt_vendor_product   }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  sp_login		  Value		       sp_login is sample plan object  }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE update_rlt_vendor_product ( sp_login )
+
+   DECLARE val
+
+    val = SELECT rlt_vendor_product.full_test_date FOR UPDATE
+		WHERE vendor = sp_login.vendor
+                AND material_no = sp_login.material_no
+
+    val = sp_login.login_time
+
+    check_write_transaction ( )
+
+    ASSIGN rlt_vendor_product.full_test_date = val
+
+    UPDATE rlt_vendor_product
+
+ENDROUTINE {update_rlt_vendor_product}
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE update_lot_count                                                    }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  11/02/02     MK              Updates lot count in rlt_vendor_product table  }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  sp_login		  Value		       sp_login is sample plan object  }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE update_lot_count ( sp_login )
+
+   DECLARE val
+
+    val = SELECT rlt_vendor_product.lot_count FOR UPDATE
+		WHERE vendor = sp_login.vendor
+                AND material_no = sp_login.material_no
+
+    val = sp_login.lot_count
+
+    check_write_transaction ( )
+
+    ASSIGN rlt_vendor_product.lot_count = val
+
+    UPDATE rlt_vendor_product
+
+ENDROUTINE {update_lot_count}
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE check_write_transaction                                             }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  25/07/02     MK              Checks whether a Write Transaction exists      }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE check_write_transaction
+
+    IF NOT transaction_is_write() THEN
+
+       START WRITE TRANSACTION "update record"
+
+    ENDIF
+
+ENDROUTINE {check_write_transaction}
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE sample_plan_login                                                   }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  26/07/02     MK              Enters job_id into Sample Plan functionality   }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  job_id		  VALUE		       job name being logged in        }
+{==============================================================================}
+
+ROUTINE sample_plan_login ( VALUE job_id )    
+  
+    DECLARE sp_login_object
+
+    update_job_header (job_id )
+
+    IF GLOBAL ("RLT_ENABLE") = TRUE THEN
+
+    	reduced_lot_test_class ( )
+
+    	CREATE OBJECT "REDUCED_LOT_TESTING" , sp_login_object
+
+    	sp_login_object . login_table           = "job_header"
+    	sp_login_object . login_identity        = job_id
+    	sp_login_object . job                   = job_id
+    	sp_login_object . rule_only_based_count = GLOBAL ( "SP_RULES_MODE" )
+    	sp_login_object . trigger_max_one_rule  = GLOBAL ( "SP_RULES_MODE" )
+    	sp_login_object . output_to_literal     = IS_INTERACTIVE
+    	sp_login_object . check_rules           = USE_RULES
+    	sp_login_object . pre_login_edit        = NOT USE_RULES
+	sp_login_object . rule_applied         = FALSE
+	sp_login_object . sampleplan		= FALSE
+
+    	sp_login_object . login ( )
+
+    ENDIF
+
+ENDROUTINE {sample_plan_login}
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE reduced_lot_test_update_db                                          }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  12/02/03     MK              Updates Reduced Lot testing module after sample}
+{                               plan functionality has been implemented        }
+{  21/07/006    EH              If full testing applied for any reason, then   }
+{                               reset lot count. Previously not done if full   }
+{                               test applied due to max interval being reached }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  sp_login		  Value		       sp_login is sample plan object  }
+{==============================================================================}
+
+ROUTINE reduced_lot_test_update_db ( sp_login )   
+
+  
+    DECLARE status, samp_id, frequency, removeflag, rlt_result, count, anal, var
+
+    count = 1
+    status = sp_login.rule_applied
+    frequency = SELECT rule .frequency
+    samp_id = sp_login.samp_id
+
+    IF sp_login.phase = "phase1" THEN
+
+
+        IF sp_login.insert_lot = TRUE then
+
+            insert_lot_table ( sp_login )
+            update_job_retest_date ( sp_login )
+
+	ELSE
+
+	     IF sp_login.rule_applied = TRUE THEN
+		update_lot_fulltest ( sp_login )
+	     ENDIF
+
+        ENDIF
+
+        IF sp_login.update_retest THEN
+
+            update_job_retest_date ( sp_login )
+            update_lot_table ( sp_login )
+
+        ENDIF
+
+    ELSEIF sp_login.phase = "phase2" THEN
+
+        IF sp_login.lot_count = frequency THEN
+
+           sp_login.lot_count = 0
+
+        ENDIF
+
+
+        IF status = TRUE THEN
+
+            update_rlt_vendor_product ( sp_login )
+
+        ENDIF
+
+        IF sp_login.insert_lot = TRUE THEN
+
+            removeflag = SELECT RLT_MANUFACTURERS_LOT . removeflag
+                             WHERE vendor = sp_login.vendor
+                             AND material_no = sp_login.material_no
+                             AND lot_no = sp_login.lot_no
+             
+
+            IF removeflag <> TRUE THEN
+
+                insert_lot_table (sp_login )
+
+            ENDIF
+
+            update_lot_count ( sp_login )
+
+        ENDIF
+
+
+        {==============================================================}
+        {  EH 21-07-2006                                              }
+        {  If full testing applied for any reason, then reset lot count}
+        {==============================================================}
+
+        IF (status = TRUE) THEN
+
+            sp_login . lot_count = 0
+            update_lot_count ( sp_login )
+
+        ENDIF
+
+        {======  End of EH 21-07-2006  ================================}
+
+
+    ENDIF
+
+
+
+    IF status = TRUE THEN
+
+        WHILE count <= SIZEOFARRAY(sp_login.analyses_array)
+
+            anal = sp_login.analyses_array[count]
+
+            count = count + 1
+
+            var = NEW_TEST(samp_id, anal)
+
+            IF var = ERROR THEN
+
+		FLASHMESSAGE (var, TRUE)
+            ENDIF
+
+        ENDWHILE
+
+        rlt_result = SAP_FULL_TEST     
+
+    ELSE
+
+        rlt_result = SAP_REDU_TEST
+
+    ENDIF
+
+    IF sp_login.expired = TRUE THEN
+
+        rlt_result = SAP_EXPIRED     
+
+    ENDIF
+
+    update_sample_table (samp_id, rlt_result )
+
+ENDROUTINE {reduced_lot_test_update_db}
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE reduced_login_test_class                                            }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  13/02/03     MK              Defines custom class for reduced lot testing   }
+{                               inherits from batch login class                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{==============================================================================}
+
+ROUTINE reduced_lot_test_class
+
+    batch_login_initialise ( )
+
+    DEFINE CLASS "REDUCED_LOT_TESTING"
+
+    INITIALISATION
+
+    INHERIT "BATCH_LOGIN"
+	
+        PROPERTIES
+                  "rule_applied",
+                  "node",
+                  "samp_id",
+                  "vendor",
+                  "material_no",
+                  "lot_no",
+                  "lot_count",
+                  "retest_date",
+                  "expiry_date",
+                  "full_date",
+                  "phase",
+                  "expired",
+                  "insert_lot",
+                  "update_retest",
+                  "analyses_array",
+		  "sampleplan"
+
+    END CLASS
+
+ENDROUTINE {reduced_lot_test_class}
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE reduced_lot_testing_class_initialisation                            }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  13/02/03     MK              Initialisation routine for reduced lot testing }
+{                               custom class                                   }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  self                   reference            reduced_lot_testing object      }
+{==============================================================================}
+
+ROUTINE REDUCED_LOT_TESTING_CLASS_INITIALISATION (self)
+
+    ARRAY self.analyses_array
+
+ENDROUTINE {reduced_lot_testing_class_initialisation}
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE smidi_job_login                                                     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  13/02/03     MK              Routine to log in according to SM-IDI          }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  self                   reference            reduced_lot_testing object      }
+{==============================================================================}
+
+ROUTINE smidi_job_login
+
+    DECLARE job_id, samp_id
+
+    menuproc 12 {using "RLT_JT_1"}
+
+    samp_id = select max sample.id_numeric
+
+    job_id = select sample.job_name where id_numeric = samp_id
+
+    sample_plan_login ( job_id )
+
+ENDROUTINE {smidi_job_login}
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE update_job_header                                                   }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  13/02/03     MK              Routine to update sample_template field on the }
+{                               job_header table with the sample template used }
+{                               to log in the sample for that job.             }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  job_id                 VALUE                job name                        }
+{==============================================================================}
+
+ROUTINE update_job_header ( VALUE job_id )
+
+    DECLARE samp_id, samp_temp, job_samp_temp, rlt_dates, pos, len, expiry, retest
+          , opened_trans   {1.3 }
+
+    opened_trans  = FALSE    { 1.3 }
+
+    rlt_dates = STRIP(SELECT job_header.rlt_dates
+                    WHERE job_name = job_id)
+
+    samp_id = SELECT sample.id_numeric
+                WHERE job_name = job_id
+
+    samp_temp = SELECT sample.template_id
+                   WHERE job_name = job_id
+                   AND id_numeric = samp_id
+
+    job_samp_temp = SELECT job_header.sample_template FOR UPDATE
+                        WHERE job_name = job_id
+
+    job_samp_temp = samp_temp
+
+     { 1.3 }
+     IF NOT transaction_is_write() THEN
+
+       opened_trans  = TRUE
+       START WRITE TRANSACTION "update record"
+
+    ENDIF
+
+
+    ASSIGN job_header.sample_template = job_samp_temp
+
+    IF rlt_dates <> "" THEN
+
+        pos = INDEX(rlt_dates, " ")
+        len = LENGTH(rlt_dates)
+
+{ 1.4 Remove DATE when parse and set YYYZ as year }
+
+	retest = RIGHTSTRING(rlt_dates, (len - pos))
+
+	expiry = LEFTSTRING(rlt_dates, (pos - 1))
+
+        SET DATE FORMAT "DZ/MZ/YYYZ"
+
+        IF IS_DATE(expiry) THEN
+        	 ASSIGN job_header.rlt_expiry_date = DATE(expiry)
+	ENDIF
+
+	retest = STRIP(retest)
+
+        IF IS_DATE(retest) THEN
+	        ASSIGN job_header.rlt_retest_date = DATE(retest)
+	ENDIF
+
+        RESTORE DATE FORMAT
+
+    ENDIF
+
+    UPDATE job_header
+
+    { 1.3 Only commit here if the transaction was opened here }
+    IF (opened_trans) THEN
+
+        COMMIT
+
+    ENDIF
+
+ENDROUTINE {update_job_header}
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE update_sp_object                                                    }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  13/02/03     MK              Routine to update reduced lot testing object   }
+{                               with the node that has had full testing applied}
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  self                   reference            reduced_lot_testing object      }
+{==============================================================================}
+
+ROUTINE update_sp_object (self)
+
+    DECLARE path, len, ind, anal, count
+
+    count = 0
+    path = STRIP(self.node_trigger_path)
+    len = LENGTH(path)
+    ind = INDEX (path, ",")
+
+    WHILE ind < len 
+
+        path = STRIP(SUBSTRING (path, ind + 1, len))
+        ind = INDEX (path, ",")
+        len = LENGTH(path)
+
+    ENDWHILE
+ 
+    ind = INDEX(path, "/")
+    self.node = STRIP(LEFTSTRING (path, ind - 1))
+
+    anal = SELECT sample_plan_entry.analysis_id
+               WHERE identity = self.node
+
+    WHILE anal <> EMPTY
+
+        count = count + 1
+
+        self.analyses_array[count] = STRIP(anal)
+
+        NEXT sample_plan_entry
+        anal = SELECT sample_plan_entry.analysis_id
+
+    ENDWHILE
+
+ENDROUTINE {update_sp_object}
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE rlt_phase_1                                                         }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  05/03/03     MK              Routine to implement phase 2 of Reduced Lot    }
+{                               Testing program.                               }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  self                   reference            reduced_lot_testing object      }
+{==============================================================================}
+
+ROUTINE rlt_phase_1 ( self )
+
+    DECLARE lot_no, retest_date, status, removeflag, probation_period,
+	    test_interval, fulltest_date
+
+    lot_no = SELECT RLT_MANUFACTURERS_LOT . lot_no
+              WHERE vendor = self.vendor
+              AND material_no = self.material_no
+              AND lot_no = self.lot_no
+              AND removeflag = FALSE
+
+    retest_date = SELECT RLT_MANUFACTURERS_LOT . retest_date
+    fulltest_date = SELECT RLT_MANUFACTURERS_LOT . full_test_date
+
+    IF lot_no <> EMPTY THEN
+
+        IF retest_date <> EMPTY THEN
+ 
+            IF self.retest_date >= retest_date THEN
+
+                self.update_retest = TRUE
+
+            ELSE
+                self.update_retest = FALSE
+                self.retest_date = retest_date
+
+            ENDIF
+
+        ENDIF
+
+        IF self.expiry_date <= self.login_time THEN
+
+	    status = FALSE {Reduced Testing Applied}
+            self.expired = TRUE
+
+        ELSE
+
+	    status = FALSE {Reduced Testing Applied}
+            self.expired = FALSE
+
+        ENDIF
+
+	IF retest_date <= self.login_time THEN
+	    status = TRUE {Full Testing Applied} 
+	ENDIF
+
+
+        self.insert_lot = FALSE
+
+
+        probation_period = SELECT rule.probation_period
+
+        test_interval = self.login_time - fulltest_date
+
+        IF (test_interval >= probation_period) THEN
+
+            status = TRUE {Full Testing Applied}
+
+        ENDIF
+
+
+    ELSE
+
+        removeflag = SELECT RLT_MANUFACTURERS_LOT . removeflag
+                         WHERE vendor = self.vendor
+                         AND material_no = self.material_no
+                         AND lot_no = self.lot_no
+             
+
+        IF removeflag = TRUE THEN
+
+
+            self.insert_lot = FALSE
+
+        ELSE
+
+            self.insert_lot = TRUE
+
+        ENDIF
+
+        self.update_retest = FALSE
+        self.expired = FALSE
+        status = TRUE {Full Testing Applied}
+
+    ENDIF
+
+    RETURN ( status )
+
+ENDROUTINE {rlt_phase_1}
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE rlt_phase_2                                                         }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By             Description                                     }
+{  ----         --             -----------                                     }
+{  05/03/03     MK             Routine to implement phase 2 of Reduced Lot     }
+{                              Testing program.                                }
+{  21/07/06     EH             Add code to prevent overflow crash when vendor  }
+{                              product LTE full_test_date=year 0/NULL (initial)}
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  self                   reference            reduced_lot_testing object      }
+{==============================================================================}
+
+ROUTINE rlt_phase_2 ( self )
+
+    DECLARE lot_no, status, frequency, probation_period, test_interval
+
+    lot_no = SELECT RLT_MANUFACTURERS_LOT . lot_no
+              WHERE vendor = self . vendor
+              AND material_no = self . material_no
+              AND lot_no = self . lot_no
+              AND removeflag = FALSE
+
+{==============================================================================}
+{ the counter variable contains the rule associated with the sample plan which }
+{ is being checked, the frequency is the value specified in the frequency field}
+{ of the LTE for the Sample Plan Rule. The frequency is used to check the count}
+{ at which full testing should be applied				       }
+{==============================================================================}
+
+    frequency = SELECT rule.frequency 
+    probation_period = SELECT rule.probation_period
+
+{==============================================================================}
+{ other properties of the Rule assocated with the Sample Plan which are not    }
+{ considered for this routine
+
+    counter = sp_login.current_counter_object
+					
+    usage_count      = SELECT rule_count.usage_count IN OBJECT counter
+    fulltest_count   = SELECT rule_count.fulltest_count IN OBJECT counter
+    fulltest_date    = SELECT rule_count.fulltest_date IN OBJECT counter
+    start_date 	     = SELECT rule_count.start_date IN OBJECT counter
+    inter 	     = SELECT rule.interval
+    probation_period = SELECT rule.probation_period
+    probation_no     = SELECT rule.probation_number 			       }
+{==============================================================================}
+
+
+    {======================================================================}
+    {  EH 21-07-2006                                                      }
+    { Prevent crash when full_test_date = year 0/NULL, change to later date}
+    { that is still outside probation period so that full testing occurs   }
+    {======================================================================}
+
+    SET DATE FORMAT "DD-MM-YYYY"
+
+     IF (self.full_date = NULL) OR  (self.full_date < DATE ("01-01-1000")) THEN
+
+         self.full_date = self . login_time - (probation_period + INTERVAL ("1 00:00:00.0"))
+
+    ENDIF
+ 
+    RESTORE DATE FORMAT
+
+    { End of EH 21-07-2006 ====================================== }
+
+    IF lot_no <> EMPTY THEN
+
+        self.insert_lot = FALSE
+
+        test_interval = self.login_time - self.full_date
+
+        IF (test_interval >= probation_period) THEN
+
+            status = TRUE {Full Testing Applied}
+
+        ELSE
+
+            status = FALSE {Reduced Testing Applied}
+
+        ENDIF
+
+    ELSE
+
+        self.insert_lot = TRUE
+
+        self.lot_count = self.lot_count + 1
+
+
+        IF self.lot_count = frequency THEN
+
+            status = TRUE {Full Testing Applied}
+
+        ELSE
+
+            test_interval = self.login_time - self.full_date
+
+            IF (test_interval >= probation_period) THEN
+
+                status = TRUE {Full Testing Applied}
+
+            ELSE
+
+                status = FALSE {Reduced Testing Applied}
+
+            ENDIF
+
+        ENDIF
+
+    ENDIF
+
+
+    RETURN ( status )
+
+ENDROUTINE {rlt_phase_2}
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE update_job_retest_date                                              }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  13/02/03     MK              Routine to update retest date field on the job }
+{                               header table with the retest date of the first }
+{                               manufacturers lot number that was receipted    }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  self                   reference            reduced_lot_testing object      }
+{==============================================================================}
+
+ROUTINE update_job_retest_date ( sp_login )
+
+    DECLARE retest_date, newretest_date
+
+
+    newretest_date = SELECT RLT_MANUFACTURERS_LOT . retest_date
+              WHERE vendor = sp_login.vendor
+              AND material_no = sp_login.material_no
+              AND lot_no = sp_login.lot_no
+
+    retest_date = SELECT job_header.rlt_retest_date FOR UPDATE
+                        WHERE job_name = sp_login.job
+
+    retest_date = newretest_date
+
+    check_write_transaction ( )
+
+    ASSIGN job_header.rlt_retest_date = retest_date
+
+    UPDATE job_header
+
+ENDROUTINE {update_job_retest_date}
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE reduced_lot_test_report                                             }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  11/02/03     MK              Generates Informaker report for Reduced Lot    }
+{                               Testing module. Report gives lists all jobs and}
+{                               samples that are currently in the Reduced Lot  }
+{                               Testing module in LIMS.                        }
+{  18/02/03     AF              Modified to call Infomaker report              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE reduced_lot_test_report ( VALUE self )   
+  
+
+    DECLARE imprint_report
+    DECLARE library, report, print_by
+    DECLARE job_id, samp_id, queue_samp_id, status, found, job_template
+    DECLARE start_date, end_date, cust_id, product, disp_end_date
+
+
+    { Prompt for start_date, end_date, cust_id, product }
+    IF ( get_report_params (start_date, end_date, cust_id, product) 
+          = FALSE ) THEN
+
+        RESTORE DATE FORMAT
+        RETURN  { the user cancelled }
+
+    ENDIF
+
+   {
+      A displayed end date is sent because the date is sent in DD-MON-YZ format
+      which is interpreted as 0.00 on that date
+   } 
+    disp_end_date = end_date 
+
+    { inform user if report will be empty }
+    job_template = STRIP (GLOBAL ("RLT_JOB_TEMPLATE"))
+    found = FALSE
+
+    job_id = SELECT job_header.job_name
+              WHERE (template_id = job_template)
+              AND (date_created >= start_date)
+              AND (date_created <= end_date)
+
+
+    WHILE (job_id <> EMPTY)
+
+        { only 1 sample per job }
+        samp_id = SELECT sample.id_numeric 
+                  WHERE (job_name = job_id)
+                  AND (customer_id = cust_id)
+                  AND (product = product)
+
+        IF (samp_id <> EMPTY)
+
+            status = SELECT sample.status
+
+            IF (status = "V") OR (status = "C")
+    
+                found = TRUE
+
+            ELSEIF (status = "A")
+
+                queue_samp_id = SELECT smidi_upload_queue.id_numeric
+
+                WHILE (queue_samp_id <> EMPTY) AND (found = FALSE)
+
+                   IF (samp_id = queue_samp_id)
+
+                       found = TRUE
+
+                   ENDIF
+
+                   NEXT smidi_upload_queue
+                   queue_samp_id = SELECT smidi_upload_queue.id_numeric 
+
+                ENDWHILE
+
+            ENDIF
+
+        ENDIF
+           
+        NEXT job_header
+        job_id = SELECT job_header.job_name
+
+    ENDWHILE
+
+
+    IF (found = FALSE) THEN
+
+        flash_message("No jobs logged in with ":job_template:" template found",TRUE)
+
+	EXIT
+
+    ENDIF
+
+
+    { need this date format for infomaker }
+    SET DATE FORMAT "DD-MON-YZ"
+
+    library = get_imprint_dir ():"\elan_custom.pbl"          { 1.2 }
+    report = "rlt"
+
+    { Define the class, then create an instance }
+
+    define_imprint_class ( )
+
+    CREATE OBJECT IMPRINT, imprint_report
+
+ 
+    { Generate a report }
+
+    imprint_report . create_ole_object( )
+    imprint_report . reset_ole_object( )
+
+
+    { pass user name (or ID will do if name empty )   }
+    print_by = SELECT personnel.description WHERE (identity = GLOBAL("OPERATOR"))
+
+    IF (print_by = EMPTY)
+
+        print_by = GLOBAL("OPERATOR")
+
+    ENDIF
+
+    imprint_report . add_parameter ( print_by )      
+
+    { Send start_date, end_date, cust_id, product, displayed end date }
+    imprint_report . add_parameter ( start_date )      
+    imprint_report . add_parameter ( end_date )      
+    imprint_report . add_parameter ( cust_id )      
+    imprint_report . add_parameter ( product ) 
+    imprint_report . add_parameter ( disp_end_date ) 
+
+    imprint_report . library  = library
+    imprint_report . report  = report
+
+    imprint_report . generate ( )
+
+    imprint_report . ole_object = EMPTY 
+
+ 
+
+    RESTORE DATE FORMAT
+
+    
+ENDROUTINE { reduced lot test report }
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE get_report_params                                                   }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  21/02/03     AF              Displays form to prompt for parameters for RLT }
+{                                 Infomaker report                             }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  start_date             Reference            start date fort report          }
+{  end_date               Reference            end date for report             }
+{  cust_id                Reference            customer id for report          }
+{  product                Reference            product code for report         }
+{==============================================================================}
+
+ROUTINE get_report_params (start_date, end_date, cust_id, product)
+
+    DECLARE main_form, err, cancelled
+    DECLARE prompt_object_cust, prompt_object_prod,
+                prompt_object_start, prompt_object_end
+
+
+    cancelled = FALSE
+
+    CREATE OBJECT "std_form", main_form
+
+    
+    main_form . row    = 3
+    main_form . column = 10
+    main_form . height = FORM_HEIGHT
+    main_form . width  = FORM_WIDTH
+    main_form . header = "Reduced Lot Testing"
+    main_form . return_behaviour = FORM_RETURN_LEAVE
+    main_form . add_frame ("Enter Report Parameters", 1,1,5,form_width)
+
+
+    PROMPT OBJECT prompt_object_cust
+                BROWSE ON customer.identity
+                ON LINE 1
+                FROM        PROMPT_PROMPT_COLUMN
+                WITH ( ALWAYS_VALIDATE = TRUE,
+                        width = PROMPT_PROMPT_WIDTH
+                      )
+
+    PROMPT OBJECT prompt_object_prod
+                BROWSE ON mlp_header.identity
+                ON LINE 2
+                FROM        PROMPT_PROMPT_COLUMN
+                WITH ( ALWAYS_VALIDATE = TRUE,
+                        width = PROMPT_PROMPT_WIDTH
+                      )
+
+    PROMPT OBJECT prompt_object_start
+                BROWSE ON DATE
+                ON LINE 4
+                FROM        PROMPT_PROMPT_COLUMN
+                WITH ( ALWAYS_VALIDATE = TRUE,
+                       value = NOW - interval("1 00:00:00"),
+                        width = PROMPT_PROMPT_WIDTH 
+                      )
+
+
+    PROMPT OBJECT prompt_object_end
+                BROWSE ON DATE
+                ON LINE 5
+                FROM        PROMPT_PROMPT_COLUMN
+                WITH ( ALWAYS_VALIDATE = TRUE,
+                       value = NOW,
+                        validation_routine = "enddate_validation_routine",
+                        width = PROMPT_PROMPT_WIDTH
+                      )
+         
+    main_form . add_prompt( prompt_object_cust )
+    main_form . add_prompt( prompt_object_prod )
+    main_form . add_prompt( prompt_object_start )
+    main_form . add_prompt( prompt_object_end )
+    main_form . add_display( PAD( "Vendor", " ", PROMPT_DISPLAY_LENGTH ), PROMPT_DISPLAY_COLUMN, 1, PROMPT_RENDITION_LOWERED )
+    main_form . add_display( PAD( "Material No", " ", PROMPT_DISPLAY_LENGTH ), PROMPT_DISPLAY_COLUMN, 2, PROMPT_RENDITION_LOWERED )
+    main_form . add_display( PAD( "Start Date", " ", PROMPT_DISPLAY_LENGTH ), PROMPT_DISPLAY_COLUMN, 4, PROMPT_RENDITION_LOWERED )
+    main_form . add_display( PAD( "End Date", " ", PROMPT_DISPLAY_LENGTH ), PROMPT_DISPLAY_COLUMN, 5, PROMPT_RENDITION_LOWERED )
+
+
+    main_form . start_prompt()    
+
+
+    REPEAT
+
+        err = FALSE
+
+        main_form . wait_prompt()
+
+
+        IF ( main_form . get_lastkey() = "DO" )            
+
+            cust_id = main_form.prompt_objects[1].value
+            product = main_form.prompt_objects[2].value
+            start_date = main_form.prompt_objects[3].value
+            end_date = main_form.prompt_objects[4].value
+
+            { start date cannot be later than end date  }
+            
+            IF (start_date > end_date ) 
+
+                err = TRUE
+                flash_message("End date must be later than start date",TRUE)
+
+            ENDIF
+
+
+        ENDIF
+
+        IF (main_form . get_lastkey() = "EXIT" )
+
+            cancelled = TRUE
+
+        ENDIF
+
+    UNTIL ( err = FALSE) OR (cancelled = TRUE)
+
+
+    main_form . end_prompt()
+
+
+    RETURN (NOT cancelled)
+
+ENDROUTINE   {  get_report_params }
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE enddate_validation_routine                                          }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  21/02/03     AF              validation routine for 'end date' prompt       }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  self                   Reference            prompt object                   }
+{==============================================================================}
+
+ROUTINE enddate_validation_routine (self)
+
+    DECLARE valid, main_form, start_date, end_date
+
+    valid = TRUE  
+    main_form = self.parent_prompt
+    start_date = main_form.prompt_objects[3].value
+    end_date = main_form.prompt_objects[4].value
+
+
+    IF ( start_date > end_date )        
+
+        valid = FALSE
+        flash_message("End date must be later than start date",TRUE)
+
+    ENDIF
+
+
+    return (valid)
+
+ENDROUTINE { enddate_validation_routine }
+
+ 
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE update_sample_table                                                 }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  13/05/03     MK              Updates Sample field RLT_RESULT with the result}
+{                               of the Reduced Lot Testing program for the     }
+{                               sample.
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  samp_id		  Value		       Sample ID Numeric               }
+{  rlt_result             Value                Reduced Lot Testing Result      }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE update_sample_table ( samp_id, rlt_result )
+
+   DECLARE val
+
+    val = SELECT sample . rlt_result FOR UPDATE
+		WHERE id_numeric = samp_id
+
+    val = rlt_result
+
+    check_write_transaction ( )
+
+    ASSIGN sample . rlt_result = val
+
+    UPDATE sample
+
+ENDROUTINE {update_sample_table}
+
+
+{ 1.2 }
+{ Gets imprint directory on server }
+
+ROUTINE get_imprint_dir 
+
+   { "smp$imprint:":xxx.yyy   didnt work }
+
+    DECLARE dir , delim, i
+    
+    delim = ";"
+    dir = LOGICAL("SMP$imprint")
+
+    i = INDEX (dir, delim)
+
+    IF (i>0) THEN
+
+        dir = SUBSTRING (dir, 1, i-STRINGLENGTH (delim))
+
+    ENDIF
+
+    dir = STRIP (dir)
+
+    RETURN (dir)
+
+ENDROUTINE    {  get_imprint_dir   }
+
+
+

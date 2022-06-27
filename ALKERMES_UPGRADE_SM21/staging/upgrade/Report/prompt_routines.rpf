@@ -1,0 +1,998 @@
+{******************************************************************************
+*
+* Module Name          : PROMPT_ROUTINES
+*
+* Purpose              : Library of prompt routines all returning the selected
+*                        value.
+*
+* Portability          : Not Checked
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By             Description
+* -------   -----------  ----------     ---------------------------------------
+* 1.0       05-Aug-2005  Vincent Molloy Release Version 
+* 1.1       31-May-2005  Vincent Molloy Added Leave Prompt Routine for the System
+*                                       Suitability sample browse (prompt_ss_sample)
+* 1.2       18-Dec-2006  Vincent Molloy Added browse routine prompt_auth_ss_sample
+*                                       and removed authorised clause from select
+*                                       array in prompt_ss_sample
+* 1.3       24-Nov-2009  D. Moloney     Added browse routine for mobile phase 
+*                                       solution sample browse (prompt_auth_mp_sample)
+*******************************************************************************}
+
+SET NAME "DEFER/"
+SET COMPILEOPTION DECLARE
+ENABLE WINDOWS
+
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN STANDARD_LIBRARY STD_BROWSE
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_DATABASE
+
+
+
+JOIN LIBRARY $lib_utils
+JOIN LIBRARY $prompt_file
+
+GLOBAL ROUTINE prompt_sample_id
+
+{
+*    Prompts for and Returns the ID Numeric of a selected Sample. Browses on
+*    samples of any status.
+*
+*******************************************************************************}
+
+    DECLARE form, 
+            prompt_1
+
+    CREATE OBJECT PROMPT_CLASS_FORM, form
+    form. header = GET_USER_MESSAGE("PROMPT_ROUTINES_SELECT_SAMPLE", 1)
+    form. footer = GET_USER_MESSAGE("PROMPT_ROUTINES_PRESS_DO", 1)
+    form. width  = 50
+    form. height = 1
+    form. column = 4
+    form. row    = 6
+    form. return_behaviour = FORM_RETURN_WRAP
+
+    form . add_display ( GET_USER_MESSAGE("PROMPT_ROUTINES_SAMPLE_ID", 1), 
+                         1, 
+                         1, 
+                         PROMPT_RENDITION_NORMAL + PROMPT_RENDITION_RAISED )
+
+    PROMPT OBJECT prompt_1 
+           BROWSE ON sample . id_numeric AT 15,1
+           WITH (  width = 40, lowered= True)
+
+    form . add_prompt (prompt_1)
+ 
+    form . start_prompt()
+
+    keep_prompting(form, prompt_1)
+ 
+    RETURN (prompt_1.text)
+
+
+ENDROUTINE {prompt_sample_id}
+
+
+GLOBAL ROUTINE prompt_job_name
+
+{
+*    Prompts for and Returns the Job Name of a selected Job. Browses on Jobs
+*    of any status.
+*
+*******************************************************************************}
+
+    DECLARE form, 
+            prompt_1
+
+    CREATE OBJECT PROMPT_CLASS_FORM, form
+    form. header = GET_USER_MESSAGE("PROMPT_ROUTINES_SELECT_JOB", 1)
+    form. footer = GET_USER_MESSAGE("PROMPT_ROUTINES_PRESS_DO", 1)
+    form. width  = 50
+    form. height = 1
+    form. column = 4
+    form. row    = 6
+    form. return_behaviour = FORM_RETURN_WRAP
+
+    form . add_display ( GET_USER_MESSAGE("PROMPT_ROUTINES_JOB_NAME", 1), 
+                         1, 
+                         1, 
+                         PROMPT_RENDITION_NORMAL + PROMPT_RENDITION_RAISED )
+
+    PROMPT OBJECT prompt_1 
+           BROWSE ON job_header . job_name AT 15,1
+           WITH (  width = 40 , lowered= True)
+
+
+    form . add_prompt (prompt_1)
+ 
+    form . start_prompt()
+
+    keep_prompting(form, prompt_1)
+ 
+    RETURN (prompt_1.text)
+
+
+ENDROUTINE {prompt_job_name}
+
+
+GLOBAL ROUTINE prompt_auth_job_name
+
+{
+*    Prompts for and Returns the Job Name of a selected Job. 
+*    Browses on Jobs of status Authorised.
+*
+*******************************************************************************}
+
+    DECLARE form, 
+            prompt_1,
+            select_array
+
+    ARRAY select_array
+
+    CREATE OBJECT PROMPT_CLASS_FORM, form
+    form. header = GET_USER_MESSAGE("PROMPT_ROUTINES_SELECT_JOB", 1)
+    form. footer = GET_USER_MESSAGE("PROMPT_ROUTINES_PRESS_DO", 1)
+    form. width  = 50
+    form. height = 1
+    form. column = 4
+    form. row    = 6
+    form. return_behaviour = FORM_RETURN_WRAP
+
+    form . add_display ( GET_USER_MESSAGE("PROMPT_ROUTINES_JOB_NAME", 1), 
+                         1, 
+                         1, 
+                         PROMPT_RENDITION_NORMAL + PROMPT_RENDITION_RAISED )
+
+    array_select_add (select_array, 
+                      ARRAY_SELECT_EQ, 
+                      "job_status",
+                      "A")
+
+    array_select ("JOB_HEADER", 
+                   TRUE, 
+                   select_array)
+    
+    PROMPT OBJECT prompt_1 
+           BROWSE ON job_header . job_name AT 15,1
+           WITH (  select_array = select_array,
+                   width = 40, 
+                   lowered= True)
+
+    form . add_prompt (prompt_1)
+ 
+    form . start_prompt()
+
+    keep_prompting(form, prompt_1)
+ 
+    RETURN (prompt_1.text)
+
+
+ENDROUTINE {prompt_auth_job_name}
+
+
+GLOBAL ROUTINE prompt_auth_sample_id
+
+{
+*    Prompts for and Returns the Sample ID Numeric of a selected Sample. 
+*    Browses on samples of status Authorised.
+*
+*******************************************************************************}
+
+    DECLARE form, 
+            prompt_1,
+            select_array
+
+    ARRAY select_array
+
+    CREATE OBJECT PROMPT_CLASS_FORM, form
+    form. header = GET_USER_MESSAGE("PROMPT_ROUTINES_SELECT_SAMPLE", 1)
+    form. footer = GET_USER_MESSAGE("PROMPT_ROUTINES_PRESS_DO", 1)
+    form. width  = 50
+    form. height = 1
+    form. column = 4
+    form. row    = 6
+    form. return_behaviour = FORM_RETURN_WRAP
+
+    form . add_display ( GET_USER_MESSAGE("PROMPT_ROUTINES_SAMPLE_ID", 1), 
+                         1, 
+                         1, 
+                         PROMPT_RENDITION_NORMAL + PROMPT_RENDITION_RAISED )
+
+    array_select_add (select_array, 
+                      ARRAY_SELECT_EQ, 
+                      "status",
+                      "A")
+
+    array_select ("SAMPLE", 
+                   FALSE, 
+                   select_array)
+    
+    PROMPT OBJECT prompt_1 
+           BROWSE ON sample . id_numeric AT 15,1
+           WITH (  select_array = select_array,
+                   width = 40, 
+                   lowered= True)
+
+    form . add_prompt (prompt_1)
+ 
+    form . start_prompt()
+
+    keep_prompting(form, prompt_1)
+ 
+    RETURN (prompt_1.text)
+
+
+ENDROUTINE {prompt_auth_sample_id}
+
+
+GLOBAL ROUTINE prompt_ss_sample (self, 
+                                 VALUE cell_column, 
+                                 VALUE cell_row, 
+                                 VALUE column, 
+                                 VALUE row,
+                                 window,
+                                 is_display)
+
+{
+*    Prompts for and Returns the Sample ID Numeric of a selected Sample. 
+*    Browses on samples where Sample Type is "SS" (System Suitability).
+*
+*******************************************************************************}
+
+
+    DECLARE select_array
+
+    ARRAY select_array
+
+
+    array_select_add (select_array, 
+                      ARRAY_SELECT_EQ, 
+                      "sample_type",
+                      "SS")
+
+
+    array_select ("SAMPLE", 
+                   FALSE, 
+                   select_array)
+    
+    PROMPT FOR self . parent_prompt . values [cell_row, 2]
+    AT column , row
+    IN WINDOW window
+    BROWSE ON sample . id_numeric
+    WITH (  select_array = select_array,
+            width = 23, 
+            lowered= True,
+            vgl_library = GLOBAL("CURRENT_LIBRARY"),
+            parent_prompt = self,
+            leave_prompt_routine = "leave_ss_routine")
+ 
+
+ENDROUTINE {prompt_ss_sample}
+
+
+ROUTINE leave_ss_routine (self)
+
+    self . set_text (self . text)
+
+ENDROUTINE {leave_ss_routine}
+
+
+GLOBAL ROUTINE prompt_location
+
+{
+*    Prompts for and Returns the Identity of a selected Location. 
+*
+*******************************************************************************}
+
+    DECLARE form, 
+            prompt_1
+
+    CREATE OBJECT PROMPT_CLASS_FORM, form
+    form. header = GET_USER_MESSAGE("PROMPT_ROUTINES_SELECT_LOCATION", 1)
+    form. footer = GET_USER_MESSAGE("PROMPT_ROUTINES_PRESS_DO", 1)
+    form. width  = 50
+    form. height = 1
+    form. column = 4
+    form. row    = 6
+    form. return_behaviour = FORM_RETURN_WRAP
+
+    form . add_display ( GET_USER_MESSAGE("PROMPT_ROUTINES_SELECT_LOCATION", 1), 
+                         1, 
+                         1, 
+                         PROMPT_RENDITION_NORMAL + PROMPT_RENDITION_RAISED )
+
+    PROMPT OBJECT prompt_1 
+           BROWSE ON location . identity AT 15,1
+           WITH (  width = 40, lowered= True)
+
+    form . add_prompt (prompt_1)
+ 
+    form . start_prompt()
+
+    keep_prompting(form, prompt_1)
+ 
+    RETURN (prompt_1.text)
+
+
+ENDROUTINE {prompt_location}
+
+
+
+
+GLOBAL ROUTINE prompt_dates
+
+{
+*    Prompts for a Start and End Date - Returns Array with the two dates.
+*
+*******************************************************************************}
+
+    DECLARE form, 
+            prompt_1,
+            prompt_2,
+            can_leave,
+            date_array
+
+    ARRAY date_array
+
+    CREATE OBJECT PROMPT_CLASS_FORM, form
+    form. header = GET_USER_MESSAGE("PROMPT_ROUTINES_ENTER_DATES", 1)
+    form. footer = GET_USER_MESSAGE("PROMPT_ROUTINES_PRESS_DO", 1)
+    form. width  = 40
+    form. height = 3
+    form. column = 4
+    form. row    = 6
+    form. return_behaviour = FORM_RETURN_WRAP
+
+    form . add_display ( GET_USER_MESSAGE("PROMPT_ROUTINES_START_DATE", 1), 
+                         1, 
+                         1, 
+                         PROMPT_RENDITION_NORMAL + PROMPT_RENDITION_RAISED )
+
+
+    form . add_display ( GET_USER_MESSAGE("PROMPT_ROUTINES_END_DATE", 1), 
+                         1, 
+                         3, 
+                         PROMPT_RENDITION_NORMAL + PROMPT_RENDITION_RAISED )
+
+    PROMPT OBJECT prompt_1 
+           BROWSE ON date AT 15,1
+           WITH (  width = 40, lowered= True)
+
+    PROMPT OBJECT prompt_2 
+           BROWSE ON date AT 15,3
+           WITH (  width = 40, lowered= True)
+
+    form . add_prompt (prompt_1)
+    form . add_prompt (prompt_2) 
+
+    form . start_prompt()
+
+    can_leave = FALSE
+
+    REPEAT 
+
+        form . wait_prompt()
+
+        IF (form. get_lastkey() = "DO") 
+
+            IF ((strip(prompt_1.text) <> "") AND 
+                (strip(prompt_2.text) <> ""))  THEN
+ 
+                date_array[1] = prompt_1.text
+                date_array[2] = prompt_2.text
+
+                can_leave = TRUE
+
+            ENDIF 
+
+        ELSEIF (form . get_lastkey()= "EXIT" )
+ 
+            EXIT
+           
+        ENDIF
+
+    UNTIL can_leave
+
+    form . end_prompt()
+ 
+    RETURN (date_array)
+
+
+ENDROUTINE {prompt_dates}
+
+
+
+ROUTINE keep_prompting (form, prompt_1)
+
+
+{
+*    Doesnt allow user to "OK" on the form unless a value has been selected
+*    in the prompt.
+*
+*******************************************************************************}
+
+    DECLARE can_leave
+
+    can_leave = FALSE
+
+    REPEAT 
+
+        form . wait_prompt()
+
+        IF (form. get_lastkey() = "DO")  THEN
+
+            IF (strip(prompt_1.text) <> "") THEN
+
+                can_leave = TRUE
+
+            ENDIF
+
+        ELSEIF form . get_lastkey()= "EXIT" THEN
+
+            EXIT
+
+        ENDIF
+
+    UNTIL can_leave
+
+    form . end_prompt()
+
+
+ENDROUTINE {keep_prompting}
+
+
+
+ROUTINE keep_prompting_mand (form, prompt_1)
+
+
+{
+*    Doesnt allow user to "OK" on the form unless a value has been selected
+*    in the prompt. Doesnt allow cancel from form.
+*
+*******************************************************************************}
+
+    DECLARE can_leave
+
+    can_leave = FALSE
+
+    REPEAT 
+
+        form . wait_prompt()
+
+        IF ((form. get_lastkey() = "DO") OR (form . get_lastkey()= "EXIT" )) THEN
+
+            IF (strip(prompt_1.text) <> "") THEN
+
+                can_leave = TRUE
+
+            ENDIF 
+
+        ENDIF
+
+    UNTIL can_leave
+
+    form . end_prompt()
+
+
+ENDROUTINE {keep_prompting}
+
+
+ROUTINE authorised_jobs_prompt (self, 
+                                VALUE count)
+
+{
+*    Returns a prompt object that browses on authorised jobs
+*
+*******************************************************************************}
+
+    DECLARE select_array,
+            prompt_obj
+
+    ARRAY select_array
+
+    array_select_add (select_array, 
+                      ARRAY_SELECT_EQ, 
+                      "job_status",
+                      "A")
+
+    array_select ("JOB_HEADER", 
+                   TRUE, 
+                   select_array)
+    
+    PROMPT OBJECT prompt_obj 
+           BROWSE ON job_header . job_name AT 10 ,count
+           WITH (  select_array = select_array,
+                   width = 40, 
+                   lowered= True)
+ 
+    return (prompt_obj)
+
+ENDROUTINE {authorised_jobs_prompt }
+
+
+ROUTINE authorised_samples_prompt (self, 
+                                   VALUE count)
+
+{
+*    Returns a prompt object that browses on authorised samples
+*
+*******************************************************************************}
+
+    DECLARE select_array,
+            prompt_obj
+
+    ARRAY select_array
+
+    array_select_add (select_array, 
+                      ARRAY_SELECT_EQ, 
+                      "status",
+                      "A")
+
+    array_select ("SAMPLE", 
+                   TRUE, 
+                   select_array)
+    
+    PROMPT OBJECT prompt_obj 
+           BROWSE ON sample . id_numeric AT 10 ,count
+           WITH (  select_array = select_array,
+                   width = 40, 
+                   lowered= True,
+                   vgl_library = GLOBAL("CURRENT_LIBRARY"))
+ 
+    return (prompt_obj)
+
+ENDROUTINE {authorised_samples_prompt }
+
+
+
+ROUTINE product_version_prompt (self, 
+                                VALUE count)
+
+{
+*    Returns a prompt object that browses on Product Versions
+*
+*******************************************************************************}
+
+    DECLARE prompt_obj
+    
+    PROMPT OBJECT prompt_obj 
+           BROWSE ON mlp_header . product_version AT 10 ,count
+           WITH (  width = 40, 
+                   lowered= True,
+                   vgl_library = GLOBAL("CURRENT_LIBRARY"),
+                   enter_prompt_routine = "enter_product_version")
+ 
+    return (prompt_obj)
+
+ENDROUTINE {product_version_prompt }
+
+
+ROUTINE enter_product_version (self)
+
+{
+*    Restricts the Product Versions browse in the Infomaker parameters screen to 
+*    the versions for the product selected in the previous prompt.
+*
+*******************************************************************************}
+
+    DECLARE the_product,
+            current_prompt,
+            select_array
+
+    ARRAY select_array
+
+    current_prompt = self.parent_prompt.active_prompt
+
+    the_product = self.parent_prompt.prompt_objects [current_prompt - 1] . text
+
+    array_select_add (select_array, 
+                      ARRAY_SELECT_EQ, 
+                      "identity",
+                      the_product)
+
+    array_select ("MLP_HEADER", 
+                   TRUE, 
+                   select_array)
+
+    self . select_array = select_array
+    
+ENDROUTINE
+
+
+
+ROUTINE protocol_version_prompt (self, 
+                                 VALUE count)
+
+{
+*    Returns a prompt object that browses on  Protocol Versions
+*
+*******************************************************************************}
+
+    DECLARE prompt_obj
+    
+    PROMPT OBJECT prompt_obj 
+           BROWSE ON pds_proto . protocol_version AT 10 ,count
+           WITH (  width = 40, 
+                   lowered= True,
+                   vgl_library = GLOBAL("CURRENT_LIBRARY"),
+                   enter_prompt_routine = "enter_product_version")
+ 
+    return (prompt_obj)
+
+ENDROUTINE {product_version_prompt }
+
+
+ROUTINE enter_protocol_version (self)
+
+{
+*    Restricts the Protocol Versions browse in the Infomaker parameters screen to 
+*    the versions for the Protocol selected in the previous prompt.
+*
+*******************************************************************************}
+
+    DECLARE the_protocol,
+            current_prompt,
+            select_array
+
+    ARRAY select_array
+
+    current_prompt = self.parent_prompt.active_prompt
+
+    the_protocol = self.parent_prompt.prompt_objects [current_prompt - 1] . text
+
+    array_select_add (select_array, 
+                      ARRAY_SELECT_EQ, 
+                      "identity",
+                      the_protocol)
+
+    array_select ("PDS_PROTO", 
+                   TRUE, 
+                   select_array)
+
+    self . select_array = select_array
+    
+ENDROUTINE
+
+
+
+ROUTINE read_only_operator (self, 
+                            VALUE count)
+
+{
+*    Returns a readonly prompt with the current Operator ID
+*
+*******************************************************************************}
+
+    DECLARE prompt_obj
+    
+    PROMPT OBJECT prompt_obj 
+           FORMAT TEXT AT 10 ,count
+            WITH (  width = 40, 
+                   lowered= True,
+                   value = GLOBAL("OPERATOR"),
+                   display_only = TRUE 
+		)
+ 
+    return (prompt_obj)
+
+ENDROUTINE {read_only_operator}
+
+
+
+
+ROUTINE read_only_date_time (self, 
+                             VALUE count)
+
+{
+*    Returns a readonly prompt with the current Date/Time
+*
+*******************************************************************************}
+
+    DECLARE prompt_obj
+    
+    PROMPT OBJECT prompt_obj 
+           FORMAT TEXT AT 10 ,count
+            WITH (  width = 40, 
+                   lowered= True,
+                   value = NOW,
+                   display_only = TRUE 
+		)
+ 
+    return (prompt_obj)
+
+ENDROUTINE {read_only_date_time}
+
+
+ROUTINE prompt_for_boolean (self, 
+                            VALUE count)
+
+{
+*    Returns True or False
+*
+*******************************************************************************}
+
+    DECLARE prompt_obj
+    
+    PROMPT OBJECT prompt_obj 
+           BROWSE ON BOOLEAN AT 10 ,count
+            WITH (  width = 40, 
+                   lowered= True )
+ 
+    return (prompt_obj)
+
+ENDROUTINE {prompt_for_boolean}
+
+GLOBAL ROUTINE prompt_for_file ( prompt_object )
+
+{
+*    Prompts for and file and Returns the selected Location. 
+*
+*******************************************************************************}
+
+    prompt_file ( prompt_object )
+	  
+    prompt_object . row      = 1
+    prompt_object . column   = 7
+    prompt_object . client_file = TRUE    
+       
+    RETURN ( prompt_object )
+
+
+ENDROUTINE {prompt_for_file}
+
+
+
+GLOBAL ROUTINE prompt_for_level( prompt_object )
+
+{
+*    Prompt for MLP Level
+*
+*******************************************************************************}
+
+    DECLARE select_array,
+                prompt_obj
+    
+    ARRAY select_array
+    
+    array_select_add (select_array,
+                      ARRAY_SELECT_NE,
+                      "level_id",
+                      "DUMMY")
+    
+    
+    array_select ("MLP_LEVEL", 
+                   TRUE, 
+                   select_array)
+    
+        
+    PROMPT OBJECT prompt_obj            
+           WITH (  select_array = select_array)
+     
+    return (prompt_obj)
+
+ENDROUTINE {prompt_for_level}
+
+
+
+GLOBAL ROUTINE prompt_reason (VALUE prompt_text)
+
+{
+*    Prompts for text reason 
+*
+*******************************************************************************}
+
+    DECLARE form, 
+            prompt_1
+
+    CREATE OBJECT PROMPT_CLASS_FORM, form
+    form. header = prompt_text
+    form. footer = prompt_text
+    form. width  = 100
+    form. height = 1
+    form. column = 4
+    form. row    = 6
+    form. return_behaviour = FORM_RETURN_WRAP
+    form. button_style     = FORM_BUTTON_OK
+
+    PROMPT OBJECT prompt_1 
+           FORMAT text AT 5,1
+           WITH (  width = 100, lowered = True )
+
+    form . add_prompt (prompt_1)
+
+    form . start_prompt()
+
+    keep_prompting_mand(form, prompt_1)
+ 
+    RETURN (prompt_1.text)
+
+ENDROUTINE {prompt_reason}
+
+
+
+
+
+
+
+
+GLOBAL ROUTINE prompt_integer (VALUE message_text )
+
+{
+*    Prompts for and Returns an integer with passed in message
+*
+*******************************************************************************}
+
+    DECLARE form, 
+            prompt_1,
+            the_value
+
+    CREATE OBJECT PROMPT_CLASS_FORM, form
+    form. header = message_text
+    form. footer = message_text
+    form. width  = 50
+    form. height = 1
+    form. column = 4
+    form. row    = 6
+    form. return_behaviour = FORM_RETURN_WRAP
+    form. button_style     = FORM_BUTTON_OK_CANCEL
+
+    form . add_display ( message_text, 
+                         1, 
+                         1, 
+                         PROMPT_RENDITION_NORMAL + PROMPT_RENDITION_RAISED )
+
+    PROMPT OBJECT prompt_1 
+           BROWSE ON INTEGER AT 15,1
+           WITH (  width = 40, 
+                   lowered= True, 
+                   Value = 1,
+                   Minimum = 1,
+                   Maximum = 99 )
+
+    form . add_prompt (prompt_1)
+ 
+    form . start_prompt()
+
+    form . wait_prompt()
+
+    IF (form. get_lastkey() = "DO") THEN
+
+        the_value = prompt_1 . text
+
+        form .end_prompt()        
+
+        RETURN (STRIP(the_value))
+
+    ELSEIF (form . get_lastkey()= "EXIT" ) THEN
+
+        EXIT    
+
+    ENDIF
+
+
+
+ENDROUTINE {prompt_integer}
+
+
+GLOBAL ROUTINE prompt_auth_ss_sample (self, 
+                                      VALUE cell_column, 
+                                      VALUE cell_row, 
+                                      VALUE column, 
+                                      VALUE row,
+                                      window,
+                                      is_display)
+
+{
+*    Prompts for and Returns the Sample ID Numeric of a selected Sample. 
+*    Browses on samples of status Authorised where Sample Type is "SS" (System
+*    Suitability).
+*
+*******************************************************************************}
+
+
+    DECLARE select_array
+
+    ARRAY select_array
+
+    array_select_add (select_array, 
+                      ARRAY_SELECT_EQ, 
+                      "status",
+                      "A")
+
+    array_select_add (select_array, 
+                      ARRAY_SELECT_AND, 
+                      EMPTY,
+                      EMPTY)
+
+    array_select_add (select_array, 
+                      ARRAY_SELECT_EQ, 
+                      "sample_type",
+                      "SS")
+
+
+    array_select ("SAMPLE", 
+                   FALSE, 
+                   select_array)
+    
+    PROMPT FOR self . parent_prompt . values [cell_row, 2]
+    AT column , row
+    IN WINDOW window
+    BROWSE ON sample . id_numeric
+    WITH (  select_array = select_array,
+            width = 23, 
+            lowered= True,
+            vgl_library = GLOBAL("CURRENT_LIBRARY"),
+            parent_prompt = self,
+            leave_prompt_routine = "leave_ss_routine")
+ 
+
+ENDROUTINE {prompt_auth_ss_sample}
+
+GLOBAL ROUTINE prompt_auth_mp_sample (self, 
+                                      VALUE cell_column, 
+                                      VALUE cell_row, 
+                                      VALUE column, 
+                                      VALUE row,
+                                      window,
+                                      is_display)
+
+{
+*    Prompts for and Returns the Sample ID Numeric of a selected Sample. 
+*    Browses on samples of status Authorised where Sample Type is "MP" (Mobile
+*    Phase).
+*
+*******************************************************************************}
+
+
+    DECLARE select_array
+
+    ARRAY select_array
+
+    array_select_add (select_array, 
+                      ARRAY_SELECT_EQ, 
+                      "status",
+                      "A")
+
+    array_select_add (select_array, 
+                      ARRAY_SELECT_AND, 
+                      EMPTY,
+                      EMPTY)
+
+    array_select_add (select_array, 
+                      ARRAY_SELECT_EQ, 
+                      "sample_type",
+                      "MP")
+
+
+    array_select ("SAMPLE", 
+                   FALSE, 
+                   select_array)
+    
+    PROMPT FOR self . parent_prompt . values [cell_row, 2]
+    AT column , row
+    IN WINDOW window
+    BROWSE ON sample . id_numeric
+    WITH (  select_array = select_array,
+            width = 23, 
+            lowered= True,
+            vgl_library = GLOBAL("CURRENT_LIBRARY"),
+            parent_prompt = self,
+            leave_prompt_routine = "leave_mp_routine")
+ 
+
+ENDROUTINE {prompt_auth_mp_sample}
+
+ROUTINE leave_mp_routine (self)
+
+    self . set_text (self . text)
+
+ENDROUTINE {leave_mp_routine}
+
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 

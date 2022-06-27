@@ -1,0 +1,1582 @@
+MESSAGE GROUP "STABILITY_"
+
+    MESSAGE = "VERSION"
+    TEXT    = "Stability for Windows 2000 R2"
+
+MESSAGE GROUP "STD_"
+
+    MESSAGE = "OK"
+    TEXT    = "OK"
+
+    MESSAGE = "HELP"
+    TEXT    = "Help"
+
+    MESSAGE = "CANCEL"
+    TEXT    = "Cancel"
+
+    MESSAGE = "INSERT"
+    TEXT    = "Insert"
+
+    MESSAGE = "DELETE"
+    TEXT    = "Delete"
+
+    MESSAGE = "CLOSE"
+    TEXT    = "Close"
+
+MESSAGE GROUP "PDS_PROTO_"
+
+    MESSAGE = "HEADER"
+    TEXT    = "Add Protocol Screen"
+    TEXT    = "New Version of Protocol Screen"
+    TEXT    = "Copy Protocol Screen"
+    TEXT    = "Modify Protocol Screen"
+    TEXT    = "Display Protocol Screen"
+    TEXT    = "Remove Protocol Screen"
+    TEXT    = "Restore Protocol Screen"
+    TEXT    = "List Protocol Screen"
+    TEXT    = "Print Protocol Screen"
+    TEXT    = "Approve Protocol Screen"
+
+    MESSAGE = "MOD_FOOTER"
+    TEXT    = "Press DO to Save / EXIT to Quit"
+
+    MESSAGE = "DIS_FOOTER"
+    TEXT    = "EXIT to Quit"
+
+    MESSAGE = "ID_PROMPT"
+    TEXT    = "Enter Protocol ID"
+
+    MESSAGE = "VERSION"
+    TEXT    = "Version"
+
+    MESSAGE = "TABLE"
+    TEXT    = "PDS_VERSIONED_PROTO"
+
+    MESSAGE = "SA"
+    TEXT    = "Protocol Options"
+
+    MESSAGE = "MATRIX"
+    TEXT    = "Matrix"
+
+    MESSAGE = "SETUP"
+    TEXT    = "Setup"
+
+    MESSAGE = "APPROVE"
+    TEXT    = "Approve"
+
+    MESSAGE = "NAME_OF_TABLE"
+    TEXT    = "Protocol"
+
+    MESSAGE = "1"
+    TEXT    = "Group"
+
+    MESSAGE = "2"
+    TEXT    = "Description"
+
+    MESSAGE = "3"
+    TEXT    = "Default Config"
+
+    MESSAGE = "4"
+    TEXT    = "Job Template ID"
+
+    MESSAGE = "5"
+    TEXT    = "Sample Template ID"
+
+    MESSAGE = "6"
+    TEXT    = "Receipt Report ID"
+
+    MESSAGE = "7"
+    TEXT    = "Label Report ID"
+
+    MESSAGE = "8"
+    TEXT    = "Login Window Type"
+
+    MESSAGE = "9"
+    TEXT    = "Global Test Schedule"
+
+    MESSAGE = "10"
+    TEXT    = "Type"
+
+    MESSAGE = "11"
+    TEXT    = "Use Predicted ID's"
+
+    MESSAGE = "12"
+    TEXT    = "Use Study as Job Name"
+
+    MESSAGE = "13"
+    TEXT    = "Product To Use"
+
+    MESSAGE = "14"
+    TEXT    = "Product Batch"
+
+    MESSAGE = "VALIDATE"
+    TEXT    = "Please enter a value for the login type."
+    TEXT    = "Please setup the matrix"
+    TEXT    = "Invalid product\batch specified"
+
+    MESSAGE = "HAS_INVENTORY"
+    TEXT    = "This protocol was created without inventory, it cannot be modified with inventory turn on"
+
+MESSAGE GROUP "PDS_STUDY_"
+
+    MESSAGE = "HEADER"
+    TEXT    = "Add Study Screen"
+    TEXT    = "Copy Study Screen"
+    TEXT    = "Modify Study Screen"
+    TEXT    = "Display Study Screen"
+    TEXT    = "Remove Study Screen"
+    TEXT    = "Restore Study Screen"
+    TEXT    = "List Study Screen"
+    TEXT    = "Print Study Screen"
+    TEXT    = "Approve Study Screen"
+    TEXT    = "Activate Study Screen"
+    TEXT    = "Cancel Study Screen"
+    TEXT    = "Reactivate Study Screen"
+    TEXT    = "Finalise Study Screen"
+
+    MESSAGE = "MOD_FOOTER"
+    TEXT    = "Press DO to Save / EXIT to Quit"
+
+    MESSAGE = "DIS_FOOTER"
+    TEXT    = "EXIT to Quit"
+
+    MESSAGE = "ID_PROMPT"
+    TEXT    = "Enter Study ID"
+
+    MESSAGE = "VERSION"
+    TEXT    = "Version"
+
+    MESSAGE = "TABLE"
+    TEXT    = "PDS_STUDY"
+
+    MESSAGE = "SA"
+    TEXT    = "Study Options"
+
+    MESSAGE = "APPROVE"
+    TEXT    = "Approve"
+
+    MESSAGE = "ACTIVATE"
+    TEXT    = "Activate"
+
+    MESSAGE = "MATRIX"
+    TEXT    = "Matrix"
+
+    MESSAGE = "NAME_OF_TABLE"
+    TEXT    = "Study"
+
+    MESSAGE = "1"
+    TEXT    = "Group"
+
+    MESSAGE = "2"
+    TEXT    = "Description"
+
+    MESSAGE = "3"
+    TEXT    = "Default Config"
+
+    MESSAGE = "4"
+    TEXT    = "Job Template ID"
+
+    MESSAGE = "5"
+    TEXT    = "Sample Template ID"
+
+    MESSAGE = "6"
+    TEXT    = "Receipt Report ID"
+
+    MESSAGE = "7"
+    TEXT    = "Label Report ID"
+
+    MESSAGE = "8"
+    TEXT    = "Login Window Type"
+
+    MESSAGE = "9"
+    TEXT    = "Global Test Schedule"
+
+    MESSAGE = "10"
+    TEXT    = "Type"
+
+    MESSAGE = "11"
+    TEXT    = "Created By"
+
+    MESSAGE = "12"
+    TEXT    = "Created On"
+
+    MESSAGE = "13"
+    TEXT    = "Created From"
+
+    MESSAGE = "14"
+    TEXT    = "Protocol Version"
+
+    MESSAGE = "15"
+    TEXT    = "Status"
+
+    MESSAGE = "16"
+    TEXT    = "Use Predicted ID's"
+
+    MESSAGE = "17"
+    TEXT    = "Job Name"
+
+    MESSAGE = "18"
+    TEXT    = "Use Study as Job Name"
+
+    MESSAGE = "19"
+    TEXT    = "Product To Use"
+
+    MESSAGE = "20"
+    TEXT    = "Default Batch"
+
+    MESSAGE = "VALIDATE"
+    TEXT    = "Please enter a value for the login type."
+    TEXT    = "Please setup the matrix"
+    TEXT    = "Invalid product\batch specified"
+
+    MESSAGE = "HAS_INVENTORY"
+    TEXT    = "This study was created without inventory, it cannot be modified with inventory turn on"
+    TEXT    = "This protocol was created without inventory, it cannot be used to create a study when inventory is on"
+
+MESSAGE GROUP "PDS_CONFIG_"
+
+    MESSAGE = "HEADER"
+    TEXT    = "Configuration Definition Entry Screen"
+
+    MESSAGE = "MOD_FOOTER"
+    TEXT    = "Press DO to Save / EXIT to Quit"
+
+    MESSAGE = "DIS_FOOTER"
+    TEXT    = "EXIT to Quit"
+
+    MESSAGE = "ID_PROMPT"
+    TEXT    = "Enter Time Factor ID"
+
+    MESSAGE = "TABLE"
+    TEXT    = "PDS_CONFIG"
+
+    MESSAGE = "NAME_OF_TABLE"
+    TEXT    = "Configuration"
+
+    MESSAGE = "1"
+    TEXT    = "Group"
+
+    MESSAGE = "2"
+    TEXT    = "Description"
+
+    MESSAGE = "3"
+    TEXT    = "Default Cell Width"
+
+    MESSAGE = "4"
+    TEXT    = "C Axis Label"
+
+    MESSAGE = "5"
+    TEXT    = "Time Axis Label"
+
+    MESSAGE = "6"
+    TEXT    = "Layer Axis Label"
+
+    MESSAGE = "7"
+    TEXT    = "Matrix X Axis"
+
+    MESSAGE = "8"
+    TEXT    = "AKA Name Type"
+
+    MESSAGE = "9"
+    TEXT    = "Calculate Pull Size"
+
+    MESSAGE = "10"
+    TEXT    = "Split for Testing"
+
+    MESSAGE = "REQD_TIME_AXIS"
+    TEXT    = "Please enter a name for the Time Factor Axis"
+
+    MESSAGE = "REQD_C_AXIS"
+    TEXT    = "Please enter a name for the C-Factor Axis"
+
+    MESSAGE = "REQD_LAYER_AXIS"
+    TEXT    = "Please enter a name for the Layer Factor Axis"
+
+MESSAGE GROUP "PDS_TIME_"
+
+    MESSAGE = "HEADER"
+    TEXT    = "Time Factor Definition Entry Screen"
+
+    MESSAGE = "MOD_FOOTER"
+    TEXT    = "Press DO to Save / EXIT to Quit"
+
+    MESSAGE = "DIS_FOOTER"
+    TEXT    = "EXIT to Quit"
+
+    MESSAGE = "TABLE"
+    TEXT    = "TIME_FACTOR"
+
+    MESSAGE = "ID_PROMPT"
+    TEXT    = "Enter Time Factor ID"
+
+    MESSAGE = "NAME_OF_TABLE"
+    TEXT    = "Time Factor"
+
+    MESSAGE = "1"
+    TEXT    = "Group"
+
+    MESSAGE = "2"
+    TEXT    = "Description"
+
+    MESSAGE = "3"
+    TEXT    = "Equivalent in Days"
+
+    MESSAGE = "4"
+    TEXT    = "Time Window"
+
+    MESSAGE = "5"
+    TEXT    = "AKA Name"
+
+    MESSAGE = "REQD_AKA"
+    TEXT    = "Please enter an AKA Name for the Time Factor"
+
+    MESSAGE = "REQD_POS_EQUIV"
+    TEXT    = "Please enter a positive interval for the 'Day Equivalent'"
+    TEXT    = "Please enter a value for the 'Day Equivalent'"
+    TEXT    = "Please enter a value for the 'Day Equivalent' greater than the 'Time Window'"
+    TEXT    = "Please enter a positive interval for the 'Time Window'"
+
+    MESSAGE = "REQD_POS_WINDOW"
+    TEXT    = "Please enter a positive interval for the 'Time Window'"
+
+MESSAGE GROUP "PDS_LAYER_"
+
+    MESSAGE = "HEADER"
+    TEXT    = "Layer Factor Definition Entry Screen"
+
+    MESSAGE = "MOD_FOOTER"
+    TEXT    = "Press DO to Save / EXIT to Quit"
+
+    MESSAGE = "DIS_FOOTER"
+    TEXT    = "EXIT to Quit"
+
+    MESSAGE = "TABLE"
+    TEXT    = "LAYER_FACTOR"
+
+    MESSAGE = "ID_PROMPT"
+    TEXT    = "Enter Layer Factor ID"
+
+    MESSAGE = "REQD_AKA"
+    TEXT    = "Please enter an AKA Name for the Layer Factor"
+
+    MESSAGE = "NAME_OF_TABLE"
+    TEXT    = "Layer Factor"
+
+    MESSAGE = "1"
+    TEXT    = "Group"
+
+    MESSAGE = "2"
+    TEXT    = "Description"
+
+    MESSAGE = "3"
+    TEXT    = "Location"
+
+    MESSAGE = "4"
+    TEXT    = "AKA Name"
+
+MESSAGE GROUP "PDS_C_"
+
+    MESSAGE = "HEADER"
+    TEXT    = "C-Factor Definition Entry Screen"
+
+    MESSAGE = "MOD_FOOTER"
+    TEXT    = "Press DO to Save / EXIT to Quit"
+
+    MESSAGE = "DIS_FOOTER"
+    TEXT    = "EXIT to Quit"
+
+    MESSAGE = "TABLE"
+    TEXT    = "C_FACTOR"
+
+    MESSAGE = "ID_PROMPT"
+    TEXT    = "Enter C-Factor ID"
+
+    MESSAGE = "REQD_AKA"
+    TEXT    = "Please enter an AKA Name for the C-Factor"
+
+    MESSAGE = "NAME_OF_TABLE"
+    TEXT    = "C-Factor"
+
+    MESSAGE = "1"
+    TEXT    = "Group"
+
+    MESSAGE = "2"
+    TEXT    = "Description"
+
+    MESSAGE = "3"
+    TEXT    = "Location"
+
+    MESSAGE = "4"
+    TEXT    = "AKA Name"
+
+MESSAGE GROUP "USE_PROTO_"
+
+    MESSAGE = "TITLE"
+    TEXT    = "Protocol ID"
+
+    MESSAGE = "ID"
+    TEXT    = "Protocol Id"
+
+    MESSAGE = "VER"
+    TEXT    = "Version"
+
+MESSAGE GROUP "MATRIX_SETUP_"
+
+     MESSAGE = "INSERT"
+     TEXT    = "Insert"
+
+     MESSAGE = "DELETE"
+     TEXT    = "Delete"
+
+     MESSAGE = "FORM_TITLE"
+     TEXT    = "Matrix Setup"
+
+     MESSAGE = "COL_TITLE"
+     TEXT    = "Layer Factor"
+     TEXT    = "Time Factor"
+     TEXT    = "C-Factor"
+
+     MESSAGE = "PULL_NO"
+     TEXT    = "Number of pulls in a Cell"
+
+     MESSAGE = "DESCRIPTION"
+     TEXT    = "Description"
+
+     MESSAGE = "SAMPLE_TEMPLATE"
+     TEXT    = "Sample Template"
+
+     MESSAGE = "TEST_SCHED"
+     TEXT    = "Test Schedule"
+
+     MESSAGE = "PULL_NAME"
+     TEXT    = "Pull Name"
+
+     MESSAGE = "LABEL_NO"
+     TEXT    = "Number of Labels"
+
+     MESSAGE = "VAL_TITLE"
+     TEXT    = "Axis Point Error"
+
+     MESSAGE = "VALIDATION"
+     TEXT    = "No Pulls will be created. Do you wish to continue?"
+     TEXT    = "Enter valid Layer Factors for the Matrix"
+     TEXT    = "Enter valid Time Factors for the Matrix"
+     TEXT    = "Enter valid C-Factors for the Matrix"
+
+     MESSAGE = "NO_MATRIX"
+     TEXT    = "A matrix has not been setup for this Protocol."
+     TEXT    = "A matrix has not been setup for this Study."
+
+     MESSAGE = "PROTO_ERR"
+     TEXT    = "Protocol does not exist"
+     TEXT    = "Protocol is not approved"
+
+     MESSAGE = "FACTOR_ALREADY_CHOSEN"
+     TEXT    = "This factor has already been chosen"
+
+     MESSAGE = "FACTOR_INVALID"
+     TEXT    = "This factor is invalid"
+
+MESSAGE GROUP "APPROVE_STATUS_"
+
+     MESSAGE = "FORM_TITLE"
+     TEXT    = "Protocol Approval"
+     TEXT    = "Study Approval"
+
+     MESSAGE = "AUTH_BY"
+     TEXT    = "Approved By"
+     TEXT    = "Approved By"
+
+     MESSAGE = "AUTH_ON"
+     TEXT    = "Approved On"
+     TEXT    = "Approved On"
+
+     MESSAGE = "ON"
+     TEXT    = "on"
+     TEXT    = "on"
+
+     MESSAGE = "AUTH_TEXT"
+     TEXT    = "Approval Text"
+     TEXT    = "Approval Text"
+
+     MESSAGE = "VALID_TITLE"
+     TEXT    = "Invalid Approval Reason"
+     TEXT    = "Invalid Approval Reason"
+
+     MESSAGE = "VALID_TEXT"
+     TEXT    = "Please enter a reason for the approval of the protocol"
+     TEXT    = "Please enter a reason for the approval of the study"
+
+     MESSAGE = "UNAPPROVAL_TITLE"
+     TEXT    = "Protocol Unapproved"
+     TEXT    = "Study Unapproved"
+
+     MESSAGE = "UNAPPROVAL_TEXT"
+     TEXT    = "This Protocol has been unapproved"
+     TEXT    = "This Study has been unapproved"
+
+MESSAGE GROUP "STAB_AUDIT_"
+
+     MESSAGE = "FORM_TITLE"
+     TEXT    = "Stability Audit"
+
+     MESSAGE = "AUD_BY"
+     TEXT    = "Audit By"
+
+     MESSAGE = "AUD_ON"
+     TEXT    = "Audit On"
+
+     MESSAGE = "AUD_TEXT"
+     TEXT    = "Audit Text"
+
+     MESSAGE = "VALID_TITLE"
+     TEXT    = "Invalid Audit Reason"
+
+     MESSAGE = "VALID_TEXT"
+     TEXT    = "Please enter a reason for the protocol/study modification"
+
+MESSAGE GROUP "TOOLBAR_"
+
+     MESSAGE = "INSERT_C_BEFORE"
+     TEXT    = "Insert C-Factor - Before"
+
+     MESSAGE = "INSERT_C_AFTER"
+     TEXT    = "Insert C-Factor - After"
+
+     MESSAGE = "INSERT_TIME_BEFORE"
+     TEXT    = "Insert Time Factor - Before"
+
+     MESSAGE = "INSERT_TIME_AFTER"
+     TEXT    = "Insert Time Factor - After"
+
+     MESSAGE = "INSERT_LAYER_BEFORE"
+     TEXT    = "Insert Layer Factor - Before"
+
+     MESSAGE = "INSERT_LAYER_AFTER"
+     TEXT    = "Insert Layer Factor - After"
+
+     MESSAGE = "CHANGE_COL_WIDTH"
+     TEXT    = "Change Column Width"
+
+     MESSAGE = "CHANGE_CELL_SYN"
+     TEXT    = "Change Cell Syntax"
+
+     MESSAGE = "CHANGE_GLBL_PULL"
+     TEXT    = "Change Global Pull"
+
+     MESSAGE = "PROPOGATE"
+     TEXT    = "Propagate"
+
+     MESSAGE = "REMOVE_TIME"
+     TEXT    = "Remove Time Factor"
+
+     MESSAGE = "REMOVE_C"
+     TEXT    = "Remove C-Factor"
+
+     MESSAGE = "REMOVE_LAYER"
+     TEXT    = "Remove Layer Factor"
+
+     MESSAGE = "INSERT_PULL"
+     TEXT    = "Insert Pull into Matrix..."
+     TEXT    = "Insert Pull"
+
+     MESSAGE = "REMOVE_PULL"
+     TEXT    = "Delete Pull from Matrix..."
+     TEXT    = "Delete Pull"
+
+     MESSAGE = "COPY_CURRENT_CELL"
+     TEXT    = "Copy Cell to other Matrix Cells..."
+     TEXT    = "Copy Cell"
+
+     MESSAGE = "TIMEZERO"
+     TEXT    = "Assign Timezero pulls to Layers..."
+     TEXT    = "Timezero"
+
+     MESSAGE = "BASETIME"
+     TEXT    = "Assign Basetimes to C-Factors in Layers..."
+     TEXT    = "Basetimes"
+
+     MESSAGE = "DISP_SAMP"
+     TEXT    = "Display Assigned Sample..."
+     TEXT    = "Display Sample"
+
+     MESSAGE = "EDIT_SAMP"
+     TEXT    = "Edit Assigned Sample..."
+     TEXT    = "Edit Sample"
+
+MESSAGE GROUP "INSERT_FACTOR_"
+
+     MESSAGE = "FORM_TITLE"
+     TEXT    = "Insert C-Factor"
+     TEXT    = "Insert Time Factor"
+     TEXT    = "Insert Layer Factor"
+
+     MESSAGE = "FORM_QUERY"
+     TEXT    = "Select C-Factor"
+     TEXT    = "Select Time Factor"
+     TEXT    = "Select Layer Factor"
+
+MESSAGE GROUP "COL_WIDTH_"
+
+     MESSAGE = "TITLE"
+     TEXT    = "Change Cell Width"
+
+     MESSAGE = "1"
+     TEXT    = "Specify Column Width"
+
+MESSAGE GROUP "CELL_SYNTAX_"
+
+     MESSAGE = "TITLE"
+     TEXT    = "Define Cell Syntax"
+
+     MESSAGE = "SYNTAX_ARRAY"
+     TEXT    = "Pull Name"
+     TEXT    = "Location"
+     TEXT    = "Sample Template"
+     TEXT    = "Test Schedule"
+     TEXT    = "Layer Factor"
+     TEXT    = "Time Factor"
+     TEXT    = "C-Factor"
+     TEXT    = "Labels"
+     TEXT    = "Sample ID"
+     TEXT    = "Pull Status"
+     TEXT    = "Assigned Sample"
+     TEXT    = "Due Login Date"
+     TEXT    = "Description"
+     TEXT    = "Pull Amount/Unit"
+
+MESSAGE GROUP "GLOBAL_PULL_"
+
+     MESSAGE = "TITLE"
+     TEXT    = "Set Global Pull"
+
+     MESSAGE = "1"
+     TEXT    = "Specify Global Pull"
+
+MESSAGE GROUP "PROPAGATE_MAIN_"
+
+     MESSAGE = "TITLE"
+     TEXT    = "Propagate Pull Information"
+
+MESSAGE GROUP "PROPOGATE_RANGE_"
+
+     MESSAGE = "TITLE"
+     TEXT    = "Range"
+
+     MESSAGE = "SUB_TITLE"
+     TEXT    = "Select Cell Range"
+
+     MESSAGE = "FROM_FACTOR"
+     TEXT    = "Layer Factor :  Start"
+     TEXT    = "Time Factor  :  Start"
+     TEXT    = "C-Factor     :  Start"
+
+     MESSAGE = "TO_FACTOR"
+     TEXT    = "End "
+     TEXT    = "End "
+     TEXT    = "End "
+
+     MESSAGE = "SUB_TITLE_2"
+     TEXT    = "Select Pull Range"
+
+     MESSAGE = "ALL"
+     TEXT    = "Select All Pulls"
+
+     MESSAGE = "PULL_NO"
+     TEXT    = "Select Pull Number"
+
+MESSAGE GROUP "PROPOGATE_DATA_"
+
+     MESSAGE = "TITLE"
+     TEXT    = "Pull Data"
+
+     MESSAGE = "SUB_TITLE"
+     TEXT    = "Enter Pull Data"
+
+     MESSAGE = "DESCRIPTION"
+     TEXT    = "Description"
+
+     MESSAGE = "SAMPLE_TEMPLATE"
+     TEXT    = "Sample Template"
+
+     MESSAGE = "TEST_SCHEDULE"
+     TEXT    = "Test Schedule"
+
+     MESSAGE = "PULL_NAME"
+     TEXT    = "Pull Name"
+
+     MESSAGE = "NUMBER_OF_LABELS"
+     TEXT    = "Number of Labels"
+
+     MESSAGE = "LOCATION"
+     TEXT    = "Location"
+
+     MESSAGE = "PULL_AMOUNT"
+     TEXT    = "Pull Amount"
+
+     MESSAGE = "PULL_UNIT"
+     TEXT    = "Pull Unit"
+
+MESSAGE GROUP "STB_SMP_PROC_"
+
+     MESSAGE = "NO_SAMPLE_FOR_PULL"
+     TEXT    = "There is no sample for the current pull"
+
+     MESSAGE = "SAMPLE_STATUS_INVALID"
+     TEXT    = "Sample status does not allow this operation"
+
+     MESSAGE = "NO_ACCESS_TO_MENU_OPTION"
+     TEXT    = "The menu option does not exist or you do not have the required authority"
+
+     MESSAGE = "ASSIGN_SAMPLE_TITLE"
+     TEXT    = "Assign Sample To Pull"
+
+     MESSAGE = "SAMPLE_PROMPT"
+     TEXT    = "Enter Sample ID >"
+
+     MESSAGE = "SAMPLE_IN_STUDY"
+     TEXT    = "This sample is already associated with a study or the Sample does not exist"
+
+     MESSAGE = "SAMPLE_NOT_FOUND"
+     TEXT    = "Unable to locate required sample record"
+
+     MESSAGE = "SAMPLE_ALWAYS_LOCKED"
+     TEXT    = "Sample record locked by another user. Unable to assign sample"
+
+     MESSAGE = "PULL_HAS_SAMPLE"
+     TEXT    = "Pull already has a sample assigned"
+
+     MESSAGE = "ASSIGN_SAMPLE"
+     TEXT    = "Assign Sample"
+
+     MESSAGE = "PULL_STATUS_INVALID"
+     TEXT    = "The status of the pull does not allow this operation"
+
+     MESSAGE = "PULL_SAMPLE_ASSIGNED"
+     TEXT    = "This pull does not have a sample assigned to it."
+
+     MESSAGE = "NO_PULL"
+     TEXT    = "This operation is not valid as there is no pull"
+
+MESSAGE GROUP "STB_BASETIME_"
+
+     MESSAGE = "TITLE"
+     TEXT    = "Display Basetime Information"
+     TEXT    = "Edit Basetime Information"
+
+     MESSAGE = "BUTTON_OK"
+     TEXT    = "OK"
+
+     MESSAGE = "BUTTON_CANCEL"
+     TEXT    = "Cancel"
+
+     MESSAGE = "BUTTON_PROPOGATE"
+     TEXT    = "Propagate"
+
+     MESSAGE = "C_FACTORS"
+     TEXT    = "C-Factors"
+
+     MESSAGE = "BASETIME_TYPE"
+     TEXT    = "Type"
+
+     MESSAGE = "BASE_TIME"
+     TEXT    = "Basetime"
+
+     MESSAGE = "TYPE_DATE"
+     TEXT    = "Date"
+
+     MESSAGE = "TYPE_INTERVAL"
+     TEXT    = "Interval"
+
+     MESSAGE = "VALID_INTERVAL"
+     TEXT    = "Please enter a positive interval"
+
+     MESSAGE = "BASE_FAIL"
+     TEXT    = "Failed to set basetime for "
+
+
+MESSAGE GROUP "STB_LOGIN_"
+
+    MESSAGE = "NO_AUTH"
+    TEXT    = "You have insufficient authority to run this option"
+
+    MESSAGE = "ACT_TRUE"
+    TEXT    = "Interactive"
+
+    MESSAGE = "ACT_FALSE"
+    TEXT    = "Background"
+
+    MESSAGE = "BKGD_TAG"
+    TEXT    = "Background Stability"
+
+    MESSAGE = "BKGD_LOGIN"
+    TEXT    = "Stability Background Sample Login"
+
+    MESSAGE = "PULL_DETS"
+    TEXT    = "Layer="
+    TEXT    = "T_factor="
+    TEXT    = "C_factor="
+    TEXT    = "Pull="
+    TEXT    = "Status="
+    TEXT    = "TP="
+    TEXT    = "Cond="
+
+    MESSAGE = "CRE_TIME_ALL"
+    TEXT    = "Create all timer events for study"
+
+    MESSAGE = "CRE_TIME_FAIL"
+    TEXT    = "Failed to create timer entry for study [] pull number [] - []"
+
+    MESSAGE = "LOG_PULL"
+    TEXT    = "Login pull record"
+
+    MESSAGE = "PULL_LOCKED"
+    TEXT    = "Pull record [] for study [] is locked"
+
+    MESSAGE = "NO_PULL"
+    TEXT    = "Pull record [] for study [] not_found or not pending"
+
+    MESSAGE = "PULL_ASSIGNED"
+    TEXT    = "Pull record [] for study [] already assigned to timer queue"
+
+    MESSAGE = "NO_PULL_ASSIGNED"
+    TEXT    = "Pull record [] for study [] has not been assigned to timer queue"
+
+    MESSAGE = "INVAL_PULL_STAT"
+    TEXT    = "Pull record [] for study [] is not of status 'P'"
+
+    MESSAGE = "STUDY_LOCKED"
+    TEXT    = "Study record [] is locked"
+
+    MESSAGE = "NO_STUDY"
+    TEXT    = "Study record [] not found or not activated"
+
+    MESSAGE = "JOB_FAIL"
+    TEXT    = "Failed to create job for [] study"
+
+    MESSAGE = "SAMP_FAIL"
+    TEXT    = "Failed to create sample for [] study"
+
+    MESSAGE = "NO_PARAMS"
+    TEXT    = "No parameter list supplied to background Stability Login"
+
+    MESSAGE = "FORM_DISP"
+    TEXT    = "Assign To Timer"
+    TEXT    = "Login Samples"
+    TEXT    = "All Studies"
+    TEXT    = "Single Study"
+    TEXT    = "Background"
+    TEXT    = "Interactive"
+    TEXT    = "Pulls Due By"
+    TEXT    = "All Pulls"
+
+    MESSAGE = "FORM_HDR"
+    TEXT    = "Stability Scheduler Interface"
+
+    MESSAGE = "FORM_FRAMES"
+    TEXT    = "Schedule Options"
+    TEXT    = "Study Options"
+    TEXT    = "Specify Operating Mode"
+    TEXT    = "Pull Options"
+
+    MESSAGE = "FORM_VALID"
+    TEXT    = "Please enter a Pull Due Login Date."
+
+    MESSAGE = "SAMP_PROMPTS"
+    TEXT    = "Study Id"
+    TEXT    = "Layer Factor"
+    TEXT    = "C-Factor"
+    TEXT    = "Time Factor"
+    TEXT    = "Pull Number"
+    TEXT    = "Due Date"
+    TEXT    = "Job Name"
+    TEXT    = "Predicted Id"
+    TEXT    = "Numeric Id"
+    TEXT    = "Pull Amount"
+    TEXT    = "Pull Unit"
+
+    MESSAGE = "EVENT_PROMPTS"
+    TEXT    = "Study Id"
+    TEXT    = "Layer Factor"
+    TEXT    = "C-Factor"
+    TEXT    = "Time Factor"
+    TEXT    = "Pull Number"
+    TEXT    = "Due Date"
+    TEXT    = "-"
+    TEXT    = "Predicted Id"
+    TEXT    = "Timer Entry Number"
+    TEXT    = "Pull Amount"
+    TEXT    = "Pull Unit"
+
+    MESSAGE = "REP_PARAMS"
+    TEXT    = "Login Now/Assign to Timer flag not passed by timer queue"
+    TEXT    = "All Studies/Single Study flag not passed by timer queue"
+    TEXT    = "All Pulls/Due Pulls flag not passed by timer queue"
+    TEXT    = "Due Date not passed by timer queue"
+    TEXT    = "Study Id not passed by timer queue"
+
+    MESSAGE = "SAMP_PARAMS"
+    TEXT    = "Pull Name not passed by timer queue"
+    TEXT    = "Study Id not passed by timer queue"
+    TEXT    = "Layer Factor not passed by timer queue"
+    TEXT    = "C-Factor not passed by timer queue"
+    TEXT    = "Time Factor not passed by timer queue"
+    TEXT    = "Pull Number not passed by timer queue"
+    TEXT    = "Predicted Sample Id not passed by timer queue"
+    TEXT    = "Pull Amount not passed by timer queue"
+    TEXT    = "Pull Unit not passed by timer queue"
+
+    MESSAGE = "SAMP_LOGGED"
+    TEXT    = "Sample successfully logged in for study pull :"
+    TEXT    = "Job Name            : []"
+    TEXT    = "Pull Name           : []"
+    TEXT    = "Study Id            : []"
+    TEXT    = "Layer Factor        : []"
+    TEXT    = "C-Factor    : []"
+    TEXT    = "Time Factor         : []"
+    TEXT    = "Pull Number         : []"
+    TEXT    = "Predicted Sample Id : []"
+    TEXT    = "Numeric Sample Id   : []"
+    TEXT    = "Due Date            : []"
+
+    MESSAGE = "ADD_TQ_EVENT"
+    TEXT    = "Adding Event to The Timerqueue"
+
+    MESSAGE = "LOG_JOB"
+    TEXT    = "Login Study Job"
+
+    MESSAGE = "LOG_SAMP"
+    TEXT    = "Adding Event to The Timerqueue"
+
+MESSAGE GROUP "STB_LABEL_"
+
+    MESSAGE = "PRINT_SAMPLE_TITLE"
+    TEXT    = "Print Stability Sample Label"
+
+     MESSAGE = "PRINT_PULL_TITLE"
+     TEXT    = "Print Stability Sample Labels For Pulls"
+
+     MESSAGE = "STUDY_PROMPT"
+     TEXT    = "Study ID"
+
+     MESSAGE = "SAMPLE_PROMPT"
+     TEXT    = "Sample ID"
+
+     MESSAGE = "PRINTER_PROMPT"
+     TEXT    = "Printer ID"
+
+     MESSAGE = "COPIES_PROMPT"
+     TEXT    = "Number of Copies"
+
+     MESSAGE = "ID_NUMERIC"
+     TEXT    = "Sample ID"
+
+     MESSAGE = "ID_TEXT"
+     TEXT    = "Sample Name"
+
+     MESSAGE = "SAMPLE_DATE"
+     TEXT    = "Date Sampled"
+
+     MESSAGE = "DESCRIPTION"
+     TEXT    = "Description"
+
+     MESSAGE = "JOB_NAME"
+     TEXT    = "Job Name"
+
+     MESSAGE = "READING"
+     TEXT    = "Information"
+     TEXT    = "Reading pull information"
+
+     MESSAGE = "NO_LABELS"
+     TEXT    = "No samples found requiring labels"
+
+MESSAGE GROUP "PULL_EDIT_"
+
+     MESSAGE = "INSERT_TITLE"
+     TEXT    = "Insert Pull"
+
+     MESSAGE = "INSERT_MAX"
+     TEXT    = "A cell can contain "
+     TEXT    = " pulls. No more pulls can be added."
+
+     MESSAGE = "FAILED_PASTE"
+     TEXT    = "The currently selected pulls cannot be modified"
+
+MESSAGE GROUP "REMOVE_FACTOR_"
+
+     MESSAGE = "WARNING"
+     TEXT    = "This will delete the current Layer Factor. Are you sure you wish to continue?"
+     TEXT    = "This will delete the current Time Factor. Are you sure you wish to continue?"
+     TEXT    = "This will delete the current C-Factor. Are you sure you wish to continue?"
+
+     MESSAGE = "TOO_FEW"
+     TEXT    = "A matrix must have at least one Layer Factor."
+     TEXT    = "A matrix must have at least one Time Factor."
+     TEXT    = "A matrix must have at least one C-Factor."
+
+     MESSAGE = "WRONG_STATUS"
+     TEXT    = "This Layer Factor contains pulls of status 'V'."
+     TEXT    = "This Time Factor contains pulls of status 'V'."
+     TEXT    = "This C-Factor contains pulls of status 'V'."
+
+MESSAGE GROUP "TIMEZERO_"
+
+     MESSAGE = "ASSIGN_SAMPLE"
+     TEXT    = "Assign Sample"
+
+     MESSAGE = "ASSIGN_SAMPLE_ERR"
+     TEXT    = "Please select a pull to assign a sample to."
+     TEXT    = "A sample cannot be assigned to a Layer."
+     TEXT    = "A sample cannot be assigned to a Pull of status 'V'."
+     TEXT    = "A Pull with an assigned sample cannot be deleted."
+     TEXT    = "The Id you specified does not exist"
+
+     MESSAGE = "SELECT_SAMPLE_HEADER"
+     TEXT    = "Select Sample"
+
+     MESSAGE = "SELECT_SAMPLE_PROMPT"
+     TEXT    = "Pull Sample ID : "
+
+     MESSAGE = "FORM_HEADER"
+     TEXT    = "Timezero Pull Information"
+     TEXT    = "Display Time Zero Information"
+     TEXT    = "Edit Time Zero Information"
+
+     MESSAGE = "FRAME_HEADER"
+     TEXT    = "Time Zero Pulls"
+
+
+MESSAGE GROUP "MATRIX_"
+
+     MESSAGE = "LOAD_DATA"
+     TEXT    = "Load Layer Factors..."
+     TEXT    = "Load Time Factors..."
+     TEXT    = "Load C-Factors..."
+     TEXT    = "Load Matrix Pulls..."
+     TEXT    = "Load Basetimes..."
+
+     MESSAGE = "NON_UNIQUE_FACTOR"
+     TEXT    = "This is not a unique factor. Please select another."
+
+     MESSAGE = "SELECT_FACTOR"
+     TEXT    = "Please Select a Factor."
+     TEXT    = "Please select a factor from the list."
+
+     MESSAGE = "TOGGLE_PULL_PROPERTIES"
+     TEXT    = "Pull Properties"
+
+     MESSAGE = "TOGGLE_OVERVIEW"
+     TEXT    = "Matrix Overview"
+
+     MESSAGE = "NO_TEST_SCHED"
+     TEXT    = "Pull "
+     TEXT    = " at "
+     TEXT    = "The following pulls do not have an assigned test schedule:"
+
+     MESSAGE = "PROP_ONE"
+     TEXT    = "Please select at least one field to Propagate."
+
+     MESSAGE = "LAYER_GTR"
+     TEXT    = "Please set the second Layer Factor to be greater than or equal to the first."
+
+     MESSAGE = "TIME_GTR"
+     TEXT    = "Please set the second Time Factor to be greater than or equal to the first."
+
+     MESSAGE = "C_GTR"
+     TEXT    = "Please set the second C-Factor to be greater than or equal to the first."
+
+     MESSAGE = "GRID_DISPLAY"
+     TEXT    = "Display"
+
+MESSAGE GROUP "PULLMODS_"
+
+     MESSAGE = "PULL_LOGGED_IN"
+     TEXT    = "This pull has a status of 'V'. It can not be deleted."
+
+     MESSAGE = "SELECT_PULL"
+     TEXT    = "Please select a pull to delete."
+
+     MESSAGE = "SELECT_LAYER"
+     TEXT    = "Please select a Layer to insert a pull in."
+
+MESSAGE GROUP "TEST_INFO_"
+
+     MESSAGE = "ANALYSIS"
+     TEXT    = "Analysis"
+
+     MESSAGE = "REPLI_CT"
+     TEXT    = "Replicate Count"
+
+     MESSAGE = "NO_TESTS"
+     TEXT    = "No Tests"
+
+
+
+MESSAGE GROUP "BUILD_TESTSCH_"
+
+     MESSAGE = "WARNING"
+     TEXT    = "Warning : Any modification to this Test Schedule will affect other Matrixes."
+
+MESSAGE GROUP "COPY_CELL_"
+
+     MESSAGE = "TITLE"
+     TEXT    = "Copy cell ("
+     TEXT    = ") to the range selected."
+
+     MESSAGE = "FRAME_TITLE"
+     TEXT    = "Selected Range :"
+
+MESSAGE GROUP "PRINT_"
+
+    MESSAGE = "LABEL_ERR"
+    TEXT    = "No pull exists."
+    TEXT    = "The print routine does not exist in this library."
+    TEXT    = "This library does not exist."
+
+MESSAGE GROUP "REMOVE_PULL_"
+
+    MESSAGE = "MANY_PULLS_COUNT"
+    TEXT    = "Removing Pulls..."
+
+
+! Messages by DEMESSAGER
+
+MESSAGE GROUP "STB_PRINT_LABEL_"
+
+MESSAGE        = "FRAME02"
+TEXT           = "Label Numbers"
+
+MESSAGE        = "FRAME04"
+TEXT           = "Layer Factor Options"
+
+MESSAGE        = "FRAME06"
+TEXT           = "C-Factor Options"
+
+MESSAGE        = "CAPTION01"
+TEXT           = "Print Label"
+
+MESSAGE        = "DISP01"
+TEXT           = "All Studies"
+
+MESSAGE        = "DISP03"
+TEXT           = "Default No."
+
+MESSAGE        = "DISP05"
+TEXT           = "Sample Report"
+
+MESSAGE        = "DISP07"
+TEXT           = "All Layer Factors"
+
+MESSAGE        = "DISP09"
+TEXT           = "All Time Factors"
+
+MESSAGE        = "DISP11"
+TEXT           = "All C-Factors"
+
+MESSAGE        = "DISP13"
+TEXT           = "All Pulls"
+
+MESSAGE        = "ERR01"
+TEXT           = "Please specify a Study."
+
+MESSAGE        = "ERR03"
+TEXT           = " is not a suitable label report for Samples."
+
+MESSAGE        = "ERR05"
+TEXT           = " is not a suitable label report for Pulls."
+
+MESSAGE        = "ERR07"
+TEXT           = "Please enter a Study ID."
+
+MESSAGE        = "ERR09"
+TEXT           = "Please enter a Time Factor."
+
+MESSAGE        = "SINGLE_HEADER"
+TEXT           = "Pull Label"
+
+MESSAGE        = "FRAME08"
+TEXT           = "Label Reports"
+
+MESSAGE        = "DISP16"
+TEXT           = "Specified No."
+
+MESSAGE        = "DISP17"
+TEXT           = "Label Report"
+
+MESSAGE        = "DISP15"
+TEXT           = "Default No."
+
+MESSAGE        = "FRAME09"
+TEXT           = "Label Numbers"
+
+MESSAGE        = "ERR10"
+TEXT           = "Please enter a C-Factor."
+
+MESSAGE        = "ERR08"
+TEXT           = "Please enter a Layer Factor."
+
+MESSAGE        = "ERR06"
+TEXT           = "No labels selected for these options."
+
+MESSAGE        = "ERR04"
+TEXT           = "The pull label report does not exist."
+
+MESSAGE        = "ERR02"
+TEXT           = "The sample label report does not exist."
+
+MESSAGE        = "DISP14"
+TEXT           = "Single Pull"
+
+MESSAGE        = "DISP12"
+TEXT           = "Single C-Factor"
+
+MESSAGE        = "DISP10"
+TEXT           = "Single Time Factor"
+
+MESSAGE        = "DISP08"
+TEXT           = "Single Layer Factor"
+
+MESSAGE        = "DISP06"
+TEXT           = "Pull Report"
+
+MESSAGE        = "DISP04"
+TEXT           = "Specific No."
+
+MESSAGE        = "DISP02"
+TEXT           = "Single Study"
+
+MESSAGE        = "CAPTION02"
+TEXT           = "Exit"
+
+MESSAGE        = "FRAME07"
+TEXT           = "Pull Number Options"
+
+MESSAGE        = "FRAME05"
+TEXT           = "Time Factor Options"
+
+MESSAGE        = "FRAME03"
+TEXT           = "Label Reports"
+
+MESSAGE        = "FRAME01"
+TEXT           = "Study Options"
+
+MESSAGE        = "HEADER"
+TEXT           = "Pull Labels"
+
+
+! Messages by DEMESSAGER
+
+MESSAGE GROUP "STB_GRID_CLICK_"
+
+MESSAGE        = "MESS03"
+TEXT           = "Insert Pull Number "
+
+MESSAGE        = "MESS05"
+TEXT           = "Single Pull"
+
+MESSAGE        = "MESS07"
+TEXT           = "No of pulls"
+
+MESSAGE        = "MESS09"
+TEXT           = "Cancel"
+
+MESSAGE        = "MESS11"
+TEXT           = "Current Pull"
+
+MESSAGE        = "MESS13"
+TEXT           = "All Pulls"
+
+MESSAGE        = "MESS15"
+TEXT           = "Cancel"
+
+MESSAGE        = "MESS17"
+TEXT           = "Zoom Form"
+
+MESSAGE        = "MESS18"
+TEXT           = "Not implemented yet"
+
+MESSAGE        = "MESS16"
+TEXT           = "No of rows = "
+
+MESSAGE        = "MESS14"
+TEXT           = "OK"
+
+MESSAGE        = "MESS12"
+TEXT           = "Pull Number"
+
+MESSAGE        = "MESS10"
+TEXT           = "Delete Pulls"
+
+MESSAGE        = "MESS08"
+TEXT           = "OK"
+
+MESSAGE        = "MESS06"
+TEXT           = "Many Pulls"
+
+MESSAGE        = "MESS04"
+TEXT           = "Insert Pulls"
+
+MESSAGE        = "MESS02"
+TEXT           = "Copy area shape different from target"
+
+MESSAGE        = "MESS01"
+TEXT           = "Nothing in copy buffer"
+
+MESSAGE GROUP "STB_GRAPH_"
+
+MESSAGE       = "NO_SAMPLES"
+TEXT          = "No samples found"
+
+MESSAGE       = "NO_POINTS"
+TEXT          = "Not enough points found for "
+
+MESSAGE       = "NO_COMPS"
+TEXT          = "No components found"
+
+MESSAGE       = "SELECT_COMPS"
+TEXT          = "Select components to be graphed"
+
+MESSAGE       = "NO_SELECT_COMPS"
+TEXT          = "No components selected"
+
+MESSAGE       = "COMP_TITLE"
+TEXT          = "Components"
+
+MESSAGE       = "GRAPH_TITLE"
+TEXT          = "Graph"
+
+MESSAGE       = "TZ"
+TEXT          = "TZ"
+
+
+MESSAGE GROUP "STB_PULLMODS_"
+
+MESSAGE       = "DISP_PULL_INFO"
+TEXT          = "Display Pull Information"
+
+MESSAGE       = "EDIT_PULL_INFO"
+TEXT          = "Edit Pull Information"
+
+MESSAGE       = "COPY_CELL"
+TEXT          = "Copy Cell"
+
+MESSAGE       = "PULL"
+TEXT          = "Pull "
+
+MESSAGE       = "EXCEED_MAX"
+TEXT          = "The number of Pulls exceeds the Maximum"
+
+MESSAGE       = "CELL_LIMIT"
+TEXT          = " Pulls in a cell limit."
+
+MESSAGE       = "TEST_FORM_HEADER"
+TEXT          = "Assigned Tests"
+
+MESSAGE GROUP "STB_INVENTORY_"
+
+MESSAGE	      = "INVALID_PULL_AMOUNT"
+TEXT          = "Invalid Pull Amount"
+
+MESSAGE	      = "INVALID_PULL_UNIT"
+TEXT          = "Invalid Pull Unit"
+
+MESSAGE	      = "INVALID_BATCH_QUANTITY"
+TEXT          = "Invalid Batch Quantity"
+
+MESSAGE       = "INVALID_PULL_NUM"
+TEXT          = "One or all of the specified pulls could not be deleted"
+
+MESSAGE	      = "STUDY_ID_MESSAGE"
+TEXT          = "Enter Study Identity"
+
+MESSAGE	      = "INVENTORY_IDENTITY"
+TEXT          = "Enter_inventory_identity"
+
+MESSAGE	      = "HEADER_MESSAGE"
+TEXT          = "Inventory Product Required"
+
+MESSAGE       = "ACT_HEADER_MESSAGE"
+TEXT          = "Inventory Product Allocated"
+
+MESSAGE       = "PULLS_IN_CELL"
+TEXT          = "There must be at least 1 pull in a cell to use the Inventory"
+
+MESSAGE       = "CANNOT_ACTIVATE"
+TEXT          = "Missing inventory records, study cannot be activated"
+
+MESSAGE	      = "TOP_GRID_HEADER"
+TEXT          = "Layer"
+
+MESSAGE	      = "HEADER_PRODUCT"
+TEXT          = "Product"
+
+MESSAGE	      = "HEADER_BATCH"
+TEXT          = "Batch"
+
+MESSAGE	      = "HEADER_BATCH_AVAILABLE"
+TEXT          = "Batch Available"
+
+MESSAGE	      = "HEADER_BATCH_UNIT"
+TEXT          = "Batch Unit"
+
+MESSAGE	      = "HEADER_BATCH_REQUIRED"
+TEXT          = "Batch Required"
+
+MESSAGE       = "PULL_LOGIN_FAILED"
+TEXT          = "Insufficient quantity of stock available for current condition, pull cannot be inserted"
+TEXT          = "Insufficient quantity of stock available for current study, some pulls where ignored"
+
+MESSAGE       = "QUANTITY_NOT_ENOUGH"
+TEXT          = "There is insufficient quantity of stock available for this modification, do you wish to continue"
+TEXT          = "There is insufficient overage available for this modification"
+
+MESSAGE	      = "HEADER_PULLS"
+TEXT          = "No. Of Pulls"
+
+MESSAGE	      = "HEADER_PULL_AMOUNT"
+TEXT          = "Pull Amount"
+
+MESSAGE	      = "HEADER_TOT_REQUIRED"
+TEXT          = "Total Required"
+
+MESSAGE	      = "HEADER_OVERAGE"
+TEXT          = "Overage"
+
+MESSAGE	      = "HEADER_UNIT"
+TEXT          = "Unit"
+
+MESSAGE	      = "HEADER_NO_TO_PULL"
+TEXT          = "Yet To Pull"
+
+MESSAGE	      = "HEADER_TOT_ALLOC"
+TEXT          = "Total Allocated"
+
+MESSAGE	      = "HEADER_QTY_TO_PULL"
+TEXT          = "Amount Yet To Pull"
+
+MESSAGE	      = "LAYER_TOTAL"
+TEXT          = "Total Product / Layer "
+
+MESSAGE	      = "PRODUCT_TOTAL"
+TEXT          = "Total Product Required"
+
+MESSAGE       = "PRODUCT_UNIT"
+TEXT          = "Total Product Unit    "
+
+MESSAGE	      = "PRODUCT_ID"
+TEXT          = "product_id"
+TEXT          = "Product Id"
+
+MESSAGE	      = "BATCH_ID"
+TEXT          = "batch_id"
+TEXT          = "Batch Id"
+
+MESSAGE	      = "PULL_AMOUNT"
+TEXT          = "Pull Amount"
+
+MESSAGE	      = "PULL_UNIT"
+TEXT          = "Pull Unit"
+
+MESSAGE       = "INVALID_PROMPT_VALUES"
+TEXT          = "Invalid inventory pull amount specified"
+TEXT          = "Invalid inventory pull unit specified"
+TEXT          = "Invalid inventory product specified"
+TEXT          = "Invalid inventory batch specified"
+
+MESSAGE       = "RESERVE_QUANTITY"
+TEXT          = "for stability Study "
+
+MESSAGE GROUP "INV_PRODUCT_"
+
+MESSAGE       = "HEADER_FORM_MESSAGES"
+TEXT          = "Identity"
+TEXT          = "Product Version"
+TEXT          = "Inventory Product Entry Screen"
+TEXT          = "Batch "
+
+MESSAGE       = "BUTTON_MESSAGES"
+TEXT          = "Apply"
+TEXT          = "Batches"
+TEXT          = "Cancel"
+TEXT          = "OK"
+TEXT          = "Add New"
+TEXT          = "apply_button"
+TEXT          = "detail_button"
+TEXT          = "header_cancel_button"
+TEXT          = "ok_button"
+TEXT          = "add_new_button"
+TEXT          = "inventory"
+TEXT          = "batch_cancel_button"
+TEXT          = "cancel_button"
+
+MESSAGE       = "BATCHES_FORM_MESSAGES"
+TEXT          = "Batches Entry Screen"
+TEXT          = "Inventory Id     "
+TEXT          = "Re-order Amount  "
+TEXT          = "Low Supply Level "
+TEXT          = "Inventory Unit   "
+TEXT          = "Save Current Record ?"
+TEXT          = "Inventory Record not found, Ok to create"
+TEXT          = "Quantity"
+TEXT          = "Location"
+TEXT          = "Batch Name"
+TEXT          = "Quantity Allocation"
+TEXT          = "Date Received"
+TEXT          = "Received By"
+TEXT          = "Last Tested"
+TEXT          = "Last Tested By"
+TEXT          = "Retest Date"
+TEXT          = "Expiry Date"
+TEXT          = "Unit"
+TEXT          = "Inventory "
+TEXT          = "Invalid Batch Number"
+TEXT          = "Invalid Location Id Specified"
+TEXT          = "Invalid batch unit specified"
+TEXT          = "External Batch Name"
+
+MESSAGE       = "REPORT_FORM_MESSAGES"
+TEXT          = "Expired Inventory Item Report"
+TEXT          = "Study Inventory Report"
+TEXT          = "Allocated Inventory Item Report"
+TEXT          = "Specific Date Allocation Report"
+TEXT          = "Stock Location History Report"
+TEXT          = "Low Supply Level Report"
+TEXT          = "Study Id    "
+TEXT          = "Inventory Id"
+TEXT          = "Batch Id    "
+TEXT          = "Start Date  "
+TEXT          = "End Date    "
+TEXT          = "Enter study identity"
+TEXT          = "Enter inventory identity"
+TEXT          = "Inventory Report Screen"
+TEXT          = "Invalid batch number"
+TEXT          = "Invalid Dates Specified"
+
+MESSAGE       = "BATCH_PROMPT_DETAILS"
+TEXT          = "There must be values for the Quantity, Location and Unit prompts"
+
+MESSAGE       = "RESET"
+TEXT          = "All pulls product/batch will be changed, do you wish to continue"
+
+MESSAGE GROUP = "STB_"
+
+MESSAGE       = "PULL_HAS_SAMPLE"
+TEXT          = "You cannot change the activation status of a cell that has Samples logged in."
+
+MESSAGE       = "PULL_IN_PAST"
+TEXT          = "You cannot change the activation status of a cell for a timepoint in the past."
+
+MESSAGE       = "PULL_STATUS_AND_DATE"
+TEXT          = "The activation state of some cells could not be altered due to samples being logged in and/or time point dates."
+
+MESSAGE       = "PULL_STATUS"
+TEXT          = "The activation state of some cells could not be altered due to samples being logged in."
+
+MESSAGE       = "PULL_DATE"
+TEXT          = "The activation state of some cells could not be altered due to time point dates."
+
+MESSAGE       = "PULL_WARN_DATE"
+TEXT          = "Warning. You are activating a time point, "
+TEXT          = " within the time window of "
+TEXT          = " days."
+

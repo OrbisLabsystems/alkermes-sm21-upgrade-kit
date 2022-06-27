@@ -1,0 +1,350 @@
+{******************************************************************************
+*
+* Module Name   : $BACKCOMM.RPF
+*
+* Purpose       :   This report will commit all cancelled and authorised 
+*		    samples and all authorised jobs that were logged in before 
+*                   a specified interval. The interval_to_last_date variable 
+*                   should be set and the report submitted to the background 
+*                   with a specified repeat interval.        
+*
+* Document Ref. : SE/T/TVGL-WORK-REPORTS/1/3
+*
+* Specification : 
+*
+* Portability   : Not Checked
+*
+* Re-entrant    : 
+*
+*
+********************************************************************************
+*
+*  Ref   Date        Name             Comment
+*  ===== ==========  ===============  =========================================
+*  1.1   05-Mar-07   V. Molloy        Changed interval_to_last_date.
+*  1.2   05-Mar-07   V. Molloy        Allowed for non-standard sample statuses.
+*  1.3   05-Mar-07   V. Molloy        Changed date_received to date_created in 
+*                                     commit_requests routine
+*  1.4   27-FEB-2014 Ken Jacobs       Upgrade 10.2
+*  1.5   05-Feb-14   M. Flattery      Change control no. CC-ATH-2014-1532, TS Protocol no. 1600028850
+*  1.6   23-Sep-21   Kalyani Manda    Updated list of samples to be excluded from committing (ids 252343 to 448127)
+*  1.7   04-Oct-21   M. Allen	      Change code to repeat a number of times and stop
+*  1.8   21-Oct-21   M. Allen	      Updated list of samples to be excluded and exclude Stability samples
+*  1.9   11-Feb-22   K. Manda       Updated last_date and the repeat count
+*  2.0   28-Feb-22   K. Manda       Updated the repeat count to 2
+*  2.1   21-Apr-22   T. Finneran    Updated last_date to 01-JUL-2018
+*  2.2   27-May-22   K. Manda       Updated last_date to 01-JUL-2019 and included template_id 4000798_FP in the exclusion list
+*******************************************************************************}
+
+{ -------------------------Enter the number of days----------------------------}
+
+JOIN LIBRARY $LIB_COMM
+
+{ By default samples and jobs that were authorised 120 days ago are committed.
+  To change from date_authorised to another sample/job date field, change the
+  constants below }
+
+CONSTANT SAMPLE_DATE_FIELD = "LOGIN_DATE"                               {UPG10.2}
+CONSTANT JOB_DATE_FIELD    = "DATE_CREATED"                             {UPG10.2}
+
+interval_to_last_date = "1825 00:00"    {1.1 & 1.5}
+
+{------------------------------------------------------------------------------}
+
+last_date = DATE("01-JUL-2019") {now - interval ( interval_to_last_date )}{2.1}{2.2}
+
+commit_samples ( "A" )  { commit authorised samples }
+commit_samples ( "R" )  { commit rejected samples }
+commit_samples ( "X" )  { commit cancelled samples }
+
+{1.2 added the following to allow more than standard
+sample statuses to be committed rb 08-12-03}
+
+commit_samples ( "H" )  { commit authorised samples }
+commit_samples ( "U" )  { commit rejected samples }
+commit_samples ( "W" )  { commit cancelled samples }
+commit_samples ( "V" )  { commit authorised samples }
+commit_samples ( "S" )  { commit rejected samples }
+commit_samples ( "C" )  { commit cancelled samples }
+
+{/1.2}
+
+
+commit_requests ( "A" ) { commit authorised jobs }
+commit_requests ( "R" ) { commit rejected jobs }
+commit_requests ( "X" ) { commit cancelled jobs }
+
+
+
+{1.2 & 1.5 added the following to allow more than standard
+job statuses to be committed rb 08-12-03}
+
+{commit_requests ( "S" )} { commit suspended jobs }
+{commit_requests ( "C" )} { commit completed jobs }
+{commit_requests ( "V" )} { commit available jobs }
+
+{/1.2 & 1.5}
+
+
+
+{------------------------------------------------------------------------------}
+
+ROUTINE commit_samples ( VALUE required_status )
+
+    DECLARE samp_counter , samp_array , sampid , loop_counter ,  tab_1, count_r {1.7}
+
+    tab_1 = GET_USER_MESSAGE ( "BACKCOMM_TAB_1" , 1 )      
+ 	count_r = 1  {1.7}
+
+    REPEAT
+
+        { Select a 'chunk' of a hundred or less samples to commit }
+
+        ARRAY samp_array ARRAY_SIZE ( 100 )
+        sampid = SELECT sample.id_numeric
+                 WHERE ( ( status = required_status ) AND 
+                         ( 'SAMPLE_DATE_FIELD' <= last_date  ) AND
+			 (id_numeric <> "    232400" ) AND
+			 (id_numeric <> "    250788" ) AND
+			 (id_numeric <> "    256753" ) AND
+			 (id_numeric <> "    256753" ) AND
+			 (id_numeric <> "    219074" ) AND
+			 (id_numeric <> "    219771" ) AND
+			 (id_numeric <> "    218472" ) AND
+                         (id_numeric <> "    356477" ) AND
+			 (id_numeric <> "    292812" ) AND
+			 (id_numeric <> "    292813" ) AND
+			 (id_numeric <> "    311046" ) AND
+			 (id_numeric <> "    311047" ) AND
+			 (id_numeric <> "    311048" ) AND
+			 (id_numeric <> "    311049" ) AND
+			 (id_numeric <> "    311050" ) AND
+			 (id_numeric <> "    256748" ) AND
+			 (id_numeric <> "    314888" ) AND
+			 (id_numeric <> "    331224" ) AND
+			 (id_numeric <> "    333370" ) AND
+			 (id_numeric <> "    333371" ) AND
+			 (id_numeric <> "    333372" ) AND
+			 (id_numeric <> "    312815" ) AND
+			 (id_numeric <> "    250789" ) AND
+			 (id_numeric <> "    220113" ) AND
+			 (id_numeric <> "    273409" ) AND
+			 (id_numeric <> "    330770" ) AND
+			 (id_numeric <> "    261242" ) AND
+			 (id_numeric <> "    261248" ) AND
+			 (id_numeric <> "    364345" ) AND
+                         (id_numeric <> "    252343" ) AND
+                         (id_numeric <> "    289311" ) AND
+                         (id_numeric <> "    289401" ) AND
+                         (id_numeric <> "    289577" ) AND
+                         (id_numeric <> "    292969" ) AND
+                         (id_numeric <> "    294538" ) AND
+                         (id_numeric <> "    297984" ) AND
+                         (id_numeric <> "    302541" ) AND
+                         (id_numeric <> "    307774" ) AND
+                         (id_numeric <> "    311046" ) AND
+                         (id_numeric <> "    311047" ) AND
+                         (id_numeric <> "    311048" ) AND
+                         (id_numeric <> "    311049" ) AND
+                         (id_numeric <> "    311050" ) AND
+                         (id_numeric <> "    312815" ) AND
+                         (id_numeric <> "    314888" ) AND
+                         (id_numeric <> "    393304" ) AND
+                         (id_numeric <> "    392860" ) AND
+                         (id_numeric <> "    393309" ) AND
+                         (id_numeric <> "    394430" ) AND
+                         (id_numeric <> "    394967" ) AND
+                         (id_numeric <> "    395279" ) AND        
+                         (id_numeric <> "    394407" ) AND
+                         (id_numeric <> "    394138" ) AND
+                         (id_numeric <> "    394340" ) AND
+                         (id_numeric <> "    394345" ) AND
+                         (id_numeric <> "    394408" ) AND
+                         (id_numeric <> "    394616" ) AND
+                         (id_numeric <> "    394617" ) AND
+                         (id_numeric <> "    394682" ) AND
+                         (id_numeric <> "    394683" ) AND
+                         (id_numeric <> "    394967" ) AND
+                         (id_numeric <> "    396071" ) AND
+                         (id_numeric <> "    396552" ) AND
+                         (id_numeric <> "    398367" ) AND
+                         (id_numeric <> "    397881" ) AND
+                         (id_numeric <> "    398095" ) AND
+                         (id_numeric <> "    398097" ) AND
+                         (id_numeric <> "    398276" ) AND
+                         (id_numeric <> "    399486" ) AND
+                         (id_numeric <> "    399223" ) AND
+                         (id_numeric <> "    400082" ) AND
+                         (id_numeric <> "    400082" ) AND
+                         (id_numeric <> "    400095" ) AND
+                         (id_numeric <> "    399825" ) AND
+                         (id_numeric <> "    399818" ) AND
+                         (id_numeric <> "    399817" ) AND
+                         (id_numeric <> "    400909" ) AND
+                         (id_numeric <> "    401775" ) AND
+                         (id_numeric <> "    402866" ) AND
+                         (id_numeric <> "    402868" ) AND
+                         (id_numeric <> "    403428" ) AND
+                         (id_numeric <> "    403431" ) AND
+                         (id_numeric <> "    403875" ) AND
+                         (id_numeric <> "    404219" ) AND
+                         (id_numeric <> "    405181" ) AND
+                         (id_numeric <> "    405252" ) AND
+                         (id_numeric <> "    405321" ) AND
+                         (id_numeric <> "    405319" ) AND
+                         (id_numeric <> "    405585" ) AND
+                         (id_numeric <> "    405709" ) AND
+                         (id_numeric <> "    406542" ) AND
+                         (id_numeric <> "    406663" ) AND
+                         (id_numeric <> "    407238" ) AND
+                         (id_numeric <> "    407318" ) AND
+                         (id_numeric <> "    407422" ) AND
+                         (id_numeric <> "    407423" ) AND
+                         (id_numeric <> "    408242" ) AND
+                         (id_numeric <> "    408969" ) AND
+                         (id_numeric <> "    409188" ) AND
+                         (id_numeric <> "    409194" ) AND
+                         (id_numeric <> "    409195" ) AND
+                         (id_numeric <> "    409197" ) AND
+                         (id_numeric <> "    410230" ) AND
+                         (id_numeric <> "    410232" ) AND
+                         (id_numeric <> "    411713" ) AND
+                         (id_numeric <> "    411828" ) AND
+                         (id_numeric <> "    412120" ) AND
+                         (id_numeric <> "    413469" ) AND
+                         (id_numeric <> "    413550" ) AND
+                         (id_numeric <> "    414554" ) AND
+                         (id_numeric <> "    414678" ) AND
+                         (id_numeric <> "    415914" ) AND
+                         (id_numeric <> "    415919" ) AND
+                         (id_numeric <> "    416891" ) AND
+                         (id_numeric <> "    416892" ) AND
+                         (id_numeric <> "    419862" ) AND
+                         (id_numeric <> "    420414" ) AND
+                         (id_numeric <> "    420864" ) AND
+                         (id_numeric <> "    422192" ) AND
+                         (id_numeric <> "    422193" ) AND
+                         (id_numeric <> "    422194" ) AND
+                         (id_numeric <> "    422195" ) AND
+                         (id_numeric <> "    425089" ) AND
+                         (id_numeric <> "    427412" ) AND
+                         (id_numeric <> "    428166" ) AND
+                         (id_numeric <> "    428420" ) AND
+                         (id_numeric <> "    429933" ) AND
+                         (id_numeric <> "    430459" ) AND
+                         (id_numeric <> "    430667" ) AND
+                         (id_numeric <> "    430732" ) AND
+                         (id_numeric <> "    437958" ) AND
+                         (id_numeric <> "    431201" ) AND
+                         (id_numeric <> "    431377" ) AND
+                         (id_numeric <> "    433478" ) AND
+                         (id_numeric <> "    435751" ) AND
+                         (id_numeric <> "    436089" ) AND
+                         (id_numeric <> "    438900" ) AND
+                         (id_numeric <> "    440499" ) AND
+                         (id_numeric <> "    441261" ) AND
+                         (id_numeric <> "    441263" ) AND
+                         (id_numeric <> "    441264" ) AND
+                         (id_numeric <> "    446119" ) AND
+                         (id_numeric <> "    446797" ) AND
+                         (id_numeric <> "    447469" ) AND
+                         (id_numeric <> "    448127" ) AND
+			 (id_numeric <> "    392801" ) AND
+			 (id_numeric <> "    392864" ) AND
+			 ( id_text NOT LIKE "%DISSMEDIABOOK%") AND
+			 ( template_id <> "3002060" ) AND
+			 ( template_id NOT LIKE "S_%" ) AND
+                         ( template_id <> "QC_STABAC" )AND
+                          (template_id <> "4000798_FP") ){1.3 & 1.5 & 1.8}{2.2}
+
+        samp_counter = 0
+        WHILE ( ( sampid <> EMPTY ) AND ( samp_counter < 100 ) ) DO
+
+            IF ( sampid <> "         0" ) THEN
+                samp_counter = samp_counter +1
+                samp_array [ samp_counter ] = sampid
+            ENDIF
+
+            NEXT sample
+            sampid = SELECT sample.id_numeric
+
+        ENDWHILE
+
+        loop_counter = 1
+        WHILE ( loop_counter <= samp_counter ) DO
+
+literal
+$tab_1___________________________________ : $samp_array[loop_counter]
+$endliteral
+
+            background ( samp_array [ loop_counter ] , EMPTY , "" )
+        
+            loop_counter = loop_counter +1
+
+        ENDWHILE
+{1.7}
+	count_r = count_r + 1
+
+    UNTIL ( count_r = 2 )	{1.9 changed from 8 to 4}{2.0 changed from 4 to 2}
+
+{ /1.7    UNTIL ( sampid = EMPTY )}
+
+RETURN
+
+ENDROUTINE {commit_samples}
+
+{------------------------------------------------------------------------------}
+
+ROUTINE commit_requests ( VALUE required_status )
+
+    DECLARE job_counter , job_array , requestid , loop_counter , tab_2, count_r {1.7}
+
+    tab_2 = GET_USER_MESSAGE ( "BACKCOMM_TAB_2" , 1 )
+
+    count_r = 1 {1.7}
+
+    REPEAT
+
+        { Select a 'chunk' of a hundred or less jobs to commit }
+
+        ARRAY job_array ARRAY_SIZE ( 100 )
+        requestid = SELECT job_header.job_name 
+                 WHERE ( ( status = required_status   ) AND 
+                         ( 'JOB_DATE_FIELD' <= last_date ) AND
+			 ( template_id NOT LIKE "S_%" ) ) {1.8}
+
+        job_counter = 0
+        WHILE ( ( requestid <> EMPTY ) AND ( job_counter < 100 ) ) DO
+
+            job_counter = job_counter +1
+            job_array [ job_counter ] = requestid
+
+            NEXT job_header
+            requestid = SELECT job_header.job_name 
+
+        ENDWHILE
+
+        loop_counter = 1
+        WHILE ( loop_counter <= job_counter ) DO
+
+literal
+$tab_2___________________________________ : $job_array[loop_counter]
+$endliteral
+
+            background_job ( job_array [ loop_counter ] , EMPTY )
+
+            loop_counter = loop_counter +1
+
+        ENDWHILE
+
+{1.7}
+	count_r = count_r + 1
+
+    UNTIL ( count_r = 2 )	{1.9 changed from 8 to 4}{2.0 changed from 4 to 2}
+
+{ /1.7    UNTIL ( requestid = EMPTY )}   
+RETURN
+
+ENDROUTINE {commit_requests}
+{------------------------------------------------------------------------------}
+

@@ -1,0 +1,643 @@
+{******************************************************************************
+*
+* Module Name   : $STB_BASETIME
+*
+* Purpose       : This file includes the routines for bastimes
+*
+*******************************************************************************}
+
+SET NOTPROTECTED
+SET COMPILE_OPTION DECLARE
+SET NAME "DEFER/"
+
+ENABLE WINDOWS
+
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_WINDOW
+
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $PROMPT_GRID
+JOIN LIBRARY $PROMPT_TAB
+JOIN LIBRARY $STB_LIB
+
+CONSTANT FORM_BASETIME_HEIGHT = 15
+CONSTANT FORM_BASETIME_WIDTH  = 60
+CONSTANT FORM_BASETIME_COLUMN = 10
+CONSTANT FORM_BASETIME_ROW    = 3
+
+CONSTANT BUTTON_WIDTH           = 10
+CONSTANT BUTTON_GAP             = 4
+CONSTANT BUTTON_OK_START        = 2
+CONSTANT BUTTON_PROPAGATE_START = BUTTON_OK_START +
+                                  BUTTON_WIDTH +
+                                  BUTTON_GAP
+
+CONSTANT COL_C_FACTOR = 1
+CONSTANT COL_TYPE     = 2
+CONSTANT COL_BASETIME = 3
+CONSTANT COL_C_ID     = 4
+
+CONSTANT BASETIME_DATE     = TRUE
+CONSTANT BASETIME_INTV     = FALSE
+
+{******************************************************************************}
+
+ROUTINE stb_matrix_action_option_basetime_properties( self )
+{
+* 
+*
+* Parameters : 
+*
+******************************************************************************}
+
+    DECLARE form_basetime
+
+    initialise_form_basetime( self, form_basetime )
+
+    form_basetime . start_prompt ()
+    form_basetime . wait_prompt ()
+    form_basetime . end_prompt ()
+
+ENDROUTINE
+
+{******************************************************************************}
+
+
+ROUTINE initialise_form_basetime( matrix_object ,
+                                  form_basetime )
+{
+* 
+*
+* Parameters : 
+*
+******************************************************************************}
+
+    DECLARE button_ok, button_propagate, tabs_layer,
+            layer_id, layer_title, condition_id, condition_title, configuration_id,
+            layer_number, condition_number, number_of_layers, number_of_conditions,
+            header_ver_no, header_ndx, basendx, basetime_startdate, display_status, 
+            form_layer, grid_layer, grid_info
+        
+
+    CREATE OBJECT "STD_FORM" , form_basetime
+
+    IF matrix_object . is_display_only( ) THEN
+        form_basetime . header = GET_USER_MESSAGE("stb_basetime_title", 1)
+    ELSE
+        form_basetime . header = GET_USER_MESSAGE("stb_basetime_title", 2)
+    ENDIF
+
+    form_basetime . height             = FORM_BASETIME_HEIGHT
+    form_basetime . width              = FORM_BASETIME_WIDTH
+    form_basetime . column             = FORM_BASETIME_COLUMN
+    form_basetime . row                = Form_basetime_row
+    form_basetime . button_style       = FORM_BUTTON_NONE
+    form_basetime . user_info          = matrix_object
+    form_basetime . validation_routine = "save_basetimes"
+
+    PROMPT OBJECT button_ok
+          CLASS "STD_PROMPT_BUTTON"
+          ON LINE form_basetime . height - 1
+          FROM BUTTON_OK_START
+          TO   BUTTON_OK_START + BUTTON_WIDTH - 1
+          WITH ( caption = GET_USER_MESSAGE( "STD_CLOSE", 1 ),
+                 sendlast_key = "DO")
+
+    PROMPT OBJECT button_propagate
+          CLASS "STD_PROMPT_BUTTON"
+          ON LINE form_basetime . height - 1
+          FROM BUTTON_PROPAGATE_START
+          TO   BUTTON_PROPAGATE_START + BUTTON_WIDTH - 1
+          WITH ( caption             = GET_USER_MESSAGE( "stb_basetime_button_propogate", 1 ),
+                 mouse_click_routine = "propagate_basetimes")
+
+
+    set_up_std_prompt_tab_class ()
+
+    CREATE OBJECT PROMPT_TAB_CLASS , tabs_layer
+
+    tabs_layer . height = form_basetime . height - 2
+    tabs_layer . width  = form_basetime . width
+    tabs_layer . row    = 0.5
+    tabs_layer . column = 1
+
+    tabs_layer . selected_routine = "change_tabs"
+
+    
+    IF matrix_object . is_protocol( ) THEN
+        header_ver_no = matrix_object . header_ver
+    ELSE
+        header_ver_no = "         1"
+
+    ENDIF
+
+    number_of_layers = matrix_object . layer_count( )
+
+    layer_number = 1
+
+    WHILE ( layer_number <= number_of_layers ) DO
+
+        ARRAY grid_info  ARRAYSIZE (0,4) = ""
+
+        layer_id = matrix_object . get_layer_id_at_position( layer_number )
+
+        IF matrix_object . is_display_only( ) THEN
+            display_status = TRUE
+        ELSE
+            display_status = NOT ( entire_factor_pending_samples ( matrix_object, "LAYER_FACTOR", layer_id ) )
+        ENDIF
+
+        OBJECT_CREATE ( form_layer, PROMPT_CLASS_FORM )
+
+        configuration_id = SELECT 'matrix_object . header_table' . default_config
+
+        IF BLANK( configuration_id ) THEN
+
+          layer_title = layer_id
+
+        ELSE
+
+          IF get_default_config_item ( configuration_id, "load_type" ) THEN
+
+            layer_title = layer_id
+
+          ELSE
+
+            layer_title = SELECT layer_factor . aka_name
+                          WHERE identity = layer_id
+
+          ENDIF
+
+        ENDIF
+
+        PROMPT OBJECT form_layer
+            CLASS PROMPT_CLASS_FORM
+            WITH ( header = layer_title,
+                   column = 1,
+                   row    = 1,
+                   value  = layer_id,
+                   width =  tabs_layer . width - 4,
+                   height = tabs_layer . height - 3,
+                   button_style = FORM_BUTTON_NONE,
+                   use_top_line = TRUE,
+                   display_only = display_status  )
+
+
+        set_up_std_prompt_grid_class ()
+
+        PROMPT OBJECT grid_layer
+            CLASS  PROMPT_GRID_EX_CLASS
+            WITH ( column               = 1                       ,
+                   row                  = 1                       ,
+                   width                = form_layer . width - 1  ,
+                   height               = form_layer . height     ,
+                   border               = TRUE                    ,
+                   title_size_top       = 1                       ,
+                   title_size_left      = 0                       ,
+                   display_cell_routine = "display_basetime_cell" ,
+                   prompt_cell_routine  = "prompt_basetime_cell"  )
+
+        grid_layer . column_size[1] = 10
+        grid_layer . column_size[2] = 10
+        grid_layer . column_size[3] = 17
+
+        grid_layer . title_text_top[1,1] = GET_USER_MESSAGE( "stb_basetime_c_factors", 1 )
+        grid_layer . title_text_top[2,1] = GET_USER_MESSAGE( "stb_basetime_basetime_type", 1 )
+        grid_layer . title_text_top[3,1] = GET_USER_MESSAGE( "stb_basetime_base_time", 1 )
+
+        grid_layer . cell_columns = 3
+
+
+        header_ndx = matrix_object . matrix_type :
+                     matrix_object . header_id :
+                     header_ver_no :
+                     layer_id
+
+        number_of_conditions = matrix_object . condition_count()
+
+        condition_number = 1
+        WHILE ( condition_number <= number_of_conditions ) DO
+
+            condition_id = matrix_object . get_condition_id_at_position( condition_number )
+ 
+            condition_title = condition_id
+
+            IF NOT BLANK( configuration_id ) THEN
+
+                IF NOT get_default_config_item ( configuration_id, "load_type" ) THEN
+
+                      condition_title = SELECT c_factor . aka_name
+                                          WHERE identity = condition_id
+
+                ENDIF
+
+            ENDIF
+
+            grid_info [ condition_number, COL_C_FACTOR ] = condition_title
+            grid_info [ condition_number, COL_C_ID     ] = condition_id
+
+            basendx = header_ndx : condition_id
+            matrix_object . basetimes . basetime_db . set_by_index ( "KEY0", basendx )
+
+            IF matrix_object . basetimes . basetime_db . current = EMPTY
+
+                grid_info [ condition_number, COL_TYPE     ] = BASETIME_INTV
+                grid_info [ condition_number, COL_BASETIME ] = INTERVAL ( 0 )
+
+            ELSE
+
+                basetime_startdate = SELECT PDS_BASETIME . START_DATE
+                                         IN OBJECT matrix_object . basetimes . basetime_db . current
+
+                IF IS_INTERVAL ( basetime_startdate ) THEN
+                    grid_info [ condition_number, COL_TYPE ] = BASETIME_INTV
+                ELSE
+                    grid_info [ condition_number, COL_TYPE ] = BASETIME_DATE
+                ENDIF
+                
+                grid_info [ condition_number, COL_BASETIME ] = basetime_startdate
+
+            ENDIF
+
+            condition_number = condition_number + 1
+
+        ENDWHILE
+
+        grid_layer . cell_rows = number_of_conditions
+
+        ARRAY_COPY( grid_layer . user_info, grid_info )
+
+        form_layer . add_prompt ( grid_layer )
+
+        tabs_layer . set_size ( form_layer )
+        tabs_layer . add_form ( form_layer )
+        
+        layer_number = layer_number + 1
+
+    ENDWHILE
+
+    form_basetime . add_prompt ( tabs_layer )
+    form_basetime . add_prompt( button_ok )
+
+    IF NOT matrix_object . is_display_only( ) THEN
+        form_basetime . add_prompt( button_propagate )
+    ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+
+ROUTINE prompt_basetime_cell (       grid_layer  ,
+                               VALUE cell_column ,
+                               VALUE cell_row    ,
+                                     window      ,
+                               VALUE column      ,
+                               VALUE row         ,
+                               VALUE cell_width  ,
+                               VALUE cell_height )
+{
+* 
+*
+* Parameters : 
+*
+******************************************************************************}
+
+    DECLARE temp, display_only, matrix_object
+
+    matrix_object = grid_layer . parent_prompt . parent_prompt . userinfo
+
+    IF ( cell_column = COL_C_FACTOR ) THEN
+
+         PROMPT FOR grid_layer . user_info[cell_row,COL_C_FACTOR]
+             ON LINE row
+             FROM column
+             IN WINDOW window
+             WITH ( display_only = TRUE )
+
+    ELSEIF ( cell_column = COL_TYPE ) THEN
+
+        temp = grid_layer . user_info[cell_row,COL_TYPE]
+
+        IF matrix_object . is_active_study( ) THEN
+            display_only = grid_layer . parent_prompt . display_only
+        ELSE
+            display_only = FALSE
+        ENDIF
+
+        PROMPT FOR grid_layer . user_info[cell_row,COL_TYPE]
+            ON LINE row
+            FROM column
+            IN WINDOW window
+            BROWSE ON BOOLEAN
+            WITH ( true_word    = GET_USER_MESSAGE( "stb_basetime_type_date", 1),
+                   false_word   = GET_USER_MESSAGE( "stb_basetime_type_interval",1),
+                   is_spin      = TRUE,
+                   display_only = display_only )
+
+    { ------------------------------------------------------------ }
+    { If type is changed then display correct value in basetime    }
+    { ------------------------------------------------------------ }
+
+        IF ( temp <> grid_layer . user_info[cell_row,COL_TYPE] ) THEN
+
+            grid_layer . userinfo [ cell_row, COL_BASETIME ] = ""
+            grid_layer . redisplay_cell( 3, cell_row )
+
+        ENDIF
+
+    ELSEIF ( cell_column = COL_BASETIME ) THEN
+
+        PROMPT FOR grid_layer . user_info[cell_row,COL_BASETIME]
+            BROWSE ON date_or_interval
+            ON LINE row
+            FROM column
+            IN WINDOW window
+            WITH ( allow_time         = ( grid_layer . user_info[cell_row, COL_TYPE] = BASETIME_DATE ) ,
+                   allow_date         = ( grid_layer . user_info[cell_row, COL_TYPE] = BASETIME_DATE ) ,
+                   allow_interval     = ( grid_layer . user_info[cell_row, COL_TYPE] = BASETIME_INTV ) ,
+                   display_only       = grid_layer . parent_prompt . display_only,
+                   validation_routine = "validate_basetime",
+                   always_validate    = TRUE  )
+
+    ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE validate_basetime ( self )
+{
+* 
+*
+* Parameters : 
+*
+******************************************************************************}
+
+    IF self . allow_interval = TRUE THEN
+
+        IF self . text = "" THEN
+
+            self . text = INTERVAL ( 0 )
+            self . repaste ()
+            RETURN ( TRUE )
+
+        ELSEIF NOT ( IS_INTERVAL ( self . text ) ) THEN
+
+            self . text = INTERVAL ( 0 )
+            self . repaste ()
+            RETURN ( FALSE )
+
+        ELSEIF ( self . text < NOW ) AND ( DATE ( self . text ) <> ERROR ) THEN
+
+            flash_message ( GET_USER_MESSAGE( "STB_BASETIME_VALID_INTERVAL", 1 ), TRUE )
+            self . text = INTERVAL ( 0 )
+            self . repaste ()
+            RETURN ( FALSE )
+
+        ELSE
+
+            RETURN ( TRUE )
+
+        ENDIF
+
+    ELSE
+
+        RETURN ( TRUE )
+
+    ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+
+ROUTINE display_basetime_cell(       grid_layer,
+                               VALUE cell_column,
+                               VALUE cell_row,
+                                     window,
+                               VALUE column,
+                               VALUE row,
+                               VALUE cell_width,
+                               VALUE cell_height )
+{
+* 
+*
+* Parameters : 
+*
+******************************************************************************}
+
+    IF ( cell_column = COL_C_FACTOR ) THEN
+
+        DISPLAY grid_layer . user_info[cell_row,COL_C_FACTOR]
+                ON LINE row
+                FROM column
+                IN WINDOW window
+
+    ELSEIF ( cell_column = COL_TYPE ) THEN
+
+         IF ( grid_layer . user_info[cell_row,COL_TYPE] = BASETIME_DATE ) THEN
+
+              DISPLAY GET_USER_MESSAGE( "stb_basetime_type_date", 1)
+                      ON LINE row
+                      FROM column
+                      IN WINDOW window
+
+        ELSE
+
+              DISPLAY GET_USER_MESSAGE( "stb_basetime_type_interval", 1)
+                      ON LINE row
+                      FROM column
+                      IN WINDOW window
+
+        ENDIF
+
+    ELSEIF ( cell_column = COL_BASETIME ) THEN
+
+        DISPLAY grid_layer . user_info[cell_row,COL_BASETIME]
+                ON LINE row
+                FROM column
+                TO   column + cell_width
+                IN WINDOW window
+
+    ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE propagate_basetimes ( self )
+{
+* 
+*
+* Parameters : 
+*
+******************************************************************************}
+
+    DECLARE grid_prompt, current_val, current_type, count, matrix_object, 
+            tab_prompt, selected_tab
+
+	tab_prompt = self . parent_prompt . prompt_objects [ 1 ]
+
+	selected_tab = tab_prompt . selected
+
+    matrix_object = self . parent_prompt . user_info
+
+    grid_prompt = tab_prompt . forms[selected_tab] . prompt_objects[1]
+
+    current_val  = grid_prompt . userinfo [ grid_prompt . current_row, 3 ]
+    current_type = grid_prompt . userinfo [ grid_prompt . current_row, 2 ]
+
+    count = grid_prompt . current_row + 1
+    WHILE ( count <= matrix_object . c_factors . size () ) DO
+    
+        grid_prompt . userinfo [ count, 3 ] = current_val
+        grid_prompt . userinfo [ count, 2 ] = current_type
+        
+        count = count + 1
+        
+    ENDWHILE
+
+    grid_prompt . rebuild ()
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE save_basetimes ( self )
+{
+* 
+*
+* Parameters : 
+*
+******************************************************************************}
+
+    DECLARE count, pull_count, tab_prompt, pull_db, matrix_object
+
+    matrix_object = self . userinfo
+
+    tab_prompt = self . prompt_objects [ 1 ]
+    pull_db    = matrix_object . pulls
+
+    count = 0
+    WHILE ( count < size_of_array ( tab_prompt . forms ) ) DO
+
+        count = count + 1
+        IF NOT ( tab_prompt . forms [ count ] . display_only ) THEN
+
+            window_set_status ( "Save Basetimes for Layer : " : STRIP ( tab_prompt . forms [ count ] . header ) : "..." )
+
+            save_basetime ( matrix_object                                     ,
+                            tab_prompt . forms [ count ] . value                ,
+                            tab_prompt . forms [ count ] . prompt_objects [ 1 ] )
+
+            IF matrix_object . is_active_study( ) THEN
+
+                window_set_status ( "Update Login Due Date for pulls in Layer : " : STRIP ( tab_prompt . forms [ count ] . header ) : "..." )
+
+                pull_count = 0
+                WHILE ( pull_count < pull_db . size () ) DO
+
+                    pull_count = pull_count + 1
+                    pull_db . set_by_number ( pull_count )
+
+                    IF ( object_select_field ( pull_db . current,
+                                               pull_db . table  ,
+                                               "LAYER_FACTOR"   ) = tab_prompt . forms [ count ] . header ) THEN
+
+                        activate_pull ( pull_db . current )
+
+                    ENDIF
+
+                ENDWHILE
+
+            ENDIF
+
+        ENDIF
+
+    ENDWHILE
+
+    RETURN ( TRUE )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE save_basetime ( matrix_object, layer_id, grid_prompt )
+{
+* 
+*
+* Parameters : 
+*
+******************************************************************************}
+
+    DECLARE basetime_db, header_ndx, base_ndx, count, status, new_record, header_ver_no
+
+    basetime_db = matrix_object . basetimes . basetime_db
+
+    IF matrix_object . is_protocol( ) THEN
+        header_ver_no = matrix_object . header_ver
+    ELSE
+        header_ver_no = "         1"
+    ENDIF
+
+    header_ndx = matrix_object . matrix_type :
+                 matrix_object . header_id :
+                 header_ver_no :
+                 layer_id
+
+    count = 0
+    WHILE ( count < grid_prompt . cell_rows ) DO
+
+        count = count + 1
+        base_ndx = header_ndx : grid_prompt . userinfo [ count, COL_C_ID ]
+
+        basetime_db . set_by_index ( "KEY0", base_ndx )
+
+        IF ( basetime_db . current = EMPTY ) THEN
+
+            new_record = EMPTY
+
+            CREATE OBJECT "STD_OBJECT_RECORD", new_record
+            new_record . new = TRUE
+            new_record . table = basetime_db . table
+            object_add_table ( new_record, new_record . table )
+
+            RESERVE ENTRY 'basetime_db . table' IN OBJECT new_record, base_ndx, status
+
+            IF status = EMPTY THEN
+
+                basetime_db . add ( new_record )
+                basetime_db . set_by_index ( "KEY0", base_ndx )
+
+             ELSE
+
+                 flash_message ( GET_USER_MESSAGE ( "STB_BASETIME_BASE_FAIL", 1 )  : base_ndx, TRUE )
+
+             ENDIF
+
+        ENDIF
+
+        ASSIGN 'basetime_db . table' . start_date
+            IN OBJECT basetime_db . current = grid_prompt . userinfo [ count, 3 ]
+
+    ENDWHILE
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE change_tabs ( self, VALUE selected_tab )
+{
+* 
+*
+* Parameters : 
+*
+******************************************************************************}
+
+    self . parent_prompt . prompt_objects [ 3 ] . set_enabled ( NOT ( self . forms [ selected_tab ] . display_only ) )
+
+ENDROUTINE
+

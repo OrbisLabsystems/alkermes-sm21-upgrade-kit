@@ -1,0 +1,78 @@
+{******************************************************************************
+*
+* Module Name	: RETAIN_LIB_BALANCE
+*
+* Purpose	: Retain routines that use instrument integration
+*
+* Version	: 1.0
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By             Description
+* -------   -----------  ----------     ---------------------------------------
+* 1.0       11-Jul-2013  Orbis          Release Version 
+* 1.1       21-Jan-2014  Orbis          Enhancements
+*
+*******************************************************************************}
+
+SET NAME "DEFER/"
+ENABLE WINDOWS
+SET NOTPROTECTED
+SET COMPILE_OPTION DECLARE
+
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_WINDOW
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_CLIENT
+JOIN LIBRARY $LIB_STAN
+JOIN LIBRARY $lib_utils
+
+JOIN LIBRARY BALANCE_LIB
+
+
+
+{**********************************************************************************************************}
+ROUTINE read_quantity_retained ( VALUE column ,  
+                                 VALUE row,       
+                                 VALUE cell_width,    
+                                 window, 
+                                 VALUE is_display )
+
+{
+*  Routine for reading weight into quantity_retained field
+***********************************************************************************************************}
+
+	or_read_inst_from_retain ( column ,  row, cell_width,           
+                                 window, is_display ,
+                                 "RETAINS", "QUANTITY_RETAINED", "qty_ret_instrument",
+						"999.99999", GLOBAL("ORBIS_BALANCE_CRITERIA"))
+
+
+ENDROUTINE
+
+{**********************************************************************************************************}
+ROUTINE read_quantity         ( VALUE column ,  
+                                VALUE row,       
+                                VALUE cell_width,    
+                                window, 
+                                VALUE is_display )
+
+{
+*  Routine for reading weight into quantity field
+***********************************************************************************************************}
+
+	or_read_inst_from_retain ( column ,  row, cell_width,           
+                                 window, is_display ,
+                                 "RETAINS", "QUANTITY", "qty_instrument",
+						"999.99999", GLOBAL("ORBIS_BALANCE_CRITERIA"))
+
+
+ENDROUTINE
+
+
+

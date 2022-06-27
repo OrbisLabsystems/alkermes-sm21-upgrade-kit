@@ -1,0 +1,118 @@
+{******************************************************************************
+*
+* Module Name   : $JOBSTAT
+*
+* Purpose       : SMP report containing routines (to be user-defined) which
+*                 are called when a job changes status
+*
+* Document Ref. : SE/T/TVGL-WORK-REPORTS/1/3
+*
+* Specification : 
+*
+* Portability   : NT4sp6, Windows2000, Unix, VMS using SMP4.1, 4.2, 2000, 2001, 2002
+*
+* Re-entrant    : No
+*
+* Modification History
+* By           Date         Reason ___________________________________________
+* 
+*******************************************************************************}
+
+
+ENABLE WINDOWS
+SET NAME "/DEFER"
+SET NOTPROTECTED
+
+SET COMPILE_OPTION DECLARE
+
+JOIN LIBRARY $LIB_UTILS
+
+CONSTANT UPLOAD_LIB     = "$SMIDI_LIB_UPLOAD"
+CONSTANT UPLOAD_ROUTINE = "smidi_queue_ud"
+CONSTANT STATUS_LIB     = "$SMIDI_USER"
+CONSTANT STATUS_ROUTINE = "update_status_table"
+
+{ ============================================================================== }
+ROUTINE set_status_a
+
+	{ --------------------------------------------------------------------------- }
+	{ EXAMPLE 1-> note the job is not really A yet    send_to_SAP()               }
+	{ EXAMPLE 2-> code starts when job is really A    status_queue_trigger ("A" ) }
+	{ --------------------------------------------------------------------------- }
+
+ENDROUTINE
+
+{ ============================================================================== }
+ROUTINE set_status_c
+ENDROUTINE
+
+
+{ ============================================================================== }
+ROUTINE set_status_v
+ENDROUTINE
+
+
+{ ============================================================================== }
+ROUTINE set_status_x
+
+	{ ---------------------------------------------------------------------- }
+	{ if want UD sent to SAP for cancel use ->  status_queue_trigger ( "X" ) }
+	{ ---------------------------------------------------------------------- }
+
+ENDROUTINE
+
+
+{ ============================================================================== }
+ROUTINE set_status_r
+ENDROUTINE
+
+{ ============================================================================== }
+ROUTINE set_status_s
+ENDROUTINE
+
+{ ============================================================================== }
+{                                                                                }
+{ OPTION ONE -> SENDS DATA TO SAP IMMEDIATE AND REQUIRES FULL RECORD ACCESS      }
+{                                                                                }
+{ ============================================================================== }
+
+ROUTINE send_to_SAP
+
+	DECLARE job, ud_enabled, ud, ud_plant, smidi_system
+
+	job          = SELECT JOB_HEADER.JOB_NAME
+	ud           = SELECT JOB_HEADER.SAP_UD_CODE
+	ud_plant     = SELECT JOB_HEADER.SAP_UD_PLANT
+	smidi_system = SELECT JOB_HEADER.SMIDI_REQUESTER
+	ud_enabled   = NOT BLANK ( SELECT JOB_HEADER.SAP_UD_ENABLED )
+
+	IF ( ud_enabled ) AND ( NOT BLANK ( ud_plant ) ) AND ( NOT BLANK ( ud ) ) THEN
+		CALL_ROUTINE UPLOAD_ROUTINE IN LIBRARY UPLOAD_LIB USING job, smidi_system
+	ENDIF
+
+ENDROUTINE   { send_to_SAP }
+
+{ ============================================================================== }
+{                                                                                }
+{ OPTION TWO -> SENDS DATA TO STATUS_QUEUE TABLE AND RECORD ACCESSED LATER       }
+{                                                                                }
+{ ============================================================================== }
+
+ROUTINE status_queue_trigger ( VALUE stat_letter )
+
+	DECLARE job, retval, table_type
+
+      table_type = "J"
+	job        = SELECT JOB_HEADER.JOB_NAME
+
+	CALL_ROUTINE STATUS_ROUTINE IN LIBRARY STATUS_LIB 
+		USING job, table_type, stat_letter 
+		RETURNING retval
+
+	IF NOT retval THEN
+		FLASH_MESSAGE ( "Error trying to save the status queue ":job, FALSE )
+	ENDIF
+
+ENDROUTINE  { status_queue_trigger }
+
+{ end $jobstat }

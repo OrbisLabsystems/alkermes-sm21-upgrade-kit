@@ -1,0 +1,1342 @@
+{==============================================================================}
+{                                                                              }
+{  TENSOR TECHNOLOGIES                                                         }
+{                                                                              }
+{  Filename         : EL_SPEC.RPF                                              }
+{  Version          : 1.05                                                     }
+{  Document Ref.    : P96378-05.DOC ( issue 1.05 )                             }
+{  Author           : Joseph Whyte                                             }
+{  Date Created     : 3/4/96                                                   }
+{  Responsible      :                                                          }
+{  Description      : This program checks the results of a given sample against}
+{                     specification . The reults are then ouptued to the screen}
+{                     for the user to see .                                    }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Passed Parameters            Value           Description                    }
+{  -----------------            -----           -----------                    }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Libraries Used           Routine             Description                    }
+{  --------------           -------             -----------                    }
+{                                                                              }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{                                                                              }
+{  Ver.     Date        By          Description                                }
+{  ----     ----        --          -----------                                }
+{  1.0      3/4/96      JMW         Release Version                            }
+{  1.01     29/04/96    JMW         Design Change from Works Test              }
+{                                   Include Header in Report                   }
+{  v1.02    23/05/96    JMW         Modified to use new Prov_release Field     }
+{                                   in Test Sched Entry Table which is used    }
+{                                   to store whether the Test is Required for  }
+{                                   Provisional Release or Not                 }
+{                                   This is a change from the Earlier Require- }
+{                                   ment which used the test prioriry field.   }
+{                                   The Provisional Release field can be       }
+{                                   modified from within the Test Schedule     }
+{                                   Editor.                                    }
+{                                                                              }
+{  v1.03    08/10/96    MR          Modified to allow textual specifications   }
+{                                   to wrap.                                   }
+{                                   Modified page length                       }
+{                                   Modified header to include sample id       }
+{  v1.04    30/10/96    MR          Modified to allow component to wrap.       }
+{                                                                              }
+{  v1.05    18/11/97    JMW         Modified to Select MLP Version from        }
+{                                   Sample not MLP Table                       }
+{                                   Analyses ordered on test_number.           }
+{                                                                              }
+{  v1.06    24/08/01    KWJ         Upgrade 3.2 to 2000R1                      }
+{                                   Remove SPAWN to purge output file as not   }
+{                                   required on NT - no file versions          }
+{                                                                              }
+{==============================================================================}
+
+ENABLE WINDOWS
+
+JOIN LIBRARY $LIB_CSMLP
+JOIN LIBRARY $LIB_MLPS
+
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN LIBRARY $LIB_UTILS
+
+{CONSTANT PRINT_LENGTH = 60}
+                                        { =================================== }
+                                        { MR  8/10/96                         }
+                                        { Page length to accomadate the ELAN  }
+                                        { printers                            }
+                                        { =================================== }
+CONSTANT PRINT_LENGTH = 62
+
+CONSTANT PRINT_WIDTH  = 80
+
+CONSTANT OUTCOME_NONE         = "          "
+CONSTANT OUTCOME_INCOMPLETE   = "INCOMPLETE"
+CONSTANT OUTCOME_MISSING      = "MISSING   "
+CONSTANT OUTCOME_LIMIT_FAIL   = "LIMIT_FAIL"
+CONSTANT OUTCOME_PASS         = "PASS      "
+
+CONSTANT TEST_NUMBER_INDEX = 1
+CONSTANT ANAL_INDEX        = 2
+CONSTANT PRODUCT_INDEX     = 3
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE result_report      Control program flow control                     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  3/4/96       JOG             Creation                                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  samp_or_jb                 VALUE            sample_id                       }
+{  priority_test              VALUE            specifies to carry out          }
+{                                               priority tests                 }
+{                                                                              }
+{==============================================================================}
+GLOBAL ROUTINE result_report ( VALUE samp_or_jb,
+                               VALUE priority_test )
+
+ARRAY output_array
+
+lib_mlps_initialise ()
+
+found_unapproved = FALSE
+
+jb_name = samp_or_jb
+
+overall_outcome = get_samples_and_results ( samp_or_jb,
+                                            output_array,
+                                            num_output,
+                                            priority_test )
+
+job_output_report ( GLOBAL("OPERATOR"),
+                    " ",
+                    output_array,
+                    num_output)
+
+
+RETURN ( overall_outcome )
+
+ENDROUTINE { end of result_report }
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE get_samples_and_results       Output the outcome for the lot/market }
+{                                        into the output_array.                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  3/4/96       JOG             Created                                        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  the_job                REFERENCE            job name to process             }
+{  output_array           REFERENCE            output of the outcome calcs.    }
+{  num_output             REFERENCE            number of elements in           }
+{                                              output_array                    }
+{  priority_test          REFERENCE            decesion on doing priority 1    }
+{                                              tests                           }
+{                                                                              }
+{==============================================================================}
+ROUTINE get_samples_and_results  ( name,
+                                   output_array,
+                                   num_output,
+                                   priority_test )
+
+    DECLARE the_units, the_places, auth_note
+    DECLARE test, num_tests, i, outcome, overall_outcome, its_a_job
+
+    its_a_job = FALSE
+
+    ARRAY tests ARRAY_SIZE (0,4)
+
+    overall_outcome = OUTCOME_NONE
+
+    num_output = 0
+
+
+    IF NUMTEXT ( name ) THEN
+
+        samp_id = SELECT SAMPLE . id_numeric
+                  WHERE id_numeric = name
+
+    ELSE                                      { =========================== }
+        samp_id = SELECT SAMPLE . id_numeric  { Maybe the passed param is a }
+                  WHERE ( job_name = name )   { job.                        }
+        its_a_job = TRUE                      { ============================}
+    ENDIF
+
+    IF its_a_job THEN
+        output_array[num_output+1] = PAD(" ", " ", 80)
+        output_array[num_output+2] = centre_text("Job Report for " : jb_name, 80)
+        output_array[num_output+3] = PAD(" ", " ", 80)
+        output_array[num_output+4] = "Output Date : " : NOW
+        output_array[num_output+5] = PAD(" ", " ", 80)
+        output_array[num_output+6] = "Description : " : STRIP ( SELECT JOB_HEADER . browse_description)
+        num_output = 6
+    ENDIF
+
+
+    i = 0
+
+    WHILE ( samp_id <> EMPTY ) DO
+
+        samp_txt = SELECT SAMPLE . id_text
+        auth_note= SELECT SAMPLE . authorisation_notes
+
+        IF ( auth_note = EMPTY ) OR ( STRIP (auth_note) = "" ) THEN
+             auth_note = "Authorisation Notes not yet assigned"
+        ENDIF
+
+        output_array[num_output + 1 ] = PAD(" ", " ", 80)
+        output_array[num_output + 2 ] = PAD("-", "-", 80)
+
+        output_array[num_output + 3 ] = centre_text("Sample ID " : samp_txt, 80)
+
+                                        { =================================== }
+                                        { Authorisation notes dropped for     }
+                                        { customer ref P96378-05 release 1.04 }
+                                        { =================================== }
+
+        output_array[num_output + 4 ] = PAD("-", "-", 80)
+        output_array[num_output + 5 ] = PAD(" ", " ", 80)
+
+        output_array[num_output + 6 ] = PAD("Analysis"," ",11)       :
+                                        PAD("Component Name"," ",31) :
+                                        PAD("Type"," ",11)           :
+                                        PAD("Information"," ",27)
+
+        output_array[num_output + 7 ] = PAD(" ", " ", 80)
+        num_output = num_output + 7
+
+
+                                        { ============================== }
+                                        { Decision to test all or only   }
+                                        { priority 1 tests               }
+                                        { ============================== }
+
+        test_id = SELECT TEST . test_number
+                  WHERE ( sample = samp_id )
+                  ORDER ON test_number    { JMW, v1.05                    }
+
+        WHILE ( test_id <> EMPTY ) DO
+
+                                          { New Clause added for Priority }
+                                          { Testing, JMW, 25/05/96        }
+
+            IF valid_test () THEN
+
+                i = i + 1
+
+                tests [ i , TEST_NUMBER_INDEX ] =  test_id
+                tests [ i , ANAL_INDEX ]        = SELECT TEST . analysis
+                tests [ i , PRODUCT_INDEX ]     = SELECT SAMPLE . product
+
+                the_component = SELECT mlp_components.component_name
+                                WHERE ( product_id
+                                            = SELECT SAMPLE . product_name)
+                                AND   ( product_version
+                                            = SELECT SAMPLE . product_version)
+                                AND   ( analysis_id
+                                            = SELECT TEST . analysis  )
+                                ORDER ON order_num
+
+
+                WHILE (the_component <> EMPTY) AND (the_component <> LOCKED)
+
+                    the_last_order_num = SELECT mlp_components . order_num
+
+                    the_units  = SELECT component.units
+                                 WHERE (analysis = SELECT TEST . analysis )
+                                 AND (name     = the_component)
+
+                    the_places = SELECT component.places
+
+                    outcome = outcome_output_line(tests,
+                                                  i,
+                                                  the_component,
+                                                  the_units,
+                                                  the_places,
+                                                  output_array,
+                                                  num_output)
+
+                    outcome_check(outcome,overall_outcome)
+
+                    num_output = num_output + 1
+
+                    output_array[num_output] = PAD(" ", " ", 80)
+
+                                     { ==================================== }
+                                     { JMW, The mlp_components table is     }
+                                     { manipulated within outcome_output_   }
+                                     { line and Select criteria are lost    }
+                                     { NEXT not appropriate, use the_last_  }
+                                     { order_num or only the first analysis }
+                                     { component is found                   }
+                                     { ==================================== }
+
+
+                    the_component = SELECT mlp_components.component_name
+                                    WHERE (product_id
+                                            = SELECT SAMPLE . product_name)
+                                    AND (product_version
+                                            = SELECT SAMPLE . product_version)
+                                    AND (analysis_id
+                                            = SELECT TEST . analysis  )
+                                    AND (order_num > the_last_order_num )
+                                  ORDER ON order_num
+
+                ENDWHILE
+             ENDIF                 { End of Clause for Priority Test      }
+
+             NEXT TEST
+             test_id = SELECT TEST . test_number
+
+         ENDWHILE
+
+    NEXT SAMPLE
+    samp_id = SELECT SAMPLE . id_numeric
+
+ENDWHILE
+
+IF ( i = 0 ) THEN    { No Tests Found }
+
+   output_array[num_output+1] = PAD(" ", " ", 80)
+   output_array[num_output+2] = "No Tests Found ..........."
+   num_output = num_output + 2
+
+ENDIF
+
+RETURN ( overall_outcome )
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE outcome_build_info_text                                             }
+{                    This builds a text with the MLP limit information in it.  }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  3/4/96       JOG             CREATE                                         }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  min_lim                VALUE                Minimum limit                   }
+{  min_lim                VALUE                Maximum limit                   }
+{  text_lim               VALUE                Text specification              }
+{  the_units              VALUE                The units                       }
+{  places                 VALUE                Decimal places                  }
+{                                                                              }
+{==============================================================================}
+ROUTINE outcome_build_info_text ( VALUE min_lim   ,
+                                  VALUE max_lim   ,
+                                  VALUE text_lim  ,
+                                  VALUE the_units ,
+                                  VALUE places    )
+
+   DECLARE info_text , unit_string , got_gt , got_lt, got_eq
+   DECLARE text_limit, max_limit , min_limit
+
+   min_limit  = outcome_check_blank ( min_lim  )
+   max_limit  = outcome_check_blank ( max_lim  )
+   text_limit = outcome_check_blank ( text_lim )
+
+   IF (( max_limit <> "" ) OR ( INDEX ( min_limit , ">") <> 0 )
+                           OR ( INDEX ( min_limit , "<") <> 0 ))
+      THEN   { Numeric values present so show units }
+
+      unit_string = outcome_check_blank ( the_units )
+
+      got_lt = INDEX ( min_limit , "<" ) > 0
+      got_gt = INDEX ( min_limit , ">" ) > 0
+
+                                      { ===================================== }
+                                      { JOD, 10-OCT-1997                      }
+                                      { Check for "=" in the spec             }
+                                      { ===================================== }
+      got_eq = INDEX ( min_limit, "=" ) > 0
+
+      outcome_set_comp_format ( places )
+
+      IF got_lt AND NOT ( got_eq ) THEN
+
+         info_text = "<" : STRIP ( NUMERIC ( min_limit # "<" # ">")) : " " :
+                           STRIP ( unit_string )
+
+      ELSEIF got_gt AND NOT ( got_eq ) THEN
+
+         info_text = ">" : STRIP ( NUMERIC ( min_limit # "<" # ">")) : " " :
+                           STRIP ( unit_string )
+
+      ELSEIF got_lt AND got_eq THEN
+
+         info_text = "<=" : STRIP ( NUMERIC ( min_limit # "<" # ">" # "=" )) :
+                     " " : STRIP ( unit_string )
+
+      ELSEIF got_gt AND got_eq THEN
+
+         info_text = ">=" : STRIP ( NUMERIC ( min_limit # "<" # ">" # "=" )) :
+                     " " : STRIP ( unit_string )
+
+      ELSE
+
+         IF ( STRIP ( min_limit ) = "" ) THEN
+
+            min_limit = "0"
+
+         ENDIF
+
+         info_text = STRIP ( min_limit ) : "-" : STRIP ( max_limit ) : " " :
+                     STRIP ( unit_string )
+
+      ENDIF
+
+   ELSE { Text value has no units }
+
+      unit_string = ""
+      info_text = text_limit
+
+   ENDIF
+
+{   info_text = PAD ( SUBSTRING ( info_text , 1 , 17 ) , " " , 18 )
+MR, 8/10/96}
+   RETURN ( info_text )
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE  outcome_check_blank           Checks whether the parameter passed  }
+{                                         in is blank or EMPTY                 }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{                                                                              }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  input                  REFERENCE            variable to check item in       }
+{                                                                              }
+{==============================================================================}
+ROUTINE outcome_check_blank( item_in )
+
+   IF BLANK(item_in) THEN
+      return ( "" )
+
+   ELSEIF ( item_in = EMPTY ) THEN
+      return ( "" )
+   ELSE
+      return ( item_in )
+   ENDIF
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE  outcome_set_comp_format           Sets the format to one suitable  }
+{                                             for a component with a given     }
+{                                             number of decimal places.        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  dp                     VALUE                number of decimal places        }
+{                                                                              }
+{==============================================================================}
+ROUTINE outcome_set_comp_format (VALUE dp)
+
+   DECLARE temp_str
+
+   IF NUMTEXT( dp ) THEN
+
+      IF dp = 0 THEN
+
+         SET FORMAT "9999999999"
+
+      ELSEIF dp > 0 THEN
+
+         temp_str = PAD ("9", "9", 10) : "." :
+         PAD ("9", "9", dp)
+
+         SET FORMAT RIGHTSTRING (temp_str, 10)
+
+      ENDIF
+
+   ENDIF
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE outcome_output_line          Output the outcome lines per Analysis  }
+{                                       /Component. Return the outcome for the }
+{                                       component.                             }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  tests                  REFERENCE            contains test information       }
+{  test_num               VALUE                number of the test in tests[]   }
+{  the_component          VALUE                the component to process        }
+{  the_units              VALUE                the units of the component      }
+{  the_places             VALUE                the decimal places of the       }
+{                                              component                       }
+{  output_array           REFERENCE            output information              }
+{  num_output             REFERENCE            number of lines in output_array }
+{                                                                              }
+{==============================================================================}
+ROUTINE outcome_output_line(tests,
+                            VALUE test_num,
+                            VALUE the_component,
+                            VALUE the_units,
+                            VALUE the_places,
+                            output_array,
+                            num_output)
+
+   DECLARE the_mlp_level, i, info, outcome
+   DECLARE line, line_indent, result, in_spec, pass_level, last_level_id
+
+   last_level_id = " "
+
+   IF (the_units = EMPTY) THEN
+      the_units = ""
+   ENDIF
+
+   IF (the_places = EMPTY) THEN
+      the_places = ""
+   ENDIF
+
+                                       { =================================== }
+                                       { MR , 30/10/96, Wrap component       }
+                                       { =================================== }
+
+
+   comp_length = LENGTH(the_component)
+
+   IF comp_length > 30
+
+       first_line_comp = LEFTSTRING(the_component,30)
+       next_line_comp  = RIGHTSTRING(the_component,comp_length-30)
+
+
+
+       line = tests[test_num,ANAL_INDEX]  :
+              " " :
+              PAD(first_line_comp, " ", 30) :
+              " "
+
+       full_size = LENGTH(tests[test_num,ANAL_INDEX])
+
+       output_array[num_output +2] = PAD("","",full_size) :
+              " " :
+              PAD(next_line_comp, " ", 30) :
+              " "
+   ELSE
+
+
+       line = tests[test_num,ANAL_INDEX]  :
+              " " :
+              PAD(the_component, " ", 30) :
+              " "
+
+   ENDIF
+
+   line_indent = PAD(" ", " ", STRINGLENGTH(line))
+
+   result = outcome_get_result( tests[ test_num , TEST_NUMBER_INDEX ] ,
+                               tests[test_num,ANAL_INDEX],
+                               the_component,
+                               outcome)
+
+   num_output = num_output + 1
+
+   IF (result = EMPTY)
+
+      IF output_array[num_output] = EMPTY
+
+          output_array[num_output] = line : ("RESULT     "):("NO RESULT")
+
+      ELSE
+
+                                       { =================================== }
+                                       { MR , 30/10/96, Wrap component       }
+                                       { =================================== }
+
+
+           full_length = line:"."
+           full_length = LENGTH  (line) - 2
+           anal_space = "           "
+           output_array[num_output] = anal_space:STRIP(output_array[num_output])
+           output_array[num_output] = PAD(output_array[num_output],"", full_length)
+                                      :" ":("RESULT    "):("NO RESULT")
+
+       ENDIF
+
+
+
+
+
+
+   ELSE
+
+
+                                       { =================================== }
+                                       { JMW , 29/04/96, Wrap Line           }
+                                       { =================================== }
+
+      line_out1 = STRIP ( result ) : " " : STRIP ( the_units )
+      the_wid   = PRINT_WIDTH - LENGTH ( line : "RESULT     ":"." )
+      this_line = STRIP ( SPLITWORDS ( line_out1, the_wid  ) )
+
+      IF line_out1 <> this_line THEN
+          first_time = TRUE
+          WHILE ( this_line <> " " ) DO
+              line_out1 = line_out1 # this_line
+              IF first_time THEN
+                  first_time = FALSE
+                  output_array [ num_output ] =
+                           line : "RESULT     " : this_line
+              ELSE
+
+                                       { =================================== }
+                                       { MR , 30/10/96, Wrap component       }
+                                       { =================================== }
+
+
+
+              IF output_array[num_output] = EMPTY
+
+                output_array [ num_output ] = PAD ( " ", " ",
+                                            LENGTH ( line : "RESULT    ." )):
+                                            this_line
+                ELSE
+
+                   full_length = line:"RESULT    ."
+                   full_length = LENGTH  (full_length) - 1
+                   anal_space = "           "
+
+                   output_array[num_output] = anal_space:
+                                              STRIP(output_array[num_output])
+
+                   output_array[num_output] = PAD(output_array[num_output],"",
+                                                   full_length):" "
+                                                   :this_line
+
+                ENDIF
+
+              ENDIF
+              num_output = num_output + 1
+              this_line = STRIP ( SPLITWORDS ( line_out1, the_wid ))
+          ENDWHILE
+          num_output = num_output - 1
+
+      ELSE
+
+
+          output_array [ num_output ] =
+               STRIP ( line :
+                       "RESULT     " : STRIP ( result ) :
+                       STRIP ( the_units )
+                     )
+      ENDIF
+   ENDIF
+
+   { --- get Level limits --- }
+
+                                          { ============================= }
+                                          { JMW, 18/11/97                 }
+                                          { select ver from sample.       }
+                                          { ============================= }
+    the_entry_code= SELECT mlp_components.entry_code
+               WHERE (product_id      = tests[test_num,PRODUCT_INDEX])
+               {  AND (product_version = SELECT MLP_versions.PRODUCT_VERSION
+                                        WHERE IDENTITY=tests[test_num,PRODUCT_INDEX])
+               }
+                 AND ( product_version = SELECT SAMPLE . product_version )
+                 AND (analysis_id     = tests[test_num,ANAL_INDEX])
+                 AND (component_name  = the_component)
+
+
+   WHILE (the_entry_code <> EMPTY) DO
+
+                                          { ============================= }
+                                          { JMW, 16/04/96                 }
+                                          { Boolean specification         }
+                                          { ============================= }
+
+      result_type = SELECT mlp_components . component_type
+
+      the_mlp_level = SELECT mlp_values . level_id
+                      WHERE entry_code = the_entry_code
+                      ORDER ON level_id
+
+      WHILE (the_mlp_level <> EMPTY) DO
+
+          last_level_id = the_mlp_level
+
+          in_spec = FALSE
+
+          spec_ver = SELECT SAMPLE . product_version
+
+                                          { ============================= }
+                                          { JMW, 16/04/96                 }
+                                          { Select Boolean Value for      }
+                                          { Text Spec                     }
+                                          { ============================= }
+
+          IF result_type = "B" THEN
+              text_spec = SELECT mlp_values . boolean_pass
+              IF ( text_spec = TRUE ) THEN
+                   text_spec = SELECT component . true_word
+              ELSEIF ( text_spec = FALSE ) THEN
+                   text_spec = SELECT component . false_word
+              ENDIF
+
+
+                                          { ============================= }
+                                          { JMW, 16/04/96                 }
+                                          { Boolean specification Check   }
+                                          { CSMLP Result does not work    }
+                                          { with Boolean Results.         }
+                                          { ============================= }
+
+              IF ( result <> EMPTY ) and ( text_spec <> EMPTY ) THEN
+                  IF STRIP ( text_spec ) = STRIP ( result ) THEN
+                      in_spec = TRUE
+                  ELSE
+                      in_spec = FALSE
+                  ENDIF
+              ENDIF
+                                          { ============================= }
+                                          { JMW, 16/04/96                 }
+                                          { If Result not boolean         }
+                                          { ============================= }
+          ELSE
+              text_spec = SELECT mlp_values . text_spec
+
+              csmlp_result(tests[test_num,PRODUCT_INDEX],
+                       spec_ver,
+                       tests[test_num,ANAL_INDEX],
+                       the_component,
+                       the_mlp_level,
+                       result,
+                       in_spec )
+          ENDIF
+
+          IF (in_spec = TRUE) THEN
+             pass_level = TRUE
+          ELSE
+             pass_level = FALSE
+          ENDIF
+
+          IF (pass_level = FALSE) THEN
+
+             outcome = OUTCOME_LIMIT_FAIL
+
+          ENDIF
+
+          info = outcome_build_info_text ( SELECT mlp_values.min_limit,
+                                           SELECT mlp_values.max_limit,
+                                           text_spec,
+                                           the_units,
+                                           the_places)
+
+          num_output = num_output + 1
+
+                                       { =================================== }
+                                       { MR , 08/10/96, Wrap Line            }
+                                       { =================================== }
+
+          line_out1 = STRIP ( info )
+          the_wid   = PRINT_WIDTH - LENGTH ( line_indent: the_mlp_level:" " )
+          this_line = STRIP ( SPLITWORDS ( line_out1, the_wid  ) )
+
+          IF line_out1 <> this_line THEN
+              first_time = TRUE
+              WHILE ( this_line <> " " ) DO
+
+                  line_out1 = line_out1 # this_line
+                  IF first_time THEN
+                      first_time = FALSE
+
+                      IF output_array[num_output] = EMPTY
+
+                          output_array [ num_output ] =
+                               line_indent : the_mlp_level : " ":this_line
+                      ELSE
+
+
+                                       { =================================== }
+                                       { MR , 30/10/96, Wrap component       }
+                                       { =================================== }
+
+                          full_length = line_indent:"."
+                          full_length = LENGTH(full_length) - 2
+                          anal_space = "           "
+
+                          output_array[num_output] = anal_space:
+                                              STRIP(output_array[num_output])
+
+                          output_array[num_output] =PAD(output_array[num_output],"", full_length):" "
+                                                   :the_mlp_level:" ":this_line
+
+                       ENDIF
+
+
+                  ELSE
+
+                      IF output_array[num_output] = EMPTY
+
+
+                          output_array [ num_output ] = PAD ( " ", " ",
+                                      LENGTH (line_indent : the_mlp_level :"." )):this_line
+                      ELSE
+
+
+                                       { =================================== }
+                                       { MR , 30/10/96, Wrap component       }
+                                       { =================================== }
+
+                          full_length = line:the_mlp_level:"."
+                          full_length = LENGTH  (full_length) - 1
+                          anal_space = "           "
+
+                          output_array[num_output] = anal_space:
+                                              STRIP(output_array[num_output])
+
+                          output_array[num_output] = PAD(output_array[num_output],"",
+                                                   full_length):" "
+                                                   :this_line
+
+                      ENDIF
+
+                  ENDIF
+
+                  num_output = num_output + 1
+                  this_line = STRIP ( SPLITWORDS ( line_out1, the_wid ))
+              ENDWHILE
+              num_output = num_output - 1
+
+          ELSE
+
+
+                                       { =================================== }
+                                       { MR , 30/10/96, Wrap component       }
+                                       { =================================== }
+
+
+              IF output_array[num_output]= EMPTY
+
+                  output_array [ num_output ] =
+                       line_indent : the_mlp_level : " " :
+                           STRIP ( info )
+              ELSE
+
+                  full_length = line_indent:"."
+                  full_length = LENGTH  (full_length) - 2
+                  anal_space = "           "
+                  output_array[num_output] = anal_space:STRIP(output_array[num_output])
+                  output_array[num_output] = PAD(output_array[num_output],"", full_length):
+                                  " ":the_mlp_level: " " :
+                                  STRIP(info)
+
+              ENDIF
+
+          ENDIF
+
+{
+          output_array[num_output] = line_indent : the_mlp_level : " " : info
+MR 8/10/96}
+
+          the_mlp_level = SELECT mlp_values . level_id
+                          WHERE ( entry_code = the_entry_code )
+                            AND ( level_id > last_level_id )
+      ENDWHILE
+
+      NEXT mlp_components
+      the_entry_code = SELECT mlp_components . entry_code
+
+   ENDWHILE
+
+   num_output = num_output + 1
+
+                                       { =================================== }
+                                       { MR , 30/10/96, Wrap component       }
+                                       { =================================== }
+
+
+   IF output_array[num_output] = EMPTY
+
+       output_array[num_output] = line_indent : ("OUTCOME    ") : outcome
+   ELSE
+       full_length = line_indent:"."
+       full_length = LENGTH  (full_length) - 2
+       anal_space = "           "
+       output_array[num_output] = anal_space:STRIP(output_array[num_output])
+       output_array[num_output] = PAD(output_array[num_output],"", full_length):" ":("OUTCOME    "):outcome
+
+   ENDIF
+
+
+
+
+   RETURN ( outcome )
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE outcome_get_result           Retrieve the specified result if       }
+{                                       possible and adjust the passed in      }
+{                                       outcome.                               }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{                                                                              }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  this_test              VALUE                the test number                 }
+{  the_analysis           VALUE                the analysis name               }
+{  the_component          VALUE                the component name              }
+{  outcome                REFERENCE            new calculated outcome          }
+{                                                                              }
+{==============================================================================}
+ROUTINE outcome_get_result (      VALUE this_test,
+                                  VALUE the_analysis,
+                                  VALUE the_component,
+                                  outcome )
+
+   DECLARE result_type, result
+   DECLARE sample_status
+
+   outcome = EMPTY
+   result  = EMPTY
+
+   {MR. 8/0ct/96}
+   this_test = STRIP(this_test)
+   the_component = STRIP(the_component)
+
+   IF (this_test <> EMPTY) AND (this_test <> LOCKED) THEN
+
+      the_result = SELECT result.name
+                      WHERE (test_number = this_test)
+                        AND (name        = the_component)
+
+      IF (the_result <> EMPTY) AND (the_result <> LOCKED) THEN
+
+         IF (SELECT result.status = " ") THEN
+            outcome = OUTCOME_INCOMPLETE
+         ELSE
+            outcome = OUTCOME_PASS
+            result  = SELECT result.text
+         ENDIF
+
+      ELSE
+         outcome = OUTCOME_INCOMPLETE
+      ENDIF
+
+   ELSE
+
+      outcome = OUTCOME_MISSING
+
+   ENDIF
+
+   RETURN ( result )
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE job_output_report    This is called to output the passed in lines.  }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{                                                                              }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  the_oper               VALUE                the operator to use for         }
+{                                              file naming                     }
+{  header                 VALUE                header for the report           }
+{  output_lines           REFERENCE            array of lines to output        }
+{  num_lines              VALUE                number of lines in output_lines }
+{                                                                              }
+{==============================================================================}
+ROUTINE job_output_report (          VALUE the_oper,
+                                     VALUE header_line,
+                                     output_lines,
+                                     VALUE num_lines)
+
+   DECLARE file_name, page_no, total_lines, stat
+   DECLARE line_no
+
+   line_no = 0
+
+   file_name = "SMP$USERFILES:" : STRIP ( jb_name ) : "-" : the_oper
+
+   {******************************************************
+   * 1.06 Purge no loger required on NT
+   * SPAWN "PURGE/NOLOG " : STRIP(file_name) QUIETLY
+   *******************************************************}
+
+   FILE CREATE file_name, stat
+
+   total_lines = 2
+   page_no     = 1
+
+   WHILE (line_no < num_lines)
+
+      total_lines = total_lines + 1
+      line_no     = line_no + 1
+
+      IF line_no = 1 THEN
+
+                                   { ===================================== }
+                                   { Modification, JMW, V1.01, 29/04/96    }
+                                   { ===================================== }
+                                   { Include Header on Report.             }
+                                   { ===================================== }
+
+
+         FILE WRITE file_name , centre_text ("Sample Results Report"
+                                             ,PRINT_WIDTH) , stat
+         FILE WRITE file_name , PAD ( " " , " " , PRINT_WIDTH ) , stat
+         FILE WRITE file_name,  PAD ("Generated By : ":OPERATOR ," ", 47)
+                                     : "Date : " : NOW , stat
+         FILE WRITE file_name , PAD ( "-" , "-" , PRINT_WIDTH ) , stat
+
+      ENDIF
+
+      IF total_lines = (PRINT_LENGTH-1) THEN
+
+
+                                   { ===================================== }
+                                   { Modification, JMW, V1.01, 29/04/96    }
+                                   { ===================================== }
+                                   { Include Header on Report.             }
+                                   { ===================================== }
+
+
+         do_page_num(page_no, file_name)
+         page_no = page_no + 1
+         FILE WRITE file_name , centre_text ("Sample Results Report"
+                                             ,PRINT_WIDTH) , stat
+         FILE WRITE file_name , PAD ( " " , " " , PRINT_WIDTH ) , stat
+         FILE WRITE file_name,  PAD ("Generated By : ":OPERATOR ," ", 47)
+                                     : "Date : " : NOW , stat
+         FILE WRITE file_name , PAD ( "-" , "-" , PRINT_WIDTH ) , stat
+
+
+                                   { ===================================== }
+                                   { Modification, MR  08/10/96            }
+                                   { ===================================== }
+                                   { Include  sample id in Header          }
+                                   { ===================================== }
+
+         FILE WRITE file_name,  PAD(" ", " ", 80)
+         FILE WRITE file_name , PAD("-", "-", 80)
+
+         FILE WRITE file_name, centre_text("Sample ID " : samp_txt, 80)
+
+                                        { =================================== }
+                                        { Authorisation notes dropped for     }
+                                        { customer ref P96378-05 release 1.04 }
+                                        { =================================== }
+
+         FILE WRITE file_name, PAD("-", "-", 80)
+         FILE WRITE file_name PAD(" ", " ", 80)
+
+
+         total_lines = 8
+      ENDIF
+
+      FILE WRITE file_name, output_lines[line_no], stat
+
+
+   ENDWHILE
+
+   report_fill_page(total_lines, page_no, file_name)
+
+   FILE CLOSE file_name
+
+   FILE SEND file_name, "DEFER/"
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE  report_fill_page           To fill a page with blank lines so that }
+{                                      the page no can be written on the       }
+{                                      bottom line...........                  }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{                                                                              }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  total_lines            VALUE                Total Number of lines           }
+{  page_no                VALUE                Current Page Number             }
+{  file_name              VALUE                File name of file to pad        }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE report_fill_page  ( VALUE total_lines ,
+                            VALUE page_no ,
+                            VALUE file_name )
+
+DECLARE extra_lines
+
+    IF ( total_lines < (PRINT_LENGTH-1) ) THEN
+
+      extra_lines = ( PRINT_LENGTH - total_lines )
+
+      REPEAT
+
+         FILE WRITE file_name , PAD ( " " , " " , PRINT_WIDTH ) , line_stat
+         extra_lines = extra_lines - 1
+
+      UNTIL ( extra_lines = 0 )
+
+      do_page_num ( page_no , file_name )
+
+   ELSEIF ( total_lines = (PRINT_LENGTH-1) ) THEN
+
+      FILE WRITE file_name , PAD ( " " , " " , PRINT_WIDTH ) , line_stat
+      do_page_num ( page_no , file_name )
+
+   ENDIF
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE do_page_num        To write the page number to the file specified   }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  page_no                VALUE                Page number to write            }
+{  file_name              VALUE                File to write page Number to    }
+{                                                                              }
+{==============================================================================}
+ROUTINE do_page_num ( VALUE page_no , VALUE file_name )
+
+DECLARE line_stat , page_string , form
+
+   form = GLOBAL ( "FORMAT_TEXT" )
+
+   SET FORMAT "999"
+
+   page_string = centre_text ( "Page " :
+                                STRIP ( STRING ( page_no ) ) ,
+                                PRINT_WIDTH )
+
+   SET FORMAT form
+
+   FILE WRITE file_name , page_string , line_stat
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE outcome_check             This takes the outcome and changes the    }
+{                                    overall outcome if necessary.             }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{                                                                              }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  outcome                VALUE                outcome just calculated         }
+{  overall_outcome        REFERENCE            overall outcome                 }
+{==============================================================================}
+
+ROUTINE outcome_check ( VALUE outcome,
+                              overall_outcome )
+
+   IF (outcome = OUTCOME_PASS) THEN
+
+      IF (overall_outcome = OUTCOME_NONE) THEN
+
+         overall_outcome = outcome
+
+      ENDIF
+
+   ELSEIF (outcome = OUTCOME_LIMIT_FAIL) THEN
+
+      IF (overall_outcome = OUTCOME_NONE) OR
+         (overall_outcome = OUTCOME_PASS) THEN
+
+         overall_outcome = outcome
+
+      ENDIF
+
+   ELSEIF (outcome = OUTCOME_INCOMPLETE) THEN
+
+      IF (overall_outcome = OUTCOME_NONE) OR
+         (overall_outcome = OUTCOME_LIMIT_FAIL) OR
+         (overall_outcome = OUTCOME_PASS) THEN
+
+         overall_outcome = outcome
+
+      ENDIF
+
+   ELSEIF (outcome = OUTCOME_MISSING) THEN
+                                        { =============================== }
+                                        { update irrespective of overall_ }
+                                        { outcomes current value          }
+                                        { =============================== }
+      overall_outcome = outcome
+
+   ENDIF
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE valid_test                Checks if test is priority test           }
+{                                    for provisional release.                  }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  23/05/96     JMW             Created                                        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{==============================================================================}
+
+ROUTINE valid_test
+DECLARE this_anal, this_tsched, prio_anal
+
+                                        { ============================== }
+                                        { Priority Testing now by only   }
+                                        { provisional Release field      }
+                                        { ============================== }
+
+  {  IF priority_test THEN
+
+        this_anal = SELECT TEST . analysis
+        this_tsched = SELECT SAMPLE . test_schedule
+
+
+        prio_anal = SELECT TEST_SCHED_ENTRY . prov_release
+                    WHERE ( analysis_id = this_anal )
+                      AND ( identity    = this_tsched )
+
+        IF prio_anal = FALSE THEN
+
+            RETURN ( FALSE )
+
+        ENDIF
+    ENDIF }
+                                        { ============================== }
+                                        { All conditions except for      }
+                                        { Priority Test Return TRUE      }
+                                        { ============================== }
+
+    RETURN ( TRUE )
+ENDROUTINE
+

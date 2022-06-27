@@ -1,0 +1,349 @@
+
+{
+
+    Module Name   : VERIFY_DATA
+
+    Purpose       : Write a subset of data for selected tables to CSV
+                 
+
+    Document Ref. : 
+
+    Specification : 
+
+
+MODIFICATION HISTORY
+====================
+
+SM      Ref.    Change  Date        Name                Description
+------- ------- ------- ----------- ------------------- -------------------------------------------------------
+9       1.0     n/a     26-OCT-2007 Ken Jacobs          Original
+}
+
+{ ----------------------------------------------------------------------------------------------- }
+
+SET COMPILE_OPTION DECLARE
+
+ENABLE WINDOWS
+
+SET NAME "defer/"
+SET NOTPROTECTED
+
+JOIN STANDARD_LIBRARY std_array
+JOIN STANDARD_LIBRARY std_array_select
+JOIN STANDARD_LIBRARY std_structure
+
+JOIN LIBRARY $lib_utils
+JOIN LIBRARY $table_load_save_lib
+
+{ ----------------------------------------------------------------------------------------------- }
+
+DECLARE filename
+DECLARE status
+DECLARE line
+DECLARE l
+DECLARE table
+DECLARE percentage
+DECLARE excluded_fields
+DECLARE directory
+DECLARE exclude
+
+IF ( OPERATOR = "SYSTEM" )
+OR ( OPERATOR = "BATCH" )
+
+    IF ( GLOBAL( "param_active" ) )
+    
+        PROMPT FOR directory
+        
+    ELSE
+    
+        directory = "smp$textreports"
+        
+    ENDIF
+    
+    IF ( GLOBAL( "param_active" ) )
+    
+        exclude = TRUE
+        
+    ELSE
+    
+        exclude = FALSE
+        
+    ENDIF
+    
+    filename = "smp$userfiles:verify_data.txt"
+    FILE OPEN filename, status
+    l = 0
+    
+    IF ( status = EMPTY )
+
+        FILE READ filename, line, status
+        WHILE ( status = EMPTY )
+
+            l = l + 1
+            
+            IF ( NOT blank( line ) )
+            AND ( LEFTSTRING( line, 1 ) <> "!" )
+            
+                table = LEFTSTRING( line, 30 )
+                percentage = MIDSTRING( line, 31, 10 )
+                
+                IF ( exclude )
+                
+                    excluded_fields = line # table # percentage
+                
+                ELSE
+                
+                    excluded_fields = ""
+                
+                ENDIF
+                
+                IF ( valid_table( table ) )
+
+                    table = TOUPPER( table )
+                    
+                    IF ( valid_percentage( percentage ) )                
+                    
+                        write_to_csv( table, percentage, excluded_fields, directory )
+                        
+                    ELSE
+
+                        flash_message( "Line " : STRIP( NUMBER_TO_TEXT( l, "9999999999" ) ) : ", invalid percentage, " : percentage, TRUE )
+                    
+                    ENDIF
+                    
+                ELSE
+                
+                    flash_message( "Line " : STRIP( NUMBER_TO_TEXT( l, "9999999999" ) ) : ", invalid table, " : table, TRUE )
+                    
+                ENDIF
+                
+            ENDIF
+            
+            FILE READ filename, line, status
+        
+        ENDWHILE
+        
+        FILE CLOSE filename, status
+        
+    ELSE
+    
+        flash_message( status, TRUE )
+        
+    ENDIF
+    
+ELSE
+
+    flash_message( "You must be logged in as SYSTEM", TRUE )
+    
+ENDIF
+
+EXIT
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE write_to_csv
+    (
+    VALUE   table,
+    VALUE   percentage,
+    VALUE   excluded_fields,
+    VALUE   directory
+    )
+
+    {
+    Description :
+    }
+    
+    DECLARE fields          ARRAY fields        ARRAY_SIZE(0)
+    DECLARE select_array    ARRAY select_array  ARRAY_SIZE(0,3)
+    DECLARE filename
+    DECLARE message
+        
+    filename = directory : "\verify_data_" : table : ".csv"
+    
+    get_fields( table, fields, excluded_fields )
+    
+    get_data_selection( table, select_array, percentage )
+    
+    IF ( NOT output_csv_file( filename, table, fields, select_array, (GLOBAL("mode") <> "INTERACTIVE"), message ) )
+    
+        flash_message( "Error writing CSV for " : table : ", " : message, TRUE )
+        
+    ENDIF
+    
+    RETURN
+    
+ENDROUTINE
+
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE get_fields
+    (
+    VALUE   table,
+            fields,
+    VALUE   excluded_fields
+    )
+
+    {
+    Description :
+    }
+    
+    DECLARE i
+    
+    get_field_names_without_aliases( table, fields )
+
+    i = 1
+    WHILE ( i <= size_of_array( fields ) )
+
+        IF ( INDEX( excluded_fields, (fields[i] : ",") ) > 0 )
+        
+            array_remove_slice( fields, 1, i )
+            
+        ELSE
+        
+            i = i + 1
+        
+        ENDIF
+        
+    ENDWHILE        
+    
+    RETURN
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE get_data_selection
+    (
+    VALUE   table,
+            select_array,
+    VALUE   percentage            
+    )
+
+    {
+    Description :
+    }
+
+    DECLARE key0_fields    ARRAY   key0_fields    ARRAY_SIZE(0)
+    DECLARE record_index
+    DECLARE total
+    DECLARE i
+    DECLARE count
+    
+    total = SELECT COUNT 'table'
+    IF ( total > 0 )
+    
+        record_index = TRUNC( total / ( ( total * percentage ) / 100 ) )
+    
+    ELSE
+    
+        record_index = 0
+        
+    ENDIF
+    
+    GET_TABLE_DETAILS 'table', "key0_field", key0_fields
+    
+    i = 1
+    WHILE ( i <= size_of_array( key0_fields ) )
+    
+        ARRAY_SELECT_ADD( select_array, ARRAY_SELECT_ORDER, key0_fields[i], ARRAY_SELECT_ASCENDING )
+        
+        i = i + 1
+        
+    ENDWHILE            
+    
+    array_select( table, FALSE, select_array )
+    
+    ARRAY select_array  ARRAY_SIZE(0,3)    
+    count = 0
+    
+    WHILE ( SELECT 'table'.'key0_fields[1]' <> EMPTY )
+    
+        count = count + 1
+        
+        IF ( count = 1 )
+        OR ( count MOD record_index = 0 )
+        OR ( count = total )
+        
+            IF ( count > 1 )
+
+                ARRAY_SELECT_ADD( select_array, ARRAY_SELECT_OR, EMPTY, EMPTY )
+            
+            ENDIF
+
+            ARRAY_SELECT_ADD( select_array, ARRAY_SELECT_PUSH, EMPTY, EMPTY )
+            
+            i = 1
+            WHILE ( i <= size_of_array( key0_fields ) )
+
+                IF ( i > 1 )
+
+                    ARRAY_SELECT_ADD( select_array, ARRAY_SELECT_AND, EMPTY, EMPTY )
+
+                ENDIF
+
+                ARRAY_SELECT_ADD( select_array, ARRAY_SELECT_EQ, key0_fields[i], SELECT 'table'.'key0_fields[i]' )
+
+                i = i + 1
+
+            ENDWHILE            
+
+            ARRAY_SELECT_ADD( select_array, ARRAY_SELECT_POP, EMPTY, EMPTY )
+            
+        ENDIF
+        
+        NEXT 'table'
+        
+    ENDWHILE
+
+    i = 1
+    WHILE ( i <= size_of_array( key0_fields ) )
+    
+        ARRAY_SELECT_ADD( select_array, ARRAY_SELECT_ORDER, key0_fields[i], ARRAY_SELECT_ASCENDING )
+        
+        i = i + 1
+        
+    ENDWHILE            
+
+    RETURN
+    
+ENDROUTINE
+
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE valid_percentage
+    (
+            percentage   
+    )
+
+    {
+    Description :
+    }
+
+    DECLARE valid
+    
+    IF ( NUMTEXT( percentage ) )
+
+        percentage = NUMERIC ( percentage )
+    
+        IF  ( percentage > 0   )
+        AND ( percentage <= 100 )
+        
+            valid = TRUE
+            
+        ELSE
+        
+            valid = FALSE
+            
+        ENDIF
+        
+    ELSE
+    
+        valid = FALSE
+        
+    ENDIF
+    
+    RETURN( valid )
+    
+ENDROUTINE

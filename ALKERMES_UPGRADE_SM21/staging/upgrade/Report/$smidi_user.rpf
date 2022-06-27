@@ -1,0 +1,5327 @@
+{******************************************************************************
+*
+* Module Name   : $SMIDI_USER
+*
+* Purpose       : Core user library routines for SM-IDI
+*
+* Document Ref. :
+*
+* Specification :
+*
+* Portability   : OVMS, Unix, NT 4 and Windows 2000
+*
+* Re-entrant    :
+*
+*
+* Modification History
+* By        Date        Reason _____________________________________________
+*
+*  
+{
+ MODIFICATION HISTORY
+ ====================
+ 
+ SM      Reference   Date        Name        Description
+ ------- ----------- ----------- ----------- ----------------------------------------------------------
+ 2000-R1 1.1         15-JAN-2002 Ken Jacobs  Add mapping routines 
+                                             sample_template_from_material_no
+ 
+ 2000-R1 1.2         18-JAN-2002 Ken Jacobs  In routine product_format_id
+                                             Read product from template
+ 
+ 2000-R1 1.3         19-MAY-2003 M Kavanagh  Added routine process_reduced_lot_testing and
+                                             joined libvrary $SMIDI_LOGIN
+
+ 9.x   1.4         26-MAR-2007 A Finnerty  Modify RLT customisation to handle SMIDI 2004
+ 9.2   1.5         05-MAR-2007 A Finnerty  Adress upload issues
+ 9.2   1.6         05-MAR-2007 A Finnerty  set job name
+ 10.2  1.7		 10-SEP-2014 M. Flattery Change control no. CC-ATH-2014-1762, TS Protocol no. 1600029756
+	                                     Check if already in status queue
+}
+{*******************************************************************************} 
+
+ENABLE WINDOWS
+SET NAME "DISPLAY/"
+SET NOTPROTECTED
+SET COMPILE_OPTION DECLARE
+SET COMPILE_OPTION EXP_MESS
+
+JOIN STANDARD_LIBRARY STD_ARRAY         { size_of_array                        }
+JOIN STANDARD_LIBRARY STD_CLASS         { object create, check_property        }
+JOIN STANDARD_LIBRARY STD_DATABASE      { transaction is write                 }
+JOIN STANDARD_LIBRARY STD_GENERAL       { variable_is_assigned                 }
+JOIN STANDARD_LIBRARY STD_SMIDI         { SMIDI_NORMAL                         }
+JOIN STANDARD_LIBRARY STD_STRUCTURE     { valid field                          }
+JOIN STANDARD_LIBRARY STD_UTILS         { size_of_array                        }
+JOIN STANDARD_LIBRARY STD_VGL           { vgl_validate_routine                 }
+JOIN STANDARD_LIBRARY STD_WINDOW        { window_set_status                    }
+
+JOIN LIBRARY $SMIDI_LIB_SAP             { global constants                     }
+JOIN LIBRARY $SMIDI_BACKGROUND          { logfile/do_message for background    }
+
+JOIN LIBRARY $LIB_UTILS                 { confirm_with_text, when interactive  }
+JOIN LIBRARY $LIB_CSMLP                 { if we must respec check              }
+JOIN LIBRARY $SAMP_JOB                  { SAMP_JOB_SAMPLE_LOGIN_CLASS          }
+
+
+{* GLOBAL CONSTANTS ***********************************************************}
+{* LOCAL CONSTANTS  ***********************************************************}
+
+	CONSTANT SAP_UD_TEXT              = "Usage Decision by SampleManager"
+	CONSTANT SMIDI_BG_USER            = "$smidi_user"
+
+	CONSTANT SMIDI_QUEUE_SAMPLE       = "smidi_queue_sample"
+	CONSTANT SMIDI_QUEUE_POINT_UD     = "smidi_queue_point_ud"
+	CONSTANT SMIDI_QUEUE_LOT_UD       = "smidi_queue_lot_ud"
+	CONSTANT SMIDI_QUEUE_RESULT       = "smidi_queue_result"
+
+	CONSTANT DEFAULT_PASS_UD          = "PASS"
+	CONSTANT DEFAULT_FAIL_UD          = "FAIL"
+	CONSTANT DEFAULT_PASS_CODE_GROUP  = "03"
+	CONSTANT DEFAULT_FAIL_CODE_GROUP  = "03"
+	CONSTANT UD_LONG_PASS             = "UD Passed SampleManager"
+	CONSTANT UD_LONG_FAIL             = "UD Failed SampleManager"
+
+	CONSTANT OP_NO_SAMPLE_NUMBER      = "ONE_SAMPLE" { WORKCENTER,ONE_SAMPLE,OP_NO   }
+	CONSTANT PROCESS_STOP_SUFFIX      = "_END"
+	CONSTANT PROCESS_START_SUFFIX     = "_BEGIN"
+	CONSTANT SAP_MIC_NO               = "SAP_MIC_NO"
+
+	CONSTANT SMIDI_R3_UNITS           = "$smidi_lte_system"
+
+	CONSTANT INCREMENT_INTERVAL       = " 0 00:10:00" { <- when DtMod has not change }
+	CONSTANT CHANGE_REPEAT_BY         = " 0 00:00:10" {    and change by this amount }
+	CONSTANT CHANGE_REPEAT_MAX        = " 9 00:00:00" {    if you goof on adding     }
+	CONSTANT REMOVE_INTERVAL          = "15 00:00:00" { <- remove when NOW - 15 days }
+
+{* VARIABLES        ***********************************************************}
+
+	DECLARE current_lot     ,           { for op_no = sample_no all these variables     }
+			work_count  ,           { counter workcenters by plan                   }
+			lot_count   ,           { counter of # lots in a download               }
+			wc_array    ,           { array workcenters by plan                     }
+			op_count    ,           { counter of # lots in each lot downloaded      }
+			lot_op_array,           { keep the qaivc's to assign to qaimv's         }
+			message     ,           { create_sap_object outputs generic message     }
+			status      ,
+			retval      ,
+			tmpString   ,
+			missing_data,           { flag if missing analysis/component user_table }
+			mlp_anal_array
+
+{********************************************************************* }
+
+GLOBAL ROUTINE smidi_lib_user_start ( base_object, VALUE current_report, VALUE current_query )
+
+	DECLARE process_id, status, len_userpid, u1, u2
+
+	process_id     = GLOBAL ( "PROCESS_ID" )
+	current_query  = TOLOWER ( STRIP ( current_query  ) )
+	current_report = STRIP ( current_report )
+
+	{ ========================================================================== }
+	{  Set the default format for the logfile then change if debug level is high }
+	{ ========================================================================== }
+	
+	IF ( current_report = SMIDI_GET_LOTS ) THEN
+
+		base_object.status_debug_mode  = base_object.get_item ( "FETCH_DEBUG" )
+		base_object.status_filename    = LIB_UTILS_LOGICAL_TO_STRING ( "smp$logfiles" ) :"\smidi_get_lots_":current_query:"_"
+		base_object.work_done          = TRUE
+
+	ELSEIF ( current_report = SMIDI_GET_POINTS ) THEN
+
+		base_object.status_debug_mode  = base_object.get_item ( "POINTS_DEBUG" )
+		base_object.status_filename    = LIB_UTILS_LOGICAL_TO_STRING ( "smp$logfiles" ) : "\smidi_get_points_":current_query:"_"
+		base_object.work_done          = TRUE
+
+	ELSEIF ( current_report = SMIDI_PROCESS_POINT ) THEN
+
+		base_object.status_debug_mode  = base_object.get_item ( "PROCESS_DEBUG" )
+		base_object.status_filename    = LIB_UTILS_LOGICAL_TO_STRING ( "smp$logfiles" ) : "\smidi_process_point_":current_query:"_"
+		base_object.work_done          = FALSE
+
+	ELSEIF ( current_report = SMIDI_PROCESS_LOT ) THEN
+
+		base_object.status_debug_mode  = base_object.get_item ( "PROCESS_DEBUG" )
+		base_object.status_filename    = LIB_UTILS_LOGICAL_TO_STRING ( "smp$logfiles" ) : "\smidi_process_lot_":current_query:"_"
+		base_object.work_done          = FALSE
+
+	ELSE
+
+		base_object.status_debug_mode  = base_object.get_item ( "UPLOAD_DEBUG" )
+		base_object.status_filename    = LIB_UTILS_LOGICAL_TO_STRING ( "smp$logfiles" ) : "\smidi_upload_":current_query:"_"
+		base_object.work_done          = TRUE
+
+	ENDIF
+
+	{ =================================================================== }
+	{ something funky with configuration then log all messages            }
+	{ =================================================================== }
+
+	IF ( NOT NUMTEXT ( base_object.status_debug_mode ) ) THEN
+
+		base_object.status_message ( "Status debug coerce ":MSG_0:" ":current_report:" -> ":base_object.status_debug_mode, MSG_FULL )
+	    	base_object.status_debug_mode = MSG_0
+
+	ENDIF
+
+	{ ------------------------------------------------------------- }
+	{ Any debug levels high, then make logfile name specific        }
+	{ ------------------------------------------------------------- }
+
+	IF ( base_object.status_debug_mode <= 0 ) THEN
+		SET DATE FORMAT "MonDZ'_'H24'_'MI'_'SS"
+	ELSEIF ( base_object.status_debug_mode <= 1 ) THEN
+		SET DATE FORMAT "MonDZ'_'H24'_'MI"
+	ELSEIF ( base_object.status_debug_mode <= 5 ) THEN
+		SET DATE FORMAT "MonDZ'_'H24"
+	ELSE
+		SET DATE FORMAT "MonDZ"
+	ENDIF
+
+	base_object.status_filename = base_object.status_filename : STRIP ( NOW ) : ".log"
+
+	RESTORE DATE FORMAT   { from the MonDZ }
+
+	{ =================================================================== }
+	{ Create the log file                                                 }
+	{ =================================================================== }
+
+	window_set_status ( GLOBAL ( "CURRENT_REPORT") : " " : process_id : " " : base_object.status_filename )
+
+	IF ( base_object.status_filename <> EMPTY ) THEN
+
+		FILE EXTEND base_object.status_filename, status
+		IF status <> EMPTY
+			FILE CREATE base_object.status_filename, status
+		ENDIF
+
+	ELSE
+		status = "no need to do status_logging"
+	ENDIF
+
+	base_object.status_logging = ( status = EMPTY )
+
+	{ =================================================================== }
+	{ Entry into the smidi_process table, tracks start, stop, logfiles    }
+	{ =================================================================== }
+
+	GET_FIELD_DETAILS smidi_logfiles.service, "FIELD_SIZE", len_userpid
+
+	u1 = LEFTSTRING ( base_object.service, len_userpid )
+	u2 = RIGHTSTRING ( base_object.service, 10 )
+
+	IF ( NOT TRANSACTION_IS_WRITE() ) THEN
+
+		START WRITE TRANSACTION current_report:PROCESS_START_SUFFIX
+		window_set_status ( GLOBAL ( "CURRENT_REPORT") : " " : process_id : " " : base_object.status_filename )
+		base_object.status_message ( current_report:" SELECT SMIDI_LOGFILES UPDATE-> ":base_object.service:" <":u1:"> <":u2:">", MSG_FULL )
+
+	ENDIF
+
+	status = SELECT SMIDI_LOGFILES.SERVICE FOR UPDATE 
+			WHERE SERVICE     = u1
+			AND   ORDER_NUMBER = u2
+
+	IF ( status = EMPTY ) THEN
+
+		RESERVE ENTRY SMIDI_LOGFILES, base_object.service, status
+
+		IF status = EMPTY THEN
+
+			ASSIGN SMIDI_LOGFILES.SMIDI_PROCESS_ID = process_id
+			ASSIGN SMIDI_LOGFILES.SMIDI_REPORT     = current_report:"_":current_query
+			ASSIGN SMIDI_LOGFILES.SMIDI_LOGFILE    = base_object.status_filename
+			ASSIGN SMIDI_LOGFILES.A_START_TIME     = NOW
+
+		ELSE
+
+			base_object.status_message ( "SMIDI_PROCESS ":current_report:" ":process_id:" ":status, MSG_FULL )
+
+		ENDIF
+
+	ELSEIF ( status <> LOCKED ) THEN
+
+		ASSIGN SMIDI_LOGFILES.SMIDI_LOGFILE    = base_object.status_filename
+		ASSIGN SMIDI_LOGFILES.SMIDI_PROCESS_ID = process_id
+		ASSIGN SMIDI_LOGFILES.SMIDI_LOT        = ""
+		ASSIGN SMIDI_LOGFILES.SMIDI_REPORT     = current_report:"_":current_query
+		ASSIGN SMIDI_LOGFILES.A_START_TIME     = NOW
+		ASSIGN SMIDI_LOGFILES.A_ERROR_MESSAGE  = ""
+
+	ENDIF  { update entry  }
+
+
+	UPDATE SMIDI_LOGFILES, status
+	COMMIT
+
+	IF status <> EMPTY THEN
+		base_object.status_message ( "SMIDI_PROCESS ":current_report:" ":process_id:" ":status, MSG_FULL )
+	ELSE
+		base_object.status_message ( "SMIDI_PROCESS ":current_report:" ":process_id, MSG_FULL )
+	ENDIF
+
+	base_object.set_inherit_from_start_stop()
+
+ENDROUTINE  { smidi_lib_user_start }
+
+{***************************************************************************** }
+
+GLOBAL ROUTINE smidi_lib_user_stop ( base_object, VALUE calling_report )
+
+	DECLARE process_id, status, len_userpid, u1, u2
+
+	process_id = GLOBAL ( "PROCESS_ID" )
+
+	base_object.status_message ( "** TERMINATING --> ":calling_report:" ":process_id:" ":NOW, MSG_FULL )
+	window_set_status ( "** TERMINATING --> ":calling_report:" ":process_id:" ":NOW )
+
+	{ =================================================================== }
+	{ Entry into the smidi_process table, tracks start, stop, logfiles    }
+	{ =================================================================== }
+
+	IF ( NOT TRANSACTION_IS_WRITE() ) THEN
+		START WRITE TRANSACTION calling_report:PROCESS_STOP_SUFFIX
+	ENDIF
+
+
+	IF NOT base_object.work_done THEN
+
+
+		GET_FIELD_DETAILS smidi_logfiles.service, "FIELD_SIZE", len_userpid
+	
+		u1 = LEFTSTRING  ( base_object.service, len_userpid )
+		u2 = RIGHTSTRING ( base_object.service, 10          )
+
+		base_object.status_message ( "No work done - deleting file and process id ":u1:u2:len_userpid:base_object.status_filename, MSG_LOW )
+
+		status = SELECT SMIDI_LOGFILES.SERVICE FOR UPDATE
+				WHERE SERVICE     = u1
+				AND   ORDER_NUMBER = u2
+
+		IF ( status <> EMPTY ) THEN
+
+			DELETE SMIDI_LOGFILES, status
+			base_object.status_message ( "Delete status--> ":status, MSG_LOW )
+
+		ELSE
+			base_object.status_message ( "SELECT status--> ":status, MSG_LOW )
+		ENDIF
+
+	ELSE
+
+		GET_FIELD_DETAILS smidi_logfiles.service, "FIELD_SIZE", len_userpid
+
+		status = SELECT SMIDI_LOGFILES.SERVICE FOR UPDATE 
+				WHERE SERVICE     = LEFTSTRING  ( base_object.service, len_userpid )
+				AND   ORDER_NUMBER = RIGHTSTRING ( base_object.service, 10 )
+	
+		IF status = EMPTY THEN
+
+			RESERVE ENTRY SMIDI_LOGFILES, base_object.service, status
+
+			IF status = EMPTY THEN
+
+				ASSIGN SMIDI_LOGFILES.SMIDI_PROCESS_ID = process_id
+				ASSIGN SMIDI_LOGFILES.SMIDI_REPORT     = calling_report
+				ASSIGN SMIDI_LOGFILES.SMIDI_LOGFILE    = base_object.status_filename
+	
+				IF ( VARIABLE_IS_ASSIGNED ( base_object.base_user ) ) THEN
+
+					IF base_object.base_user = EMPTY THEN
+						ASSIGN SMIDI_LOGFILES.SMIDI_LOT = " "
+					ELSE
+						ASSIGN SMIDI_LOGFILES.SMIDI_LOT = base_object.base_user
+					ENDIF
+
+				ELSE
+					ASSIGN SMIDI_LOGFILES.SMIDI_LOT = "N/A"
+				ENDIF
+
+			ENDIF
+
+		ELSE
+
+			IF ( VARIABLE_IS_ASSIGNED ( base_object.error_msg ) ) THEN
+
+				IF ( NOT BLANK ( base_object.error_msg ) ) & ( base_object.error_msg <> EMPTY ) THEN
+					ASSIGN SMIDI_LOGFILES.A_ERROR_MESSAGE = base_object.error_msg
+				ENDIF
+
+			ENDIF
+
+
+			IF ( VARIABLE_IS_ASSIGNED ( base_object.base_user ) ) THEN
+
+				IF base_object.base_user <> EMPTY THEN
+					ASSIGN SMIDI_LOGFILES.SMIDI_LOT = base_object.base_user
+				ENDIF
+
+			ENDIF
+
+		ENDIF  { reserve entry failed }
+
+	ENDIF   { work done is filled in when an error or when lot id is defined } 
+
+
+	UPDATE SMIDI_LOGFILES, status
+	base_object.status_message ( "UPDATE SMIDI_LOGFILES status--> ":status, MSG_LOW )
+	COMMIT
+
+	{ =================================================== }
+	{ The very last thing that is done                    }
+	{ =================================================== }
+
+	FILE CLOSE base_object.status_filename, status
+
+	IF ( status = EMPTY ) & ( base_object.status_debug_mode <= 1 ) & ( NOT ( base_object.work_done ) ) THEN
+		FILE DELETE base_object.status_filename, status
+	ENDIF
+
+
+ENDROUTINE  { smidi_user_stop }
+
+
+{******************************************************************************}
+
+ROUTINE smidi_v2_action_continue ( self                 , 
+				   start                , 
+				   array_query_times	, 
+				   oldest_time		, 
+				   the_beginning_time	, 
+				   query_type 		)
+
+
+	DECLARE do_exit, found, shutdown_id, a_false, message, smidi_upload_sleep_time, sap_scheduled_downtime, tmpString
+
+	oldest_time = NOW
+	a_false     = FALSE
+
+	{ ----------------------------------------------------- }
+	{ Get shutdown option based upon query_type             }
+	{ ----------------------------------------------------- }
+
+	IF ( query_type = SMIDI_PROCESS_LOT    )
+	OR ( query_type = SMIDI_PROCESS_POINT  ) THEN
+
+		shutdown_id = "PROCESS_SHUTDOWN"
+
+	ELSEIF ( query_type = SMIDI_GET_LOTS    ) THEN
+
+		shutdown_id = "FETCH_SHUTDOWN"
+
+	ELSEIF ( query_type = SMIDI_GET_POINTS ) THEN
+
+		shutdown_id = "POINTS_SHUTDOWN"
+
+	ELSE
+
+		shutdown_id = "UPLOAD_SHUTDOWN"
+	ENDIF
+
+	do_exit = SELECT SMIDI_CONFIG_HEADER.VALUE WHERE IDENTITY = shutdown_id
+
+	IF do_exit = EMPTY THEN
+
+		do_exit = SELECT CONFIG_HEADER.VALUE WHERE IDENTITY = "SHUTDOWN_ENABLED"
+
+	ELSEIF NOT do_exit THEN
+
+		do_exit = SELECT CONFIG_HEADER.VALUE WHERE IDENTITY = "SHUTDOWN_ENABLED"
+
+	ENDIF
+
+	self.status_message("Shutdown-> ":STRIP(do_exit):" ":shutdown_id, MSG_LOW)
+
+	{ =================================================== }
+	{ if config item says to exit, then exit              }
+	{ =================================================== }
+
+	IF do_exit THEN
+
+		start = EMPTY
+		self.status_message ( "$smidi_user/continue IMMEDIATE Shutdown set->":do_exit:" ":shutdown_id, MSG_HIGH)
+
+	ELSEIF  ( query_type = SMIDI_UPLOAD_UD       ) OR
+		( query_type = SMIDI_UPLOAD_POINT    ) OR
+		( query_type = SMIDI_UPLOAD_POINT_UD ) OR
+		( query_type = SMIDI_UPLOAD_RESULT   ) OR
+		( query_type = SMIDI_UPLOAD_DEFECT   ) THEN
+	
+		CONSTANT MINIMUM_SLEEP = "0 00:01:00"
+
+		smidi_upload_sleep_time = self.get_item ( "SMIDI_UPLOAD_SLEEP" )
+
+		IF ( smidi_upload_sleep_time = EMPTY ) | ( NOT IS_INTERVAL ( smidi_upload_sleep_time ) ) THEN
+			smidi_upload_sleep_time = NOW + MINIMUM_SLEEP
+		ELSE
+			smidi_upload_sleep_time = NOW + smidi_upload_sleep_time
+		ENDIF
+
+		{ ----------------------------------------------------------------------------- }
+		{ If the server is scheduled to be down, then sleep until it is restarted       }
+		{ ----------------------------------------------------------------------------- }
+	
+		sap_scheduled_downtime = smidi_lib_reset_start_time ( self.smidi_server )
+
+		IF smidi_upload_sleep_time < sap_scheduled_downtime THEN
+
+			smidi_upload_sleep_time = sap_scheduled_downtime
+
+		ELSE
+
+			tmpString = SELECT SMIDI_UPLOAD_QUEUE.TYPE 
+					WHERE TYPE        =  query_type
+					AND   STATUS      =  SMIDI_WAITING_STATUS
+					AND   RETRY_COUNT <  MAXIMUM_RETRY_UPLOAD
+
+			IF tmpString <> EMPTY THEN
+
+				smidi_upload_sleep_time = NOW + SLEEP_TINY_AMOUNT    { pending upload... }
+				self.status_message ( "*** PENDING sleeping tiny amount *** ":SLEEP_TINY_AMOUNT, MSG_FULL )
+
+			ENDIF
+
+		ENDIF
+
+		{ =============================================================== }
+		{ Return TRUE to restart upload process.                          }
+		{ =============================================================== }
+	
+
+		IF NOT ( VARIABLE_IS_ASSIGNED ( start ) ) | ( start = EMPTY ) THEN
+
+		ELSEIF ( start.current_count = 0 )  THEN
+
+			start.current_count = 1
+			self.status_message("---> COUNTER Set for Upload  ":STRIP(start.maximum_entries):" ":do_exit, MSG_LOW)
+
+		ELSEIF ( start.current_count > start.maximum_entries ) THEN
+
+			do_exit = TRUE
+			self.status_message("** Upload  **":start.current_count, MSG_HIGH )
+	
+		ELSE
+
+			start.current_count = start.current_count  + 1
+			self.status_message("---> Upload count --> ":start.current_count:" ":do_exit, MSG_MED )
+
+		ENDIF	
+
+
+		IF ( GLOBAL ( "MODE" ) = "INTERACTIVE" ) THEN
+			do_exit = NOT confirm_with_text ( "Continue upload ":query_type:" sleep->":smidi_upload_sleep_time )
+		ENDIF
+
+
+		{ ------------------------------------------------------------------- }
+		{ Finally, sleep X amount if we are still running                     }
+		{ ------------------------------------------------------------------- }
+
+		IF ( NOT do_exit ) AND ( NOW < smidi_upload_sleep_time ) THEN
+
+			tmpString = "Sleeping until ":smidi_upload_sleep_time:" server->":self.smidi_server
+			window_set_status ( tmpString )
+			self.status_message( tmpString, MSG_HIGH )
+			SLEEP UNTIL smidi_upload_sleep_time
+
+		ENDIF   { is NOW less than the time we should sleep until ? }
+
+	ELSE
+		{ ======================================================================== }
+		{ Update time last ran for this query to the current save_next_call        }
+		{ ======================================================================== }
+
+
+		IF ( smidi_lib_array2_slice ( array_query_times, start.smidi_query, found ) ) THEN
+
+			array_query_times[found,2] = NOW
+
+		ELSE
+
+			self.status_message ( "Query time not set correctly ":start.smidi_query, MSG_HIGH )
+
+		ENDIF
+
+		{ ======================================================================== }
+		{ Reload the queries which brings the next call to the top of the list     }
+		{ ======================================================================== }
+
+		CALL_ROUTINE "load_queries" IN LIBRARY SMIDI_LIB_QPUP
+			USING self, start, array_query_times, oldest_time, the_beginning_time, query_type, a_false
+			RETURNING start
+
+		IF start <> EMPTY THEN
+
+			IF start.next_call < oldest_time THEN
+				start.next_call = oldest_time
+			ENDIF
+
+			message = GET_USER_MESSAGE ( "SMIDI_DOWNLOAD_REPEAT", 1):" ":STRIP(start.smidi_server):"/":STRIP(start.smidi_query):" ":start.next_call:" oldest ":oldest_time
+			self.status_message ( message, MSG_LOW )
+
+		ENDIF
+
+
+		{ ========================================================= }
+		{ Sleep if need be - only for processes that login to SAP   }
+		{ ========================================================= }
+
+		IF start <> EMPTY THEN
+
+			IF ( GLOBAL ( "MODE" ) = "INTERACTIVE" ) THEN
+				do_exit = NOT ( confirm_with_text(message) )
+			ENDIF
+
+
+			IF ( NOT do_exit ) & ( NOW < start.next_call )  THEN
+				self.status_message ( "Sleeping until " : start.next_call, MSG_HIGH )
+				window_set_status ( "Sleeping until " : start.next_call )
+				SLEEP UNTIL start.next_call
+			ENDIF
+		
+		ELSE
+
+			self.status_message ( "find_next_query Query EMPTY ", MSG_HIGH )
+	
+		ENDIF
+
+	ENDIF 
+
+	RETURN ( do_exit )
+
+ENDROUTINE { smidi_v2_action_continue }
+
+{******************************************************************************}
+
+GLOBAL ROUTINE smidi_lib_user_phrase ( qaica, phrase_code )
+
+ENDROUTINE { smidi_lib_user_phrase }
+
+{******************************************************************************}
+
+ROUTINE trigger_trigger ( object, parent, VALUE val, VALUE pos )
+
+	RETURN ( TRUE )
+
+ENDROUTINE  { trigger_trigger }
+
+{******************************************************************************}
+
+ROUTINE smidi_lib_user_serious_error ( qierr, VALUE ok_numbers, VALUE message_no )
+
+	IF ( INDEX ( ok_numbers, message_no ) = 0 ) THEN
+		qierr.status_message("$smidi_user/serious_error ":ok_numbers:"->":message_no, MSG_FULL )
+		ROLLBACK
+		qierr.serious = TRUE
+	ELSE
+		qierr.status_message("$smidi_user/serious_error <BUT IS OK> ":ok_numbers:"->":message_no, MSG_LOW )
+		qierr.serious = FALSE
+	ENDIF
+
+	RETURN ( qierr.serious )
+
+ENDROUTINE { serious_error }
+
+{******************************************************************************}
+
+ROUTINE smidi_lib_user_rfc_error ( base_object, messages, utility )
+
+	IF ( SIZE_OF_ARRAY ( messages ) >= 1 ) AND
+	   ( INDEX ( messages[1], "Fatal error in LOGIN" ) > 0 ) THEN
+		base_object.status_message("$smidi_user/smidi_lib_user_rfc_error ":messages[1]:" ":utility, MSG_HIGH)
+	ELSE
+		base_object.status_message("$smidi_user/user_rfc_error ":utility, MSG_HIGH)
+	ENDIF
+
+	ROLLBACK
+	smidi_lib_client_logoff()
+
+ENDROUTINE { serious_error }
+
+{******************************************************************************}
+
+ROUTINE create_sap_object ( object, parent )
+
+	DECLARE pos         { sample # in wc_array for the current workcenter  }
+
+	message = ""        { so if not using debug status message is happy    }
+
+	object.status_message("create_sap_object ":object.structure, MSG_NONE )
+
+	{ ============================================================================ }
+	{                                                                              }
+	{ Do the object specific issues for QAIMV, QAIVC, etc.                         }
+	{                                                                              }
+	{ ============================================================================ }
+
+	IF ( object.structure = "SMIDI_DOWNLOAD" ) THEN  { download selected           }
+
+	ELSEIF ( object.structure = "QIERR" ) THEN       { how to handle errors        }
+
+	ELSEIF ( object.structure = "QIWLR" ) THEN       { worklist selected           }
+
+	ELSEIF ( object.structure = "QAILS" ) THEN       { how to select worklist      }
+
+	ELSEIF ( object.structure = "QAICA" ) THEN       { phrases (selected sets)     }
+
+	ELSEIF ( object.structure = "QAIPP" ) THEN       { inspection point        }
+
+	ELSEIF ( object.structure = "QAIMV" ) THEN       { characteristics of the op   }
+
+		{ ================================================= }
+		{ SAP allows blanks in the method, strip these out  }
+		{ ================================================= }
+
+		object.insp_method_short = object.insp_method_short # " "
+
+		{ ============================================================================ }
+		{                                                                              }
+		{ Decode from the SAP workcenter the physical number for this qaimv/qaivc      }
+		{                                                                              }
+		{ object.user_info = this QAIMV's QAIVC                                        }
+		{                                                                              }
+		{ object.user_info.op_no should equal object.op_no if the QAIVC code below did }
+		{ the mapping of this qaimv's qaivc correctly.                                 }
+		{                                                                              }
+		{ ============================================================================ }
+
+		IF (  NOT ( VARIABLE_IS_ASSIGNED ( lot_op_array ) ) ) THEN
+			ARRAY lot_op_array
+		ENDIF   { inspection points does nothing with QAIVC's }
+
+
+
+		{ =========================================================================================== }
+		{ Assign correct QAIVC to object.master (header is gbi_product and may overwrite-bug)         }
+		{ =========================================================================================== }
+
+		object.userinfo = assign_qaivc_to_qaimv ( object, lot_op_array )
+
+
+		{ ==================================================================== }
+		{ sample size denotes the number of replicates for a test/operation    }
+		{ ==================================================================== }
+
+		IF ( object.get_map_header ( "FORCE_SAMPLE_SIZE" ) ) THEN
+			object.sample_size = "1"
+		ENDIF
+
+	
+		IF  ( OBJECT_CHECK_PROPERTY ( object.parent, "INSPECTION_POINT" ) ) 
+		AND ( VARIABLE_IS_ASSIGNED  ( object.parent.inspection_point    ) ) THEN 
+
+			object.physical_sample_no = object.parent.inspection_point.sample_no            
+
+		ELSEIF ( OP_NO_SAMPLE_NUMBER = "ONE_SAMPLE" ) | ( SIZE_OF_ARRAY(lot_op_array) < 1 ) THEN { 1 sample all chars }
+
+			object.physical_sample_no = "000001"                             
+
+		ELSEIF ( OBJECT_CHECK_PROPERTY ( object, "USERINFO" ) ) AND ( VARIABLE_IS_ASSIGNED ( object.userinfo ) ) THEN
+
+			object.physical_sample_no = object.userinfo.physical_sample_no   { set by QAIVC's }
+
+		ELSE
+
+			object.physical_sample_no = "000001"             {  I give up, just put it on the first one }
+
+		ENDIF
+
+
+		{ =========================================================================================== }
+		{ If we have a unit translation table, then use the "special" unit conversion                 }
+		{ =========================================================================================== }
+		IF VGL_VALIDATE_ROUTINE ( SMIDI_R3_UNITS, "get_sm_unit" ) THEN
+			CALL_ROUTINE "get_sm_unit" IN LIBRARY SMIDI_R3_UNITS 
+			USING object.parent.smidi_server, object.char_unit
+			RETURNING object.char_unit
+		ENDIF
+
+
+	ELSEIF ( object.structure = "QAIVC" ) THEN
+
+
+		{ =========================================================================== }
+		{ Assign the physical sample no                                               }
+		{ =========================================================================== }
+
+		IF NOT ( VARIABLE_IS_ASSIGNED ( object.physical_sample_no ) ) 
+		OR     ( BLANK ( object.physical_sample_no ) )  
+		OR NOT ( NUMTEXT ( object.physical_sample_no ) ) THEN
+
+			IF ( OP_NO_SAMPLE_NUMBER = "WORKCENTER" ) THEN
+
+				object.physical_sample_no = RIGHTSTRING ("000000":STRIP(work_count),6)
+
+			ELSEIF ( OP_NO_SAMPLE_NUMBER = "ONE_SAMPLE" ) THEN
+
+				object.physical_sample_no = "000001"
+
+			ELSE
+
+				object.physical_sample_no = RIGHTSTRING ("000000":STRIP(op_count),6)
+
+			ENDIF
+
+		ENDIF   { QAIVC's physical sample no causes LIMS to make a sample }
+
+
+	        { =========================================================================================== }
+	        {                                                                                             }
+	        { Assume SAP has not defined physical sample no correctly, so do it by counting the ops       }
+	        {                                                                                             }
+	        { This routine is the one that controls the op_no = LIMS sample and it counts the operations  }
+	        { from the current download, and sets the physical sample from the different op's in plan.    }
+	        {                                                                                             }
+	        { Note that if the SAP system has a physical sample number set on the plan then this number   }
+	        { will be used and the code that sets op_no=sample will be overridden by SAP parameters.      }
+	        {                                                                                             }
+	        { =========================================================================================== }
+
+
+	        IF (  NOT ( VARIABLE_IS_ASSIGNED ( wc_array ) ) ) THEN
+
+			current_lot = object.lot_no
+		        work_count  = 1
+		        lot_count   = 1
+			op_count    = 0
+			ARRAY lot_op_array
+
+			ARRAY wc_array
+
+
+			wc_array[lot_count,work_count,1] = object.lot_no					
+			wc_array[lot_count,work_count,2] = object.op_no
+			wc_array[lot_count,work_count,3] = object.work_centre
+			wc_array[lot_count,work_count,4] = RIGHTSTRING("000000":STRIP(work_count),6)
+			wc_array[lot_count,work_count,5] = object
+
+	        ENDIF
+
+
+		{ ============================================================================================ }
+		{ These arrays keep the QAIVC and workcenter data for physical sample and QAIMV->QAIVC assign  }
+		{ ============================================================================================ }
+
+        	IF ( current_lot <> object.lot_no ) THEN                   {  new lot with multiple downloads  }
+
+			current_lot = object.lot_no
+			work_count  = 1
+			lot_count   = 1	 		{ changed from lot_count + 1 }
+
+			ARRAY wc_array
+
+			wc_array[lot_count,work_count,1] = object.lot_no
+			wc_array[lot_count,work_count,2] = object.op_no
+			wc_array[lot_count,work_count,3] = object.work_centre
+			wc_array[lot_count,work_count,4] = RIGHTSTRING("000000":STRIP(work_count),6)
+
+			op_count = 1			{ changed from op_count + 1 }
+			ARRAY lot_op_array
+
+			lot_op_array[lot_count,op_count,1] = object.lot_no
+			lot_op_array[lot_count,op_count,2] = object.op_no
+			lot_op_array[lot_count,op_count,3] = object
+
+
+        	ELSEIF ( workcenter_not_in_array ( wc_array, object.work_centre, pos ) ) THEN   { in this library   }
+												{ T if not in array }
+			work_count = work_count + 1
+
+			wc_array[lot_count,work_count,1] = object.lot_no
+			wc_array[lot_count,work_count,2] = object.op_no
+			wc_array[lot_count,work_count,3] = object.work_centre
+			wc_array[lot_count,work_count,4] = RIGHTSTRING ("000000":STRIP(work_count),6)
+
+			op_count = op_count + 1
+			lot_op_array[lot_count,op_count,1] = object.lot_no
+			lot_op_array[lot_count,op_count,2] = object.op_no
+			lot_op_array[lot_count,op_count,3] = object
+
+
+		ELSE
+
+
+			op_count = op_count + 1
+			lot_op_array[lot_count,op_count,1] = object.lot_no
+			lot_op_array[lot_count,op_count,2] = object.op_no
+			lot_op_array[lot_count,op_count,3] = object
+
+
+        	ENDIF  { current lot and workcenter are checked }
+
+		{ =========================================================================== }
+		{ Assign the correct qiwlr to this QAIVC                                      }
+		{ =========================================================================== }
+
+		assign_qiwl_to_qaivc ( object )
+
+		{ ==================================================================== }
+		{** Check If Indicators for User Fields for Inspection Points is Set **}
+		{** To 1.  If so, then set to 'X' so SampleManager Can Handle this   **}
+		{ ==================================================================== }
+
+		IF ( VARIABLE_IS_ASSIGNED ( object.user_C1_enabled ) ) THEN
+
+			IF NOT BLANK ( object.user_C1_enabled ) THEN
+
+				object.userc1_enabled     = "X"
+				object.insp_point_confirm = "X"
+
+				IF  ( BLANK ( object.user_C1_keyword ) ) THEN
+					object.user_C1_keyword = "SAP_C1"
+				ENDIF
+
+			ENDIF
+
+			IF NOT BLANK ( object.user_C2_enabled ) THEN
+
+				object.userc2_enabled     = "X"
+				object.insp_point_confirm = "X"
+
+				IF  ( BLANK ( object.user_C2_keyword ) ) THEN
+					object.user_C2_keyword = "SAP_C2"
+				ENDIF
+
+			ENDIF
+	
+			IF NOT BLANK ( object.user_N1_enabled ) THEN
+
+				object.usern1_enabled     = "X"
+				object.insp_point_confirm = "X"
+
+				IF ( BLANK ( object.user_N1_keyword ) ) THEN
+					object.user_N1_keyword = "SAP_N1"
+				ENDIF
+
+			ENDIF
+
+			IF NOT BLANK ( object.user_N2_enabled ) THEN
+
+				object.usern2_enabled     = "X"
+				object.insp_point_confirm = "X"
+
+				IF  ( BLANK ( object.user_N2_keyword ) ) THEN
+					object.user_N2_keyword = "SAP_N2"
+				ENDIF
+
+			ENDIF
+
+			IF NOT BLANK ( object.user_D1_enabled ) THEN
+
+				object.userd1_enabled     = "X"
+				object.insp_point_confirm = "X"
+	
+				IF ( BLANK ( object.user_D1_keyword ) ) THEN
+					object.user_D1_keyword = "SAP_Date"
+				ENDIF
+
+			ENDIF
+
+			IF NOT BLANK ( object.user_T1_enabled ) THEN
+
+				object.usert1_enabled     = "X"
+				object.insp_point_confirm = "X"
+	
+				IF ( BLANK ( object.user_T1_keyword ) ) THEN
+					object.user_T1_keyword = "SAP_Time"
+				ENDIF
+
+			ENDIF
+
+			{ ================================================================================ }
+			{** Value TEMPORARY - RUECKMPP which cannot be set in SAP but is required        **}
+			{** The RUECKMPP field is not filled in by SAP; however this field has been      **}
+			{** superceded by QKZPRZEIT (time), QKZPRMENG (quantity), or QKZPRFREI (freeform)**}
+			{** so, if any of these values are set, then set the insp_point_confirm field so **}
+			{** that SMP will be able to use inspection points.                              **}
+			{** QKZPRZIEIT - CYCLE_TIME                                                      **}
+			{** QKZPRMENG  - CYCLE_QUANTITY                                                  **}
+			{** QKZPRFREI  - CYCLE_ANY                                                       **}
+			{ ================================================================================ }
+
+			IF ( NOT BLANK ( object.cycle_time     ) )
+			OR ( NOT BLANK ( object.cycle_quantity ) ) 
+			OR ( NOT BLANK ( object.cycle_any      ) ) THEN
+
+				object.insp_point_confirm = "X"
+
+			ENDIF
+	
+		ENDIF   { if any of these variables are assigned, then do not trust SAP and make the lot process in points mode }
+
+	ELSEIF ( object.structure = "QMIFE" ) THEN          { <- Defects upload   }
+	ELSEIF ( object.structure = "QAIVE" ) THEN          { <- UD               }
+	ELSEIF ( object.structure = "QEIFT" ) THEN          { <- UD               }
+	ELSEIF ( object.structure = "QAISR" ) THEN          { <- Single upload    }
+	ELSEIF ( object.structure = "QAISE" ) THEN          { <- Qual upload      }
+
+	ELSEIF ( object.structure = "QAIMR" ) THEN          { <- Sum upload       }
+
+	ENDIF    { check each object and rebuild as you please }
+
+ENDROUTINE { create_sap_object }
+
+{******************************************************************************}
+
+ROUTINE workcenter_not_in_array ( the_array, VALUE find_id, pos )
+
+
+	DECLARE return_string                 { FALSE not array, TRUE it is }
+	DECLARE count                         { count array, check elements }
+	DECLARE count_2                       { count 2nd level of array    }
+	DECLARE continue                      { internal while continues    }
+
+	return_string = TRUE
+	continue      = TRUE
+	count         = 1
+
+
+	WHILE ( the_array[count] <> EMPTY ) 
+	AND   ( continue ) DO
+
+		count_2  = 1
+		continue = TRUE
+
+		WHILE ( the_array[count, count_2,1] <> EMPTY ) 
+		AND   ( continue ) DO
+
+			IF ( the_array[count,count_2,3] = find_id ) THEN
+	
+				return_string = FALSE                          { the return               }
+				continue      = FALSE                          { get outta all the whiles }
+				pos           = the_array[count,count_2,4]
+
+			ENDIF
+
+			count_2 = count_2 + 1
+
+		ENDWHILE
+
+		count = count + 1
+
+	ENDWHILE
+
+
+	RETURN ( return_string )
+
+
+ENDROUTINE   { workcenter not in array }
+
+{******************************************************************************}
+
+ROUTINE assign_qaivc_to_qaimv ( object, lot_op_array )
+
+
+	DECLARE return_string                 { FALSE not array, TRUE it is }
+	DECLARE count                         { count array, check elements }
+	DECLARE count_2                       { count 2nd level of array    }
+	DECLARE continue                      { internal while continues    }
+
+	return_string = EMPTY
+	continue      = TRUE
+	count         = 1
+
+
+	IF ( SIZE_OF_ARRAY ( lot_op_array ) >= 1 ) THEN
+
+		WHILE ( lot_op_array[count] <> EMPTY ) AND ( continue ) DO
+
+			count_2  = 1
+			continue = TRUE
+
+			WHILE ( lot_op_array[count, count_2,1] <> EMPTY ) & ( continue ) DO
+
+				IF  ( lot_op_array[count,count_2,1] = object.lot_no ) & ( lot_op_array[count,count_2,2] = object.op_no  ) 
+	
+					return_string = lot_op_array[count,count_2,3]
+					continue      = FALSE
+
+				ENDIF
+
+				count_2 = count_2 + 1
+
+			ENDWHILE
+
+			count = count + 1
+
+		ENDWHILE
+
+	ENDIF   { inspection points aint got no QAIVC's }
+
+	RETURN ( return_string )
+
+
+ENDROUTINE  { assign_qaivc_to_qaimv }
+
+{ **************************************************************************** }
+
+ROUTINE assign_qiwl_to_qaivc ( object )
+
+	DECLARE count                         { count array, check elements }
+	DECLARE continue                      { internal while continues    }
+
+	continue = TRUE
+	count    = 1
+
+	{ ================================================================= }
+	{ On download marshalling we use the QIWL, on upload we do not      }
+	{ ================================================================= }
+
+	IF ( OBJECT_CHECK_PROPERTY ( object.parent, "QIWL" ) ) THEN
+
+		WHILE ( count <= SIZE_OF_ARRAY( object.parent.qiwl ) ) AND ( continue ) DO
+
+			IF ( object.parent.qiwl[count] <> EMPTY ) THEN
+
+				IF  ( object.parent.qiwl[count].op_no = object.op_no ) THEN
+	
+					object.qiwlr = object.parent.qiwl[count]
+					continue     = FALSE
+
+				ENDIF
+
+			ENDIF
+
+			count = count + 1
+
+		ENDWHILE   { the QIWL array is searched until QAIVC is found }
+
+	ENDIF
+
+ENDROUTINE  { assign_qiwl_to_qaivc_userinfo }
+
+{******************************************************************************}
+{ ----------------------------------------------------------- }
+{                                                             }
+{                                                             }
+{                                                             }
+{ The first program is called by $smidi_background and is     }
+{ used to actually run the program for each status.           }
+{                                                             }
+{                                                             }
+{                                                             }
+{ ----------------------------------------------------------- }
+
+{ ----------------------------------------------------------- }
+
+ROUTINE user_status ( VALUE full_id, logid )
+
+	DECLARE type, identity, tmpString, user_routine
+
+	retval       = TRUE                                              { assume success    }
+	full_id      = STRIP        ( full_id                )           { strip identity    }
+	type         = LEFTSTRING   ( full_id, 1             )           { J, S, T, R, etc.  }
+	status       = SUBSTRING    ( full_id, 2, 1          )           { AVUIPXW, etc.     }
+	tmpString    = STRINGLENGTH ( full_id                )           { length of full id }
+	identity     = RIGHTSTRING  ( full_id, tmpString - 2 )           { just the identity }
+
+	{ ------------------------------------------------------------------ }
+	{ this becomes "J_status_C" for the "job" that has sample status "C" }
+	{ ------------------------------------------------------------------ }
+
+	user_routine = STRIP ( type ) : "_status_" : STRIP ( status )
+
+	IF ( VGL_VALIDATE_ROUTINE ( SMIDI_BG_USER, user_routine ) ) THEN
+
+		CALL_ROUTINE user_routine IN LIBRARY SMIDI_BG_USER 
+			USING identity, logid RETURNING retval NEW CONTEXT
+
+		IF ( NOT ( VARIABLE_IS_ASSIGNED ( retval ) ) ) | ( retval = EMPTY ) THEN
+			do_message ( "Warning ":SMIDI_BG_USER:"/":user_routine:" did not return a value (T/F) for success of call, assuming all is ok ":full_id, MSG_HIGH )
+		ENDIF
+
+	ELSE
+
+		do_message ( "Warning ":SMIDI_BG_USER:"/":user_routine:" invalid, will delete status queue ":full_id, MSG_HIGH )
+
+	ENDIF  { vgl_validated the routine/library for the status trigger }	
+
+	RETURN ( retval )
+
+ENDROUTINE { user_status_main }
+
+{ ------------------------------------------------------------------------------------------------------- }
+{                                                                                                         }
+{                                                                                                         }
+{ The next routine is called from the SMP status triggers and is used to populate the status table with   }
+{ the key that will be read by the $smidi_bg_status whenever the status of the entity is really the       }
+{ value that the routine is.  The "$jobstat" (samp.test.resl) have triggers for statuses in lims, e.g.    }
+{ set_status_e means the status is ABOUT to become the E status.  It does not really exist as this until  }
+{ the main programs finish the transaction.  As such the things you do in those triggers are immediate,   }
+{ like writing an additional field.                                                                       }
+{                                                                                                         }
+{ However, if you really want a trigger to be kicked off whenever the status is truly finished, then      }
+{ simply placing the below routine in your lims xxxxstat trigger will cause a status_table to save your   }
+{ record (and status letter) in a special table.  Then the above routine in this library will "run"       }
+{ your trigger when the status is actually saved.                                                         }
+{                                                                                                         }
+{                                                                                                         }
+{ To activate this code simply place a call routine in library in the appropriate lims status trigger,    }
+{ such as $jobstat, $sampstat (set_status_x).                                                             }
+{                                                                                                         }
+{                                                                                                         }
+{ DECLARE id, type, stat                                                                                  }
+{                                                                                                         }
+{ type = "J"    < J=job, S=sample, T=test, R=result >                                                     }
+{ stat = "A"    < these two must be 1 letter only   >                                                     }
+{ id   = select <your triggers table name>.<your triggers' identity>                                      }  
+{ id   = select job_header.job_name                                                                       }
+{                                                                                                         }
+{ CALL_ROUTINE "update_status_table"                                                                      }
+{      IN LIBRARY "$smidi_user" USING id, type, stat                                                      }
+{      RETURING retval                                                                                    }
+{                                                                                                         }
+{                                                                                                         }
+{ ------------------------------------------------------------------------------------------------------- }
+
+ROUTINE update_status_table ( VALUE table_key0, VALUE table_name_1_byte, VALUE status_1_byte )
+
+	DECLARE key0, ent_by, ent_on
+                                                             { ----------------------------------------- }
+	retval = FALSE                                       { assume we will fail at anything we try    }
+	key0   = table_name_1_byte:status_1_byte:table_key0  { the key to the status table               }
+                                                             { ----------------------------------------- }
+
+	ent_by = "ENTERED_BY"
+	ent_on = "ENTERED_ON"
+
+	RESERVE ENTRY STATUS_QUEUE, key0, status
+
+	IF status = EMPTY THEN
+
+		IF ( VALID_FIELD ( "STATUS_QUEUE", ent_by ) ) THEN
+			ASSIGN STATUS_QUEUE.'ent_by' = OPERATOR
+		ENDIF
+
+		IF ( VALID_FIELD ( "STATUS_QUEUE", ent_on ) ) THEN
+			ASSIGN STATUS_QUEUE.'ent_on' = NOW
+		ENDIF
+
+					      { ---------------------------------------------------------- }
+		UPDATE STATUS_QUEUE, status   { the $jobstat/samp/test/resl has the write trans and commit }
+					      { ---------------------------------------------------------- }
+		IF status = EMPTY THEN
+			retval = TRUE           { all ok, so let the trigger know that the table is happy    }
+		ELSE
+			FLASH_MESSAGE ( "Unable to save status_queue using ":key0:" --> ":status, TRUE )
+		ENDIF
+
+	ELSE 
+
+		retval = FALSE {1.7}
+
+	ENDIF  { status=empty, note you could check if record is already there, but is there a need to ? }
+
+	RETURN ( retval )
+
+ENDROUTINE   { update status table }
+
+{ ----------------------------------------------------------- }
+{                                                             }
+{                                                             }
+{                                                             }
+{ The routines below are specific to each type/status/id      }
+{                                                             }
+{                                                             }
+{                                                             }
+{ ----------------------------------------------------------- }
+
+
+{ ----------------------------------------------------------- }
+{ Result status E - a result was just entered                 }
+{ ----------------------------------------------------------- }
+
+ROUTINE R_status_E ( VALUE result_key, VALUE logid )
+
+
+	DECLARE test, name
+
+	test = LEFTSTRING  ( result_key, 10 )
+	name = result_key # test
+
+	CALL_ROUTINE SMIDI_QUEUE_RESULT IN LIBRARY SMIDI_LIB_UPLOAD_LIB USING test, name RETURNING retval
+
+	RETURN ( retval )
+
+ENDROUTINE  { R_status_E }
+
+{ ----------------------------------------------------------- }
+{ Job status X - a cancelled Job                              }
+{ ----------------------------------------------------------- }
+
+ROUTINE J_status_X ( VALUE job, VALUE logid )
+
+	DECLARE smidi_lot
+
+	retval    = FALSE
+	smidi_lot = SELECT JOB_HEADER.SMIDI_LOT
+
+	IF ( NOT BLANK ( smidi_lot ) ) THEN
+
+		CALL_ROUTINE SMIDI_QUEUE_LOT_UD IN LIBRARY SMIDI_LIB_UPLOAD_LIB USING job RETURNING retval
+
+	ENDIF   { smidi_lot blank, then do not send to SAP }
+
+	RETURN ( retval )
+
+ENDROUTINE  { J_status_X }
+
+{ ----------------------------------------------------------- }
+{ Sample status C - a completed Sample                        }
+{ ----------------------------------------------------------- }
+
+ROUTINE S_status_C ( VALUE samp, VALUE logid )
+
+	DECLARE smidi_lot
+
+	retval    = FALSE
+	smidi_lot = SELECT SAMPLE.SMIDI_OPERATION
+
+	IF ( NOT BLANK ( smidi_lot ) ) THEN
+
+		CALL_ROUTINE SMIDI_QUEUE_SAMPLE IN LIBRARY SMIDI_LIB_UPLOAD_LIB USING samp RETURNING retval
+
+		IF retval THEN
+			retval = do_the_point_ud ( samp, logid )
+		ENDIF
+
+	ENDIF   { smidi_lot blank, then do not send to SAP }
+
+	RETURN ( retval )
+
+ENDROUTINE   { S_status_C }
+
+{ ---------------------------------------------------------------------------------------- }
+
+ROUTINE do_the_point_ud ( VALUE samp, logid )
+
+	DECLARE job, matnr, batch, partlot, ud, quantity, units, smidi_server,
+		ud_sel_set, ud_cat_plant, ud_code_group, retval, ud_oper, ud_date, ud_text
+
+
+	retval    = FALSE
+
+	job       = SELECT SAMPLE.JOB_NAME
+	matnr     = SELECT SAMPLE.PRODUCT
+	batch     = SELECT SAMPLE.BATCH_NAME
+
+	partlot   = SELECT SMIDI_INSPPOINT.SAP_UD_PARTIAL_LOT
+			WHERE JOB    = job
+			AND   SAMPLE = samp
+
+	IF partlot <> EMPTY THEN
+
+		smidi_server  = SELECT SMIDI_INSPPOINT.SMIDI_SYSTEM
+		ud_sel_set    = SELECT SMIDI_INSPPOINT.SAP_UD_SELECTED_SET
+		ud_cat_plant  = SELECT SMIDI_INSPPOINT.SAP_UD_CAT_PLANT
+		ud_code_group = SELECT SMIDI_INSPPOINT.SAP_UD_CODE_GROUP
+		quantity      = SELECT SMIDI_INSPPOINT.SAP_UD_quantity
+		units         = SELECT SMIDI_INSPPOINT.SAP_UD_units
+		
+		IF ( BLANK ( ud_sel_set ) ) | ( BLANK ( ud_cat_plant ) ) THEN
+
+			do_message ( "SAP invalid setup for usage decisions ":job:" ":samp:" forcing 1900 INSPPNT", MSG_HIGH )
+			ud_cat_plant = "1900"
+			ud_sel_set   = "INSPPT"
+
+		ENDIF
+
+		{ ------------------------------------------------ }
+		{ DO NOT CHANGE THE BATCH ID }
+		{
+			batch     = STRIP ( batch )
+			tmpString = STRINGLENGTH ( batch )
+			batch     = RIGHTSTRING ( batch, tmpString - 1 )
+			batch     = "0":batch
+		}
+		{ ------------------------------------------------ }
+		{ In fact clear out the BATCH and quantity         }
+		{ ------------------------------------------------ }
+
+		batch    = " "
+		quantity = " "
+		units    = " "
+		partlot  = " "
+
+		ud_oper = OPERATOR
+		SET DATE FORMAT "YYYYMZDZ"
+		ud_date = STRIP ( NOW )
+		RESTORE DATE FORMAT
+
+		ud = SELECT SMIDI_PHRASE_VIEW.PHRASE_ID
+			WHERE CATALOG_TYPE   =  "3"
+			AND   CATALOG_PLANT  =  ud_cat_plant
+			AND   MAIN_ID        =  ud_sel_set
+			AND   SYSTEM         =  smidi_server
+			AND   QUALITY_SCORE  >= 100
+			ORDER ON PHRASE_ID
+
+
+ 		IF ud = EMPTY THEN
+			do_message ( "SAP invalid setup to make usage decisions ":ud_cat_plant:" ":ud_sel_set, MSG_HIGH )
+		ELSE
+	
+			IF ( BLANK ( ud_code_group ) ) THEN
+				ud_code_group = SELECT SMIDI_PHRASE_VIEW.CODE_GROUP
+			ENDIF
+
+			ud_text = SAP_UD_TEXT
+
+			{ ------------------------------------------------------ }
+			{ got all the variables, now go do the ud and queueing   }
+			{ ------------------------------------------------------ }
+
+			retval = do_a_point_ud ( samp, job, matnr, batch, partlot, quantity, units, ud_oper, ud_date, ud, ud_text, ud_code_group, smidi_server, ud_cat_plant, ud_sel_set, logid ) 
+
+
+		ENDIF
+
+	ELSE
+
+		do_message ( "SAP has not caught up yet ":job:samp, MSG_HIGH )
+	ENDIF  { partial lot from the smidi_insppoint is empty }
+
+
+	RETURN ( retval )
+
+ENDROUTINE  { do_the_point_ud }
+
+{ ---------------------------------------------------------------------------------------- }
+
+ROUTINE do_a_point_ud ( VALUE samp, VALUE job, VALUE matnr, VALUE batch, VALUE partlot, 
+		        VALUE quantity, VALUE units, VALUE ud_oper, VALUE ud_date, VALUE ud, VALUE ud_text, 
+		        VALUE ud_code_group, VALUE smidi_server, VALUE ud_cat_plant, VALUE ud_sel_set, VALUE logid )
+
+
+	DECLARE key0, status, retval
+
+	retval = FALSE
+
+
+	key0 = SELECT SMIDI_INSPPOINT.REQUEST_KEY FOR UPDATE
+		WHERE JOB    = job
+		AND   SAMPLE = samp
+
+	IF ( key0 <> EMPTY ) & ( key0 <> LOCKED ) THEN
+
+		ASSIGN SMIDI_INSPPOINT.sap_ud_material_no   = matnr
+		ASSIGN SMIDI_INSPPOINT.sap_ud_batch         = batch
+		ASSIGN SMIDI_INSPPOINT.sap_ud_partial_lot   = partlot 
+		ASSIGN SMIDI_INSPPOINT.sap_ud_quantity      = quantity
+		ASSIGN SMIDI_INSPPOINT.sap_ud_units         = units
+		ASSIGN SMIDI_INSPPOINT.sap_ud_operator      = ud_oper
+		ASSIGN SMIDI_INSPPOINT.sap_ud_date          = ud_date
+		ASSIGN SMIDI_INSPPOINT.sap_ud_code          = ud
+		ASSIGN SMIDI_INSPPOINT.sap_ud_decision_text = ud_text
+		ASSIGN SMIDI_INSPPOINT.sap_ud_code_group    = ud_code_group
+		ASSIGN SMIDI_INSPPOINT.sap_ud_cat_plant     = ud_cat_plant
+		ASSIGN SMIDI_INSPPOINT.sap_ud_selected_set  = ud_sel_set
+
+		UPDATE SMIDI_INSPPOINT, status
+
+		IF status = EMPTY THEN
+
+			CALL_ROUTINE SMIDI_QUEUE_POINT_UD IN LIBRARY SMIDI_LIB_UPLOAD_LIB USING key0, smidi_server 
+				RETURNING retval
+
+			IF NOT retval THEN
+				do_message ( "Unable to QUEUE UD ":key0:" ":smidi_server, MSG_HIGH )
+			ENDIF
+
+
+		ELSE
+			do_message ( "Unable to update SMIDI_INSPPOINT TABLE ":key0:" ":status, MSG_HIGH )
+		ENDIF
+
+	ELSE
+		do_message ( "Unable to update SMIDI_INSPPOINT TABLE ":key0, MSG_HIGH )
+	ENDIF
+
+
+	RETURN ( retval )
+
+ENDROUTINE  { do_a_point_ud }
+
+{ **************************************************************************** }
+{                                                                              }
+{                                                                              }
+{                             FILTER QUERIES                                   }
+{                                                                              }
+{                                                                              }
+{ **************************************************************************** }
+
+ROUTINE filter_new_ops( wl_entry )
+
+	wl_entry.status_message("$smidi_user_get_lot/filter_new_ops ", MSG_LOW)
+
+	DECLARE the_job_exists
+
+	IF ( ( wl_entry.date_created =  "00000000" ) AND ( wl_entry.date_downloaded = "00000000" ) )  THEN
+
+		the_job_exists = SELECT job_header.job_name WHERE job_name = wl_entry.lot_no
+		wl_entry.status_message("$SMIDI_user_get_lot/filter_new_ops ":the_job_exists, MSG_LOW)
+
+		IF ( the_job_exists <> EMPTY ) AND ( wl_entry.send_status  = " "  ) THEN  
+			{do some stuff }
+		ENDIF
+
+		return((the_job_exists = EMPTY) AND (wl_entry.send_status = " "  ))
+
+	ELSE
+
+		return(wl_entry.send_status = " ")
+
+	ENDIF
+
+ENDROUTINE    { filter_new_ops }
+
+
+{******************************************************************************}
+
+ROUTINE filter_corrected_ops( wl_entry )
+
+	DECLARE lot_no, old_format
+
+	wl_entry.status_message("$smidi_user_get_lot/filter_corrected_ops ", MSG_LOW)
+
+	retval   = FALSE
+
+	IF  ( wl_entry.send_status     <> " "                     )         { ain't been sent yet      }
+	AND ( wl_entry.time_downloaded <> wl_entry.time_corrected ) THEN    { and ain't downloaded yet }
+
+		retval = TRUE                                               { only all 3 then download }
+		lot_no = "Processing modified lot <":wl_entry.lot_no:">"
+		wl_entry.status_message ( lot_no, MSG_MED )
+
+	ELSE
+
+		lot_no = "Entry not a modification ":wl_entry.lot_no
+		wl_entry.status_message ( lot_no, MSG_MED )
+
+	ENDIF
+
+	{ =========================================================================================== }
+	{ any time you filter you must also set the from lot for the subsequent downloads             }
+	{ =========================================================================================== }
+
+	lot_no = wl_entry.lot_no
+
+	IF NUMTEXT ( lot_no ) THEN
+
+		old_format = GLOBAL ( "FORMAT_TEXT" )
+		SET FORMAT "999999999999"
+		lot_no = STRIP ( lot_no + 1 )
+		SET FORMAT old_format
+		lot_no = LEFTSTRING ( "000000000000" : lot_no, 12 )
+
+	ENDIF
+
+	wl_entry.parent.query.qails.from_lot_no = lot_no
+	wl_entry.parent.orig_from               = lot_no
+	wl_entry.parent.orig_to                 = wl_entry.parent.query.qails.to_lot_no
+
+
+	RETURN( retval )
+
+ENDROUTINE  { filter corrected ops }
+
+{******************************************************************************}
+
+ROUTINE filter_cancelled_ops( wl_entry )
+
+	wl_entry.status_message("$smidi_user_get_lot/filter_cancel_ops ", MSG_LOW)
+	return (wl_entry.send_status = " ")
+
+ENDROUTINE   { filter cancelled ops }
+
+
+{******************************************************************************}
+
+ROUTINE filter_discarded_ops( wl_entry )
+
+	wl_entry.status_message("$smidi_user_get_lot/filter_discarded_ops ":wl_entry.insp_status, MSG_LOW)
+
+	RETURN( ( wl_entry.insp_status = "D" ) & ( wl_entry.send_status = "A" ) )
+
+ENDROUTINE   { filter discarded ops }
+
+{******************************************************************************}
+
+ROUTINE smidi_download_action_no_lots_in_SAP ( download )
+
+	IF ( download.query.qails.insp_status = "A" ) THEN
+
+		IF download.orig_from = EMPTY THEN
+			download.orig_from = "000000000000"
+		ENDIF
+
+		download.query.none_left         = TRUE
+		download.query.qails.from_lot_no = download.orig_from
+
+		update_smidi_query_qails_info ( download )
+
+
+	ELSEIF ( download.query.qails.insp_status = "C" ) THEN
+
+		update_smidi_query_qails_info ( download )
+
+	ENDIF  { if "C" changes from_date, if "A" changes from lot no }
+
+
+ENDROUTINE {  smidi_query_user_none_left }
+
+{******************************************************************************}
+
+ROUTINE QUERY_create_failure ( download, this_lot, error_message )
+
+	DECLARE update_query, old_format
+
+	download.status_message("$smidi_user_get_lot/download_create_failure ":this_lot:" ":error_message, MSG_LOW)
+
+	{ ===================================================================================== }
+	{ If the worklist is no longer just an array it has already been converted to an object }
+	{ ===================================================================================== }
+
+	IF ( VARIABLE_GET_TYPE ( download.worklist ) <> "QIWLR" ) THEN
+		smidi_lib_array_to_object ( "QIWLR", download.worklist, download )
+	ENDIF
+
+	{ ======================================================================================== }
+	{ Now go get this query, and update its from lot so that we can skip in the future queries }
+	{ ======================================================================================== }
+
+	update_query = SELECT SMIDI_QUERY.FROM_LOT_NO FOR UPDATE WHERE IDENTITY = download.query.smidi_query
+
+	IF ( update_query <> EMPTY ) THEN
+
+		old_format = GLOBAL ( "FORMAT_TEXT" )
+		SET FORMAT "999999999999"
+
+		download.query.qails.from_lot_no = STRIP ( download.worklist[1].lot_no + 1 )
+		SET FORMAT old_format
+
+		ASSIGN SMIDI_QUERY.FROM_LOT_NO = download.query.qails.from_lot_no
+		UPDATE SMIDI_QUERY, status
+
+		download.status_message ( "$smidi_user_get_lot/query_create_failure ":STRIP(download.query.smidi_query):"->":download.query.qails.from_lot_no:" ":status, MSG_HIGH )
+
+	ELSE
+
+		tmpString = "** Warning, $smidi_user_get_lot/download_create_failure unable to update query ":download.query.smidi_query
+		download.status_message ( tmpString, MSG_HIGH )
+
+	ENDIF
+
+ENDROUTINE { QUERY_create_failure }
+
+{******************************************************************************}
+
+ROUTINE QUERY_VETO_FAILURE ( download, wl_entry, lot )
+
+	retval = download.get_item ( "SMIDI_IGNORE_QUERY_FAILURE" )
+	download.status_message ( "$smidi_user_get_lot/query_veto_failure LOT->":lot:" VETO--> ":retval, MSG_HIGH )
+
+	RETURN ( retval )
+
+ENDROUTINE  { QUERY_VETO_FAILURE }
+{                                                                              }
+{******************************************************************************}
+
+ROUTINE update_smidi_query_qails_info ( download )
+
+	DECLARE update_query, do_commit, status
+
+	do_commit    = FALSE
+	update_query = SELECT SMIDI_QUERY.IDENTITY FOR UPDATE WHERE IDENTITY = download.query.smidi_query
+
+	IF ( update_query <> EMPTY ) & ( update_query <> LOCKED ) THEN
+
+		IF NOT ( TRANSACTION_IS_WRITE() ) THEN
+			START WRITE TRANSACTION "UPDATE SMIDI_QUERY FROM_DATE"
+			do_commit = TRUE
+		ENDIF
+
+		IF ( download.query.qails.insp_status = "C" ) THEN
+
+			ASSIGN SMIDI_QUERY.FROM_DATE = NOW - "0 00:00:30"
+
+		ELSEIF ( download.query.qails.insp_status = "A" ) THEN
+
+			ASSIGN SMIDI_QUERY.FROM_LOT_NO = download.query.qails.from_lot_no
+
+		ENDIF
+
+
+		UPDATE SMIDI_QUERY, status
+
+		IF ( status = EMPTY ) THEN
+			IF do_commit THEN
+				COMMIT
+				download.status_message ( "Updated query from date -> ":download.query.smidi_query, MSG_LOW )
+			ENDIF
+		ELSE
+			download.status_message ( "** WARNING ** unable to update query from date for ":download.query.smidi_query:" ":status, MSG_HIGH )
+		ENDIF
+
+	ELSE
+
+		download.status_message ( "** WARNING ** unable to update query from date for ":download.query.smidi_query:" ":update_query, MSG_HIGH )
+
+	ENDIF  { not locked/empty }
+
+ENDROUTINE  { update_smidi_query_qails_info }
+
+{******************************************************************************}
+
+ROUTINE download_get_lot_rollback ( download, VALUE calling_report )
+ENDROUTINE   { download_get_lot_rollback }
+
+{******************************************************************************}
+
+ROUTINE download_get_lot_commit ( download, VALUE calling_report, status )
+
+	download.status_message("download_get_lot_commit ":calling_report:" ":status, MSG_NONE )
+	RETURN ( TRUE )  { False does not commit, and you have to change status }
+
+ENDROUTINE { download_get_lot_commit }
+
+{******************************************************************************}
+
+ROUTINE download_get_lot_post_commit ( download, VALUE calling_report )
+ENDROUTINE  { download_get_lot_post_commit }
+
+{ **************************************************************************** }
+{                                                                              }
+{                                                                              }
+{         POINTS PROCESS FOR DOWNLOAD THAT ONLY STORES SAP DATA                }
+{                                                                              }
+{                                                                              }
+{ **************************************************************************** }
+
+ROUTINE user_check_keywords ( lot_no, op_no, object )
+
+ENDROUTINE  { smidi_process_user_check_keywords }
+
+{ **************************************************************************** }
+
+ROUTINE user_create_points ( self, count, found, mode )
+
+	DECLARE status, key0, sys_len
+
+	GET_FIELD_DETAILS SMIDI_INSPPOINT.SMIDI_SYSTEM, "FIELD_SIZE", sys_len
+
+	IF ( count = 1 ) & ( mode ) THEN
+
+		key0  = PAD ( self.smidi_server, " ", sys_len ) : found : "000001"
+
+		RESERVE ENTRY SMIDI_INSPPOINT, key0, status
+
+		IF status = EMPTY THEN
+
+			ASSIGN SMIDI_INSPPOINT.job               = self.job_id
+			ASSIGN SMIDI_INSPPOINT.sample            = ""
+			ASSIGN SMIDI_INSPPOINT.sap_point_created = FALSE
+
+			self.map_fields ( "SMIDI_INSPPOINT"    )
+			self.map_fields ( "SMIDI_POINTS_QUERY" )
+
+			UPDATE SMIDI_INSPPOINT, status
+
+			IF status <> EMPTY THEN
+				self.status_message ( "User Create Points unable to make new SMIDI_INSPPOINT ":key0:" ":status, MSG_FULL )
+			ENDIF
+
+		ELSE
+			self.status_message ( "User Create Points unable to make new SMIDI_INSPPOINT ":found:" ":status, MSG_FULL )
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE   { user_create_points }
+
+{ **************************************************************************** }
+
+ROUTINE smidi_insppoint_created ( self, subsys, request_key )
+
+	RETURN ( TRUE )
+
+ENDROUTINE  { smidi_insppoint_created }
+
+{******************************************************************************}
+
+ROUTINE download_point_rollback ( download, VALUE calling_report )
+ENDROUTINE   { download_point_rollback }
+
+{******************************************************************************}
+
+ROUTINE download_point_commit ( download, VALUE calling_report, status )
+
+	download.status_message("download_point_commit ":calling_report:" ":status, MSG_NONE )
+	RETURN ( TRUE )                   { False does not commit, and you have to change status }
+
+ENDROUTINE { download_commit }
+
+{******************************************************************************}
+
+ROUTINE download_point_post_commit ( download, VALUE calling_report )
+ENDROUTINE  { download_point_post_commit }
+
+{ **************************************************************************** }
+
+
+
+{******************************************************************************}
+ROUTINE smidi_download_action_no_points_in_SAP ( self )
+{
+*       Change the interval if we have no points in SAP.
+*
+*******************************************************************************}
+	DECLARE status, date_last_mod, change_interval_date, change_remove_date, this_interval
+
+	change_interval_date = NOW - INCREMENT_INTERVAL       { <- constant at top of source }
+	change_remove_date   = NOW - REMOVE_INTERVAL
+
+
+	date_last_mod = SELECT SMIDI_POINTS_QUERY.MODIFIED_ON FOR UPDATE
+			WHERE FROM_IP_LOT   = self.query.from_ip_lot
+			AND   FROM_IP_OP_NO = self.query.from_ip_op_no
+
+	IF date_last_mod <> EMPTY THEN
+
+		IF date_last_mod < CHANGE_REMOVE_DATE THEN
+
+			ASSIGN SMIDI_POINTS_QUERY.REMOVEFLAG = TRUE
+			UPDATE SMIDI_POINTS_QUERY, status
+
+			IF status <> EMPTY THEN
+				self.status_message ( "Problem updating smidi_points_query ":self.query.from_ip_lot:status, MSG_FULL )
+			ENDIF
+
+		ELSEIF date_last_mod < CHANGE_INTERVAL_DATE THEN
+
+			this_interval = SELECT SMIDI_POINTS_QUERY.REPEAT_INTERVAL
+			
+			{We dont want to add the two intervals, otherwise the system will sleep for too long.}
+			{this_interval = add_2_intervals ( this_interval, CHANGE_REPEAT_BY )}
+
+			ASSIGN SMIDI_POINTS_QUERY.REPEAT_INTERVAL = this_interval
+			
+			UPDATE SMIDI_POINTS_QUERY, status
+
+			IF status <> EMPTY THEN
+				self.status_message ( "Problem updating smidi_points_query ":self.query.from_ip_lot:status, MSG_FULL )
+			ENDIF
+
+		ENDIF
+
+	ENDIF  { date_last_mod empty }
+
+ENDROUTINE  { smidi_download_action_no_points_in_SAP }
+
+{ **************************************************************************** }
+
+ROUTINE add_2_intervals ( VALUE int1, VALUE int2 )
+
+{ ------------------------------------------------------------------- }
+{                                                                     }
+{ You better not put msecs on any intervals or you are rewriting this }
+{ AND you best not use interval day values > 98 days....              }
+{                                                                     }
+{ Interval format---> "days hrs:min:secs"                             }
+{                                                                     }
+{ ------------------------------------------------------------------- }
+
+	DECLARE days1, hrs1, mins1, secs1, days2, hrs2, mins2, secs2, a_pos, save_format, st_len
+
+	save_format = GLOBAL ( "FORMAT_TEXT" ) 
+	SET FORMAT "99"                           { <- max 99 days }
+
+	int1 = STRIP ( int1 )
+	int2 = STRIP ( int2 )
+
+	{ --------------------------------------------------- }
+	{ Make the two intervals into the discreet time units }
+	{ --------------------------------------------------- }
+
+	a_pos  = INDEX ( int1, " " )
+	days1  = STRIP ( LEFTSTRING ( int1, a_pos ) )
+	st_len = STRINGLENGTH ( int1 )
+	int1   = STRIP ( RIGHTSTRING ( int1, st_len - a_pos ) )
+	hrs1   = SUBSTRING ( int1, 1, 2 )
+	mins1  = SUBSTRING ( int1, 4, 2 )
+	secs1  = SUBSTRING ( int1, 7, 2 )
+
+	a_pos  = INDEX ( int2, " " )
+	days2  = STRIP ( LEFTSTRING ( int2, a_pos ) )
+	st_len = STRINGLENGTH ( int2 )
+	int2   = STRIP ( RIGHTSTRING ( int2, st_len - a_pos ) )
+	hrs2   = SUBSTRING ( int2, 1, 2 )
+	mins2  = SUBSTRING ( int2, 4, 2 )
+	secs2  = SUBSTRING ( int2, 7, 2 )
+
+	IF BLANK ( STRIP(secs1) ) THEN
+		secs1 = 0
+	ENDIF
+
+	IF BLANK ( STRIP(secs2) ) THEN
+		secs2 = 0
+	ENDIF
+
+	{ --------------------------------------------------- }
+	{ Now add the time units and carry over...            }
+	{ --------------------------------------------------- }
+
+	secs2 = secs1 + secs2
+	IF secs2 > 59 THEN
+		secs2 = secs2 - 59
+		mins2 = mins2 + 1
+	ENDIF
+	
+	mins2 = mins1 + mins2
+	IF mins2 > 59 THEN
+		mins_2 = mins2 - 59
+		hrs2   = hrs2 + 1
+	ENDIF
+
+	hrs2 = hrs1 + hrs2
+	IF hrs2 > 23 THEN
+		hrs2  = hrs2 - 23
+		days2 = days2 + 1
+	ENDIF
+
+	days2  = days1 + days2
+	retval = STRIP ( days2 ) : " " : STRIP ( hrs2 ) : ":" : STRIP ( mins2 ) : STRIP ( secs2 )
+
+	{ --------------------------------------------------- }
+	{ Check to make sure you did not goof... and return   }
+	{ --------------------------------------------------- }
+
+	IF NOT ( IS_INTERVAL ( retval ) ) THEN
+		retval = CHANGE_REPEAT_MAX
+	ENDIF
+
+	SET FORMAT save_format
+
+	RETURN ( retval )
+
+ENDROUTINE  { add_2_intervals }
+
+{ **************************************************************************** }
+{                                                                              }
+{                                                                              }
+{                                                                              }
+{  AFTER queue is read tell the upload to NOT send data for each upload type   }
+{  TRUE  - continue sending data                                               }
+{  FALSE - do not send, but leave on the queue and try again later             }
+{                                                                              }
+{                                                                              }
+{                                                                              }
+{ **************************************************************************** }
+
+ROUTINE smidi_V2_action_send_result ( base_object, VALUE view_name )
+
+	DECLARE pending_reactivate, push_files
+
+	retval             = TRUE
+	pending_reactivate = SELECT 'view_name'.ID_NUMERIC
+
+	push_file_descriptor ( view_name, push_files )
+
+	IF pending_reactivate <> EMPTY THEN
+
+		pending_reactivate = SELECT 'view_name'.ANALYSIS_ID
+					WHERE ID_NUMERIC = pending_reactivate
+					AND   TYPE       = SMIDI_UPLOAD_POINT_UD
+
+		IF ( pending_reactivate <> EMPTY ) AND ( pending_reactivate = TRUE ) THEN
+
+			retval = FALSE
+			base_object.status_message ( "Results must wait for point ud on a reactivation ", MSG_HIGH )
+
+		ENDIF
+
+	ENDIF
+
+	pop_file_descriptor ( push_files )
+
+	RETURN ( retval )
+
+ENDROUTINE { smidi_V2_action_send_result }
+
+{******************************************************************************}
+
+ROUTINE smidi_V2_action_send_lot_ud ( base_object, VALUE view_name )
+
+	DECLARE pending_stuff, job, pusher, smidi_lot
+
+	smidi_lot = SELECT 'view_name'.SMIDI_LOT
+
+	push_file_descriptor ( view_name, pusher )
+
+	retval    = TRUE
+	job       = SELECT JOB_HEADER.JOB_NAME WHERE SMIDI_LOT = smidi_lot
+
+	IF job <> EMPTY THEN
+
+		pending_stuff = SELECT SMIDI_UPLOAD_QUEUE.id_numeric
+			        WHERE SMIDI_LOT = smidi_lot
+			        AND   ( TYPE    = SMIDI_UPLOAD_RESULT | TYPE = SMIDI_UPLOAD_POINT | TYPE = SMIDI_UPLOAD_POINT_UD )
+			        AND STATUS <> SMIDI_IGNORE_STATUS
+
+		IF pending_stuff <> EMPTY THEN
+
+			retval = FALSE
+			base_object.status_message ( "Pending upload, deferring lot usage decision ":smidi_lot, MSG_MED )
+
+		ENDIF
+
+	ELSE
+
+		retval = FALSE
+		base_object.status_message ( "Job invalid ":smidi_lot, MSG_FULL )
+
+	ENDIF
+
+	pop_file_descriptor ( pusher )
+
+	RETURN ( retval )
+
+ENDROUTINE  { smidi upload user send lot ud }
+
+{******************************************************************************}
+
+ROUTINE smidi_V2_action_send_point_ud ( base_object, VALUE view_name )
+
+	DECLARE push_files, is_reactivate, this_lot
+
+	retval   = TRUE
+	this_lot = SELECT 'view_name'.smidi_lot
+
+	push_file_descriptor ( view_name, push_files )
+
+	is_reactivate = SELECT SMIDI_UPLOAD_QUEUE.ANALYSIS_ID 
+			WHERE SMIDI_LOT  = this_lot
+			AND   ( TYPE = SMIDI_UPLOAD_RESULT OR TYPE = SMIDI_UPLOAD_POINT )
+
+	IF is_reactivate <> EMPTY THEN
+
+		retval = FALSE
+		base_object.status_message ( "Job has pending results, deferring upload of point ud ", MSG_3 )
+
+	ENDIF
+
+	pop_file_descriptor ( push_files )
+
+	RETURN ( retval )
+
+ENDROUTINE  { smidi_v2_action_send_point_ud }
+
+{******************************************************************************}
+
+ROUTINE smidi_V2_action_send_point ( base_object, VALUE view_name )
+
+	RETURN ( TRUE )
+
+ENDROUTINE  { smidi base action send point }
+
+{******************************************************************************}
+
+ROUTINE smidi_V2_action_send_defect ( base_object, VALUE view_name )
+
+	RETURN ( TRUE )
+
+ENDROUTINE  { smidi base action send defect }
+
+{ **************************************************************************** }
+{                                                                              }
+{                                                                              }
+{                  TRIGGERS INITIATED AFTER UPLOAD TO SAP                      }
+{                                                                              }
+{                                                                              }
+{ **************************************************************************** }
+
+ROUTINE smidi_que2_action_errors_update_Q ( self, object, errors )
+
+	self.status_message ( "---> smidi_que2_action_errors_update_Q <---- ":object.type, MSG_LOW )
+
+	DECLARE e_cnt, o_cnt, current, rfc_outcome, smidi_samp_no
+
+	o_cnt         = 1
+	current       = self.items[ o_cnt ]
+	smidi_samp_no = RIGHTSTRING ( STRIP(current.job_name), 6 )
+
+	IF current <> EMPTY THEN
+		rfc_outcome = current.outcome
+	ELSE
+		rfc_outcome = FALSE
+	ENDIF
+
+	WHILE current <> EMPTY DO
+
+		IF ( rfc_outcome <> 0 ) THEN
+
+			current.outcome       = rfc_outcome
+			current.error_message = "QM-IDI RFC error-> see trace file from librfc32.dll in gateway directory"
+
+		ELSE
+
+			current.outcome       = SMIDI_NORMAL
+			current.error_message = ""
+			e_cnt                 = 1
+
+			WHILE errors[e_cnt] <> EMPTY DO
+
+				IF  ( object.type = SMIDI_UPLOAD_RESULT                          )
+				AND ( current.sap_result_conf_no = errors[e_cnt].result_number   )
+				AND ( current.smidi_lot          = errors[e_cnt].lot_no          )
+				AND ( current.smidi_phys_samp    = errors[e_cnt].part_sample_no  ) THEN
+	
+					current.outcome       = errors[e_cnt].message_no
+					current.error_message = errors[e_cnt].message_text
+					self.status_message ( "** RESULT REQUEUE smidi_que2_action_errors_update_Q ":current.error_message:" ":current.key0, MSG_FULL )
+	
+				ELSEIF ( object.type = SMIDI_UPLOAD_UD            ) 
+				AND    ( current.smidi_lot = errors[e_cnt].lot_no ) THEN
+
+					current.outcome       = errors[e_cnt].message_no
+					current.error_message = errors[e_cnt].message_text
+					self.status_message ( "** LOT UD REQUEUE smidi_que2_action_errors_update_Q ":current.error_message:" ":current.key0, MSG_FULL )
+	
+				ELSEIF ( ( object.type = SMIDI_UPLOAD_POINT ) OR ( object.type = SMIDI_UPLOAD_POINT_UD ) )
+				AND    ( current.smidi_lot = errors[e_cnt].lot_no          ) 
+				AND    ( smidi_samp_no     = errors[e_cnt].part_sample_no  ) THEN
+
+					current.outcome       = errors[e_cnt].message_no
+					current.error_message = errors[e_cnt].message_text
+					self.status_message ( "** POINT/UD REQUEUE smidi_que2_action_errors_update_Q ":current.error_message:" ":current.key0, MSG_FULL )
+
+				ELSEIF ( BLANK ( errors[e_cnt].lot_no ) ) THEN
+
+                    		current.outcome       = errors[e_cnt].message_no   { Map error number so SMIDI knows record failed }
+                    		current.error_message = errors[e_cnt].message_text			
+					self.status_message ( "---> SAP DID NOT SET LOT NO in error *** smidi_que2_action_errors_update_Q ":current.key0, MSG_FULL )
+
+				ELSE
+
+					current.outcome       = errors[e_cnt].message_no
+					current.error_message = errors[e_cnt].message_text
+					self.status_message ( "** DEFECT REQUEUE smidi_que2_action_errors_update_Q ":current.error_message:" ":current.key0, MSG_FULL )
+
+				ENDIF
+
+				e_cnt = e_cnt + 1
+
+			ENDWHILE
+
+		ENDIF  { rfc_error if object.outcome is not TRUE }
+
+		{ --------------------------------------------------------------------- }
+		{ The upload complete deletes item from queue or increments retry count }		
+		{ --------------------------------------------------------------------- }
+
+		smidi_upload_complete ( self, current, TRUE )
+
+		current = EMPTY
+		o_cnt   = o_cnt + 1
+		current = self.items[ o_cnt ]
+
+	ENDWHILE     { for each of the items in the object set its outcome }
+
+	self.status_message ( "<------ smidi_que2_action_errors_update_Q  ------>":rfc_outcome, MSG_LOW )
+
+ENDROUTINE { smidi_upload_complete_by_lot }
+
+{******************************************************************************}
+
+GLOBAL ROUTINE smidi_upload_complete ( self, object, VALUE lot_mode )
+
+	DECLARE retry_count, max_retries, record, status, do_commit, is_reactivate, upload_type
+
+	IF ( NOT TRANSACTION_IS_WRITE() ) THEN
+
+		START WRITE TRANSACTION ( STRIP (object.type) : STRIP ( object.key0 ) )
+		do_commit = TRUE
+
+	ELSE
+
+		do_commit = FALSE
+
+	ENDIF
+
+	self.status_message("smidi_upload_complete OUTCOME ---> ":STRIP(object.outcome):" ":STRIP(object.key0), MSG_LOW )
+
+	max_retries = self.get_item ( "SMIDI_UPLOAD_RETRIES" )
+
+	IF ( max_retries = EMPTY ) THEN
+		max_retries = MAXIMUM_RETRY_UPLOAD
+	ENDIF
+
+	record = LOCKED
+
+	WHILE ( record = LOCKED ) DO
+
+		record = SELECT smidi_upload_queue.id_numeric
+                         FOR UPDATE
+                         WHERE job_name    = object.job_name
+                         AND   id_numeric  = object.id_numeric
+                         AND   test_number = object.test_number
+                         AND   name        = object.name
+
+
+		IF ( record = LOCKED ) THEN
+
+			self.status_message("Upload record locked ":object.key0, MSG_HIGH)
+			SLEEP FOR "0 00:00:02"
+
+		ENDIF
+
+	ENDWHILE  { got to get this record exclusive }
+
+	{ ---------------------------------------------------------------------------------------------------- }
+	{ got exclusive access to the record now update it - not really, the update fails with "record locked" }
+	{ ---------------------------------------------------------------------------------------------------- }
+
+	IF ( record <> EMPTY ) THEN
+
+		retry_count   = SELECT SMIDI_UPLOAD_QUEUE.RETRY_COUNT
+		upload_type   = SELECT SMIDI_UPLOAD_QUEUE.TYPE
+
+		IF upload_type = SMIDI_UPLOAD_POINT_UD THEN
+			is_reactivate = SELECT SMIDI_UPLOAD_QUEUE.ANALYSIS_ID
+		ELSE
+			is_reactivate = ""
+		ENDIF
+
+		IF ( object.outcome <> SMIDI_NORMAL ) THEN
+
+			IF ( retry_count > max_retries ) THEN
+				ASSIGN smidi_upload_queue.status = SMIDI_ERROR_STATUS
+			ELSE
+				ASSIGN smidi_upload_queue.retry_count = retry_count + 1
+			ENDIF
+
+			IF ( VARIABLE_IS_ASSIGNED ( object.error_message ) ) THEN
+				ASSIGN smidi_upload_queue.error  = object.error_message
+			ELSE
+				ASSIGN smidi_upload_queue.error  = "smidi_upload_complete Unknown error"
+			ENDIF
+
+		ELSEIF ( NOT self.parent.get_item ( "UPLOAD_COMPLETE_DELETE" ) ) THEN
+
+			ASSIGN smidi_upload_queue.status = SMIDI_IGNORE_STATUS
+
+		ELSEIF ( is_reactivate <> EMPTY ) & ( NOT BLANK ( is_reactivate ) ) & ( is_reactivate = TRUE ) THEN
+
+			ASSIGN smidi_upload_queue.analysis_id = EMPTY
+			ASSIGN smidi_upload_queue.error       = "Reactivate will send again"
+
+		ELSE
+
+			DELETE smidi_upload_queue, status
+			
+			IF status <> EMPTY THEN
+
+				self.status_message ( "*** upload_complete DELETE ":object.key0:" > ":status, MSG_HIGH )
+
+				ASSIGN smidi_upload_queue.error  = "DO_NOT_QUE please delete !"
+				ASSIGN smidi_upload_queue.status = SMIDI_IGNORE_STATUS
+
+			ENDIF
+
+		ENDIF  { update record and let radtest_drv authorize test }
+
+		{ ------------------------------------------------------------------------------------------------ }
+		{ This is normally the only commit in upload, but user triggers can do some pretty weird coding... }
+		{ ------------------------------------------------------------------------------------------------ }
+
+		UPDATE smidi_upload_queue, status
+
+		IF do_commit THEN
+			COMMIT
+		ENDIF
+
+		IF ( status <> EMPTY ) THEN
+			self.status_mess_decode ( "SMIDI_QUE_FAIL", MSG_HIGH, object.key0, EMPTY, EMPTY )              
+		ELSE
+			self.status_message ( "smidi_upload_complete Finished...":object.outcome:" ":object.key0, MSG_MED )
+		ENDIF  { update of record empty }
+
+	ENDIF  { record empty }
+
+
+ENDROUTINE { smidi_upload_complete }
+
+
+{ **************************************************************************** }
+{                                                                              }
+{                                                                              }
+{                           RESULT UPLOAD TRIGGERS                             }
+{                                                                              }
+{ 1. During queueing of data if you want to change values sent to queue        }
+{ 2. During upload cycle for results if you want to change mr, sr, se data     }
+{                                                                              }
+{                                                                              }
+{ **************************************************************************** }
+
+ROUTINE smidi_que2_action_change_before_send ( self, queue_object, a_sr_mr_se, retval )
+
+
+	IF  ( NOT BLANK ( queue_object.sap_units  )             ) 
+	AND ( NOT BLANK ( queue_object.lims_units )             )
+	AND ( queue_object.lims_units <> queue_object.sap_units ) 
+	AND ( self.do_unit_convert                              ) THEN
+
+
+		queue_object.parent.status_message("******* smidi_unit_convert UNITS ARE DIFFERENT *******", MSG_FULL )
+
+		{ --  if you have this condition, then do some unit conversion -- }
+		{ --  for example, use standard lims unit convert routines     -- }
+	
+
+	ENDIF
+
+	queue_object.sap_attribute = " "     { do not allow any attributes to be sent to SAP }
+
+
+    { 1.5 start, to end of routine, base on kj fix        }
+    { Make the QAIMR, QAISE the same as in Sm2000 version }
+    {**********************************************************
+    * There seems to be a bug in SAP that means this code is
+    * required. SAP is telling SM it does not want a valuation
+    * So SM sends it back as a blank string, but SAP is rejecting the data
+    * So the solution seems to always send a valuation
+    ***********************************************************}
+
+
+    DECLARE fail_count                                                  {SAP31}
+    DECLARE samp_valuation                                              {SAP31}
+    DECLARE char_valuation                                              {SAP36}
+
+    IF     ( OBJECT_GET_CLASS_NAME ( a_sr_mr_se ) = "QAIMR" ) THEN
+
+       a_sr_mr_se.valuation = queue_object.sap_valuation
+
+       a_sr_mr_se.upload_valuation = "X"      { 1.5 }
+
+
+    ELSEIF ( OBJECT_GET_CLASS_NAME ( a_sr_mr_se ) = "QAISR" ) THEN
+
+        a_sr_mr_se.samp_valuation = queue_object.sap_valuation
+
+        {SAP36 START}
+
+  {      a_sr_mr_se.part_sample_no = queue_object.smidi_part_samp  }  { Tells SAP which sample in the collection it is }
+
+        IF (TRUE)  
+{(NUMERIC(queue_object.smidi_part_samp) = NUMERIC(queue_object.sap_num_subsamps))}
+
+            a_sr_mr_se.last_sample = "X"
+
+            fail_count  = SELECT COUNT SAMP_JOB_TEST_RESULT
+                          WHERE ( (job_name = queue_object.job_name) &
+                                  (test_number = queue_object.test_number) &
+                                  (component_name     = queue_object.name    ) &
+                                  (result_status = "A") &
+                                  (out_of_range = TRUE)
+                                )
+
+            IF (fail_count > 0)
+
+                char_valuation = "R"
+
+            ELSE
+
+                char_valuation = "A"
+
+            ENDIF
+
+            a_sr_mr_se.char_valuation = char_valuation
+
+        ELSE
+
+            a_sr_mr_se.last_sample = " "
+
+        ENDIF
+
+
+        {SAP36 END}
+
+
+    ELSEIF ( OBJECT_GET_CLASS_NAME ( a_sr_mr_se ) = "QAISE" )           {SAP31}
+
+
+        {**********************************************************
+        SAP31
+        Populate the QAISE object
+        ***********************************************************}
+        a_sr_mr_se.valuation = queue_object.sap_valuation
+        a_sr_mr_se.test_counter = convert_vg_number( NUMERIC(queue_object.smidi_part_samp) , 4 )
+
+        IF (TRUE)
+{(NUMERIC(queue_object.smidi_part_samp) = NUMERIC(queue_object.sap_num_subsamps))}
+
+            a_sr_mr_se.last_single_value = "X"
+            a_sr_mr_se.close             = ""  
+            a_sr_mr_se.upload_valuation  = "X"  
+
+            fail_count  = SELECT COUNT SAMP_JOB_TEST_RESULT
+                          WHERE ( (job_name = queue_object.job_name) &
+                                  (test_number = queue_object.test_number) &
+                                  (component_name     = queue_object.name    ) &
+                                  (result_status = "A") &
+                                  (out_of_range = TRUE)
+                                )
+
+            IF (fail_count > 0)
+
+                samp_valuation = "R"
+
+            ELSE
+
+                samp_valuation = "A"
+
+            ENDIF
+
+            a_sr_mr_se.char_valuation = samp_valuation
+
+
+        ELSE
+
+            a_sr_mr_se.last_single_value = " "
+
+        ENDIF
+
+    ENDIF
+
+
+
+    RETURN ( retval )
+
+ENDROUTINE  { smidi_que2_action_change_before_send = change the values sent to SAP during upload processing of results }
+
+
+{******************************************************************************}
+
+
+
+ROUTINE smidi_up_2_action_change_before_queue ( smidi_queue, retval )
+
+	smidi_queue.sap_attribute = " "
+
+    RETURN ( TRUE )    { <- in this example we are just returning the status sent to us }
+
+ENDROUTINE  { smidi_up_v2_change_before_queue }
+
+
+
+{******************************************************************************}
+{                                                                              }
+{                                                                              }
+{                           USAGE DECISION                                     }
+{                                                                              }
+{                                                                              }
+{******************************************************************************}
+
+GLOBAL ROUTINE smidi_before_upload_ud ( qaive, smidi_queue, authorized_by )
+
+	qaive.decided_date  = convert_vg_date( NOW )
+	qaive.decided_time  = convert_vg_time( NOW )
+
+	IF ( NOT BLANK ( authorized_by ) ) THEN
+		qaive.decider = PAD(authorized_by, " ", 12)
+	ELSE
+		qaive.decider = PAD(OPERATOR, " ", 12)
+	ENDIF
+
+	IF BLANK ( qaive.code_group ) THEN 
+		qaive.code_group = qaive.selected_set
+	ENDIF
+
+	smidi_queue.status_message("smidi_before_upload_ud", MSG_MED)
+
+ENDROUTINE { smidi_before upload ud }
+
+{******************************************************************************}
+
+GLOBAL ROUTINE smidi_after_upload_ud ( smidi_queue, retval )
+
+	RETURN ( retval )
+
+ENDROUTINE { smidi after upload ud }
+
+{******************************************************************************}
+{                                                                              }
+{                                                                              }
+{                   P O I N T   U S A G E    D E C I S I O N                   }
+{                                                                              }
+{                                                                              }
+{******************************************************************************}
+
+GLOBAL ROUTINE smidi_before_upload_POINTS_ud ( qaipp, smidi_queue )
+	
+	{ ============================================================== }
+	{ Leave as blanks variables that SAP will not allow changes      }
+	{ ============================================================== }
+
+	IF NOT NUMTEXT ( qaipp.partial_lot_no ) THEN
+		qaipp.partial_lot_no = 12345
+	ENDIF
+
+	IF BLANK ( qaipp.userc1 ) THEN
+		qaipp.userc1 = "123"
+	ENDIF
+
+	IF BLANK ( qaipp.userc2 ) THEN
+		qaipp.userc2 = "MSM"
+	ENDIF
+
+	IF BLANK ( qaipp.usern1 ) THEN
+		qaipp.usern1 = 1
+	ENDIF
+
+	IF BLANK ( qaipp.usern2 ) THEN
+		qaipp.usern2 = 2
+	ENDIF
+
+	IF BLANK ( qaipp.userd1 ) THEN
+		qaipp.userd1 = qaipp.date_insp_started
+	ENDIF
+
+	IF BLANK ( qaipp.usert1 ) THEN
+		qaipp.usert1 = qaipp.time_insp_started
+	ENDIF
+	
+
+	qaipp.partial_lot_no    = " "                       { teillos    }
+	qaipp.batch_no          = " "                       { charg      }
+	qaipp.confirmation_type = " "                       { kzrmart    }
+	qaipp.scrap_reason      = " "                       { ursacheas  }
+	qaipp.scrap_amount      = " "                       { mengeas    }
+
+	DECLARE lot_origin, samps_material, this_samp
+
+	lot_origin = LEFTSTRING (qaipp.lot_no,2)
+
+	IF lot_origin <> "03" THEN
+
+		qaipp.batch_no       	= ""
+		qaipp.insp_point_amount = ""
+		qaipp.insp_point_units	= ""
+		qaipp.partial_lot_no	= "000000"
+
+		{ ========================================================================================== }
+		{ Now we have to get the original material from the sample and put it into qaipp.material_no }
+		{ ========================================================================================== }
+
+		this_samp         = SELECT SMIDI_INSPPOINT.SAMPLE
+		samps_material    = SELECT SAMPLE.PRODUCT WHERE ID_NUMERIC = this_samp
+		qaipp.material_no = samps_material
+
+	ENDIF
+
+
+	smidi_queue.status_message("$smidi_upload_user/smidi_before_upload_POINTS_ud", MSG_MED )
+
+ENDROUTINE { smidi_before upload ud }
+
+{******************************************************************************}
+
+GLOBAL ROUTINE smidi_after_upload_POINTS_ud ( smidi_queue, retval )
+
+	RETURN ( retval )
+
+ENDROUTINE { smidi after upload points ud }
+
+
+{******************************************************************************}
+{                                                                              }
+{                                                                              }
+{                  I N S P E C T I O N      P O I N T S                        }
+{                                                                              }
+{                                                                              }
+{******************************************************************************}
+
+GLOBAL ROUTINE smidi_before_upload_POINTS ( qaipp, smidi_queue )
+
+	retval = TRUE
+
+	qaipp.status_message ( "smidi_before_upload_POINTS ", MSG_MED )
+
+	
+	{ ============================================================== }
+	{ Leave as blanks variables that SAP will not allow changes      }
+	{ ============================================================== }
+	
+	IF qaipp.qmidi_object >= 2 THEN
+
+		qaipp.equipment_no      = " "      { equnr      }
+		qaipp.functional_loc    = " "      { tplnr      }
+		qaipp.rework_quantity   = " "      { mengena    }
+
+	ENDIF
+
+	qaipp.confirmation_type = " "      { kzrmart    }
+	qaipp.scrap_reason      = " "      { ursacheas  }
+	qaipp.scrap_amount      = " "      { mengeas    }
+	qaipp.batch_no          = " "      { charg      }
+
+	qaipp.code              = " "
+	qaipp.code_group        = " "
+	qaipp.confirmation_type = " "
+	qaipp.decision_text     = " "
+	qaipp.op_sequence       = " "
+
+	{ ----------------------- Override defaults read from table  --- }
+
+	IF ( BLANK ( qaipp.partial_lotno ) ) THEN
+		qaipp.partial_lotno = "000000"
+	ENDIF
+
+	IF ( BLANK ( qaipp.insppoint_amount ) ) THEN
+		qaipp.insppoint_amount = "1200"
+	ENDIF
+
+	IF ( BLANK ( qaipp.insppoint_units ) ) THEN
+		qaipp.insppoint_units = "KG"
+	ENDIF
+
+	IF ( BLANK ( qaipp.userc1 ) ) THEN
+		qaipp.userc1 = "MSM"
+	ENDIF
+		
+	IF BLANK ( qaipp.userd1 ) THEN
+		qaipp.userd1 = qaipp.date_insp_started
+	ENDIF
+	
+	IF BLANK ( qaipp.usert1 ) THEN
+			qaipp.usert1 = qaipp.time_insp_started
+	ENDIF
+
+	{ ++++++++++++++++++++++++++++++++++++++++++++++++++++++++ }
+	{  you need to look in SAP to find the proper time format  }
+	{ ++++++++++++++++++++++++++++++++++++++++++++++++++++++++ }
+
+	{
+		SET DATE FORMAT "MZDZYYYY"
+			qaipp.date_insp_started = STRIP ( NOW )
+		RESTORE DATE FORMAT
+
+
+		SET DATE FORMAT "H12MI"   <---- default is H24
+			qaipp.time_insp_started = STRIP ( NOW )
+		RESTORE DATE FORMAT
+
+	... only do this if the default format of YYYYMZDZ is not set for the user that logs into SAP
+	}
+	
+
+	RETURN ( retval )
+
+ENDROUTINE { smidi_before_upload_points }
+
+{******************************************************************************}
+
+GLOBAL ROUTINE smidi_after_upload_POINTS ( smidi_queue, retval )
+
+	RETURN ( retval )
+
+ENDROUTINE { smidi after upload points }
+
+{ ---------------------------------------------------------------------------- }
+{                                                                              }
+{                                                                              }
+{             D E F E C T S    Before and after upload                         }
+{                                                                              }
+{                                                                              }
+{ ---------------------------------------------------------------------------- }
+
+GLOBAL ROUTINE smidi_before_upload_DEFECTS ( qmife, smidi_queue, smidi_queue_item )
+
+	RETURN ( TRUE )
+
+ENDROUTINE  { smidi_before_upload_DEFECTS }
+
+{******************************************************************************}
+
+GLOBAL ROUTINE smidi_after_upload_DEFECTS ( smidi_queue, retval )
+
+	RETURN ( retval )
+
+ENDROUTINE  { smidi_after_upload_DEFECTS }
+
+{******************************************************************************}
+
+GLOBAL ROUTINE smidi_Make_UD ( job_id, object ) 
+
+	DECLARE allowed, ud_phrase, subsys, job_status, smidi_system, off_spec, ud, ud_text, code_group
+
+	retval       = FALSE
+	allowed      = STRIP ( object.get_item ( "SMIDI_AUTO_UD_JOB_STATUSES" ) )
+
+	ud_phrase    = SELECT JOB_HEADER.SAP_UD_phrase WHERE JOB_NAME = job_id
+	subsys       = SELECT JOB_HEADER.SAP_UD_Enabled
+	job_status   = SELECT JOB_HEADER.JOB_STATUS
+	smidi_system = SELECT JOB_HEADER.SMIDI_REQUESTER
+	off_spec     = SELECT SAMP_JOB_TEST_RESULT.COMPONENT_NAME WHERE JOB_NAME = job_id AND OUT_OF_RANGE = TRUE
+
+	object.status_message("smidi_Make_UD ":job_id:" Allowed->":allowed:" Status->":job_status:" Phrase->":ud_phrase:" Subys->":subsys:" Offspec=":off_spec, MSG_MED)
+
+	IF ( ud_phrase <> EMPTY ) AND ( NOT BLANK ( ud_phrase ) ) THEN
+
+		IF subsys = "X" THEN
+
+			IF ( INDEX ( allowed, job_status ) > 0 ) THEN
+
+				set_pass_fail_from_phrase ( job_id, smidi_system, ud_phrase, offspec, ud, ud_text, code_group )
+				retval = smidi_update_job_and_queue_ud ( object, job_id, smidi_system, ud, ud_text, code_group )
+				object.status_message("smidi_make_UD AUTO ud-->":job_id:" <":smidi_system:"> [":ud_phrase:"] ->":ud:"/":ud_text:" ":code_group:" ":retval, MSG_HIGH)
+
+			ELSE
+
+				object.status_message("smidi_Make_UD ":job_id:" invalid status ":job_status:"->":allowed, MSG_HIGH)
+
+			ENDIF  { pass_fail ud decides if we should make a UD and if so, then how }
+
+		ELSE
+
+			object.status_message("smidi_Make_UD ":job_id:" subsys decides not enabled", MSG_HIGH)
+
+		ENDIF
+
+	ELSE
+
+		object.status_message("smidi_Make_UD ":job_id:" Job has no SAP_UD_Phrase", MSG_HIGH )
+
+	ENDIF  { this ud phrase empty }
+
+	RETURN ( retval )
+
+ENDROUTINE { smidi_Make_UD }
+
+{ **************************************************************************** }
+
+ROUTINE set_pass_fail_from_phrase ( job_id, smidi_system, ud_phrase, off_spec, ud, ud_text, code_group )
+
+
+	DECLARE smp_phrase, pass, fail, code_fail, code_pass
+
+	{ ====================================================================== }
+	{ First, go get the PASS and FAIL words that SAP wants to use for the UD }
+	{ ====================================================================== }
+
+	smp_phrase = SELECT SMIDI_PHRASE_TRANSLATE.IDENTITY
+			WHERE SYSTEM  = smidi_system
+			AND   MAIN_ID = ud_phrase
+
+	IF smp_phrase = EMPTY THEN
+
+		pass      = DEFAULT_PASS_UD
+		fail      = DEFAULT_FAIL_UD
+		code_pass = DEFAULT_PASS_CODE_GROUP
+		code_fail = DEFAULT_FAIL_CODE_GROUP
+
+	ELSE
+
+		pass = SELECT SMIDI_PHRASE_VIEW.PHRASE_ID
+			WHERE IDENTITY      = smp_phrase 
+			AND   SYSTEM        = smidi_system
+			AND   QUALITY_SCORE >= 100
+
+		IF pass = EMPTY THEN
+			pass      = DEFAULT_PASS_UD
+			code_pass = DEFAULT_PASS_CODE_GROUP
+		ELSE
+			code_pass  = SELECT SMIDI_PHRASE_VIEW.CODE_GROUP
+		ENDIF
+
+		fail = SELECT SMIDI_PHRASE_VIEW.PHRASE_ID
+			WHERE IDENTITY      = smp_phrase 
+			AND   SYSTEM        = smidi_system
+			AND   QUALITY_SCORE <= 1
+
+		IF fail = EMPTY THEN
+			fail      = DEFAULT_FAIL_UD
+			code_fail = DEFAULT_FAIL_CODE_GROUP
+		ELSE
+			code_fail  = SELECT SMIDI_PHRASE_VIEW.CODE_GROUP
+		ENDIF
+
+	ENDIF  { smp_phrase not found in smidi_translate }
+
+
+	{ ============================================================ }
+	{  Got the pass, fail now set the UD according to the off_spec }
+	{ ============================================================ }
+
+
+	IF ( off_spec <> EMPTY ) AND ( NOT BLANK ( off_spec ) ) THEN
+
+		ud         = fail
+		ud_text    = UD_LONG_FAIL
+		code_group = code_fail
+
+	ELSE
+
+		ud         = pass
+		ud_text    = UD_LONG_PASS
+		code_group = code_pass
+
+	ENDIF  { pass fail sets the job header fields }
+
+
+ENDROUTINE  { select pass fail from phrase }
+
+
+{******************************************************************************}
+
+GLOBAL ROUTINE smidi_update_job_and_queue_ud ( object, job_id, smidi_system, ud, ud_text, code_group )
+
+	DECLARE update_job, status, do_commit, prompt_suppress_allowed
+
+	IF NOT transaction_is_write() THEN
+		START WRITE TRANSACTION "smidi_usage_decision"
+		do_commit = TRUE
+	ELSE
+		do_commit = FALSE
+	ENDIF
+
+
+	object.status_message("smidi_update_job_and_queue_ud ":job_id:" ":ud:ud_text:" ":do_commit, MSG_LOW)
+
+	retval     = FALSE
+	update_job = LOCKED
+
+	WHILE ( update_job = LOCKED ) DO
+
+		update_job = SELECT JOB_HEADER.SAP_UD_uploaded FOR UPDATE WHERE JOB_NAME = job_id
+
+		IF update_job = LOCKED THEN
+
+			SLEEP FOR "0 00:00:05"
+			update_job = SELECT JOB_HEADER.SAP_UD_uploaded FOR UPDATE WHERE JOB_NAME = job_id
+			object.status_message ( "Locked Job->":job_id, MSG_MED )
+
+		ENDIF
+
+	ENDWHILE
+
+	{ ======================================================================================================= }
+	{ got it exclusively now check the ud, which will build a real UD or make an adhoc result on failed ud's  }
+	{ ======================================================================================================= }
+
+	ASSIGN job_header.SAP_UD_code       = ud
+	ASSIGN job_header.SAP_UD_text       = ud_text
+	ASSIGN job_header.SAP_UD_code_group = code_group
+
+	prompt_suppress_allowed = GLOBAL ( "ALLOW_STATUS_SUPPRESS" )
+    
+	IF prompt_suppress_allowed THEN
+
+		SET STATUS_CHECK_SUPPRESS
+		CHANGE JOB STATUS TO "A", status
+
+		UPDATE JOB_HEADER, status
+
+		IF ( status = EMPTY ) THEN
+
+			CALL_ROUTINE "smidi_queue_ud" IN LIBRARY SMIDI_LIB_UPLOAD_LIB 
+				USING job_id, smidi_system RETURNING retval
+	
+			IF retval THEN
+		
+				ASSIGN job_header.SAP_UD_Uploaded = TRUE
+				UPDATE JOB_HEADER, status
+				object.status_message ( "*** JOB.SAP_UD_uploaded SUCCESSFUL *** ":job_id:" ":status, MSG_MED )
+
+			ENDIF
+
+		ELSE
+
+			object.error_message = "JOB.SAP_UD_uploaded Warning @@@ ":job_id:" ":status
+			object.status_message ( object.error_message, MSG_HIGH )
+
+		ENDIF
+
+	ELSE
+
+		object.status_message("smidi_update_job_and_queue_ud STATUS_PROMPT_SUPPRESS NOT ALLOWED ":job_id:" ":ud:ud_text, MSG_HIGH)
+
+	ENDIF
+
+	{ =================================== }
+	{ All done, commit if need be         }
+	{ =================================== }
+
+	IF ( retval ) AND ( do_commit) THEN
+		COMMIT
+	ELSEIF ( do_commit ) THEN
+		ROLLBACK
+	ENDIF
+
+	RETURN ( retval )
+
+ENDROUTINE {  smidi_update_job_and_queue_ud  }
+
+{ **************************************************************************** }
+{                                                                              }
+{                                                                              }
+{                                                                              }
+{                                                                              }
+{             LOT HEADER, LOT_DETAILS, LOT_RELATIONSHIPS                       }
+{                                                                              }
+{                                                                              }
+{                                                                              }
+{                                                                              }
+{ **************************************************************************** }
+
+ROUTINE map_lot_status ( smidi_rqst )
+
+	RETURN ( "V" )
+
+ENDROUTINE { map_login_new_job }
+
+
+{ **************************************************************************** }
+{                                                                              }
+{                                                                              }
+{                                                                              }
+{                                                                              }
+{                               JOB HEADER                                     }
+{                                                                              }
+{                                                                              }
+{                                                                              }
+{                                                                              }
+{ **************************************************************************** }
+
+ROUTINE map_login_new_job ( smidi_rqst )
+
+{ 1.6 
+Return lot as job name
+Need syntax to be blank in template for this to work
+	RETURN ( EMPTY )
+}
+
+    RETURN (smidi_rqst.parent.lot_no)
+
+ENDROUTINE { map_login_new_job }
+
+{******************************************************************************}
+
+ROUTINE map_locate_job_smidi_lot ( map_object )
+
+	DECLARE lot_no, add_job
+
+	map_object.master.job_id = EMPTY
+	lot_no                   = map_object.master.lot_no
+	add_job                  = smidi_lib_get_map_field ( map_object.mapping_profile, "JOB_HEADER", "JOB_NAME", "MAP_UPDATE" )
+
+	map_object.status_message("map_locate_job ":lot_no:" add if not found ":add_job, MSG_LOW)
+
+	map_object.master.job_id = SELECT JOB_HEADER.JOB_NAME 
+						WHERE SMIDI_LOT = lot_no
+
+	validate_job_find ( map_object, add_job, lot_no, FALSE )
+
+	RETURN ( map_object.master.job_id )
+
+ENDROUTINE { map_locate_job_by_smidi_lot }
+
+{******************************************************************************}
+
+ROUTINE map_locate_Job_A_batch ( map_object )
+
+	DECLARE batch, add_job, a_field
+
+	a_field = "SAP_BATCH"
+
+	map_object.master.job_id = EMPTY
+	batch                    = map_object.parent.batch_no
+	add_job                  = smidi_lib_get_map_field ( map_object.mapping_profile, "JOB_HEADER", "JOB_NAME", "MAP_UPDATE" )
+
+	map_object.status_message("map_locate_job_by_batch ":batch:" add if not found ":add_job, MSG_LOW)
+
+	map_object.master.job_id = SELECT JOB_HEADER.JOB_NAME FOR UPDATE
+						WHERE 'a_field' = batch
+						AND   STATUS    = "A"
+
+	validate_job_find ( map_object, add_job, batch, TRUE )
+
+	RETURN ( map_object.master.job_id )
+
+ENDROUTINE { map_locate_job_A_batch }
+
+{ **************************************************************************** }
+
+ROUTINE validate_job_find ( map_object, VALUE add_job, VALUE msg_field, VALUE do_map )
+
+	IF ( map_object.master.job_id = EMPTY ) & ( NOT add_job ) THEN
+
+		map_object.master.job_id = ERROR
+
+	ELSEIF map_object.master.job_id = LOCKED THEN
+
+		map_object.master.job_id = ERROR
+
+	ELSEIF ( map_object.master.job_id <> EMPTY ) AND NOT ( update_job_using_mapping ( map_object, do_map ) ) THEN
+
+		map_object.master.job_id = ERROR
+
+	ELSE
+
+		map_object.master.parent.operations[map_object.master.ops_count].job.job_identity = map_object.master.job_id
+		map_object.status_message("Job updated and ready to upload for ":msg_field:" ":map_object.master.job_id, MSG_MED )
+
+	ENDIF
+	
+ENDROUTINE  { validate_job_find }
+
+{ **************************************************************************** }
+
+ROUTINE update_job_using_mapping ( map_object, VALUE do_map )
+
+	DECLARE retval, qaivc
+
+	retval                      = TRUE
+	qaivc                       = map_object.parent
+	map_object.master.requestor = smidi_lib_get_r3sys()
+	qaivc.job.master            = map_object.master
+	qaivc.job.job_identity      = map_object.master.job_id
+	qaivc.job.job_syntax        = ""
+	qaivc.job.is_job            = TRUE
+	qaivc.job.template_id       = SELECT JOB_HEADER.TEMPLATE_ID
+
+	IF do_map THEN
+
+		map_object.map_fields ( "JOB_HEADER" )
+
+		UPDATE JOB_HEADER, status
+
+		IF ( status <> EMPTY ) THEN
+
+			retval  = FALSE
+			map_object.status_message ( "*** FAILURE *** REACTIVATING (":map_object.master.job_id:") for inspection lot ":status, MSG_FULL )
+
+		ENDIF
+
+	ENDIF   { if caller does not want to update job (e.g. during inspection points should NOT) then don't }
+
+	RETURN ( retval )
+
+ENDROUTINE  {  update_job_using_mapping ( smidi_rqst ) }
+
+{ **************************************************************************** }
+{                                                                              }
+{ JOB ACTIONS -    special code for mapping fields                             }
+{                                                                              }
+{ **************************************************************************** }
+
+ROUTINE map_job_description( self )
+
+	RETURN ( self.parent.product_object.product_id : " - " : self.parent.material_short )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE map_date_to_start( self )
+
+	RETURN ( convert_r3_date (self.parent.insp_created, "" ) )   { pass in DATE then TIME }
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE map_lot_create_date ( smidi_rqst )
+
+	RETURN ( STRIP ( convert_r3_date_with_format (  smidi_rqst.parent.insp_created      ,
+							smidi_rqst.parent.qiwlr.time_created,  "" ) ) )
+
+		{  --------------------------------------------------------------------------------- }
+		{  if you want to change the format of TIME pass the 3rd param as a date-time format }
+		{  --------------------------------------------------------------------------------- }
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE map_sap_ud_points( self )
+
+	RETURN ( flag_set ( self.parent.insp_point_confirm ) )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE map_sap_ud_phrase( self )
+
+	retval = SELECT SMIDI_PHRASE_TRANSLATE.IDENTITY
+		 WHERE SYSTEM       = STRIP ( self.parent.smidi_server )
+		 AND   MAIN_ID      = STRIP ( self.parent.selected_set )
+		 AND   CATALOG_TYPE = "3"
+
+	IF retval = EMPTY THEN
+		retval = self.map_default
+	ENDIF
+
+	RETURN ( retval )
+
+ENDROUTINE
+
+{ **************************************************************************** }
+{                                                                              }
+{                                                                              }
+{                                   SAMPLE                                     }
+{                                                                              }
+{                                                                              }
+{ **************************************************************************** }
+
+ROUTINE update_template_fields ( count, template_fields, VALUE template_type, smidi_rqst )
+
+	DECLARE found
+
+	IF template_type = "SAMPLE" THEN
+
+		IF NOT ( smidi_lib_array_contains_slice ( template_fields, "CUSTOMER_ID", found ) ) THEN
+			count                  = count + 1
+			template_fields[count] = "CUSTOMER_ID"
+		ENDIF
+
+		IF NOT ( smidi_lib_array_contains_slice ( template_fields, "SAMPLED_DATE", found ) ) THEN
+			count                  = count + 1
+			template_fields[count] = "SAMPLED_DATE"
+		ENDIF
+
+		IF NOT ( smidi_lib_array_contains_slice ( template_fields, "DATERESREQ", found ) ) THEN
+			count                  = count + 1
+			template_fields[count] = "DATERESREQ"
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE   { update_template_fields }
+
+{******************************************************************************}
+
+ROUTINE map_login_new_sample ( smidi_rqst )
+
+	RETURN ( EMPTY )    { empty always logs in a new sample }
+
+ENDROUTINE { sa_login_new_sample }
+
+{******************************************************************************}
+
+ROUTINE update_sample_fields ( smidi_rqst, qaivc )
+
+	DECLARE original_version, message, retval, status, sap_version, samp_template
+
+	retval = TRUE
+
+	samp_template           = SELECT SAMPLE.TEMPLATE_ID
+	ASSIGN SAMPLE.JOB_NAME  = smidi_rqst.master.parent.job_id
+
+	original_version = STRIP ( SELECT SAMPLE.PRODUCT )
+
+	IF original_version <> STRIP ( qaivc.product_object.product_id ) THEN
+
+		ASSIGN SAMPLE.PRODUCT = qaivc.product_object.product_id
+		smidi_rqst.status_message ( "**** MATERIAL CHANGE *** ":smidi_rqst.master.sample_id:" ":qaivc.product_object.product_id , MSG_HIGH )
+
+	ENDIF
+
+	message          = "*** REACTIVATING sample (":smidi_rqst.master.sample_id:") inspection lot ":qaivc.lot_no
+	original_version = SELECT SAMPLE.PRODUCT_VERSION
+	sap_version      = qaivc.product_object.product_version
+
+	IF ( original_version <> sap_version ) THEN
+
+		ASSIGN SAMPLE.PRODUCT_VERSION = qaivc.product_object.product_version
+		message = message : " modified product version [":original_version:"] ->":sap_version:" on sample (":smidi_rqst.master.sample_id:") inspection lot ":qaivc.lot_no
+		smidi_rqst.status_message ( message, MSG_HIGH )
+
+	ENDIF  { product id different for changed sample }
+
+
+	original_version = SELECT SAMPLE.STATUS
+
+	IF ( original_version = "X" ) THEN
+
+		original_version = SELECT SAMPLE.OLD_STATUS
+
+		SET STATUS_CHECK_SUPPRESS
+		CHANGE SAMPLE STATUS TO original_version, status
+
+		IF ( status <> EMPTY ) THEN
+			retval  = FALSE
+			smidi_rqst.status_message ( "*** FAILURE *** REACTIVATING sample (":smidi_rqst.master.sample_id:") for inspection lot ":qaivc.lot_no:" ":status, MSG_HIGH )
+		ENDIF   { force sample status }
+
+	ENDIF
+
+	{ ========================================== }
+	{ retval would be ERROR if bad sample status } 
+	{ ========================================== }
+
+	IF retval THEN
+
+		smidi_rqst.master.master.sample.is_job      = FALSE
+		smidi_rqst.master.master.sample.template_id = samp_template
+
+		IF smidi_rqst.master.master.sample.build_template() THEN
+
+			CREATE OBJECT SAMP_JOB_SAMPLE_LOGIN_CLASS, smidi_rqst.master.master.sample.destination
+			smidi_rqst.master.master.sample.populate()
+			smidi_rqst.master.master.sample.destination.use_current_transaction = TRUE
+			smidi_rqst.master.master.sample.fields_added                        = 0
+	
+		ENDIF
+
+		smidi_rqst.master.master.sample.map_fields ( "SAMPLE" )
+
+		UPDATE SAMPLE, status
+
+		IF ( status = EMPTY ) THEN
+			smidi_rqst.status_message ( "Sample ":smidi_rqst.master.sample_id:" ready for upload of lot ":qaivc.lot_no, MSG_HIGH )
+		ELSE
+			retval  = FALSE
+			smidi_rqst.status_message ( "*** FAILURE *** REACTIVATING sample (":smidi_rqst.master.sample_id:") for inspection lot ":qaivc.lot_no:" ":status, MSG_HIGH )
+		ENDIF   { force sample status }
+
+	ENDIF  { retval is already error }
+
+
+	RETURN ( retval )
+
+ENDROUTINE  { update_sample_fields }
+
+{******************************************************************************}
+
+ROUTINE map_locate_points_sample ( smidi_rqst )
+
+	DECLARE count                           { this QAIVC's sample id }
+
+	smidi_rqst.master.sample_id = EMPTY
+	smidi_rqst.status_message("map_locate_points_sample "                       :
+					smidi_rqst.parent.lot_no	                      :
+					smidi_rqst.master.master.op_no	                :
+					smidi_rqst.master.master.physical_sample_no	    :
+					smidi_rqst.master.master.partial_sample_no, MSG_LOW )
+
+	smidi_rqst.master.sample_id = SELECT SAMPLE.ID_NUMERIC FOR UPDATE
+					WHERE SMIDI_LOT         = smidi_rqst.parent.lot_no
+					AND   SMIDI_OPERATION   = smidi_rqst.master.master.op_no
+					AND   SMIDI_PHYS_SAMPLE = smidi_rqst.master.master.physical_sample_no
+					AND   SMIDI_PART_SAMPLE = smidi_rqst.master.master.partial_sample_no
+
+	IF smidi_rqst.master.sample_id = EMPTY THEN
+
+		IF NOT (smidi_lib_get_map_field ( smidi_rqst.mapping_profile, "SAMPLE", "ID_NUMERIC", "MAP_UPDATE" )) THEN
+
+			smidi_rqst.master.sample_id = ERROR
+
+		ENDIF
+
+	ELSEIF ( smidi_rqst.master.sample_id = LOCKED ) THEN
+
+		smidi_rqst.master.sample_id = ERROR
+		smidi_rqst.status_message ( "*** FAILURE *** Sample locked, cannot update using inspection lot ":smidi_rqst.parent.lot_no:smidi_rqst.master.master.op_no:smidi_rqst.master.master.physical_sample_no, MSG_HIGH )
+
+	ELSEIF NOT ( update_sample_fields ( smidi_rqst, smidi_rqst.master.master {QAIVC} ) ) THEN
+
+		smidi_rqst.master.sample_id = ERROR
+
+
+	ELSE
+
+		count = SIZE_OF_ARRAY ( smidi_rqst.master.parent.operations[smidi_rqst.parent.ops_count].sample.destination.return_sample_id )
+		count = count + 1
+		smidi_rqst.master.parent.operations[smidi_rqst.parent.ops_count].sample.destination.return_sample_id[count] = smidi_rqst.master.sample_id
+
+	ENDIF
+
+
+	
+	RETURN ( smidi_rqst.master.sample_id )
+
+
+ENDROUTINE { map_locate_points_sample }
+
+{******************************************************************************}
+
+ROUTINE map_locate_sample_A_batch ( smidi_rqst )
+
+	DECLARE count
+
+	smidi_rqst.master.sample_id = EMPTY
+
+	smidi_rqst.status_message("map_locate_sample_A_batch "          :
+					smidi_rqst.parent.lot_no	                    :
+					smidi_rqst.master.master.batch_no	            :
+					smidi_rqst.master.master.op_no	                    :
+					smidi_rqst.master.master.physical_sample_no	    :
+					smidi_rqst.master.master.partial_sample_no, MSG_LOW )
+
+	smidi_rqst.master.sample_id = SELECT SAMPLE.ID_NUMERIC FOR UPDATE
+					WHERE BATCH_NAME        = smidi_rqst.master.master.batch_no
+					AND   SMIDI_OPERATION   = smidi_rqst.master.master.op_no
+					AND   SMIDI_PHYS_SAMPLE = smidi_rqst.master.master.physical_sample_no
+					AND   SMIDI_PART_SAMPLE = smidi_rqst.master.master.partial_sample_no
+					AND   STATUS            = "A"
+
+	IF smidi_rqst.master.sample_id = EMPTY THEN
+
+		IF NOT (smidi_lib_get_map_field ( smidi_rqst.mapping_profile, "SAMPLE", "ID_NUMERIC", "MAP_UPDATE" )) THEN
+
+			smidi_rqst.master.sample_id = ERROR
+
+		ENDIF
+
+	ELSEIF ( smidi_rqst.master.sample_id = LOCKED ) THEN
+
+		smidi_rqst.master.sample_id = ERROR
+		smidi_rqst.status_message ( "*** FAILURE *** Sample locked, cannot update using inspection lot ":smidi_rqst.parent.lot_no:smidi_rqst.master.master.op_no:smidi_rqst.master.master.physical_sample_no, MSG_HIGH )
+
+	ELSEIF NOT ( update_sample_fields ( smidi_rqst, smidi_rqst.master.master {QAIVC} ) ) THEN
+
+		smidi_rqst.master.sample_id = ERROR
+
+
+		{ ----------------------------------------------------------------------------- }
+	ELSE    { tack on to the array used at the end to upload as part of download processing }
+		{ ----------------------------------------------------------------------------- }
+
+		count = SIZE_OF_ARRAY ( smidi_rqst.master.parent.operations[1].sample.destination.return_sample_id )
+		count = count + 1
+		smidi_rqst.master.parent.operations[1].sample.destination.return_sample_id[count] = smidi_rqst.master.sample_id
+
+	ENDIF  { sample is not empty, locked and the fields were mapped }
+
+	
+	RETURN ( smidi_rqst.master.sample_id )
+
+
+ENDROUTINE { map_locate_sample_A_batch }
+
+
+{******************************************************************************}
+
+ROUTINE map_locate_bms_samples ( smidi_rqst )
+
+	DECLARE count
+
+	smidi_rqst.master.sample_id = EMPTY
+
+	smidi_rqst.status_message("map_locate_bms_samples "                                 :
+					smidi_rqst.parent.lot_no	                    :
+					smidi_rqst.master.master.batch_no	            :
+					smidi_rqst.master.master.op_no	                    :
+					smidi_rqst.master.master.physical_sample_no	    :
+					smidi_rqst.master.master.partial_sample_no, MSG_LOW )
+
+	smidi_rqst.master.sample_id = SELECT SAMPLE.ID_NUMERIC FOR UPDATE
+					WHERE BATCH_NAME        = smidi_rqst.master.master.batch_no
+					AND   SMIDI_OPERATION   = smidi_rqst.master.master.op_no
+					AND   SMIDI_PHYS_SAMPLE = smidi_rqst.master.master.physical_sample_no
+					AND   SMIDI_PART_SAMPLE = smidi_rqst.master.master.partial_sample_no
+
+	IF smidi_rqst.master.sample_id = EMPTY THEN
+
+		IF NOT (smidi_lib_get_map_field ( smidi_rqst.mapping_profile, "SAMPLE", "ID_NUMERIC", "MAP_UPDATE" )) THEN
+
+			smidi_rqst.master.sample_id = ERROR
+
+		ENDIF
+
+	ELSEIF NOT ( update_sample_fields ( smidi_rqst, smidi_rqst.master.master {QAIVC} ) ) THEN
+
+		smidi_rqst.master.sample_id = ERROR
+
+
+		{ ----------------------------------------------------------------------------- }
+	ELSE    { tack on to the array used at the end to upload as part of download processing }
+		{ ----------------------------------------------------------------------------- }
+
+		count = SIZE_OF_ARRAY ( smidi_rqst.master.parent.operations[1].sample.destination.return_sample_id )
+		count = count + 1
+		smidi_rqst.master.parent.operations[1].sample.destination.return_sample_id[count] = smidi_rqst.master.sample_id
+
+	ENDIF  { sample is not empty, locked and the fields were mapped }
+
+	
+	RETURN ( smidi_rqst.master.sample_id )
+
+
+ENDROUTINE { map_locate_bms_samples }
+
+{ **************************************************************************** }
+
+ROUTINE map_dateresreq( self )
+
+	RETURN ( convert_r3_date (self.parent.end_of_ins, "" ) )  {  pass in DATE then TIME }
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE map_sample_name ( smidi_rqst )
+
+	DECLARE qaivc
+	qaivc = smidi_rqst.parent
+
+	RETURN ( STRIP ( convert_r3_date_with_format ( qaivc.insp_created, qaivc.qiwlr.time_created, "YYYZDDZH24MI.SS" ) ) )
+
+ENDROUTINE
+
+{ **************************************************************************** }
+{                                                                              }
+{                                                                              }
+{                                     MLP                                      }
+{                                                                              }
+{                                                                              }
+{ **************************************************************************** }
+
+ROUTINE product_mapped_empty ( login, qaivc, VALUE default )
+	
+	qaivc.status_message("product_mapped_empty MLP_HEADER.IDENTITY not on Mapping Profile->":
+				STRIP(default):" using SAP Material (QAIVC.MATNR) -> ":qaivc.material_no, MSG_LOW)
+
+	RETURN ( qaivc.material_no )   { the product_format_id will remove leading 0's }
+
+
+ENDROUTINE { product_mapped_empty }
+
+{******************************************************************************}
+
+
+{ Add to routine comment
+
+
+ *   The actual product to use is that defined in the sample template that has
+*   the same identity as the product comng from SAP
+}
+
+ROUTINE product_format_id ( smidi_login, qaivc, VALUE product )
+
+	DECLARE old_format, mlp_id, mlp_desc, sap_desc, is_41, orderbyfield
+    DECLARE template
+    DECLARE mlp
+    
+    template = product
+    
+    WHILE ( LEFTSTRING( template, 1 ) = "0" )
+        template = template # "0"
+    ENDWHILE
+
+    mlp = SELECT template_fields.default_value
+          WHERE ( table_name = "SAMPLE" )
+            AND ( template_id = template )
+            AND ( field_name = "PRODUCT_NAME" )
+
+    IF ( mlp = EMPTY )
+    OR ( mlp = "" )
+    
+        { Can't really do much }
+        
+    ELSE
+    
+        { Use product from sample template }
+        product = mlp
+    
+    ENDIF
+
+
+	smidi_login.status_message("product_format_id <":product:"> [":qaivc.op_no:"] ":qaivc.lot_no, MSG_LOW )
+
+	IF ( NUMTEXT ( product ) ) THEN
+		old_format = GLOBAL ( "FORMAT_TEXT" )
+		SET FORMAT "999999999999999999"
+		product = STRIP ( NUMERIC ( product ) )
+		SET FORMAT old_format
+	ENDIF
+
+	orderbyfield = "PRODUCT_VERSION"
+	is_41        = INDEX ( smp_version_number(), "4.1" ) > 0
+	mlp_id       = product	
+
+	IF is_41
+		mlp_desc = SELECT mlp_header.description
+				WHERE (identity = mlp_id)
+	ELSE
+		mlp_desc = SELECT mlp_header.description
+				WHERE (identity = mlp_id)
+				ORDER ON 'orderbyfield' DESCENDING
+	ENDIF
+			
+	IF mlp_desc <> EMPTY THEN  { if an mlp already exists then update it if different }
+
+		sap_desc = qaivc.material_short
+
+		IF (STRIP(TOUPPER(mlp_desc)) <> STRIP(TOUPPER(sap_desc))) THEN
+
+			IF is_41 THEN
+				mlp_desc = SELECT mlp_header.description FOR UPDATE
+					WHERE (identity = mlp_id)
+			ELSE
+				mlp_desc = SELECT mlp_header.description FOR UPDATE
+					WHERE (identity = mlp_id)
+					ORDER ON 'orderbyfield' DESCENDING
+			ENDIF
+
+{ af 16oct
+			IF mlp_desc <> LOCKED THEN
+
+				ASSIGN mlp_header.description = sap_desc
+
+			ENDIF
+
+			UPDATE mlp_header, status
+}
+
+		ENDIF
+
+	ENDIF
+			
+	RETURN ( mlp_id )
+
+ENDROUTINE { product_format_id }
+
+{******************************************************************************}
+
+ROUTINE product_check_header ( product, retval )
+
+
+	DECLARE cnt, arec
+	ARRAY mlp_anal_array
+
+	product.status_message("product_check_header ":product.product_id, MSG_NONE )
+
+	{ -------------------------------------------------------------- }
+	{ save into variables all the header values to the new mlp here  }
+	{ -------------------------------------------------------------- }
+
+	{ ***************
+		EXAMPLES - note that each variable will need to be declared at the top of this file
+
+		product_code 	     = SELECT MLP_HEADER.product_code
+		product_group	     = SELECT MLP_HEADER.product_group
+		description	           = SELECT MLP_HEADER.description
+		test_schedule	     = SELECT MLP_HEADER.test_schedule
+		product_status	     = SELECT MLP_HEADER.product_status
+		group_id	           = SELECT MLP_HEADER.group_id
+
+	***************** }
+
+	{ ------------------------------------------------------- }
+	{ Save all the mlp_analyses in case we make a new version }
+	{ ------------------------------------------------------- }
+
+	cnt  = 0
+	arec = SELECT MLP_ANALYSIS.ANALYSIS_ID 
+		WHERE PRODUCT_ID      = product.product_id
+		AND   PRODUCT_VERSION = product.product_version
+
+	WHILE arec <> EMPTY DO
+
+		cnt = cnt + 1
+
+		mlp_anal_array[cnt,1] = product.product_id
+		mlp_anal_array[cnt,2] = product.product_version
+		mlp_anal_array[cnt,3] = arec
+		mlp_anal_array[cnt,4] = SELECT MLP_ANALYSIS.sampling_insp_level
+		mlp_anal_array[cnt,5] = SELECT MLP_ANALYSIS.inspection_level
+		mlp_anal_array[cnt,6] = SELECT MLP_ANALYSIS.order_number
+	
+		NEXT MLP_ANALYSIS
+
+		arec = SELECT MLP_ANALYSIS.ANALYSIS_ID
+
+	ENDWHILE
+
+	RETURN ( retval )
+
+ENDROUTINE { product_check_header }
+
+{******************************************************************************}
+
+ROUTINE product_check_version ( product, retval )
+
+	product.status_message("product_check_version ", MSG_NONE)
+
+	RETURN ( retval )
+
+ENDROUTINE { product_check_version }
+
+{******************************************************************************}
+
+ROUTINE product_new_mlp ( product, qaivc )
+
+	product.status_message("product_new_mlp ", MSG_NONE)
+
+ENDROUTINE { product_new_mlp }
+
+
+{******************************************************************************}
+
+ROUTINE product_new_version ( product, qaivc )
+
+	DECLARE cnt, status, key0
+
+	product.status_message("product_new_version ":product.product_id, MSG_NONE )
+
+	{ -------------------------------------------------------------- }
+	{ ----- add the header values you saved as assign's here ------- }
+	{ -------------------------------------------------------------- }
+
+	{ **********************
+
+		SEE PRODUCT CHECK HEADER FOR WHERE THESE CAME FROM 
+
+		ASSIGN MLP_HEADER.product_code		= product_code
+		ASSIGN MLP_HEADER.product_group		= product_group
+		ASSIGN MLP_HEADER.description		= description
+		ASSIGN MLP_HEADER.test_schedule		= test_schedule
+		ASSIGN MLP_HEADER.product_status	= product_status
+		ASSIGN MLP_HEADER.group_id		= group_id
+
+	***************** }
+
+
+	IF  ( VARIABLE_IS_ASSIGNED ( mlp_anal_array ) ) AND ( SIZE_OF_ARRAY ( mlp_anal_array ) > 0 ) THEN
+
+		cnt = 1
+
+		WHILE ( mlp_anal_array[cnt,1] <> EMPTY ) DO
+
+			key0 = mlp_anal_array[cnt,1]:product.product_version:mlp_anal_array[cnt,3]
+
+			RESERVE ENTRY MLP_ANALYSIS, key0, status
+
+			IF status = EMPTY THEN
+
+				ASSIGN MLP_ANALYSIS.sampling_insp_level = mlp_anal_array[cnt,4]
+				ASSIGN MLP_ANALYSIS.inspection_level    = mlp_anal_array[cnt,5]
+				ASSIGN MLP_ANALYSIS.order_number        = mlp_anal_array[cnt,6]
+
+				UPDATE MLP_ANALYSIS, status
+
+			ENDIF
+
+			cnt = cnt + 1
+
+		ENDWHILE
+
+
+	ENDIF   { no mlp analysis to add to new version }
+
+ENDROUTINE { product_new_version }
+
+{   ==============================     }
+{   ***      L E V E L S       ***     }
+{   ==============================     }
+
+
+{******************************************************************************}
+
+ROUTINE product_get_mlp_levels ( smidi_login, product )
+
+	smidi_login.status_message("product_get_mlp_levels ", MSG_NONE )
+
+ENDROUTINE { product_get_mlp_levels }
+
+{******************************************************************************}
+
+ROUTINE product_get_new_levels ( login_object, product )
+
+	login_object.status_message("product_get_new_levels ", MSG_NONE )
+
+ENDROUTINE { product_get_new_levels }
+
+{******************************************************************************}
+
+ROUTINE product_assign_level ( product, qaivc, VALUE level_id )
+
+	product.status_message("product_assign_level <":STRIP(product.product_id):"> (":STRIP(level_id):")", MSG_NONE )
+
+ENDROUTINE { product_assign_level }
+
+{******************************************************************************}
+
+ROUTINE product_assign_levels ( product, qaivc )
+
+	product.status_message("product_assign_levels ", MSG_NONE )
+
+ENDROUTINE { product_assign_levels }
+
+{******************************************************************************}
+
+ROUTINE product_new_level ( product, qaivc )
+
+	product.status_message("product_new_level ", MSG_NONE )
+
+ENDROUTINE { product_new_level }
+
+{******************************************************************************}
+
+GLOBAL ROUTINE smidi_user_change_level_info ( self )
+
+	DECLARE level, toler_calc, user1_calc, user2_calc
+
+	IF self.valuation_type = "B" THEN
+	ELSEIF self.valuation_type = "C" THEN
+	ELSE
+
+		level      = self.get_item ( "QM_TOLERANCE_LEVEL" )
+		toler_calc = self.get_item ( "QM_TOLERANCE_CALC" )
+
+		IF ( NOT BLANK ( toler_calc ) ) THEN
+			self.levels[1,6] = toler_calc
+		ENDIF
+
+
+		level      = self.get_item ( "QM_USER1_LEVEL" )
+		user1_calc = self.get_item ( "QM_USER1_CALC" )
+
+		IF NOT BLANK ( level ) THEN
+			IF ( NOT BLANK ( user1_calc ) ) THEN
+				self.levels[2,6] = user1_calc
+			ENDIF
+		ENDIF
+
+		level      = self.get_item ( "QM_USER2_LEVEL" )
+		user2_calc = self.get_item ( "QM_USER2_CALC" )
+
+		IF NOT BLANK ( level ) THEN
+			IF ( NOT BLANK ( user2_calc ) ) THEN
+				self.levels[3,6] = user2_calc
+			ENDIF
+		ENDIF
+
+	ENDIF  { if..elseif.. valuation type }
+
+ENDROUTINE { smidi_user_change_level_info }
+
+{   ==============================     }
+{   ***      L I M I T S       ***     }
+{   ==============================     }
+
+{******************************************************************************}
+
+ROUTINE product_verify_limit ( qaimv, smidi_download, VALUE success )
+
+	qaimv.status_message("product_verify_limit ":STRIP(qaimv.analysis_id):"/":STRIP(qaimv.component_name):" ":success, MSG_NONE )
+
+	RETURN ( success )
+
+ENDROUTINE { product_verify_limit }
+
+{******************************************************************************}
+
+ROUTINE product_update_limits ( product, qaivc, VALUE level_count )
+
+	product.status_message("product_update_limits ":STRIP(product.product_id):STRIP(product.product_version):level_count:qaivc.lot_no, MSG_NONE )
+
+	RETURN ( TRUE )
+
+ENDROUTINE { product_update_limits }
+
+{******************************************************************************}
+
+ROUTINE product_new_limit ( qaimv, qaivc, VALUE key )
+
+	DECLARE toler,user1,user2,sap_calc,lod_calc,pla_calc
+
+	toler    = STRIP ( qaimv.get_item ( "QM_TOLERANCE_LEVEL" ) )
+	user1    = STRIP ( qaimv.get_item ( "QM_USER1_LEVEL" )     )
+	user2    = STRIP ( qaimv.get_item ( "QM_USER2_LEVEL" )     )
+
+	sap_calc = STRIP ( qaimv.get_item ( "QM_TOLERANCE_CALC" )  )
+	LOD_calc = STRIP ( qaimv.get_item ( "QM_USER1_CALC" )      )
+	pla_calc = STRIP ( qaimv.get_item ( "QM_USER2_CALC" )      )
+
+	
+	qaivc.status_message("product_new_limit ":key:" ":toler:" ":user1:" ":user2:" ":sap_calc:" ":LOD_calc:" ":pla_calc, MSG_LOW )
+
+	IF ( INDEX ( key, toler ) > 0 ) THEN
+		ASSIGN MLP_VALUES.CALCULATION = sap_calc
+	ELSEIF ( INDEX ( key, user1 ) > 0 ) THEN
+		ASSIGN MLP_VALUES.CALCULATION = LOD_calc
+	ELSEIF ( INDEX ( key, user2 ) > 0 ) THEN
+		ASSIGN MLP_VALUES.CALCULATION = pla_calc
+	ENDIF
+
+
+ENDROUTINE { product_new_limit - not component }
+
+{******************************************************************************}
+
+ROUTINE product_copy_limit ( product, VALUE new_key )
+
+	product.master.parent.status_message("product_copy_limit ":STRIP(new_key), MSG_NONE )
+
+ENDROUTINE { product_copy_limit }
+
+{******************************************************************************}
+
+ROUTINE product_do_copy_limit ( product, VALUE new_key )
+
+	product.master.parent.status_message("product_do_copy_limit ":STRIP(new_key), MSG_NONE )
+
+	RETURN ( TRUE )
+
+ENDROUTINE { product_do_copy_limit }
+
+
+{   =======================================     }
+{   ***      C O M P O N E N T S        ***     }
+{   =======================================     }
+
+{******************************************************************************}
+
+ROUTINE product_check_component ( qaimv, smidi_download, VALUE success )
+
+	DECLARE mlp_typtext, retval, name, this_set, typtext_from_set{, this_target, old_format}
+
+	retval = success
+
+	IF NOT retval THEN  
+	{ only execute this code this if something has changed - map_mlp_typical routine executes first }
+
+		mlp_typtext = STRIP ( SELECT MLP_COMPONENTS.TYPICAL_TEXT )
+		name        = TOUPPER ( qaimv.component_name )
+
+		IF ( INDEX ( name, "ROTOR" )     > 0 )
+		OR ( INDEX ( name, "FREQUENCY" ) > 0 )
+		OR ( INDEX ( name, "METHOD" )    > 0 )
+		OR ( INDEX ( name, "SPECIMEN"  ) > 0 ) THEN
+		
+			this_set = STRIP(qaimv.cat_1_sset_group)
+		
+			{ First check for phrase R_ and name of selected set.  If it exists use it
+			else look in the phrase R_TYPICAL }
+			
+			typtext_from_set = SELECT phrase.phrase_text
+					WHERE (phrase_type = "R_":this_set)
+					  AND (phrase_id = "0001")
+			
+			IF typtext_from_set = EMPTY THEN
+				typtext_from_set = SELECT phrase.phrase_text
+						WHERE (phrase_type = "R_TYPICAL")
+						AND   (phrase_id = this_set)
+			ENDIF
+			
+			IF typtext_from_set = EMPTY THEN
+				IF this_set = mlp_typtext THEN
+					retval = TRUE
+				ELSE
+					retval = FALSE
+				ENDIF
+			ELSE { we found a match in the phrase table }
+				typtext_from_set = STRIP(typtext_from_set)
+				IF typtext_from_set = mlp_typtext THEN
+					retval = TRUE
+				ELSE
+					retval = FALSE
+				ENDIF
+			ENDIF
+			qaimv.status_message("$smidi_process_user/product_check_component ":qaimv.analysis_id:" ":name:" ":retval:" ":mlp_typtext:" ":qaimv.cat_1_sset_group:" ":qaimv.target_value, MSG_LOW)
+
+		ELSE
+
+		ENDIF
+		
+	ENDIF
+	
+	RETURN ( retval )
+
+ENDROUTINE { product_check_component }
+
+{******************************************************************************}
+
+ROUTINE product_new_component ( obj1, obj2, VALUE key )
+
+ENDROUTINE { product_new_component }
+
+{******************************************************************************}
+
+ROUTINE product_copy_component ( product, VALUE key )
+
+	product.status_message("product_copy_component ", MSG_NONE )
+
+ENDROUTINE { product_copy_component }
+
+{******************************************************************************}
+
+ROUTINE product_do_copy_component ( product )
+
+	product.status_message("product_do_copy_component ", MSG_NONE )
+	
+	{ PolyOne code so that if SAP component is deleted from insp. plan that it is also deleted from MLP }
+
+	DECLARE analysis
+	analysis  = SELECT mlp_components.analysis_id
+	IF LEFTSTRING(analysis,2) = "FG" THEN  { do not carry SAP components along if not in this insp. lot }
+		RETURN ( FALSE )
+	ENDIF
+	
+	{ End of PolyOne }
+	
+	RETURN ( TRUE )
+
+ENDROUTINE { product_do_copy_component }
+
+{   ====================================     }
+{   ***      S C H E D U L E S       ***     }
+{   ====================================     }
+
+{******************************************************************************}
+
+ROUTINE product_copy_schedule ( product, qaivc, VALUE schedule )
+
+	product.status_message("product_copy_schedule ":schedule, MSG_NONE )
+
+ENDROUTINE { product_copy_schedule }
+
+{******************************************************************************}
+
+ROUTINE product_do_copy_schedule ( product, qaivc, VALUE old_key )
+
+	product.status_message("product_do_copy_schedule ":old_key, MSG_NONE )
+
+	RETURN ( TRUE )
+
+ENDROUTINE { product_do_copy_schedule }
+
+
+{ **************************************************************************** }
+{                                                                              }
+{ MLP ACTIONS -    special code for mapping fields, these routines are called  }
+{                  during the mapping of fields and must be defined in your    }
+{                  MAP PROFILE as the "library" and "routine".  While some     }
+{                  mapping is 1-1 (e.g. SAP field to SMP field) others require }
+{                  a bit of VGL, such as DATE conversion, so examples are shown}
+{                                                                              }
+{	self                 = QAIMV                                           }
+{       self.parent          = SMIDIDOWNLOAD                                   }
+{       self.master          = GBIPRODUCTHEADER                                }
+{       self.master.parent   = QAIVC                                           }
+{ **************************************************************************** }
+
+ROUTINE map_mlp_version( self )
+
+	DECLARE obj_name
+
+	obj_name = OBJECT_GET_CLASS_NAME ( self )
+
+	IF ( INDEX ( obj_name, "GBI" ) > 0 ) THEN
+		retval = self.parent.product_object.product_version
+	ELSE
+		retval = self.parent.master.product_version
+	ENDIF
+
+	RETURN ( retval )
+
+ENDROUTINE
+
+
+{ **************************************************************************** }
+{                                                                              }
+{                                                                              }
+{                             DOWNLOAD ANALYSIS                                }
+{                                                                              }
+{                                                                              }
+{ **************************************************************************** }
+
+
+{******************************************************************************}
+
+ROUTINE analysis_map_after ( smidi_rqst, qaimv )
+
+	qaimv.status_message("analysis_map_after ", MSG_NONE )
+
+ENDROUTINE { analysis_map_after }
+
+{******************************************************************************}
+
+ROUTINE analysis_create ( test, VALUE key )
+
+	test.status_message("analysis_create ":key, MSG_NONE )
+
+	DECLARE mail_user, msg_lines
+
+	mail_user = test.get_item ( "SMIDI_MAIL_USER" )
+
+	{ ============================================================ }
+	{ Mail any messages to notify of a new record ?                }
+	{ ============================================================ }
+
+	IF ( NOT BLANK ( mail_user ) ) AND ( mail_user <> EMPTY ) THEN
+
+		ARRAY msg_lines
+		msg_lines[1] = "Created a new analysis in lims"
+		tmpString    = "Created a new analysis ":key:mail_user
+
+		{somebody gotta write this... smidi_process_user_mail_message ( tmpString, mail_user, msg_lines ) }
+
+	ENDIF
+
+ENDROUTINE { analysis_create }
+
+{******************************************************************************}
+
+ROUTINE analysis_do_new_version ( test )
+
+	test.status_message("analysis_do_new_version ", MSG_NONE )
+
+	RETURN ( FALSE )  {PolyOne fix to stop analysis spiraling}
+
+ENDROUTINE { analysis_do_new_version }
+
+{******************************************************************************}
+
+ROUTINE analysis_new_version ( test, VALUE new_key, VALUE old_key )
+
+	test.status_message("analysis_new_version ":new_key:"->":old_key, MSG_NONE )
+
+ENDROUTINE { analysis_new_version }
+
+{ **************************************************************************** }
+{                                                                              }
+{                                                                              }
+{                             DOWNLOAD COMPONENTS                              }
+{                                                                              }
+{                                                                              }
+{ **************************************************************************** }
+
+ROUTINE component_map_after ( smidi_rqst, qaimv )
+
+	IF NOT ( VARIABLE_IS_ASSIGNED ( qaimv.component_name ) ) THEN 
+
+		qaimv.status_message("component_map_after ", MSG_LOW )
+		qaimv.component_name = qaimv.char_short
+
+	ENDIF  { only do something in this routine if you need to }
+
+	RETURN
+
+ENDROUTINE { component_map_after }
+
+{******************************************************************************}
+
+ROUTINE component_do_create ( result )
+
+	result.status_message("component_do_create ", MSG_NONE )
+
+	RETURN ( TRUE )
+
+ENDROUTINE { component_do_create }
+
+{******************************************************************************}
+
+ROUTINE component_do_update ( result )
+
+	result.status_message( "component_do_update ", MSG_NONE )
+
+	RETURN ( TRUE )
+
+ENDROUTINE { component_do_update }
+
+{******************************************************************************}
+
+ROUTINE component_create ( result )
+
+	result.status_message("component_create ", MSG_NONE )
+
+ENDROUTINE { component_create }
+
+{******************************************************************************}
+
+ROUTINE component_update ( result )
+
+	result.status_message("component_update ", MSG_NONE )
+
+ENDROUTINE { component_update }
+
+
+{******************************************************************************}
+
+ROUTINE component_list_header_create ( smidi_test, VALUE key )
+
+	smidi_test.status_message("component_list_header_create ":key, MSG_NONE )
+
+ENDROUTINE { component_list_header_create }
+
+
+{******************************************************************************}
+
+ROUTINE component_list_entry_create ( smidi_component, VALUE key )
+
+	DECLARE create_always
+
+	IF ( NOT ( VARIABLE_IS_ASSIGNED ( smidi_component.master ) ) ) | ( smidi_component.master = EMPTY ) THEN
+		create_always = FALSE
+	ELSE
+		create_always = TRUE
+	ENDIF
+	
+	ASSIGN VERSIONED_C_L_ENTRY.CREATE_ALWAYS = create_always
+
+	smidi_component.status_message("component_list_entry_create ":create_always:"-> ":key, MSG_LOW )
+
+ENDROUTINE { component_list_entry_create }
+
+{ **************************************************************************** }
+{                                                                              }
+{ COMPONENT ACTION special code for mapping fields, these routines are called  }
+{                  during the mapping of fields and must be defined in your    }
+{                  MAP PROFILE as the "library" and "routine".  While some     }
+{                  mapping is 1-1 (e.g. SAP field to SMP field) others require }
+{                  a bit of VGL, such as DATE conversion, so examples are shown}
+{                                                                              }
+{ **************************************************************************** }
+
+ROUTINE map_component_report_flags ( self )
+
+	RETURN ( self.parent.master.inspection_scope )
+
+ENDROUTINE { action example for Components }
+
+{ **************************************************************************** }
+
+ROUTINE map_complist_identity ( map_object )
+
+	DECLARE	add_id, retval, smidi_test, find_this
+
+	retval     = TRUE
+	find_this  = map_object.parent.user_info.material_no
+	smidi_test = map_object.master
+
+	smidi_test.comp_list = SELECT VERSIONED_C_L_HEADER.COMP_LIST 
+					WHERE ANALYSIS       = smidi_test.analysis_id
+					AND ANALYSIS_VERSION = smidi_test.version
+					AND COMP_LIST        = find_this
+
+	IF smidi_test.comp_list = EMPTY THEN
+
+		add_id  = smidi_lib_get_map_field ( map_object.mapping_profile, "VERSIONED_C_L_HEADER", "COMP_LIST", "MAP_UPDATE" )
+
+		IF NOT add_id THEN
+			retval = EMPTY
+		ELSE
+			smidi_test.comp_list = find_this
+		ENDIF
+
+	ENDIF  { is it already in LIMS ? }
+	
+
+	RETURN ( retval )
+
+ENDROUTINE { map_complist_identity }
+
+{ **************************************************************************** }
+
+ROUTINE map_complist_tsched ( map_object )
+
+	DECLARE	add_id, smidi_test, find_this, sample_template
+
+	find_this            = map_object.parent.user_info.material_no
+	smidi_test           = map_object.master
+	smidi_test.comp_list = EMPTY
+
+	sample_template = SELECT SAMP_TMPL_HEADER.IDENTITY 
+			  WHERE IDENTITY = map_object.parent.header.product_id
+
+	IF sample_template <> EMPTY THEN
+
+		find_this = SELECT TEMPLATE_FIELDS.DEFAULT_VALUE
+				WHERE TABLE_NAME   = "SAMPLE"
+				AND   TEMPLATE_ID  = sample_template
+				AND   FIELD_NAME   = "TEST_SCHEDULE"
+
+
+		IF find_this <> EMPTY THEN
+
+			smidi_test.comp_list = SELECT TEST_SCHED_ENTRY.COMPONENT_LIST
+						WHERE ANALYSIS_ID = smidi_test.analysis_id
+						AND IDENTITY      = find_this
+
+			IF smidi_test.comp_list = EMPTY THEN
+
+				add_id  = smidi_lib_get_map_field ( map_object.mapping_profile, "VERSIONED_C_L_HEADER", "COMP_LIST", "MAP_UPDATE" )
+
+				IF add_id THEN
+					smidi_test.comp_list = find_this
+					map_object.status_message ( "Component list WILL BE CREATED -> ":sample_template:" ":find_this:" ":smidi_test.analysis_id, MSG_LOW )
+				ENDIF
+
+			ELSEIF ( BLANK ( smidi_test.comp_list ) ) THEN
+
+				smidi_test.comp_list = EMPTY
+				map_object.status_message ( "Component list NOT ASSIGNED --> ":sample_template:" ":find_this:" ":smidi_test.analysis_id, MSG_LOW )
+
+			ELSE
+
+				map_object.status_message ( "Component list --> ":sample_template:" ":find_this:" ":smidi_test.analysis_id:" ":smidi_test.comp_list, MSG_LOW )
+
+			ENDIF  { is it already in LIMS ? }
+
+		ENDIF  { find_this - found test_schedule from sample template }
+
+	ENDIF  { sample_Template - found sample_template = MLP_ID }
+
+	RETURN ( smidi_test.comp_list )
+
+ENDROUTINE { map_complist_tsched }
+
+
+{ **************************************************************************** }
+{                                                                              }
+{                                                                              }
+{                             DOWNLOAD TEST                                    }
+{                                                                              }
+{                                                                              }
+{ **************************************************************************** }
+
+ROUTINE test_add_to_sample ( test, test_editor )
+
+	test.status_message("test_add_to_sample ", MSG_NONE )
+
+	RETURN ( FALSE )
+
+ENDROUTINE { test_add_to_sample }
+
+{******************************************************************************}
+
+ROUTINE test_create ( test, test_editor )
+
+	{ -------------------------------------------------------------------------- }
+	{ New row in test table is already reserved for write access, so just ASSIGN }
+	{ -------------------------------------------------------------------------- }
+
+	DECLARE anal_type, version
+
+	version   = lib_utils_highest_version ( "VERSIONED_ANALYSIS", test.analysis_id  )
+
+	IF version = EMPTY THEN
+		version = PACKED_DECIMAL ( 1 )
+	ENDIF
+
+
+	anal_type = SELECT versioned_analysis.analysis_type
+		    WHERE identity         = test.analysis_id
+		    AND   analysis_version = version
+
+
+	{ ----------------------------------------------------------------- }
+	{                                                                   }
+	{  example use ---->   ASSIGN test.analysis_type = anal_type  ----- }
+	{                                                                   }
+	{  OR - if you want to apply all mapping profile fields for TEST    }
+	{                                                                   }
+	{		self.map_fields ( "TEST" )                              }
+	{                                                                   }
+	{ ----------------------------------------------------------------- }
+
+	test.status_message("test_create ":STRIP(test.analysis_id):",":STRIP(anal_type) , MSG_LOW )
+
+	RETURN ( TRUE )
+
+ENDROUTINE { test_create }
+
+
+{******************************************************************************}
+
+ROUTINE test_add ( test, test_editor )
+
+	DECLARE create_them
+
+	create_them = test.get_map_header( "TEST_CREATE" )
+
+	test.status_message("test_add ":create_them, MSG_LOW )
+
+	RETURN ( create_them )
+
+ENDROUTINE { test_add }
+
+
+{ **************************************************************************** }
+{                                                                              }
+{ TEST ACTIONS -   special code for mapping fields, these routines are called  }
+{                  during the mapping of fields and must be defined in your    }
+{                  MAP PROFILE as the "library" and "routine".  While some     }
+{                  mapping is 1-1 (e.g. SAP field to SMP field) others require }
+{                  a bit of VGL, such as DATE conversion, so examples are shown}
+{                                                                              }
+{ **************************************************************************** }
+
+ROUTINE map_test_instrument ( self )
+
+	RETURN ( self.master.master_char_plant )
+
+ENDROUTINE { action example for TEST }
+
+{ **************************************************************************** }
+{                                                                              }
+{                                  RESULTS                                     }
+{                                                                              }
+{ **************************************************************************** }
+
+ROUTINE test_assign_result ( test, qaimv )
+
+	retval = TRUE    { do not do this --> test.get_map_header ( "RESULT_CREATE" ) < c l8tr trgr  }
+	test.status_message("test_assign_result ":test.analysis_id:test.version:" ":retval, MSG_NONE )
+	RETURN ( retval )
+
+ENDROUTINE { test_assign_result }
+
+{******************************************************************************}
+
+ROUTINE test_assign_list_result ( test, qaimv )
+
+	retval  = TRUE
+	message = "test_assign_list_result ":test.analysis_id:test.version:" ":retval
+
+	IF ( VARIABLE_IS_ASSIGNED ( test.comp_list ) ) THEN
+		IF test.comp_list <> EMPTY THEN
+			message = message : " component list = " :test.comp_list
+		ELSE
+			message = message : " is not using a component list "
+		ENDIF
+	ENDIF
+
+	test.status_message(message, MSG_LOW )
+
+	RETURN ( retval )
+
+ENDROUTINE { test_assign_list_result }
+
+{******************************************************************************}
+
+ROUTINE result_missing ( component, VALUE test_number, VALUE order_number )
+
+	DECLARE create_them
+
+	IF component.qaimv = EMPTY THEN
+		create_them = FALSE
+	ELSEIF component.qaimv.result_type = " " THEN
+		create_them = FALSE
+	ELSE
+		create_them = TRUE      { component.get_map_header ( "RESULT_CREATE" ) }
+	ENDIF
+
+	component.status_message ( "$smidi_process_user/result_missing ->":create_them, MSG_LOW )
+
+	RETURN ( create_them )
+
+ENDROUTINE { result_missing }
+
+{******************************************************************************}
+
+ROUTINE result_create ( component, VALUE test_number, VALUE order_number )
+
+	result_found ( component, test_number, order_number )   { see below, maps result fields }
+
+ENDROUTINE { result_create }
+
+{******************************************************************************}
+
+ROUTINE result_found ( component, VALUE test_number, VALUE order_number )
+	
+	IF ( OBJECT_CHECK_PROPERTY ( component, "qaimv" ) ) THEN
+
+		IF ( VARIABLE_IS_ASSIGNED ( component.qaimv ) ) THEN
+
+			IF ( component.qaimv <> EMPTY ) THEN
+
+				component.map_fields ( "RESULT" )
+	
+			ENDIF   { only when it really is a qaimv can you do SAP stuff }
+
+		ENDIF  	{ it has to be a qaimv if from SAP, else it is a component list LIMS }
+
+	ENDIF
+
+	UPDATE RESULT, status
+	RETURN ( TRUE )
+
+ENDROUTINE { result_found }
+
+{ **************************************************************************** }
+
+ROUTINE map_result_SAP_ROC ( smidi_rqst )
+
+	retval = smidi_rqst.parent.master.result_enforcer
+
+	IF ( retval = "X" ) THEN
+		retval = "R"
+	ELSEIF ( retval = "-" ) THEN
+		retval = "C"
+	ELSE
+		retval = "O"
+	ENDIF
+
+	smidi_rqst.status_message("map_result_SAP_ROC ":retval, MSG_LOW)
+	RETURN ( retval )
+
+ENDROUTINE { map_result_SAP_ROC }
+
+{ **************************************************************************** }
+{                                                                              }
+{                                                                              }
+{                             TEST SCHEDULE/ENTRIES                            }
+{                                                                              }
+{                                                                              }
+{ **************************************************************************** }
+
+ROUTINE update_test_sched ( smidi_login, smidi_samp, VALUE test_schedule )
+
+	DECLARE tsched, status, removed, tsched_len
+
+	GET_FIELD_DETAILS TEST_SCHED_HEADER.IDENTITY, "FIELD_SIZE", tsched_len
+	test_schedule = STRIP ( test_schedule )
+	test_schedule = PAD ( test_schedule, " ", tsched_len )
+
+	smidi_login.status_message("test_schedule ":test_schedule, MSG_LOW)
+
+
+	retval = TRUE
+
+	tsched = SELECT TEST_SCHED_HEADER.IDENTITY
+		 WHERE IDENTITY = test_schedule
+
+	IF tsched = EMPTY THEN
+
+		RESERVE ENTRY TEST_SCHED_HEADER, test_schedule, status
+
+		IF ( status = EMPTY ) THEN
+
+			smidi_samp.map_fields ( "TEST_SCHED_HEADER" )
+
+			UPDATE TEST_SCHED_HEADER, status
+
+			IF status = EMPTY THEN
+
+				retval = do_test_sched_entries ( smidi_login, smidi_samp, test_schedule )
+
+			ENDIF
+		
+		ELSE
+
+			retval = FALSE
+			smidi_login.status_message ( "Warning test schedule create error ":test_schedule:status, MSG_HIGH )
+
+		ENDIF
+
+	ELSE
+
+		removed = SELECT TEST_SCHED_HEADER.REMOVEFLAG
+		IF removed THEN
+
+			smidi_login.status_message ( "Warning test schedule removed ":test_schedule, MSG_HIGH )
+			retval = FALSE
+
+
+		ELSE
+
+			retval = do_test_sched_entries ( smidi_login, smidi_samp, test_schedule )
+
+		ENDIF
+
+	ENDIF  { empty - made it, or removed }
+
+
+	RETURN ( retval )
+
+ENDROUTINE { test_schedule }
+
+{ **************************************************************************** }
+
+ROUTINE do_test_sched_entries ( smidi_login, smidi_samp, VALUE test_schedule )
+
+	DECLARE this_anal, count, base_order, key, tsched_len, anal_len
+
+	GET_FIELD_DETAILS TEST_SCHED_HEADER.IDENTITY  , "FIELD_SIZE", tsched_len
+	GET_FIELD_DETAILS TEST_SCHED_ENTRY.ANALYSIS_ID, "FIELD_SIZE", anal_len
+
+	retval     = TRUE
+
+	base_order = SELECT MAX TEST_SCHED_ENTRY.ORDER_NUM WHERE IDENTITY = test_schedule
+
+	IF base_order = EMPTY THEN
+		base_order = 0
+	ENDIF
+
+	count = 1
+	
+	WHILE ( count < SIZE_OF_ARRAY ( smidi_samp.tests ) ) DO
+
+		key = PAD ( test_schedule, " ", tsched_len ) : PAD ( STRIP(smidi_samp.tests[count].analysis_id), " ", anal_len )
+
+		this_anal = SELECT TEST_SCHED_ENTRY.ANALYSIS_ID
+				WHERE IDENTITY    = test_schedule
+				AND   ANALYSIS_ID = STRIP(smidi_samp.tests[count].analysis_id)
+
+		IF this_anal = EMPTY THEN
+
+			base_order = base_order + 1
+			key        = key : PACKED_DECIMAL ( base_order )
+
+			RESERVE ENTRY TEST_SCHED_ENTRY, key, status
+
+			IF status = EMPTY THEN
+
+				ASSIGN TEST_SCHED_ENTRY.STD_TEST        = TRUE
+				ASSIGN TEST_SCHED_ENTRY.REPLICATE_COUNT = 1
+				ASSIGN TEST_SCHED_ENTRY.IS_ANALYSIS     = TRUE
+
+				IF ( smidi_samp.tests[count].comp_list <> EMPTY ) THEN
+
+					ASSIGN TEST_SCHED_ENTRY.COMPONENT_LIST = smidi_samp.tests[count].comp_list
+
+				ENDIF
+
+				smidi_samp.map_fields ( "TEST_SCHED_ENTRY" )
+
+				UPDATE TEST_SCHED_ENTRY, status
+
+				IF status <> EMPTY THEN
+					retval = FALSE
+					smidi_samp.status_message ( "do_test_sched_entries FAILED-> ":key:" ":status, MSG_HIGH )
+				ELSE
+					smidi_samp.status_message ( "do_test_sched_entries SUCCESS-> ":key, MSG_LOW )
+				ENDIF
+
+			ELSE
+
+				retval = FALSE
+				smidi_samp.status_message ( "do_test_sched_entries failure ":key:" ":status, MSG_HIGH )
+
+			ENDIF
+
+		ENDIF
+
+		count = count + 1
+
+	ENDWHILE   { for all tests from SAP add these to the test schedule }
+
+
+	RETURN ( retval )
+
+
+ENDROUTINE  { do_test_sched_entries }
+
+{ **************************************************************************** }
+{                                                                              }
+{                                                                              }
+{                           USER TABLES / ENTRIES                              }
+{                                                                              }
+{                                                                              }
+{ **************************************************************************** }
+
+GLOBAL ROUTINE smidi_process_user_tables ( sample, object1, object2 )
+
+	DECLARE i, j
+
+	sample.status_message("process_user2_tables ", MSG_NONE )
+
+	IF ( VARIABLE_IS_ASSIGNED ( missing_data ) ) THEN
+
+		{ ================================================ }
+		{ Update the qaivc dependent tables for all ops    }
+		{ ================================================ }
+
+		i = 1
+
+		WHILE ( object2.operations[i] <> EMPTY ) DO
+
+			update_qaivc ( sample, object2.operations[i] )
+
+			j = 1
+
+			WHILE ( object1.chars[j] <> EMPTY ) DO 
+
+				IF object1.chars[j].op_no = object2.operations[i].op_no THEN
+
+					update_qaimv ( sample, object1.chars[j] )
+					j = j + 1
+	
+				ENDIF
+
+			ENDWHILE
+
+			i = i + 1
+
+		ENDWHILE
+
+	ENDIF   { update of user tables }
+
+	RETURN ( TRUE )
+
+ENDROUTINE { user tables }
+
+{ **************************************************************************** }
+
+ROUTINE update_qaivc ( sample, object2 )
+
+ENDROUTINE  { update_qaivc }
+
+{ **************************************************************************** }
+
+ROUTINE update_qaimv ( sample, object1 )
+
+ENDROUTINE  { update_qaimv }
+                                                
+{ **************************************************************************** }
+{                                                                              }
+{                                                                              }
+{                                                                              }
+{                                                                              }
+{*                       DOWNLOAD PROCESS TRIGGERS                            *}
+{                                                                              }
+{                                                                              }
+{                                                                              }
+{                                                                              }
+{ **************************************************************************** }
+
+ROUTINE download_commit ( download, VALUE calling_report, status )
+
+	download.status_message("download_commit ":calling_report:" ":status, MSG_NONE )
+	RETURN ( TRUE )
+
+ENDROUTINE { download_commit }
+
+{******************************************************************************}
+
+ROUTINE download_post_commit ( download, VALUE calling_report )
+ENDROUTINE  { download_post_commit }
+
+{******************************************************************************}
+
+ROUTINE download_entry_is_failure ( download, wl_entry )
+
+	download.status_message("download_entry_is_failure ":wl_entry.lot_no, MSG_MED )
+	RETURN ( TRUE )
+
+ENDROUTINE { download_entry_is_failure }
+
+{******************************************************************************}
+
+ROUTINE download_add_failure ( download, qierr )
+
+	download.status_message("download_add_failure ", MSG_HIGH )
+	RETURN ( TRUE )
+
+ENDROUTINE { download_add_failure }
+
+{******************************************************************************}
+
+ROUTINE download_add_vgl_failure ( download, qaivc )
+
+	download.status_message("download_add_vgl_failure ", MSG_HIGH )
+	RETURN ( TRUE )
+
+ENDROUTINE { download_add_vgl_failure }
+
+{******************************************************************************}
+
+ROUTINE download_create_failure ( download, lot, text )
+
+	download.status_message("download_create_failure ":lot:" ":text, MSG_HIGH )
+
+ENDROUTINE { download_create_failure }
+
+{******************************************************************************}
+
+ROUTINE download_all_failures ( download )
+
+	download.status_message("download_all_failures ", MSG_HIGH )
+
+ENDROUTINE { download_all_failures }
+
+
+{******************************************************************************}
+
+ROUTINE download_error ( download, VALUE message )
+
+	download.status_message("download_error ":message, MSG_MED )
+
+	RETURN ( TRUE )
+
+ENDROUTINE { download_error }
+
+{******************************************************************************}
+
+ROUTINE download_next_lot ( download, qails, VALUE next_lot )
+
+	download.status_message("download_next_lot ":next_lot, MSG_NONE )
+
+	RETURN ( next_lot )
+
+ENDROUTINE { download_next_lot }
+
+{******************************************************************************}
+
+ROUTINE process_rollback ( download, VALUE save_lot )
+
+	IF NOT ( VARIABLE_IS_ASSIGNED ( download.error_context.message_text ) ) THEN
+
+		download.status_message("*** process_rollback no error message context ***", MSG_HIGH )
+		download.A1_base.error_msg = "Unknown error "
+		download.A1_base.error_num = "1"
+
+		IF NOT ( VARIABLE_IS_ASSIGNED ( download.A1_base.base_user ) ) THEN
+			download.A1_base.base_user = " "
+		ENDIF
+
+	ELSE
+
+		download.status_message("* process_rollback ":download.error_context.message_text:" *", MSG_HIGH )
+
+		download.A1_base.error_msg = download.error_context.message_text
+
+		IF ( VARIABLE_IS_ASSIGNED ( download.error_context.message_no ) ) THEN
+			download.A1_base.error_num = download.error_context.message_no
+		ENDIF
+
+		IF ( VARIABLE_IS_ASSIGNED ( download.error_context.lot_no ) ) THEN
+			download.A1_base.base_user = download.error_context.lot_no
+		ELSE
+			download.A1_base.base_user = " "
+		ENDIF
+
+	ENDIF
+
+	change_download_queue ( save_lot, FALSE )   { <---vvv look below you...;-) }
+
+ENDROUTINE { process_rollback }
+
+{ **************************************************************************** }
+
+ROUTINE change_download_queue ( VALUE save_lot, VALUE success )
+
+	IF NOT success THEN
+		START WRITE TRANSACTION "SMIDI_DOWNLOAD_QUEUE_RESET"  { <- already failed transactions }
+	ENDIF
+
+	save_lot = SELECT SMIDI_DOWNLOAD_QUEUE.SAP_LOT FOR UPDATE WHERE SAP_LOT = save_lot
+
+	WHILE ( save_lot <> EMPTY )  DO
+
+		ASSIGN SMIDI_DOWNLOAD_QUEUE.PROCESSED = success
+		UPDATE SMIDI_DOWNLOAD_QUEUE, status
+
+		NEXT SMIDI_DOWNLOAD_QUEUE
+		save_lot = SELECT SMIDI_DOWNLOAD_QUEUE.SAP_LOT
+
+	ENDWHILE   { got all the ops chars phrase for this lot }
+
+	IF NOT success THEN
+		COMMIT
+	ENDIF
+
+ENDROUTINE  { change_download_queue - update smidi_download_queue with processed = <success> }
+
+{******************************************************************************}
+
+ROUTINE process_commit ( download, VALUE save_lot )
+
+	change_download_queue ( save_lot, TRUE )
+	download.status_message("process_commit ":save_lot, MSG_NONE )
+
+	RETURN ( TRUE )
+
+ENDROUTINE { process_commit }
+
+{******************************************************************************}
+
+ROUTINE process_post_commit ( download, VALUE save_lot )
+
+	DECLARE job_id, class_name, do_auto_upload, qaivc_ud
+
+	do_auto_upload = download.get_item ( "SMIDI_AUTO_UPLOAD" )
+
+	download.status_message("proces_post_commit ":do_auto_upload, MSG_LOW )
+
+	{ =========================================================================== }
+	{ Show off a few download items for this lot, job, sample, etc to logfile     }
+	{ =========================================================================== }
+
+	IF do_auto_upload THEN
+
+		message = "LIMS->"
+
+		IF ( OBJECT_CHECK_PROPERTY ( download, "OPERATIONS" ) ) THEN
+
+		 tmpString = download.operations
+
+		 IF ( VARIABLE_IS_ASSIGNED ( tmpString ) ) THEN
+
+			IF ( SIZE_OF_ARRAY ( tmpString ) > 0 ) THEN
+
+			  tmpString = download.operations[1]
+			  class_name = TOUPPER ( VARIABLE_GET_TYPE ( tmpString ) )
+
+			  IF class_name = "OBJECT" THEN
+
+			    IF ( tmpString <> EMPTY ) THEN
+
+			    IF ( OBJECT_CHECK_PROPERTY ( tmpString, "JOB" ) ) THEN
+
+				qaivc_ud   = tmpString
+				tmpString  = tmpString.job
+				job_id     = STRIP(tmpString.job_identity)
+				message    = message:job_id:" "
+	
+				download.A1_base.base_user = job_id     { custom code makes use of this }
+	
+				IF tmpString <> EMPTY THEN
+
+				IF ( OBJECT_CHECK_PROPERTY ( tmpString, "MASTER" ) ) THEN
+
+				  tmpString = tmpString.master
+				  IF ( tmpString <> EMPTY ) THEN
+				     message   = message : " SAP Lot " : tmpString.lot_no
+
+				     IF ( OBJECT_CHECK_PROPERTY ( tmpString, "SAMPLES" ) ) THEN
+
+					tmpString = tmpString.samples
+
+					IF ( SIZE_OF_ARRAY ( tmpString ) > 0 ) THEN
+
+						do_auto_upload_and_ud ( tmpString, qaivc_ud, job_id, download  )
+
+					ENDIF  { tmpString is list of tests in LIMS }
+				     ENDIF { sample object exists }
+				  ENDIF
+				ENDIF { master object has samples }
+				ENDIF { tmpString EMPTY }
+			      ENDIF  { job property on ops }
+			    ENDIF  { no ops }
+			  ENDIF  { ops is a class - would not be when a query only download }
+			ENDIF  { ops is an array }
+		  ENDIF  { ops is assigned to download }
+		ENDIF  { download is an object with ops }
+
+		download.status_message(message, MSG_LOW)
+
+	ENDIF  { do_auto_upload }
+	
+	{ Cleanup }
+	CleanUp(download)
+	
+ENDROUTINE { process_post_commit }
+
+
+{******************************************************************************}
+ROUTINE CleanUp(download)
+
+	DECLARE counter, sampCtr, physCtr
+	DECLARE bContinue
+	DECLARE tmp_string
+	DECLARE class_name
+	counter= 1
+	sampCtr = 1
+	physCtr = 1
+	bContinue = TRUE
+
+	{ Remove the Operations }
+	WHILE (counter <= SIZE_OF_ARRAY(download.operations)) DO
+
+         tmpstring  = download.operations[counter]
+         class_name = TOUPPER (VARIABLE_GET_TYPE (tmpString))
+
+         IF class_name = "OBJECT" THEN
+
+           IF (tmpString <> EMPTY) THEN
+
+             IF (OBJECT_CHECK_PROPERTY(tmpString,"JOB")) THEN
+
+               tmpString  = tmpString.job
+
+               IF tmpString <> EMPTY THEN
+
+                 IF (OBJECT_CHECK_PROPERTY(tmpString,"MASTER")) THEN
+
+                   tmpString = tmpString.master
+
+                   IF (tmpString <> EMPTY) THEN
+
+                     IF (OBJECT_CHECK_PROPERTY(tmpString,"SAMPLES")) THEN
+
+   		        { Iterate through the Samples asocaited with the operation }
+			WHILE (sampCtr <= SIZE_OF_ARRAY(download.operations[counter].job.master.samples)) DO
+
+				{ Need to completely remove the samples }
+				{ i.e. self.samples[phys_samp,part_samp] = EMPTY }
+				WHILE bContinue DO
+
+					IF download.operations[counter].job.master.samples[sampCtr, physCtr] <> EMPTY THEN
+						download.operations[counter].job.master.samples[sampCtr,physCtr] = EMPTY
+					ELSE
+						bContinue = FALSE
+					ENDIF
+
+					physCtr = physCtr +1
+
+				ENDWHILE
+
+	
+				download.operations[counter].job.master.samples[sampCtr] = EMPTY
+
+				sampCtr = sampCtr + 1
+
+			ENDWHILE
+
+                        { Remove the items within the operation }
+	                download.operations[counter].job.master.samples = EMPTY
+	                download.operations[counter].job.master = EMPTY
+	                download.operations[counter].job = EMPTY
+                      ELSE
+	                download.operations[counter].job.master = EMPTY
+	                download.operations[counter].job = EMPTY
+		      ENDIF
+
+                    ELSE
+	              download.operations[counter].job = EMPTY
+		    ENDIF
+
+                  ELSE
+	            download.operations[counter].job = EMPTY
+		  ENDIF
+
+		ENDIF
+
+	      ENDIF
+
+   	    ENDIF
+
+	  ENDIF
+
+          download.operations[counter] = EMPTY
+
+	  counter = counter + 1
+
+	ENDWHILE
+
+	download.operations = EMPTY
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE do_auto_upload_and_ud ( tmpString, qaivc_ud, job_id, download )
+
+	DECLARE count, pcount, tcount, do_success, mlp_id, mlp_ver, test_statuses, mlp_update
+
+	{ =========================================================== }
+	{ Process the upload, if we upload all tests then do UD       }
+	{ =========================================================== }
+
+	mlp_update      = download.get_map_header( "MLP_UPDATE" )
+	test_statuses   = SELECT SMIDI_CONFIG_HEADER.VALUE WHERE IDENTITY = "SAP_UPLOAD_STATUS_TESTS"
+	do_success      = FALSE
+	count           = 1
+	pcount          = 1
+
+	WHILE ( count <= SIZE_OF_ARRAY ( tmpString ) ) DO
+
+		IF ( tmpString[count,pcount] = EMPTY )
+		OR NOT ( VARIABLE_IS_ASSIGNED ( tmpString[count,pcount].sample_id ) ) THEN
+
+			message = " Sample not defined [inspection points] -> ":count:pcount
+			download.status_message ( message, MSG_LOW )
+
+		ELSE
+
+
+			do_success = TRUE
+			mlp_id     = tmpString[count,pcount].master.product_object.product_id
+			mlp_ver    = tmpString[count,pcount].master.product_object.product_version
+
+			WHILE ( tmpString[count,pcount] <> EMPTY ) DO
+
+				download.status_message ( "do_auto_upload_and_ud SAP Partial Sample[":STRIP(count):",":STRIP(pcount):"]":tmpString[count,pcount].sample_id:" ":mlp_id:"/":mlp_ver, MSG_LOW )
+
+				tcount  = 1
+			
+				WHILE ( tmpString[count,pcount].tests[tcount] <> EMPTY ) DO
+
+					IF ( tmpString[count,pcount].tests[tcount].test_number > 0 ) THEN
+
+						{ ==============  MUST RESPEC CHECK THIS ================ }
+						{                                                         }
+						{         only when this is not an inspection point       }
+						{                                                         }
+						{ ==============  MUST RESPEC CHECK THIS ================ }
+
+						IF NOT VARIABLE_IS_ASSIGNED ( download.inspection_point ) THEN
+
+							IF mlp_update THEN
+								do_csmlp ( download, tmpString[count,pcount].tests[tcount].test_number, tmpString[count,pcount].tests[tcount].analysis_id, mlp_id, mlp_ver )
+							ENDIF
+
+						ENDIF
+
+						IF ( INDEX ( test_statuses, tmpString[count,pcount].tests[tcount].test_status ) > 0 ) THEN
+
+							CALL_ROUTINE "smidi_queue_test" IN LIBRARY SMIDI_LIB_UPLOAD_LIB
+								USING tmpString[count,pcount].tests[tcount].test_number RETURNING retval
+
+							message = tcount:" Test ->":STRIP(tmpString[count,pcount].tests[tcount].test_number):" upload queue returned ":retval
+
+						ENDIF
+
+					ELSE
+
+						message    = tcount:" Test not completed, so it is not queued to upload ->":STRIP(tmpString[count,pcount].tests[tcount].test_number)
+						do_success = FALSE  { so ud is not done }
+	
+					ENDIF
+		
+					tcount = tcount + 1
+					download.status_message ( message, MSG_LOW )
+
+				ENDWHILE
+
+				pcount = pcount + 1
+
+			ENDWHILE
+
+		ENDIF
+			
+		pcount = 1
+		count  = count + 1
+
+
+	ENDWHILE  { for all samples logged in }
+
+
+	{ ===================================================================== }
+	{ Once done with the upload queue, make a UD and msg to log file        }
+	{ ===================================================================== }
+
+	IF do_success THEN
+		CALL_ROUTINE "smidi_make_ud" IN LIBRARY SMIDI_UPLOAD_USER_LIB USING job_id, download
+	ENDIF
+
+ENDROUTINE   { do auto upload and make ud }
+
+{******************************************************************************}
+
+ROUTINE do_csmlp ( download, VALUE test, VALUE analysis, VALUE mlp_id, VALUE mlp_ver )
+
+
+	DECLARE x, mt, pass, level_id, count, levels
+
+	x     = FALSE
+	mt    = EMPTY
+	count = 0
+	ARRAY levels
+
+	level_id = SELECT MLP_VIEW.LEVEL_ID
+			WHERE PRODUCT_ID      = mlp_id
+			AND   PRODUCT_VERSION = mlp_ver
+			AND   ANALYSIS_ID     = analysis
+
+
+	WHILE level_id <> EMPTY DO
+
+		count         = count + 1
+		levels[count] = level_id
+
+		NEXT MLP_VIEW
+		level_id = SELECT MLP_VIEW.LEVEL_ID
+
+	ENDWHILE   { get all the levels }
+
+
+	count = 1
+	WHILE ( levels[count] <> EMPTY ) DO	
+
+		csmlp_test ( test, mlp_id, mlp_ver, levels[count], x, x, mt, pass, x  )
+		download.status_message ( "SPEC-> ":test:" ":mlp_id:"/":mlp_ver:levels[count]:pass, MSG_MED )
+		count = count + 1
+
+	ENDWHILE
+
+ENDROUTINE
+
+
+{******************************************************************************}
+
+GLOBAL ROUTINE check_removed_sap_spec ( qaimv )
+{  Routine called from smidi_lib-limits when no spec exisits for characterisitc
+* Parameters   : qaimv - datat structure for transfering Characteristics Specifications
+*              
+* Return Value : Bool - indicating success
+*
+* Remarks: 
+*******************************************************************************}
+
+	DECLARE min_removed, max_removed, phr_removed, bool_removed, spec_removed
+        DECLARE retVal
+         
+         retVal = FALSE
+         
+         min_removed = (STRIP(select mlp_values.min_limit) <> "")
+         max_removed = (STRIP(select mlp_values.max_limit) <> "")
+         phr_removed = (STRIP(select mlp_values.text_phrase) <> "")
+         bool_removed = select mlp_values.boolean_pass
+         
+         spec_removed = min_removed | max_removed | phr_removed | bool_removed
+         
+         IF (spec_removed) THEN
+         	
+         	qaimv.status_message("check_removed_sap_spec:  spec removed from ":STRIP(qaimv.component_name),MSG_LOW )
+         	retVal = TRUE
+      
+         ENDIF
+
+	RETURN (retVal)
+	
+ENDROUTINE
+
+
+{******************************************************************************}
+
+ROUTINE max_process_retry(VALUE the_process)
+
+{ Routine called from the background when the max. process count is reached
+*
+* Parameters   : the_process - identifier for teh Process
+*              
+* Return Value : None
+*
+* Remarks: This routine is called when the background process has attempted to restart multiple times,
+*			and the counter has reached the maximum number of attempts
+*			Code should be added here to handle this situation
+*			i.e. Log this error or send an email
+*******************************************************************************}
+
+	{ Add user defined code here}
+
+
+ENDROUTINE
+
+{ end $smidi_user }
+
+
+
+{======================================================
+
+   Elan custom routines
+
+=====================================================}
+
+
+
+{ 1.1 Mapping routine for sample template from material number }
+ {******************************************************************************}
+ 
+ GLOBAL ROUTINE samp_tmpl_from_mat
+     (
+            map_object
+     )
+ 
+     DECLARE template
+     DECLARE qaivc
+
+     qaivc = map_object . parent
+     
+     template = qaivc . material_no
+ 
+     {***********************************************
+     * If all numeric, strip off any leading zero's 
+     ***********************************************}    
+     IF ( NUMTEXT( template ) )
+         WHILE ( LEFTSTRING( template, 1 ) = "0" )
+             template = template # "0"
+         ENDWHILE
+     ENDIF
+     
+     template = SELECT samp_tmpl_header.identity
+                WHERE ( identity = template )
+                
+     {*********************************************
+     * If template does not exist, Blank string 
+     * will be returned. Default value from mapping 
+     * will then be used
+     **********************************************}
+     
+     IF ( template = EMPTY )
+         template = ""
+     ENDIF
+ 
+     RETURN( template )
+     
+ ENDROUTINE
+
+{
+1.4 old version
+}
+ GLOBAL ROUTINE old_samp_tmpl_from_mat
+     (
+             login,
+             qaivc
+     )
+ 
+     DECLARE template
+     
+     template = qaivc . material_no
+ 
+     {***********************************************
+     * If all numeric, strip off any leading zero's 
+     ***********************************************}    
+     IF ( NUMTEXT( template ) )
+         WHILE ( LEFTSTRING( template, 1 ) = "0" )
+             template = template # "0"
+         ENDWHILE
+     ENDIF
+     
+     template = SELECT samp_tmpl_header.identity
+                WHERE ( identity = template )
+                
+     {*********************************************
+     * If template does not exist, Blank string 
+     * will be returned. Default value from mapping 
+     * will then be used
+     **********************************************}
+     
+     IF ( template = EMPTY )
+         template = ""
+     ENDIF
+ 
+     RETURN( template )
+     
+ ENDROUTINE
+ 
+ {******************************************************************************}
+ {******************************************************************************}
+
+ ROUTINE process_reduced_lot_testing( download, VALUE calling_report, a_false)
+ 
+{
+Old SMIDI
+
+ ROUTINE process_reduced_lot_testing( operations, characteristics,
+                                phrases, download, config )
+}
+ 
+ {
+ *
+ *   Process routine to handle cancelled or discarded requests in QM
+ *
+ *******************************************************************************}
+ 
+     DECLARE ok, jb_id, count
+ 
+     DECLARE login_request
+ 
+
+
+{ Temp return for development/upgrading }
+RETURN (TRUE)
+
+
+     { 1.4   Pass  DEFAULT_QMIDI_OBJECT - defined in $SMIDI_LIB_SAP }
+{
+Old SM-IDI
+
+     smidi_login_initialise ( DEFAULT_QMIDI_OBJECT )
+ 
+     CREATE OBJECT "SMIDI_LOGIN", login_request
+     login_request . operations = operations
+     login_request . chars      = characteristics
+     login_request . phrases    = phrases
+     login_request . config     = config
+     login_request . parent     = download
+     login_request . download   = download
+ 
+     ok = login_request . process ( )
+ 
+    
+ }
+
+
+
+
+						smidi_login_initialise(download.A1_base.qmidi_object)
+
+						CREATE OBJECT "SMIDI_LOGIN", login_request
+							login_request.operations = download.operations
+							login_request.chars      = download.chars
+							login_request.phrases    = download.phrases
+							login_request.qiwl       = download.qiwl
+							login_request.config     = download.config
+							login_request.parent     = download.parent
+							login_request.download   = download
+							login_request.A1_base    = download.A1_base
+{	smidi_lib_initialise_mapping ( login_request, A_base )
+}
+
+						{ ==================================================================== }
+						{ If we are an inspection point then assign to QAIVC this QAIPP        }
+						{ ==================================================================== }
+
+						IF VARIABLE_IS_ASSIGNED ( download.inspection_point ) THEN
+							download.operations[1].qaipp = download.inspection_point
+							login_request.point_mode     = TRUE
+						ENDIF
+
+						ok = login_request.process()
+
+
+{ This bit is same as old version }
+
+ count = 1
+ 
+     WHILE count < SIZEOFARRAY(login_request.tree)
+  
+         jb_id = login_request.tree[count].job_id
+ 
+         CALL_ROUTINE "sample_plan_login" USING jb_id IN LIBRARY "RLT_LIB"
+ 
+         count = count + 1
+ 
+     ENDWHILE
+
+
+     return ( ok )
+ 
+ ENDROUTINE
+
+
+
+{ 1.4 }
+{ New routine for Elan RLT }
+{ Called from SMIDI_LIB_LOGIN }
+
+ROUTINE elan_rlt (array_jobs)
+
+    DECLARE count, jb_id 
+
+    count = 1
+ 
+
+    WHILE count <= SIZEOFARRAY(array_jobs)
+
+         jb_id = array_jobs [count]
+ 
+         CALL_ROUTINE "sample_plan_login" USING jb_id IN LIBRARY "RLT_LIB"
+
+         count = count + 1
+ 
+    ENDWHILE
+
+
+    return ( TRUE )
+ 
+ENDROUTINE   { elan_rlt }
+
+ 
+ {******************************************************************************}
+ 
+ {******************************************************************************}
+ {******************************************************************************}
+ {******************************************************************************}
+ 
+

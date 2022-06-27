@@ -1,0 +1,630 @@
+{******************************************************************************
+*
+* Module Name   : $SMIDI_LTE_STRUCTURE
+*
+* Purpose       : Laboratory table editor for the smidi_structure/smidi_structure_items
+*
+* Document Ref. :
+*
+* Specification :
+*
+* Portability   : OVMS, Unix, NT4, and Windows 2000
+*
+* Re-entrant    :
+*
+*
+* Modification History
+* By        Date        Reason _____________________________________________
+*
+*******************************************************************************}
+
+ENABLE WINDOWS
+
+SET NAME "DISPLAY/"
+SET NOTPROTECTED
+SET COMPILE_OPTION DECLARE
+
+JOIN STANDARD_LIBRARY STD_ARRAY              { size of array                  }
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT       { array selects                  }
+JOIN STANDARD_LIBRARY STD_CLASS              { objectaddtable                 }
+JOIN STANDARD_LIBRARY STD_DATABASE           { execute sql command            }
+JOIN STANDARD_LIBRARY STD_GENERAL            { variable is assigned           }
+JOIN STANDARD_LIBRARY STD_PROMPT             { prompt add id's                }
+JOIN STANDARD_LIBRARY STD_VGL                { VGL validate routine           }
+JOIN STANDARD_LIBRARY STD_UTILS              { get_field_names                }
+JOIN STANDARD_LIBRARY STD_WINDOW             { window set status              }
+
+JOIN LIBRARY $LIST_EDITOR                    { List Editor smidi_config_item  }
+JOIN LIBRARY $LIB_GRID                       { Grid Functionality.            }
+
+JOIN LIBRARY $LABTABLIB
+JOIN LIBRARY $LIB_UTILS                      { flash_message                  }
+
+JOIN LIBRARY $SMIDI_LIB_SAP                  { sse, constants, classes        }
+
+{ --------------------------------------------------------------------------- }
+{ ------------------------------- CONSTANTS --------------------------------- }
+
+CONSTANT LTE_TABLE     = "SMIDI_STRUCTURE"
+CONSTANT LTE_TABLE_2   = "SMIDI_STRUCTURE_ITEMS"
+
+
+{ --------------------------------------------------------------------------- }
+{ ------------------------------- VARIABLES --------------------------------- }
+
+DECLARE name_of_table
+DECLARE help_context
+DECLARE directory
+DECLARE extn
+DECLARE default_value
+DECLARE input_mess
+DECLARE header_mess
+DECLARE footer_mess
+DECLARE display_footer_mess
+DECLARE displayed_name_of_table
+DECLARE prompt_details
+DECLARE fields_to_output
+DECLARE special_actions_report
+DECLARE labtable_messages
+DECLARE retval
+DECLARE oObject				{ Object to Populate}
+{ --------------------------------------------------------------------------- }
+{ -------------------------- Table Setup Routine ---------------------------- }
+
+ROUTINE table_setup ( operation )
+
+	DECLARE count
+
+	name_of_table           = LTE_TABLE
+	help_context            = "SMIDI_STRUCTURE"
+	directory               = EMPTY
+	extn                    = EMPTY
+	default_value           = EMPTY
+	input_mess              = get_user_message("SMIDI_LTE_SAP_MAP_PROMPT", 1 )
+	header_mess             = get_user_message("SMIDI_LTE_SAP_MAP_HEADER", 1 )
+	footer_mess             = get_user_message("SMIDI_LTE_SAP_MAP_FOOTER", 1 )
+	display_footer_mess     = get_user_message("SMIDI_LTE_SAP_MAP_FOOTER", 2 )
+	displayed_name_of_table = get_user_message("SMIDI_LTE_SAP_MAP_TABLE" , 1 )
+
+	ARRAY prompt_details	ARRAY_SIZE ( 0 , 6 )
+		
+		count = 1
+		prompt_details [ count , MESSAGE_POSITION    ] = get_user_message( "SMIDI_LTE_SAP_MAP_DESC", 1 )
+		prompt_details [ count , FIELD_NAME_POSITION ] = "DESCRIPTION"
+		
+		count = count + 1
+		prompt_details [ count , MESSAGE_POSITION    ] = get_user_message( "SMIDI_LTE_SAP_MAP_SIZE", 1 )
+		prompt_details [ count , FIELD_NAME_POSITION ] = "SAP_LENGTH"
+		
+		prompt_details [ count , TYPE_POSITION       ] = "ROUTINE"
+		prompt_details [ count , LIBRARY_POSITION    ] = GLOBAL ( "CURRENT_LIBRARY" )
+		prompt_details [ count , ROUTINE_POSITION    ] = "calc_length"
+
+	ARRAY fields_to_output  ARRAY_SIZE ( 0 )
+		fields_to_output [ 1 ]  = "1"
+		fields_to_output [ 2 ]  = "2"
+
+	ARRAY labtable_messages 	ARRAY_SIZE ( 0 )
+		labtable_messages [ IDENTITY_MESSAGE   ] = get_user_message ( "SMIDI_LTE_SAP_MAP_IDENTITY", 1 )
+		labtable_messages [ IDENTITY_MESSAGE+1 ] = get_user_message ( "SMIDI_LTE_SAP_MAP_IDENTITY", 2 )
+		labtable_messages [ MOD_ON_MESSAGE     ] = GET MESSAGE ( 2546 , 1 )
+		labtable_messages [ MOD_BY_MESSAGE     ] = GET MESSAGE ( 2547 , 1 )
+		labtable_messages [ READ_MESSAGE       ] = GET MESSAGE ( 2566 , 1 )
+		labtable_messages [ WRITE_MESSAGE      ] = GET MESSAGE ( 2567 , 1 )
+
+	ARRAY special_actions_report 	ARRAY_SIZE ( 0 , 4 )
+
+		special_actions_report [ 1 , CHARACTER_POSITION ] = "*"
+		special_actions_report [ 1 , TITLE_POSITION     ] = get_user_message("SMIDI_LTE_SYS_MENUHDR", 1)
+		
+		count = 2
+
+		special_actions_report [ 2 , CHARACTER_POSITION ] = get_user_message("SMIDI_LTE_SAP_MAP_ACTIONS", 1 )
+		special_actions_report [ 2 , TITLE_POSITION     ] = get_user_message("SMIDI_LTE_SAP_MAP_ACTIONS", 2 )
+		special_actions_report [ 2 , LIBRARY_POSITION   ] = GLOBAL ( "CURRENT_REPORT" )
+		special_actions_report [ 2 , ROUTINE_POSITION   ] = "lte_process"
+		
+		
+		
+ENDROUTINE  { table setup }
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE calc_length ( VALUE column, VALUE row, VALUE cell_width, screen, VALUE is_display )
+
+	DECLARE sap_object, sap_version, the_length, curr_len
+
+	sap_object   = SELECT 'LTE_TABLE'.IDENTITY
+	sap_version  = STRIP ( SELECT 'LTE_TABLE'.SAP_VERSION )
+	the_length   = 0
+	curr_len     = SELECT 'LTE_TABLE_2'.SAP_LENGTH
+				WHERE IDENTITY     = sap_object
+				AND   SAP_VERSION  = sap_version
+				AND   SAP_PROPERTY = TRUE
+		
+	WHILE curr_len <> EMPTY DO
+
+		the_length = the_length + curr_len
+
+		NEXT 'LTE_TABLE_2'
+		curr_len = SELECT 'LTE_TABLE_2'.SAP_LENGTH
+
+	ENDWHILE
+
+	ASSIGN 'LTE_TABLE'.SAP_SUM_LENGTH = the_length
+
+	DISPLAY the_length ON LINE row FROM column TO column+cell_width-1 IN WINDOW screen
+	SET GLOBAL "LASTKEY" TO "UP"
+
+ENDROUTINE  { calc_length }
+
+{ --------------------------------------------------------------------------- }
+ROUTINE validation_routine
+	retval = TRUE
+	RETURN ( retval )
+ENDROUTINE  { validation routine }
+
+{ --------------------------------------------------------------------------- }
+ROUTINE prompt_object_routine ( prompt_object, VALUE key0_count, VALUE operation )
+ 
+	{ Called during the creation of the identity prompts              }
+	{                                                                 }
+	{ prompt_object is the prompt object from the specified prompt    }
+	{ key0_count    is the current key0 segment number                }
+	{               eg this would be 2 for the version_number         }
+	{ operation     the current LTE operation eg ADD, MODIFY, DISPLAY }
+	{                                                                 }
+	{ No return value is required                                     }
+           
+
+	IF ( operation != "MODIFY"  ) AND ( operation != "DISPLAY" ) THEN
+
+		prompt_object.display_only = FALSE
+
+	ELSEIF ( key0_count = 1 ) AND ( ( operation = "MODIFY" ) | ( operation = "DISPLAY" ) ) THEN
+
+	ENDIF
+
+ENDROUTINE  { prompt object routine }
+
+{ --------------------------------------------------------------------------- }
+ROUTINE create_id_routine
+
+	{ Called before starting the identity prompts of an LTE for the   }
+	{ ADD and COPY options.                                           }
+	{                                                                 }
+	{ The return value is used as the identity of the new record      }
+	{ instead of starting the identity prompts.                       }
+	{ Returning EMPTY causes the identity prompt to be started.       }
+
+	RETURN ( EMPTY )
+
+ENDROUTINE  { create id routine }
+
+{ --------------------------------------------------------------------------- }
+ROUTINE update_routine ( labtable )
+
+	{ Called on pressing the DO key to save LTE screen.               }
+	{ Called after the LTE write transaction has been started.        }
+	{                                                                 }
+	{ labtable is the labtable object.                                }
+	{                                                                 }
+	{ The return value is TRUE  if updates have been performed        }
+	{                     FALSE if updates have NOT been performed    }
+	{                     EMPTY - the systems checks for updates      }
+
+
+	RETURN ( EMPTY )
+
+ENDROUTINE  { update routine }
+
+{ --------------------------------------------------------------------------- }
+ROUTINE read_data_routine ( labtable, VALUE operation )
+
+                                
+	{ Called after the record has been selected / reserved but before }
+	{ the editor screen has been built.                               }
+	{                                                                 }
+	{ labtable      the labtable object.                              }
+	{ operation     the current LTE operation eg ADD, MODIFY, DISPLAY }
+	{                                                                 }
+	{ No return value is required                                     }
+
+	IF ( operation = "MODIFY" ) THEN
+	ENDIF
+                                                    
+ENDROUTINE  { read data routine }
+
+{ --------------------------------------------------------------------------- }
+ROUTINE do_the_work  ( VALUE operation )
+
+	smp_lte_initialise()
+	table_setup ( operation )
+	smp_lte_perform_option  ( name_of_table            ,
+					displayed_name_of_table    ,
+					prompt_details             ,
+					labtable_messages          ,
+					default_value              ,
+					input_mess	               ,
+					header_mess                ,
+					footer_mess                ,
+					display_footer_mess        ,
+					directory                  ,
+					extn                       ,
+					help_context               ,
+					GLOBAL ("CURRENT_LIBRARY") ,
+					fields_to_output           ,
+					special_actions_report     ,
+					operation                  )
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+ROUTINE add_option ( option )
+	do_the_work ( "add_ident" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE copy_option ( option )
+	do_the_work ( "copy_ident" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE modify_option ( option )
+	do_the_work ( "modify_ident" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE display_option ( option )
+	do_the_work ( "display_ident" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE remove_option ( option )
+	do_the_work ( "remove_ident" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE restore_option ( option )
+	do_the_work ( "restore_ident" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE list_option ( option )
+	do_the_work ( "list_idents" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE print_option ( option )
+	do_the_work ( "print_ident" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE new_version_option ( option )
+	do_the_work ( "new_version" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE spreadsheet_option ( option )
+
+	DECLARE key_search_field, the_table
+
+	the_table        = LTE_TABLE
+	key_search_field = "IDENTITY"
+	CALL_ROUTINE "LTE_spreadsheet" USING the_table, key_search_field IN LIBRARY SMIDI_LIB_SAP
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+ROUTINE spreadsheet_menu_option ( shit, crap, fart )
+
+	DECLARE key_search_field, the_table
+
+	the_table        = "MASTER_MENU"
+	key_search_field = "LIBRARY"
+	CALL_ROUTINE "LTE_spreadsheet" USING the_table, key_search_field IN LIBRARY SMIDI_LIB_SAP
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+ROUTINE smp_lte_initialise
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+
+{---------------------------------------------------------------------------}
+{                                                                  				}
+{                                                                  				}
+{                                                                  				}
+{                                                                  				}
+{  2nd page "actions" called from within the library               	}
+{                                                                  				}
+{                                                                  				}
+{                                                                  				}
+{                                                                  				}
+{---------------------------------------------------------------------------}
+
+
+{*******************************************************************************}
+
+ROUTINE lte_process ( VALUE identity, VALUE copied_identity, VALUE operation )
+
+	DECLARE answer
+
+	IF operation = "PRINT" THEN
+
+		print_it ( identity, LTE_TABLE_2 )
+		
+	ELSEIF (INDEX(operation,"COPY")>0) THEN
+		
+		answer = process_table ( identity, copied_identity, operation, LTE_TABLE_2 )
+		RETURN ( answer )
+		
+	ELSEIF (INDEX(operation,"MODIFY") > 0) | (INDEX (operation,"SAVE") > 0) | (INDEX(operation,"ADD") > 0)THEN
+
+		answer = process_table ( identity, copied_identity, operation, LTE_TABLE_2 )
+		RETURN ( answer )
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE print_it ( VALUE identity, VALUE the_table ) 
+
+	DECLARE field_details, field_print, cnt
+
+	ARRAY field_print ARRAY_SIZE ( 0 , 2 )
+	ARRAY field_details
+
+	GET_FIELD_NAMES ( the_table, field_details )
+
+	cnt   = 1
+	WHILE cnt <= SIZE_OF_ARRAY ( field_details ) DO
+
+		IF NOT field_details[cnt,2] THEN      { get rid of aliases }
+
+			field_print[cnt,1] = field_details[cnt,1]
+			field_print[cnt,2] = field_details[cnt,1]
+
+		ENDIF
+
+		cnt = cnt + 1
+
+	ENDWHILE
+
+	print_fields ( the_table, identity, "", "", 2, 28, field_details   )
+
+ENDROUTINE { print_source }
+
+{******************************************************************************}
+
+ROUTINE process_table ( VALUE identity,  VALUE copied_identity, VALUE operation, VALUE the_table )
+    
+	DECLARE prompt_details, answer, heading
+
+	IF( list_editor_create_object ( oObject ) ) THEN
+		
+		initialize_map ( prompt_details, heading, the_table )
+		
+		{ Format the identiity }
+		identity = SUBSTITUTE ( identity, " ", "" )
+
+		oObject.table           = the_table
+		oObject.header          = the_table:" : ":identity
+		oObject.footer          = ""
+		oObject.pre_insert      = "sap_map_insert"
+		oObject.post_insert     = "sap_map_post_insert"
+		oObject.delete          = "sap_map_delete"
+		oObject.library         = GLOBAL ( "CURRENT_LIBRARY" )
+		oObject.compatability   = PROMPT_DETAILS_310
+		oObject.select          = EMPTY 
+
+		{ ----------------------------------------------------- }
+		{ The list editor issues with SMP pre 2001 and SMP 2001 }
+		{ ----------------------------------------------------- }
+
+		oObject.select_callback = "process_mandatory_array"
+		
+
+		oObject.setup_prompt_details ( prompt_details, heading )
+
+	ENDIF  { only done one time per LTE cycle (note repeat mode ) }
+
+	{ -------------------------------------------------------------- }
+	{ Actually do something with the list editor grid/object         }
+	{ -------------------------------------------------------------- }
+
+	answer = oObject.operation ( identity, copied_identity, operation )
+
+	IF ( answer <> EMPTY ) & ( NOT answer ) & ( oObject <> EMPTY ) THEN
+
+		oObject.initialised = FALSE
+		oObject.data_read   = FALSE
+		oObject             = EMPTY   { <-- required else 2nd page has wrong data on labtable_mode repeat }
+
+	ENDIF
+
+	RETURN ( answer ) 
+
+ENDROUTINE { process_table }
+
+{******************************************************************************}
+
+ROUTINE initialize_map ( prompt_details, heading, the_table )
+
+	DECLARE count, col_head, field_details, message_prompt, a_field, field_size, is_key0, form_disp
+	DECLARE col_size
+
+	ARRAY prompt_details ARRAY_SIZE ( 0 , 6 )
+
+	GET_FIELD_NAMES ( the_table, field_details )
+
+	count   = 1
+	heading = ""
+
+	WHILE count <= SIZE_OF_ARRAY ( field_details ) DO
+
+		IF NOT field_details[count,2] THEN                      { get rid of aliases }
+
+			a_field  = field_details[count,1]
+
+			GET_FIELD_DETAILS 'the_table'.'a_field', "PROMPT_DESCRIPTION", message_prompt
+			GET_FIELD_DETAILS 'the_table'.'a_field', "FIELD_SIZE"        , field_size
+			GET_FIELD_DETAILS 'the_table'.'a_field', "KEY0_FIELD"        , is_key0
+
+			IF is_key0 THEN
+				form_disp = "DISPLAY"
+			ELSE
+				form_disp = "FORMAT"
+			ENDIF
+
+			IF field_size > 20 THEN
+				field_size = 20
+			ENDIF
+			
+			col_size = STRINGLENGTH ( message_prompt )
+			
+			IF col_size > field_size THEN
+				field_size = col_size
+			ENDIF
+			
+			prompt_details [ count , 1 ] = message_prompt
+			prompt_details [ count , 2 ] = form_disp
+			prompt_details [ count , 3 ] = the_table 
+			prompt_details [ count , 4 ] = field_details[count,1]
+			prompt_details [ count , 5 ] = 0
+			prompt_details [ count , 6 ] = field_size
+
+			col_head = PAD ( prompt_details [ count, 1 ], " ", prompt_details [ count, 6 ] )
+			heading  = heading : col_head : " "
+
+		ENDIF
+
+		count    = count + 1 
+
+	ENDWHILE
+
+ENDROUTINE { initialise_map }
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE process_mandatory_array ( self, select_array )
+
+	DECLARE id, vers
+
+	id   = LEFTSTRING (self.identity,10)
+	vers = RIGHTSTRING(self.identity,10)
+
+	ARRAY select_array
+
+	ARRAY_SELECT_ADD ( select_array, ARRAY_SELECT_EQ   , "IDENTITY"   , id                     )
+	ARRAY_SELECT_ADD ( select_array, ARRAY_SELECT_EQ   , "SAP_VERSION", vers                   )
+	ARRAY_SELECT_ADD ( select_array, ARRAY_SELECT_ORDER, "SAP_ORDER"  , ARRAY_SELECT_ASCENDING )
+
+ENDROUTINE { process_mandatory_array }
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE sap_map_insert ( self, grid, cell_column, cell_row, window, column, row, cell_width, cell_height, new_value )
+
+	IF BLANK ( grid.value ) THEN
+	
+		DECLARE prompt_object, form
+
+		PROMPT OBJECT form CLASS "STD_FORM"
+		        form.header           = "SAP Objects "
+		        form.row              = 10
+		        form.column           = 30
+			form.height           = 1
+        		form.width            = 40
+        		form.vgl_library      = global ( "current_library" )
+        		form.button_style     = FORM_BUTTON_OK_CANCEL
+        		form.return_behaviour = FORM_RETURN_STAY
+        		form.add_display ( "SAP/SMP Name ", 1 , 1, PROMPT_RENDITION_NORMAL ) 
+
+		PROMPT OBJECT prompt_object CLASS "STD_PROMPT_TEXT"
+	        	prompt_object.value  = ""
+			prompt_object.row    = 1
+        		prompt_object.column = 16
+        		prompt_object.height = 1
+        		prompt_object.width  = 20
+
+        	form.add_prompt ( prompt_object ) 
+        	form.start_prompt () 
+        	form.wait_prompt ()
+        	form.end_prompt ()
+
+		new_value = ""
+
+		IF ( form.get_lastkey() <> "EXIT" ) THEN 
+
+			new_value = form.prompt_objects [ 1 ].text
+
+			IF BLANK (new_value) THEN
+				SET GLOBAL "LASTKEY" TO "UP"
+			ELSE
+				SET GLOBAL "LASTKEY" TO "CONTINUE"
+			ENDIF
+
+		ELSE
+
+			IF ( cell_row = grid.cell_rows ) THEN
+
+				IF cell_row = 1 THEN
+					SET GLOBAL "LASTKEY" TO "DO"
+				ELSE
+					SET GLOBAL "LASTKEY" TO "UP"
+				ENDIF
+	
+			ELSE
+
+				IF cell_row = 1 THEN
+					SET GLOBAL "LASTKEY" TO "REMOVE"
+				ELSE
+					SET GLOBAL "LASTKEY" TO "DO"
+				ENDIF
+
+			ENDIF   { this gets the list editor out of the endless append loop }
+
+			new_value = ""
+
+		ENDIF  { form exit, do with value or do with a blank }
+
+	ELSE
+
+		new_value = ""
+		SET GLOBAL "LASTKEY" TO "UP"
+
+	ENDIF  { grid already has value }
+
+
+	RETURN ( new_value )
+
+ENDROUTINE { sap_map_insert }
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE sap_map_post_insert ( self, cell_row, window )
+
+	RETURN ( FALSE )
+
+ENDROUTINE { sap_map_post_insert }
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE sap_map_delete ( self )
+
+	DECLARE can_delete, object
+
+	object = self.collection.get_by_index ( "KEY0", self.order_array [ self.grid.current_row ])
+	object_set_current_table ( object, self.table )
+
+	IF ( SELECT 'LTE_TABLE_2'.SAP_PROPERTY IN OBJECT object ) THEN
+
+		can_delete = FALSE
+		FLASH_MESSAGE ( "You cannot delete an SAP object", TRUE )
+
+	ELSE
+
+		can_delete = TRUE
+
+	ENDIF
+
+	RETURN ( can_delete )
+
+ENDROUTINE { sap_map_delete }
+
+{******************************************************************************}
+{ end smidi_lte_STRUCTURE }

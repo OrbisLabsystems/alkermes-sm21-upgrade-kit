@@ -1,0 +1,371 @@
+{*************************************************************************************************
+*
+* Module Name   : Due_PULL_DATE
+*
+* Purpose       : Allow for the modification of due pull login date due to stability down time
+*
+* Document Ref. : Stability Scheduler Enhancements - URS
+*
+*Date Created   : 10-Apr-2003
+*
+* Author	: Anne-Marie Fanning
+*
+* Company 	: Orbis Information Systems
+*
+**************************************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By             		Description
+* -------   -----------  ----------     		-------------------------------
+* 0.1       Apr 2003     Anne-Marie Fanning 		First Development Version
+*
+* 0.2	    May 2003 	 Anne-Marie Fanning		Edited to allow status change of study and 
+*							            cell_disp to H once dates modified so as 
+*							            authorisation takes place
+* 1.0       June 2003    Anne-Marie Fanning             Release version
+* 1.1       Feb  2008    Aidan Finnerty                 Remove vgl warning
+**************************************************************************************************}
+
+SET NOTPROTECTED
+SET NAME "DEFER/"
+SET COMPILE_OPTION DECLARE
+ENABLE WINDOWS
+
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_VGL
+
+JOIN LIBRARY $LIB_UTILS
+
+main()
+
+EXIT
+
+ROUTINE main
+
+{
+*  Main Routine 
+*
+**************************************************************************************************}
+
+DECLARE prompt_form
+
+create_form(prompt_form)
+
+prompt_form . start_prompt()
+prompt_form . wait_prompt()
+
+IF (prompt_form . get_lastkey() = "DO") THEN
+	
+	modify_pull_date(prompt_form)
+ENDIF
+
+prompt_form . end_prompt()
+
+ENDROUTINE{main}
+
+
+
+ROUTINE create_form(prompt_form)
+
+{
+*  Create form to prompt for study 
+*
+**************************************************************************************************}
+
+DECLARE study_prompt, day_prompt, remain_pulls, last_pull, select_array
+CREATE OBJECT PROMPT_CLASS_FORM, prompt_form
+ARRAY select_array
+	prompt_form . height = GLOBAL ( "GUI_HEIGHT") DIV 4 
+	prompt_form . width  = GLOBAL ( "GUI_WIDTH" ) DIV 3 + 3
+	prompt_form . row    = 4
+	prompt_form . column = prompt_form . width DIV 2
+	prompt_form . header = "Study Selection"
+	prompt_form . return_behaviour = FORM_RETURN_STAY
+	prompt_form . confirm_required = TRUE
+	
+	 array_select_add (select_array, 
+                           ARRAY_SELECT_EQ, 
+                           "status",
+                           "AH")
+
+       	array_select ("SAMPLE", 
+                      TRUE, 
+                      select_array)
+
+	PROMPT OBJECT study_prompt
+		ON LINE 1 FROM 40
+		BROWSE ON pds_study . identity
+		WITH(   vgl_library = GLOBAL ( "CURRENT_LIBRARY" ) ,
+			leave_prompt_routine = "get_day_info",
+			select_array = select_array,
+			always_validate = TRUE	,
+			value = EMPTY  )
+		
+	prompt_form . add_prompt ( study_prompt )
+
+	prompt_form . add_display ( "Study ID ", 2, 1, PROMPT_RENDITION_RAISED )
+
+	PROMPT OBJECT day_prompt
+		ON LINE 3 FROM 40
+		BROWSE ON Interval
+		WITH( {MAXIMUM = 5,
+		      MINIMUM = -5,}
+		      leave_prompt_routine = "no_blank_interval",
+		      vgl_library = GLOBAL ( "CURRENT_LIBRARY" ))
+				
+	prompt_form . add_prompt ( day_prompt )
+	prompt_form . prompt_objects[2] . set_enabled(FALSE)
+	prompt_form . add_display ( "Modify Due Pull Date By(days)  ", 2, 3, PROMPT_RENDITION_RAISED )
+
+	PROMPT OBJECT remain_pulls 
+		BROWSE ON boolean
+	        ON LINE 6 FROM 2
+		WITH (is_radio = TRUE,
+		      value = TRUE,
+		      toggled_routine = "radio_toggle"  )
+
+	prompt_form . add_prompt(remain_pulls)
+	
+	prompt_form . add_display ( "All Remaining Pulls ", 6, 6, PROMPT_RENDITION_RAISED )
+	
+	PROMPT OBJECT last_pull 
+		BROWSE ON boolean
+	        ON LINE 7 FROM 2
+		WITH (is_radio = TRUE,
+		      value = FALSE,
+		      toggled_routine = "radio_toggle",
+		      vgl_library = GLOBAL ( "CURRENT_LIBRARY" ) )
+
+	prompt_form . add_prompt(last_pull)
+	
+	prompt_form . add_display ( "Last Sample ", 6, 7, PROMPT_RENDITION_RAISED )
+
+	prompt_form . prompt_objects[3] . set_enabled(FALSE)
+	prompt_form . prompt_objects[4] . set_enabled(FALSE)
+
+	 prompt_form . add_frame( "Pulls to update",
+			          1,
+                                  6,
+                                  2,
+                                  prompt_form . width - 10
+                                  )
+
+ENDROUTINE{create_form}
+
+
+
+ROUTINE get_day_info(self)
+
+{
+*  Prompt for amount of days to modify remaining pulls by
+*
+****************************************************************************************************}
+
+DECLARE form
+
+form = self . parent_prompt
+
+form . prompt_objects[2] . set_enabled(TRUE)
+
+ENDROUTINE
+
+
+
+ROUTINE modify_pull_date(prompt_form)
+
+{
+*  Modify the pull due login in dates of remaining pulls by interval specified by user
+*
+***************************************************************************************************}
+
+DECLARE login_date, new_date, counter, old_date, study_id, is_pulls, wdt_entry_no, entry_no
+ARRAY new_date
+ARRAY old_date
+is_pulls = FALSE
+counter = 1
+
+IF(prompt_form . prompt_objects[2] . value <> interval(0))
+
+	login_date = SELECT PDS_STUDY_PULL . due_login_date 
+		     WHERE header = prompt_form . prompt_objects[1] . value	
+		     AND due_login_date > NOW
+		     AND cell_disp = "P"
+		     
+	WHILE (login_date <> EMPTY) DO
+		is_pulls = TRUE
+		new_date[counter] = login_date + prompt_form . prompt_objects[2] . value
+		old_date[counter] = login_date			
+
+		counter = counter + 1
+
+		NEXT PDS_STUDY_PULL
+		login_date = SELECT PDS_STUDY_PULL . due_login_date 
+
+	ENDWHILE
+	IF (is_pulls = FALSE)
+       		FLASH_MESSAGE("No Pulls for this Study",TRUE)
+        	EXIT
+
+	ENDIF
+
+	counter = 1
+
+	IF(prompt_form . prompt_objects[3] . value)
+		START WRITE TRANSACTION "update pull due date"
+		WHILE(counter <= SIZE_OF_ARRAY(old_date)) DO
+
+			login_date = SELECT PDS_STUDY_PULL . due_login_date  FOR UPDATE
+		             	     WHERE header = prompt_form . prompt_objects[1] . value
+			     	     AND due_login_date = old_date[counter]
+
+			
+			ASSIGN PDS_STUDY_PULL . due_login_date = new_date[counter]
+			ASSIGN PDS_STUDY_PULL . cell_disp = "H"
+
+		
+			UPDATE PDS_STUDY_PULL 
+			
+			entry_no = SELECT PDS_STUDY_PULL . wdt_entry_number 
+					WHERE header = prompt_form . prompt_objects[1] . value
+			     	        AND due_login_date = new_date[counter]
+
+			IF(entry_no <> 0) THEN
+
+				wdt_entry_no = SELECT TIMERQUEUE . run_time FOR UPDATE
+						WHERE entry_number = entry_no
+			
+
+				ASSIGN TIMERQUEUE . run_time = wdt_entry_no + interval(prompt_form . prompt_objects[2] . value)
+
+				UPDATE TIMERQUEUE
+			ENDIF
+			
+			counter = counter + 1
+
+		ENDWHILE
+		{COMMIT}
+		{START WRITE TRANSACTION "update pull due date"}
+		IF (is_pulls) THEN
+			study_id = SELECT PDS_STUDY . identity FOR UPDATE 
+			   	   WHERE identity = prompt_form . prompt_objects[1] . value
+
+			{ 1.1 Check for EMPTY, which removes warning }
+			IF (study_id = EMPTY) THEN
+				flash_message ("Error: invalid study ID", TRUE)
+			ELSE
+
+				ASSIGN PDS_STUDY . status = "H"		
+	   			UPDATE PDS_STUDY
+
+			ENDIF
+								
+		ENDIF
+		COMMIT
+
+		
+	ELSEIF(prompt_form . prompt_objects[4] . value)
+		ARRAY_SORT(old_date,ARRAY_SORT_DESCENDING)
+		ARRAY_SORT(new_date,ARRAY_SORT_DESCENDING)
+
+		login_date = SELECT PDS_STUDY_PULL . due_login_date  FOR UPDATE
+		             WHERE header = prompt_form . prompt_objects[1] . value
+			     AND due_login_date = old_date[1]
+
+		START WRITE TRANSACTION "update pull due date"
+		ASSIGN PDS_STUDY_PULL . due_login_date = new_date[1]
+		ASSIGN PDS_STUDY_PULL . cell_disp = "H"
+
+		
+		UPDATE PDS_STUDY_PULL 
+
+		
+			entry_no = SELECT PDS_STUDY_PULL . wdt_entry_number 
+					WHERE header = prompt_form . prompt_objects[1] . value
+			     	        AND due_login_date = new_date[1]
+			IF(entry_no <> 0) THEN
+
+				wdt_entry_no = SELECT TIMERQUEUE . run_time FOR UPDATE
+						WHERE entry_number = entry_no
+
+				ASSIGN TIMERQUEUE . run_time = wdt_entry_no + interval(prompt_form . prompt_objects[2] . value)
+
+				UPDATE TIMERQUEUE
+			ENDIF
+
+		{COMMIT
+		START WRITE TRANSACTION "update pull due date"}
+		IF(is_pulls) THEN
+
+			study_id = SELECT PDS_STUDY . identity FOR UPDATE 
+			   	   WHERE identity = prompt_form . prompt_objects[1] . value
+
+			{ 1.1 Check for EMPTY, which removes warning }
+			IF (study_id = EMPTY) THEN
+				flash_message ("Error: invalid study ID", TRUE)
+			ELSE
+
+				ASSIGN PDS_STUDY . status = "H"		
+				UPDATE PDS_STUDY
+			ENDIF
+		ENDIF
+
+		COMMIT
+		IF (is_pulls = FALSE)
+       		FLASH_MESSAGE("No Pulls for this Study",TRUE)
+        	EXIT
+
+	ENDIF
+
+
+	ENDIF
+	
+ELSE 
+	FLASH_MESSAGE("Interval can not be zero",TRUE)
+	
+			
+ENDIF
+ENDROUTINE{modify_pull_date}
+
+
+ROUTINE radio_toggle(self)
+{
+*  Control the enabled/ disabled state of form components
+*
+***************************************************************************************************}
+IF(self = self . parent_prompt . prompt_objects [ 4 ] ) THEN
+
+ 	self . parent_prompt . prompt_objects [ 3 ] . set_text ( NOT self . value )
+ELSE
+	
+	self . parent_prompt . prompt_objects [ 4 ] . set_text ( NOT self . value )
+ENDIF 
+
+ENDROUTINE
+
+ROUTINE no_blank_interval(self)
+
+{
+*  Ensures that a interval field is not left blank
+*
+***************************************************************************************************}
+IF( self . value <> INTERVAL(0)) THEN
+
+
+	self . parent_prompt . prompt_objects[3] . set_enabled (TRUE)
+	self . parent_prompt . prompt_objects[4] . set_enabled (TRUE)
+
+ELSE 
+	FLASH_MESSAGE("Interval of Zero Not Allowable",TRUE)
+ENDIF
+
+ENDROUTINE
+
+
+
+
+
+

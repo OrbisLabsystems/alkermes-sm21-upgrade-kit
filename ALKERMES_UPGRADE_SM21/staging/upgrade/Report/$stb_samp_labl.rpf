@@ -1,0 +1,35 @@
+SET NAME "DEFER/"
+SET COMPILE_OPTION DECLARE
+
+ROUTINE print_samp_label ( sample_id )
+
+    DECLARE id_text, study_id, layer, time, cf, samp_job_name, sample_date
+
+    id_text = SELECT sample . id_text
+               WHERE id_numeric = sample_id
+
+    IF id_text <> EMPTY THEN
+
+        study_id       = SELECT sample . stab_study_id
+        layer          = SELECT sample . layer_factor
+        time           = SELECT sample . time_factor
+        cf             = SELECT sample . c_factor
+        samp_job_name  = SELECT sample . job_name
+        sample_date    = SELECT sample . sampled_date
+
+        LITERAL
+
+Numeric             :   $sample_id__________________
+Textual             :   $id_text____________________
+Study               :   $study_id___________________
+Layer               :   $layer______________________
+Time Factor         :   $time_______________________
+C Factor            :   $cf_________________________
+Job Name            :   $samp_job_name______________
+Sampled Date        :   $sample_date________________
+
+$ENDLITERAL
+
+    ENDIF
+
+ENDROUTINE

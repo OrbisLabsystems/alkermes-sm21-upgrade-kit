@@ -1,0 +1,911 @@
+{******************************************************************************
+*
+* Module Name   : $SAMP_USER.RPF
+*
+* Purpose       : User defined action routines for use before the sample is 
+*                 logged in
+*
+* Document Ref. : SE/T/TVGL-WORK-REPORTS/1/3
+*
+* Specification : 
+*
+* Portability   : Not Checked
+*
+* Re-entrant    : 
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By             Description
+* -------   -----------  ----------     ---------------------------------------
+* 1.1       05-Mar-07   A Finnerty       Add JW custom code
+* 1.2       23-Apr-08   A Finnerty       Copy lab group to samples table
+*
+* 1.3       19-Apr-12   J. O'Neill     Added call to wsheet_info routine
+*                                       create_wsheet_record_from_sample in
+*                                       sample_login_post_test_assignment
+*       
+*                                       Added new callback routine called
+*                                       post_test_editor_assign which calls
+*                                       create_wsheet_records_from_list this
+*                                       is used when editing tests
+*
+*                                       Added call to wsheet_info routine 
+*                                       create_wsheet_sample_records in
+*                                       sample_login_post_test_assignment
+*
+* 1.4 	04-Oct-12   M. Allen 	    Added call to create retain if 
+*						    material . retain is true
+*                                       
+*******************************************************************************}
+
+JOIN LIBRARY $LIB_UTILS
+
+JOIN LIBRARY $LIB_TEMP
+
+JOIN LIBRARY WSHEET_INFO {JON 1.3}
+
+JOIN LIBRARY RETAIN_LIB {MA 1.4}
+
+
+SET NOTPROTECTED
+
+CONSTANT STT_MENUNUMBER = 144
+
+{-----------------------------------------------------------------------------}
+{
+
+	Routine called before the Job login screen appears
+
+}
+
+GLOBAL ROUTINE job_login_pre_prompt ( field_controls ,
+			              template_details )
+{
+	flash_message ( "JOB_LOGIN_PRE_PROMPT" , TRUE ) 
+}
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+{
+
+	Routine called when DO is pressed. Return TRUE to accept the job
+	FALSE to return to the prompt screen. 
+
+}
+
+GLOBAL ROUTINE job_login_validation ( field_controls ,
+				      template_details )
+{
+	flash_message ( "JOB_LOGIN_VALIDATION" , TRUE ) 
+}
+RETURN ( TRUE )
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+{
+
+	Routine called after the Job login screen is removed 
+
+}
+
+GLOBAL ROUTINE job_login_post_prompt ( field_controls ,
+				       template_details )
+{
+	flash_message ( "JOB_LOGIN_POST_PROMPT" , TRUE ) 
+}
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+{
+
+	Routine called before any samples are logged in for a job.
+}
+
+GLOBAL ROUTINE job_login_pre_sample ( VALUE job_identity  ,
+				      VALUE new_job_login ) 
+
+   DECLARE the_job,
+            the_table,
+            the_login_date,
+		material
+
+
+    the_job = SELECT job_header . job_name
+
+
+
+    the_login_date = SELECT job_header . date_created
+
+
+
+    material = SELECT job_header . material
+
+
+
+    do_retain = SELECT materials . retain 
+			WHERE article_code = material
+
+
+
+
+    IF ((STRIP(the_job) <> "") AND ( STRIP (do_retain) = "TRUE")) THEN
+
+        the_table = "JOB_HEADER"
+
+        CALL_ROUTINE "create_retain" 
+        USING the_table, 
+              the_job,
+              the_login_date 
+        IN LIBRARY "RETAIN_LIB" 
+
+    ENDIF
+
+
+    RETURN ( FALSE )  {Never Assigns any Analysis}
+
+{
+	flash_message ( "JOB_LOGIN_PRE_SAMPLE  " : new_job_login , TRUE ) 
+}
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+{
+
+	Routine called after all samples are logged in for a job.
+}
+
+GLOBAL ROUTINE job_login_post_sample ( VALUE job_identity  ,
+				       VALUE new_job_login ) 
+
+
+
+{
+	flash_message ( "JOB_LOGIN_POST_SAMPLE  " : new_job_login , TRUE ) 
+}
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+{-----------------------------------------------------------------------------}
+{
+
+	Routine called before the Job Modify screen appears
+
+}
+
+GLOBAL ROUTINE job_modify_pre_prompt (       field_controls   ,
+			                     template_details ,
+				       VALUE is_display       )
+{
+	flash_message ( "JOB_MODIFY_PRE_PROMPT  " : is_display , TRUE ) 
+}
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+{
+
+	Routine called when DO is pressed. Return TRUE to accept the job
+	FALSE to return to the prompt screen. 
+
+}
+
+GLOBAL ROUTINE job_modify_validation ( field_controls ,
+				      template_details )
+{
+	flash_message ( "JOB_MODIFY_VALIDATION  "  , TRUE ) 
+}
+RETURN ( TRUE )
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+{
+
+	Routine called after the Job modify screen is removed 
+
+}
+
+GLOBAL ROUTINE job_modify_post_prompt (       field_controls   ,
+				              template_details )
+{
+	flash_message ( "JOB_MODIFY_POST_PROMPT  " , TRUE ) 
+}
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+{-----------------------------------------------------------------------------}
+{
+
+	Called after selecting a new template to login the samples.
+
+}
+
+GLOBAL ROUTINE sample_start_login_template ( VALUE template_id  ,
+				             VALUE repeat_count )	
+
+{
+	flash_message ( "SAMPLE_LOGIN_TEMPLATE  " : template_id : " " :
+			 repeat_count , TRUE ) 
+}
+ENDROUTINE 
+
+{-----------------------------------------------------------------------------}
+{
+
+	Called after finishing with a template .
+
+}
+
+GLOBAL ROUTINE sample_end_login_template ( VALUE template_id   ,
+					   VALUE session_count )
+
+{
+	flash_message ( "SAMPLE_LOGIN_TEMPLATE  " : template_id : " " :
+			 session_count , TRUE ) 
+}
+ENDROUTINE 
+
+{-----------------------------------------------------------------------------}
+{
+
+	Called before the sample login screen appears
+
+}
+
+GLOBAL ROUTINE sample_login_pre_prompt (       field_controls   ,
+				               template_details ,
+					 VALUE sample_count     )
+{
+	flash_message ( "SAMPLE_LOGIN_PRE_PROMPT  " : sample_count , TRUE ) 
+}
+ENDROUTINE 
+
+{-----------------------------------------------------------------------------}
+{
+
+	Routine called when DO is pressed. Return TRUE to accept the sample
+	FALSE to return to the prompt screen. 
+
+}
+
+GLOBAL ROUTINE sample_login_validation (       field_controls   ,
+				               template_details )
+
+{
+	flash_message ( "SAMPLE_LOGIN_VALIDATION  " , TRUE ) 
+}
+RETURN ( TRUE )
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+{
+
+	Called after the sample login screen is removed but before the 
+	following fields are set :-
+		
+
+		ID_NUMERIC
+		ID_TEXT
+		STATUS
+		JOB_NAME 
+		TEMPLATE_NAME
+
+}
+
+GLOBAL ROUTINE sample_login_post_prompt (       field_controls   ,
+				                template_details ,
+					  VALUE sample_count     )
+{
+	flash_message ( "SAMPLE_LOGIN_POST_PROMPT  " : sample_count , TRUE ) 
+}
+ENDROUTINE 
+
+{-----------------------------------------------------------------------------}
+{
+
+	Called just before the sample is logged in. All fields are setup.
+
+}
+
+GLOBAL ROUTINE sample_login_pre_test_assignment (       field_controls   ,
+				                        template_details ,
+						  VALUE sample_count     )
+{
+	flash_message ( "SAMPLE_LOGIN_PRE_TEST_ASSIGNMENT  " : sample_count , TRUE ) 
+}
+ENDROUTINE 
+
+{-----------------------------------------------------------------------------}
+{
+
+	Called after the sample is logged in and all tests added. NOTE in this
+	case the sample must be selected before use.
+
+
+}
+
+GLOBAL ROUTINE sample_login_post_test_assignment (      field_controls   ,
+				                        template_details ,
+						  VALUE sample_id        ,
+						  VALUE sample_count     )
+
+    {JON 1.3}
+    IF (GLOBAL("WSHEET_INFO_CREATE_RECS") = TRUE) THEN
+    
+        create_wsheet_record_from_sample ( sample_id )
+    
+        create_wsheet_sample_records ( sample_id, field_controls )             
+        
+    ENDIF  
+    {/JON 1.3}
+{
+	flash_message ( "SAMPLE_LOGIN_POST_TEST_ASSIGNMENT  " : sample_id :
+			" " : sample_count , TRUE ) 
+}
+ENDROUTINE 
+
+
+{-----------------------------------------------------------------------------}
+{-----------------------------------------------------------------------------}
+{
+
+	Routine called before the sample Modify screen appears
+
+}
+
+GLOBAL ROUTINE sample_modify_pre_prompt (       field_controls   ,
+			                        template_details ,
+				          VALUE is_display       )
+{
+	flash_message ( "SAMPLE_MODIFY_PRE_PROMPT  " : is_display , TRUE ) 
+}
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+{
+
+	Routine called when DO is pressed. Return TRUE to accept the sample
+	FALSE to return to the prompt screen. 
+
+}
+
+GLOBAL ROUTINE sample_modify_validation ( field_controls   ,
+				          template_details )
+{
+	flash_message ( "SAMPLE_MODIFY_VALIDATION  " , TRUE ) 
+}
+RETURN ( TRUE )
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+{
+
+	Routine called after the Sample modify screen is removed 
+
+}
+
+GLOBAL ROUTINE sample_modify_post_prompt (       field_controls   ,
+				                 template_details )
+{
+	flash_message ( "SAMPLE_MODIFY_POST_PROMPT  " , TRUE ) 
+}
+ENDROUTINE
+
+
+{-----------------------------------------------------------------------------}
+{-----------------------------------------------------------------------------}
+
+ROUTINE update_test_schedule ( VALUE is_modify ,
+			       VALUE action_type) 
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE update_product_level ( VALUE is_modify ,
+			       VALUE action_type )
+
+DECLARE product_version
+
+IF ( NOT blank ( select sample . PRODUCT_NAME ) ) AND
+   ( SELECT sample . product_version = 0        ) THEN
+
+	product_version = SELECT MAX mlp_header . product_version
+	                  WHERE  ( identity = ( SELECT sample . product_name )) AND
+	                         ( approval_status = "A" )
+
+	IF product_version <> EMPTY THEN
+
+		ASSIGN sample . product_version = product_version
+
+	ELSE
+
+		ASSIGN sample . product_version = PAD ( " " , " " , 10 )
+
+	ENDIF
+
+ENDIF
+
+
+  { 1.2 }
+    DECLARE lab_grp
+
+    IF ( NOT blank ( select sample . PRODUCT_NAME ) ) AND
+       ( SELECT sample . product_version <> 0        ) THEN
+
+	lab_grp = SELECT mlp_header . lab_group
+	                  WHERE  ( identity = ( SELECT sample . product_name )) AND
+                                 (product_version = SELECT sample . product_version) AND
+	                         ( approval_status = "A" )
+
+	IF lab_grp <> EMPTY THEN
+
+		ASSIGN sample . lab_group = lab_grp
+
+	ENDIF
+
+   ENDIF
+
+  { end 1.2 }
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+{ Routine called after a sample has been logged in using the NOINPUT template }
+{ routine in $LIB_SAMP. Modifications should be made in consideration of the  }
+{ calling report. current reports used are :
+		$LIB_STAN - for standard creation and
+		$RESTXT_V2  - for ad-hoc sample creation.  IPF 5-DEC-1991     }
+{ NOTE. The update routine is performed by the original calling routine       }
+{ NO updates on the sample table should be peformed in this routine.          }
+{-----------------------------------------------------------------------------}
+
+GLOBAL ROUTINE user_create_sample_noinput ( VALUE calling_report )
+
+	IF calling_report = "$LIB_STAN" THEN
+
+{ fields not required for standards,
+  these may be modified without effecting any functionality }
+
+           assign sample.preparation_id = " "
+           assign sample.batch_name     = " "
+           assign sample.sampling_point = " "
+           assign sample.hazard         = " "
+           assign sample.location_id    = " "
+           assign sample.customer_id    = " "
+           assign sample.project_id     = " "
+           assign sample.priority       = 1
+
+{ These fields are assigned in the report $LIB_STAN. the contents of these
+  fields are used by other applications. changing their operation may cause
+  problems. }
+
+{***           assign sample.group_id     = SELECT standard.group_id }
+           assign sample.sample_type  = SELECT standard.standard_type
+           assign sample.sample_name  = SELECT standard.standard_name
+           assign sample.product_name = SELECT standard.identity
+           assign sample.description  = SELECT standard.description
+           assign sample.standard     = TRUE
+           assign sample.on_wks       = TRUE
+
+
+        ELSEIF calling_report = "$RESTXT_V2" THEN
+
+
+	ENDIF
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+GLOBAL ROUTINE test_editor_fields (        test_editor_prompt_details ,
+				    VALUE  mode                       )
+
+
+ENDROUTINE	
+
+{-----------------------------------------------------------------------------}
+
+{
+
+	Routine called when an analysis is added to a test list.
+	
+	The new test will be the currently selected test row.
+
+	Test schedule_current is a boolean which indicates if the test
+	comes from a test schedule. The test_sched_entry row will be valid
+	if this flag is TRUE.
+
+	Position is an integer value indicating where the test is in the test
+	list.
+
+	Mode contains one of the following values :
+
+	"ASSIGN_TEST"         - test list is for assignment to the currently
+				selected sample.
+	"INTERNAL_TEST_LIST"  - test list is the Internal Test List.
+        "USER_TEST_LIST"      - test list is the user defined test list. 
+
+
+
+}
+
+GLOBAL ROUTINE test_add_analysis (       test_list             ,
+				   VALUE test_schedule_current ,
+				   VALUE position              ,		
+			           VALUE mode                  )
+
+{
+	flash_message ( "Add Analysis" : "Test schedule " : test_schedule_current : " " :
+			position : " " : Mode : " " : SELECT test . analysis, TRUE )
+}
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+{
+
+	Routine called before the test assignment screen is pasted. All tests
+from the test schedule have already been added. The mode parameter contains one
+of the following values.
+
+	"ASSIGN_TEST"         - test list is for assignment to the currently
+				selected sample.
+	"INTERNAL_TEST_LIST"  - test list is the Internal Test List.
+        "USER_TEST_LIST"      - test list is the user defined test list. 
+
+	Note - if the user presses EXIT from the test assignment screen then
+this routine will be called again when the test assignment process resets the
+test list back to the default.
+
+}
+
+GLOBAL ROUTINE test_pre_assignment (       test_list ,
+			             VALUE mode      )
+
+
+{
+	flash_message ( "Pre Assignment " : mode , TRUE )
+}
+ENDROUTINE
+
+
+{-----------------------------------------------------------------------------}
+{
+
+	Routine called after the user leaves test assignment screen is left.
+
+}
+
+GLOBAL ROUTINE test_post_assignment (  test_list )
+
+{
+	flash_message ( "Post Assignment " , TRUE )
+}
+ENDROUTINE
+{-----------------------------------------------------------------------------}
+{
+
+	Routine called before the test editor screen is pasted. All tests
+for the sample have already been added.
+
+}
+
+GLOBAL ROUTINE test_pre_edit ( test_list )
+{
+	flash_message ( "Pre Edit " , TRUE )
+}
+ENDROUTINE
+
+
+{-----------------------------------------------------------------------------}
+{
+
+	Routine called after the user presses DO from the test editor screen.
+
+}
+
+GLOBAL ROUTINE test_post_edit (  test_list )
+
+{
+	flash_message ( "Post Edit " , TRUE )
+}
+{ 1.1 }
+            { ================================== }
+            { Modification, JMW, 07/11/97                            }
+            { ================================== }
+            { Audit on no of tests, Phase II                           }
+            { ================================== }
+
+  
+  JOIN STANDARD_LIBRARY STD_LOGIN
+  
+  the_size = test_editor_get_size ( test_list )
+  IF the_size <> EMPTY THEN
+     ASSIGN SAMPLE . no_tests_assigned = the_size
+  ELSE
+  ENDIF
+
+  
+            { ================================== }
+            { End of Modification                                         }
+            { ================================== }
+
+ENDROUTINE
+
+
+{-----------------------------------------------------------------------------}
+{
+
+	Routine called when the user attempts to add a new analysis.
+	
+	The mode parameter contains one of the following values.
+
+	"ASSIGN_TEST"         - test list is for assignment to the currently
+				selected sample.
+	"INTERNAL_TEST_LIST"  - test list is the Internal Test List.
+        "EDIT_TEST"           - test list is for editing the currently
+				selected sample.
+
+	The routine returns a boolean value - TRUE to accept analysis
+					      FALSE to reject analysis.	
+}
+
+GLOBAL ROUTINE test_user_add_analysis (       test_list     ,
+					VALUE analysis_name ,
+					VALUE position      ,
+					VALUE mode          )
+
+
+ {					
+	flash_message ( "User Add" : Position : " " : mode , TRUE )
+ }
+	RETURN ( TRUE )
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+{
+
+	Routine called when the user attempts to delete an analysis.
+	
+	The mode parameter contains one of the following values.
+
+	"ASSIGN_TEST"         - test list is for assignment to the currently
+				selected sample.
+	"INTERNAL_TEST_LIST"  - test list is the Internal Test List.
+        "EDIT_TEST"           - test list is for editing the currently
+				selected sample.
+
+	The routine returns a boolean value - TRUE to accept analysis
+					      FALSE to reject analysis.	
+}
+
+{-----------------------------------------------------------------------------}
+
+GLOBAL ROUTINE test_user_delete_analysis (       test_list     ,
+					   VALUE position      ,
+					   VALUE mode          )
+
+{
+	flash_message ( "User Delete" : Position : " " : mode , TRUE )
+}					
+	RETURN ( TRUE )
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+{ 
+
+	Called when moving onto the assign column. Indicates if the user
+	can change the assign code.
+
+
+}
+
+GLOBAL ROUTINE test_user_can_change_assign (       test_list     ,
+					     VALUE position      ,
+					     VALUE mode          )
+
+
+{
+	flash_message ( "Can Change" : Position : " " : mode , TRUE )
+}					
+	
+	RETURN ( TRUE )
+
+ENDROUTINE
+
+{----------------------------------------------------------------------------}
+
+GLOBAL ROUTINE sample_details_menu ( menu_details )
+
+ENDROUTINE
+
+{----------------------------------------------------------------------------}
+
+GLOBAL ROUTINE sample_login_menu (        menu_details ,
+				    VALUE sample_id    )	
+
+ENDROUTINE
+
+{----------------------------------------------------------------------------}
+
+GLOBAL ROUTINE sample_modify_menu (       menu_details ,
+                                    VALUE sample_id    )
+
+	JOIN STANDARD_LIBRARY std_array 
+
+	DECLARE next_option
+
+	CREATE OBJECT "STD_SAMP_JOB_OPTION", next_option
+
+	next_option . menu_number = STT_MENUNUMBER
+	next_option . title       = "STT"
+	next_option . pass_sample = TRUE
+	next_option . sample_id   = sample_id
+
+	menu_details [ size_of_array ( menu_details ) + 1 ] = next_option
+
+ENDROUTINE
+
+{----------------------------------------------------------------------------}
+
+GLOBAL ROUTINE test_editor_create_results ( test_list     ,
+					    order_number  )
+
+{
+*	Allow creation of result records for the currently selected test.
+*	The test is also selected in the test list allowing user information
+*	to be selected for the test. The order number parameter contain the
+*	next order number to be used for the result. This parameter must be
+*	correctly maintained.
+*
+*	Return TRUE if the there are results to be entered; False otherwise.
+*
+*
+******************************************************************************}
+			 	
+        RETURN ( TRUE )
+	
+ENDROUTINE	
+
+{******************************************************************************}
+{                                                                              }
+{ Routine Name     : component_list_user_create                                }
+{                                                                              }
+{ Description      : Called when creating a result from a component list.      }
+{                    This routine is called after result_user_create and can   }
+{                    be used to fill in fields in the result row from the      }
+{                    component list.                                           }
+{                                                                              }
+{ Parameters       :  Object containing the comp_list_entry row used to        }
+{                     create the result.                                       }
+{                                                                              }
+{                     Currently selected result row is the new row             }
+{                                                                              }
+{ Return Value     :  None.                                                    }
+{                                                                              }
+{ Globals Modified :  None.                                                    }
+{                                                                              }
+{******************************************************************************}
+
+ROUTINE component_list_user_create ( component_list_entry )
+
+	ASSIGN result . spike_value = 
+			SELECT versioned_c_l_entry . spike_value
+			IN OBJECT component_list_entry
+
+        ASSIGN result . surrogate_mlp = 
+                        SELECT versioned_c_l_entry . surrogate_mlp
+                        IN OBJECT component_list_entry
+
+ENDROUTINE
+
+{******************************************************************************}
+{                                                                             
+  Routine Name     : test_validation                                         
+                                                                              
+  Description      : Called after the user presses the DO key in the test     
+                     assigment / editor screens. The test list is passed
+                     the parameter test_list
+
+	             The mode parameter contains one of the following values.
+
+	             "ASSIGN_TEST"         - test list is for assignment to 
+					     the currently selected sample.
+	             "INTERNAL_TEST_LIST"  - test list is the Internal Test 
+					     List.
+        	     "EDIT_TEST"           - test list is for editing the currently
+		       	    	             selected sample.
+
+		     If a given test row fails the validation then after a
+		     message is displayed the user can be placed on that cell
+		     by setting the cell_columnm,cell_row parameters.
+
+		     The Routine should return TRUE is the test list is valid
+		     else it should return FALSE.
+
+{******************************************************************************}
+			 	
+GLOBAL ROUTINE test_validation (       test_list   ,
+				 VALUE mode        ,
+				       cell_column ,
+				       cell_row    )		
+
+
+{
+
+	flash_message ( "Test Validation " : mode  , TRUE )
+}
+
+{ The following example code will check to see if all the new test records
+  has been given a component list                                          
+	
+	JOIN STANDARD_LIBRARY STD_LOGIN
+		
+	DECLARE count    ,
+		analysis 
+
+	count = 1
+
+	WHILE count <= test_editor_get_size ( test_list ) DO
+
+		test_editor_make_current ( count , test_list )
+
+		IF ( blank ( SELECT test . component_list       ))  AND
+		   ( NOT   ( test_editor_get_exists ( test_list ))) THEN
+
+			analysis = SELECT test . analysis
+
+        		
+			cell_column = 3
+			cell_row    = count
+
+			flash_message ( "Test " : strip ( analysis ) :
+					" does not have a" :
+					" component list" ,
+					TRUE              )
+
+			RETURN ( FALSE )
+
+		ENDIF
+
+		count = count + 1
+
+	ENDWHILE
+
+}
+
+	RETURN ( TRUE )
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+{JON 1.3}
+
+{******************************************************************************}
+{                                                                              }
+{ Routine Name     : post_test_editor_assign                                   }
+{                                                                              }
+{ Description      : Called after test_editor_assign in $test_assn             }
+{                                                                              }
+{******************************************************************************}
+
+GLOBAL ROUTINE post_test_editor_assign( test_list )
+
+    IF (GLOBAL("WSHEET_INFO_CREATE_RECS") = TRUE) THEN
+
+        create_wsheet_records_from_list ( test_list)
+    
+    ENDIF
+
+ENDROUTINE
+
+{/JON 1.3}

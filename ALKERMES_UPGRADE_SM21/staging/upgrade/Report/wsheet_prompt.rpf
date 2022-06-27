@@ -1,0 +1,507 @@
+{******************************************************************************
+*
+* Module Name          : WSHEET_PROMT
+*
+* Purpose              : Prompts for the Wsheet fields
+*
+* Portability          : Not Checked
+*
+* Author               : Anne-Marie Fanning
+*
+* Date created         : 17-Apr-2004
+*
+* Version              : 1.0
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By             Description
+* -------   -----------  ----------     ---------------------------------------
+* 1.0       17-Apr-2004  AMFanning      Initial Version
+*
+*******************************************************************************}
+
+ENABLE WINDOWS
+
+SET NOTPROTECTED
+
+SET NAME "DEFER/"
+SET COMPILE_OPTION DECLARE
+
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_CLIENT
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_STRUCTURE
+JOIN STANDARD_LIBRARY STD_GLOBAL
+
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+
+
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $LIB_MENU
+JOIN LIBRARY $PROMPT_IMPRINT
+JOIN LIBRARY $LIB_TEXT
+
+CONSTANT NAME_COL                =       1
+CONSTANT DEFL_COL                =       2
+CONSTANT TYPE_COL                =       3
+CONSTANT TBLE_COL                =       4
+CONSTANT FORM_COL                =       4
+CONSTANT PHRS_COL                =       4
+CONSTANT FILD_COL                =       5
+CONSTANT MAND_COL                =       6
+CONSTANT VALU_COL                =       7
+CONSTANT RTAB_COL                =       8
+CONSTANT RFLD_COL                =       9
+CONSTANT ROPR_COL                =       10
+
+
+
+
+ROUTINE define_wsheet_prompts_class
+
+{
+* Summary    : Defines the wsheet_prompts class. The class inherits from 
+*              STD_FORM so that all of the prompts can be added and be
+*              immediately accessible to the object.
+*              
+* Parameters : None
+*
+* Return     : None
+*
+*******************************************************************************}
+
+
+    DEFINE CLASS "WSHEET_PROMPTS"
+    
+        INITIALISATION
+
+        PROPERTIES
+
+             "name"                ,         { Name/Description.                } 
+             "product"             ,         { Product.                         } 
+             "template_id"         ,         { Template ID.                     } 
+             "country"             ,         { Country/Level/Market.            } 
+             "details"             ,         { Prompt Details Array.            } 
+             "user_library"        ,         { The User VGL Report.             }
+             "valid_routine"       ,         { The Validation Routine.          }
+             "relative_date"       ,         { Relative date for historical.    }
+             "no_prompts"          ,         { No. of prompts                   }
+             "wsheeet_id"          ,         { Worksheet identity               }
+             "analysis_id" 
+
+
+        ACTIONS
+        
+            "load"                 ,
+            "get_values"           ,
+            "get_prompt"           ,
+            "get_display"           
+            
+    END CLASS
+    
+ENDROUTINE { define_wsheet_prompts_class}
+
+
+ROUTINE wsheet_prompts_class_initialisation ( self ) 
+
+{
+* Summary    : Initialisation Routine.
+*              
+* Parameters : Self
+*
+* Return     : None
+*
+*******************************************************************************}
+
+    ARRAY self . details
+           
+    self . user_library   = EMPTY
+    self . valid_routine  = EMPTY
+    self . relative_date  = NOW
+
+ENDROUTINE { wsheet_prompts_class_initialisation}
+
+
+
+ROUTINE wsheet_prompts_action_load ( self )
+
+{
+* Summary    : Loads all of the data from the database. This includes all 
+*              of the prompt details as well as the header details.
+*              
+* Parameters : self - the main object (WSHEET_PROMPTS_CLASS)
+*
+* Return     : TRUE if at least one prompt is found....
+*
+*******************************************************************************}
+
+    DECLARE worksheet_id, 
+            field, 
+            count, 
+            def, 
+            dat
+    
+    count = 0
+
+    worksheet_id = SELECT wsheet_info . worksheet_id
+                        WHERE worksheet_id = self . worksheet_id
+
+
+
+    IF worksheet_id <> EMPTY THEN
+
+        {self . name           = STRIP ( SELECT wsheet_info . description    )
+        self . user_library   = STRIP ( SELECT wsheet_info . user_library   )
+        self . valid_routine  = STRIP ( SELECT wsheet_info . valid_routine  )}
+
+        field = SELECT wsheet_info . worksheet_id
+                WHERE  worksheet_id = worksheet_id 
+                ORDER ON order_num
+
+        WHILE field <> EMPTY DO
+
+            count = count + 1
+
+            self . details [ NAME_COL, count ] = SELECT wsheet_info . description
+            self . details [ DEFL_COL, count ] = SELECT wsheet_info . default_value
+            self . details [ TYPE_COL, count ] = SELECT wsheet_info . type
+            self . details [ TBLE_COL, count ] = SELECT wsheet_info . prompt1
+            self . details [ FILD_COL, count ] = SELECT wsheet_info . prompt2
+            self . details [ MAND_COL, count ] = SELECT wsheet_info . mandatory
+
+            IF self . details [ MAND_COL, count ] THEN
+
+                self . details [ NAME_COL, count ] = STRIP ( self . details [ NAME_COL, count ] ) 
+
+            ENDIF
+
+            {*****************************************************************}
+            { Just Parse Date Parameters a little bit.                        }
+            {*****************************************************************}
+
+            IF ( SELECT wsheet_info . type = "FORMAT" ) AND
+               ( ( SELECT wsheet_info . prompt1 = "DATETIME" ) OR
+                 ( SELECT wsheet_info . prompt1 = "DATE"     ) ) THEN
+
+                def = SELECT wsheet_info . default_value
+                dat = self . relative_date             
+
+                IF SELECT wsheet_info . prompt1 = "DATE" THEN
+                  
+                    SET DATE FORMAT "DZMZYY"
+                    dat = STRIP ( dat )
+                    RESTORE DATE FORMAT
+                    dat = DATE ( dat )
+
+                ENDIF   
+
+                IF NUMTEXT ( def ) THEN 
+           
+                    IF def < 0 THEN
+
+                        def = TODAY - INTERVAL ( TRUNC ( 0 - def ) )
+
+                    ELSE
+                        def = TODAY  + INTERVAL ( TRUNC ( def ) )
+                    ENDIF
+
+                ELSEIF def = "EOLM" THEN
+
+                    SET DATE FORMAT "DZMZYY"
+                    dat = STRIP ( self . relative_date )
+
+                    dat = DATE ( dat )
+                    RESTORE DATE FORMAT
+
+                    SET DATE FORMAT "DZMZYY"
+                    def = DATE ( "01" : RIGHTSTRING ( STRIP ( dat ), 4 ) )
+                    def = def - INTERVAL ( "0000 00:00:00.01" )
+                    RESTORE DATE FORMAT
+
+                ELSEIF def = "SOLM" THEN
+
+                    SET DATE FORMAT "DZMZYY"
+                    dat = STRIP ( self . relative_date )
+
+                    dat = DATE ( dat )
+                    RESTORE DATE FORMAT
+
+                    SET DATE FORMAT "DZMZYY"
+                    def = DATE ( "01" : RIGHTSTRING ( STRIP ( dat ), 4 ) )
+                    def = def - INTERVAL ( 1 )
+                    def = DATE ( "01" : RIGHTSTRING ( STRIP ( def ), 4 ) )
+                    RESTORE DATE FORMAT
+
+                ENDIF
+
+                self . details [ DEFL_COL, count ] = def
+                
+            ENDIF
+
+            IF ( SELECT wsheet_info . type = "BROWSE" ) THEN
+
+               def = SELECT wsheet_info . default_value
+
+               IF ( def = "OPERATOR" ) THEN
+  
+
+                   self . details [ DEFL_COL, count ] = OPERATOR
+
+               ENDIF
+
+            ENDIF
+            {*****************************************************************}
+            { Default the Sample Owner Field.                                 }
+            {*****************************************************************}
+
+            IF ( self . details [ RFLD_COL, count ] = "SAMPLE_OWNER" ) AND
+               ( self . details [ MAND_COL, count ] = TRUE           ) AND
+               ( BLANK ( self . details [ DEFL_COL, count ] )        ) THEN
+
+                self . details [ DEFL_COL, count ] = GLOBAL ( "SAMPLE_OWNER" ) 
+
+            ENDIF 
+
+            NEXT wsheet_info
+
+            field = SELECT wsheet_info . identity
+
+        ENDWHILE
+
+    ENDIF
+
+    self . no_prompts = count
+
+    RETURN ( count <> 0 )
+
+ENDROUTINE { wsheet_prompts_action_load }
+
+
+{******************************************************************************}
+
+ROUTINE wsheet_prompts_action_get_prompt ( self, prompt_number ) 
+
+{
+* Summary    : This action creates the form for the Infomaker Report prompts.
+*              
+* Parameters : self - the main object (WSHEET_PROMPTS_CLASS)
+*
+* Return     : TRUE if at least one prompt is found....
+*
+*******************************************************************************}
+
+    DECLARE count, 
+            prompt_obj, 
+            defl, 
+            table, 
+            field, 
+            form, 
+            phrase
+
+    prompt_obj = ""
+
+    CONSTANT COL = 25
+
+    count = prompt_number
+
+
+        defl = self . details [ DEFL_COL, count ]
+        
+        IF self . details [ TYPE_COL, count ] = "BROWSE" THEN 
+        
+            table = self . details [ TBLE_COL, count ]
+            field = self . details [ FILD_COL, count ] 
+
+        
+            IF ( valid_table ( table ) ) 
+               AND ( valid_field ( table , field ) ) THEN
+        
+                PROMPT OBJECT prompt_obj
+                    AT COL , count + 4
+                    BROWSE ON 'table' . 'field'
+                    WITH ( lowered = TRUE,
+                           value   = defl,
+                           width   = 23, 
+                           vgl_library = "wsheet_prompt" ,
+                           enter_prompt_routine = "param_enter_prompt_routine" )
+            ELSE
+                            
+                PROMPT OBJECT prompt_obj
+                AT COL , count + 4
+                FORMAT TEXT
+                WITH ( lowered = TRUE,
+                       value   = defl,
+                       width   = 23 ,
+                       vgl_library = "wsheet_prompt" ,
+                           enter_prompt_routine = "param_enter_prompt_routine")
+        
+            ENDIF
+
+
+        ELSEIF self . details [ TYPE_COL, count ] = "ROUTINE" THEN
+
+            CALLROUTINE self . details [ FILD_COL, count ]
+                IN LIBRARY self . details [ TBLE_COL, count ]
+                USING self, count
+                RETURNING prompt_obj
+            
+            prompt_obj . column = COL 
+            prompt_obj . row = count + 4
+            prompt_obj . width  = 23
+
+        ELSEIF self . details [ TYPE_COL, count ] = "PHRASE" THEN 
+        
+            phrase = self . details [ PHRS_COL, count ]
+
+            PROMPT OBJECT prompt_obj
+                AT COL , count + 4
+                BROWSE ON PHRASE_ID . 'phrase'
+                WITH ( lowered = TRUE,
+                       value   = defl,
+                       width   = 23 ,
+                       vgl_library = "wsheet_prompt" ,
+                           enter_prompt_routine = "param_enter_prompt_routine" )
+
+        ELSEIF self . details [ TYPE_COL, count ] = "FORMAT" THEN
+
+            form = self . details [ FORM_COL, count ]
+
+            PROMPT OBJECT prompt_obj
+                AT COL , count + 4
+                FORMAT 'form'
+                WITH ( lowered = TRUE,
+                       value   = defl,
+                       width   = 23 , 
+                       vgl_library = "wsheet_prompt" ,
+                           enter_prompt_routine = "param_enter_prompt_routine" )
+
+        ENDIF
+            
+
+    RETURN (prompt_obj)
+
+ENDROUTINE { wsheet_prompts_action_get_prompt }
+
+
+
+ROUTINE wsheet_prompts_action_get_display(self, count)
+
+    DECLARE display_prompt
+    
+    PROMPT OBJECT display_prompt
+           CLASS "STD_PROMPT_TEXT"
+           ON LINE (count + 4 ) FROM 2 TO 22
+           WITH ( VALUE      =  self . details [NAME_COL, count],
+                  BOLD       =  TRUE     ,
+                  RAISED     =  TRUE )
+
+
+    RETURN (display_prompt)
+
+ENDROUTINE { whseet_prompts_action_get_display }
+
+
+
+{******************************************************************************}
+
+ROUTINE param_enter_prompt_routine ( self )
+{
+* Summary    : This check if the prompt will contain a value, if not set
+*              the form to visible.
+*              
+* Parameters : Self - Form Object.
+*
+* Return     : None
+*
+*******************************************************************************}
+
+IF NOT GLOBAL ( "PARAM_ACTIVE" ) THEN
+
+    self . parent_prompt . visible = TRUE
+
+ENDIF
+
+
+ENDROUTINE
+
+{******************************************************************************}
+
+
+{******************************************************************************}
+
+ROUTINE infomaker_link_action_get_values( self )
+
+{
+* Summary    : Get the Filled in Values.
+*              
+* Parameters : Self
+*
+* Return     : None
+*
+*******************************************************************************}
+
+    DECLARE count, text
+    count = 1
+
+    WHILE self . details [ NAME_COL, count ] <> EMPTY DO   
+
+        text = self . prompt_objects [ count ] . text
+        self . details [ VALU_COL, count ] = text
+        count = count + 1
+
+    ENDWHILE
+
+ENDROUTINE { infomaker_link_action_get_values }
+
+
+
+
+{*****************************************************************************}
+
+ROUTINE get_link_field ( VALUE search_table, VALUE link_table )
+
+{
+* Summary    : Using search_table get all the fields of this table and check
+*              the link tables for these fields, when it matches the link_table
+*              pass the field back.
+*              
+* Parameters : search_table     - table to search to find the link field
+*           link_table    - table link to look for
+*
+* Return     : Link field
+*
+*******************************************************************************}
+
+    DECLARE field_array, count, link_field, link
+    
+    link_field = EMPTY
+    count = 0
+
+    get_field_names( search_table, field_array )
+    
+    WHILE count < size_of_array( field_array )
+        
+        count = count + 1
+        
+        GET_FIELD_DETAILS 'search_table'.'field_array[count,1]',
+                    "LINK_TABLE" , link
+                
+        IF STRIP ( link ) = STRIP ( link_table ) THEN
+        
+            GET_FIELD_DETAILS 'search_table'.'field_array[count,1]', 
+                        "LINK_FIELD" , link_field                    
+            
+        
+        ENDIF
+        
+    ENDWHILE
+
+    RETURN ( link_field )
+
+ENDROUTINE { get_link_field }
+
+
+
+

@@ -1,0 +1,1849 @@
+{*******************************************************************************
+*
+* Module Name   : $SMIDI_LIB_UPLOAD
+*
+* Purpose       : Upload queue library routines for SM-IDI.  There is only one
+*                 COMMIT in this library, which is done whenever a record is 
+*                 queue'ed and the caller is not in control of write transaction.
+*
+*                 The user library that decides when an upload is complete does
+*                 the update/delete of the upload queue and is in charge of the 
+*                 write transactions.
+*
+* Document Ref. : 
+*
+* Specification : 
+*
+* Portability   : OVMS, Unix, NT 4 and Windows 2000
+*
+* Re-entrant    : 
+*
+* Modification History
+*       By        Date        Reason _____________________________________________
+*
+* 1.1   AF        30-MAR-2007    Upload by sample didnt work when job name was different to lot no 
+*
+*******************************************************************************}
+
+ENABLE WINDOWS
+SET NAME "DISPLAY/"
+SET NOTPROTECTED
+SET COMPILE_OPTION DECLARE
+SET COMPILE_OPTION EXP_MESS
+
+JOIN STANDARD_LIBRARY STD_ARRAY                    { size_of_array              }
+JOIN STANDARD_LIBRARY STD_CLASS                    { object_check_property      }
+JOIN STANDARD_LIBRARY STD_DATABASE                 { transactioniswrite         }
+JOIN STANDARD_LIBRARY STD_GENERAL                  { variable_is_assigned       }
+JOIN STANDARD_LIBRARY STD_SMIDI                    { SMIDI Constants            }
+JOIN STANDARD_LIBRARY STD_STRUCTURE                { valid_field                }
+JOIN STANDARD_LIBRARY STD_VGL                      { vgl_validate_routine       }
+JOIN STANDARD_LIBRARY STD_WINDOW                   { window set status          }
+
+JOIN LIBRARY $LIB_UTILS                            { flash_message during queue }
+
+JOIN LIBRARY $SMIDI_LIB_SAP                        { all classes & constants    }
+JOIN LIBRARY $SMIDI_USER                           { start_stop, triggers       }
+
+{*******************************************************************************}
+
+CONSTANT MAX_LOCK_RETRY            = 10            { when queueing wait if lock }
+CONSTANT ERROR_ON_QUEUE_SLEEP_TIME = "0 00:00:02"  { when que error wait time   }
+
+DECLARE retval        ,
+	Q_type        , 
+	tmpString
+
+{******************************************************************************}
+
+ROUTINE smidi_que2_action_build_a_mr ( self, object, date_started, time_started, date_finished, time_finished )
+
+	DECLARE a_mr
+
+	retval = TRUE
+
+	CREATE OBJECT "QAIMR", a_mr
+
+	{ ----------------------------------------------------------------------- }
+	{ SAP's result type determines the upload type and settings needed by SAP }
+	{ ----------------------------------------------------------------------- }
+
+	IF object.sap_result_type = "G" THEN
+
+		Q_type = "Q71"
+
+	ELSEIF object.sap_result_type = "H" THEN
+
+		Q_type = "Q72"
+
+	ELSEIF object.sap_result_type = "I" THEN
+
+		Q_type = "Q73"
+
+	ELSE
+
+		Q_type = "Q79"
+
+	ENDIF
+
+	{ ----------------------------------------------------------------------- }
+	{ Now build the upload based upon what SAP expects for this upload type   }
+	{ ----------------------------------------------------------------------- }
+
+	a_mr.record_type   = QType
+	a_mr.result_number = object.sap_result_conf_no
+
+	IF NOT BLANK ( object.sap_subsys_valuates ) THEN
+		a_mr.close = "X"
+	ELSE
+		a_mr.close = set_flag ( self.close )
+	ENDIF
+
+	a_mr.upload_valuation = object.sap_subsys_valuates
+
+	IF flag_set( a_mr.upload_valuation ) THEN
+
+		a_mr.valuation    = object.sap_valuation
+		a_mr.defect_class = " "
+
+	ELSE
+
+		a_mr.valuation    = " "
+		a_mr.defect_class = "  "
+
+	ENDIF
+
+	a_mr.attribute          = object.sap_attribute
+	a_mr.code_group_2       = "        "
+	a_mr.code_2             = "    "
+	a_mr.code_group_3       = "        "
+	a_mr.code_3             = "    "
+	a_mr.code_group_4       = "        "
+	a_mr.code_4             = "    "
+	a_mr.code_group_5       = "        "
+	a_mr.code_5             = "    "
+	a_mr.date_insp_started  = date_started
+	a_mr.date_insp_finished = date_finished
+	a_mr.time_insp_started  = time_started
+	a_mr.time_insp_finished = time_finished
+	a_mr.operator           = pad( object.sap_entered_by, " ", 12 )
+	a_mr.machine            = "                  "
+	a_mr.machine_pos        = "0000"
+
+	a_mr.defects            = convert_vg_number( 0, 7 )
+	a_mr.valid_values       = "0000000"                                 { THESE SHOULD BE SET }
+	a_mr.non_conform_units  = "0000000"
+	a_mr.above_tol_limits   = "0000000"
+	a_mr.below_tol_limits   = "0000000"
+	a_mr.average            = object.send_result                        {"                "   }
+	a_mr.variance           = "                "
+	a_mr.maximum            = "                "
+	a_mr.median             = "                "
+	a_mr.minimum            = "                "
+	a_mr.inner_variance     = "                "
+	a_mr.inspection_short   = object.sap_documentation
+
+	{ ----------------------------------------------------------------------- }
+	{ Set the SAP type specific data for this upload                          }
+	{ ----------------------------------------------------------------------- }
+
+	IF ( QType = "Q72" ) THEN
+
+		a_mr.code_group_1 = object.sap_code_group
+		a_mr.code_1       = object.send_result
+
+	ELSE
+
+		a_mr.code_group_1 = "        "
+		a_mr.code_1       = "    "
+
+	ENDIF
+
+	IF ( QType = "Q71" )  THEN
+
+		a_mr.valid_values       = convert_vg_number( 1, 7 )           { HARD CODED should fix it in user trigger} 
+		a_mr.non_conform_units  = convert_vg_number( 0, 7 )           { these should really be set by some      }
+		a_mr.above_tol_limits   = convert_vg_number( 0, 7 )           { logic, but no one has ever agreed to    }
+		a_mr.below_tol_limits   = convert_vg_number( 0, 7 )           { how, let alone why?                     }
+		a_mr.average            = object.send_result                  { needs sap decimal places to reformat ?  }
+
+	ELSEIF ( QType <> "Q79" ) THEN    { Q72 / Q73 }
+
+		a_mr.valid_values       = convert_vg_number( 1, 7 )           { HARD CODED - set by ??????              }
+		a_mr.non_conform_units  = convert_vg_number( 0, 7 )           { same.....                               }
+
+	ENDIF
+
+
+	{ -------------------------------------------------------------------- }
+	{ Check the new properties for version 2 object                        }
+	{ -------------------------------------------------------------------- }
+
+	IF self.parent.qmidi_object = 2 THEN
+
+		a_mr.data_origin = object.sap_result_origin    { only difference in QAIMR v2 }
+
+	ENDIF
+
+	{ -------------------------------------------------------------------- }
+	{ All done with the SAP object build, allow user to change/veto upload }
+	{ -------------------------------------------------------------------- }
+
+	IF ( self.change_before_send ( object, a_mr, retval ) ) THEN        { **** << -- all bugs fix in user trigger ***** }
+
+		self.mr_count                  = self.mr_count + 1
+        	self.mr_array[ self.mr_count ] = smidi_lib_object_to_string ( a_mr )
+		retval                         = TRUE
+
+	ENDIF
+
+	RETURN ( retval )
+
+ENDROUTINE  { smidi_que2_action_build_a_mr }
+
+{******************************************************************************}
+
+ROUTINE smidi_que2_action_build_a_sr ( self, object, date_started, time_started, date_finished, time_finished )
+
+	DECLARE a_sr
+
+	retval = TRUE
+
+	CREATE OBJECT "QAISR", a_sr
+
+	IF object.sap_result_type = "D" THEN
+
+		Q_type = "Q61"
+
+	ELSEIF object.sap_result_type = "E" THEN
+
+		Q_type = "Q62"
+
+	ELSEIF object.sap_result_type = "F" THEN
+
+		Q_type = "Q63"
+
+	ELSEIF object.sap_result_type = "P" THEN
+
+		Q_type = "Q64"
+
+	ELSEIF object.sap_result_type = "Q" THEN
+
+		Q_type = "Q65"
+
+	ELSEIF object.sap_result_type = "R" THEN
+
+		Q_type = "Q66"
+
+	ENDIF
+
+	a_sr.record_type        = Qtype
+	a_sr.result_number      = object.sap_result_conf_no
+	a_sr.part_sample_no     = object.smidi_phys_samp           { note this is always "1" for points ?              }
+	a_sr.last_sample        = "X"                              { psamp.last_entry - retest/rep's Q64/Q65/Q66 = " " }
+	a_sr.upload_valuation   = object.sap_subsys_valuates
+
+	IF NOT BLANK ( object.sap_subsys_valuates ) THEN
+		a_sr.close = "X"
+	ELSE
+		a_sr.close = set_flag ( self.close )                { you may want " " so summary can always add on }
+	ENDIF
+
+
+	IF flag_set( a_sr.upload_valuation ) THEN
+
+		a_sr.samp_valuation     = object.sap_valuation     { LIMS valuate A/R                       }
+		a_sr.char_valuation     = object.sap_valuation
+
+		a_sr.samp_defect_class  = "  "
+		a_sr.char_defect_class  = "  "
+
+	ELSE
+
+		a_sr.samp_valuation     = " "
+		a_sr.samp_defect_class  = "  "
+		a_sr.char_valuation     = " "
+		a_sr.char_defect_class  = "  "
+
+	ENDIF
+
+	a_sr.attribute          = object.sap_attribute
+	a_sr.code_group_1       = "        "                                                    {61/63}
+	a_sr.code_1             = "    "                                                        {61/63}
+	a_sr.code_group_2       = "        "
+	a_sr.code_2             = "    "
+	a_sr.code_group_3       = "        "
+	a_sr.code_3             = "    "
+	a_sr.code_group_4       = "        "
+	a_sr.code_4             = "    "
+	a_sr.code_group_5       = "        "
+	a_sr.code_5             = "    "
+	a_sr.valid_values       = convert_vg_number( 1, 4 )                  { OLD CODE--> psamp.valid_values      }
+	a_sr.non_conform_units  = convert_vg_number( 0, 4 )                  { OLD CODE--> psamp.non_conform_units }
+	a_sr.defects            = convert_vg_number( 0, 4 )                  { OLD CODE--> psamp.defects           }
+	a_sr.above_tol_limits   = "0000"                                     { 62/63 }
+	a_sr.below_tol_limits   = "0000"                                     { 62/63 }
+	a_sr.average            = "                "                         { 62/63 }
+	a_sr.date_insp_started  = date_started
+	a_sr.date_insp_finished = date_finished
+	a_sr.time_insp_started  = time_started
+	a_sr.time_insp_finished = time_finished
+	a_sr.operator           = pad( object.sap_entered_by, " ", 12 )
+	a_sr.machine            = "                  "
+	a_sr.machine_pos        = "0000"
+	a_sr.inspection_short   = object.sap_documentation
+
+	{ ----------------------------------------------------------------------------------------------------------- }
+	{                                                                                                             }
+	{ The data below cause problems for LTIN's and reloads - if you only send 1 value now, then attempt later     }
+	{ SAP will not accept it, because the min/max = sent value (the average of one value is the value)            }
+	{ and there is no variance (also only one reading, how can something vary from itself?).                      }
+	{                                                                                                             }
+	{ That is why we always send "blank" so that SAP can figure these values out as opposed to us trying to.      }
+	{                                                                                                             }
+	{ ----------------------------------------------------------------------------------------------------------- }
+
+	a_sr.variance           = "                "                                            { 62/63 }
+	a_sr.maximum            = "                "                                            { 62/63 }
+	a_sr.median             = "                "                                            { 62/63 }
+	a_sr.minimum            = "                "                                            { 62/63 }
+
+	{ ----------------------------------------------------------------------- }
+	{ Set the SAP type specific data for this upload                          }
+	{ ----------------------------------------------------------------------- }
+
+	IF ( Qtype = "Q62" ) OR ( Qtype = "Q65" ) THEN
+
+		a_sr.code_group_1 = object.sap_code_group
+		a_sr.code_1       = object.send_result
+
+		IF Qtype = "Q65" THEN
+			a_sr.last_sample = " "                                  { OLD_CODE--> psamp.last_entry? Q64/Q65/Q66=" " }
+		ENDIF
+
+	ELSEIF ( Qtype = "Q61" ) or ( Qtype = "Q64" ) THEN
+
+		a_sr.above_tol_limits   = convert_vg_number( 0, 4 )           { OLD_CODE--> psamp.above_tol_limits }
+		a_sr.below_tol_limits   = convert_vg_number( 0, 4 )           { OLD_CODE--> psamp.below_tol_limits }
+		a_sr.average            = object.send_result
+
+		IF Qtype = "Q64" THEN
+			a_sr.last_sample = "X"                                  { OLD_CODE--> psamp.last_entry? Q64/Q65/Q66=" " }
+		ENDIF
+
+	ELSEIF ( Qtype = "Q66" ) THEN
+
+		a_sr.last_sample = " "                                        { OLD_CODE--> psamp.last_entry? Q64/Q65/Q66=" " }
+
+	ENDIF
+
+	{ -------------------------------------------------------------------- }
+	{ Check the new properties for version 2 object                        }
+	{ -------------------------------------------------------------------- }
+
+	IF self.parent.qmidi_object = 2 THEN
+
+		a_sr.result_origin = object.sap_result_origin    { only difference in QAISR v2 }
+
+	ENDIF
+
+
+	{ -------------------------------------------------------------------- }
+	{ All done with the SAP object build, allow user to change/veto upload }
+	{ -------------------------------------------------------------------- }
+
+	IF ( self.change_before_send ( object, a_sr, retval ) ) THEN        { ******* <<<<< fix bugs in user trigger }
+
+		self.sr_count                  = self.sr_count + 1
+        	self.sr_array[ self.sr_count ] = smidi_lib_object_to_string ( a_sr )
+		retval                         = TRUE
+
+	ENDIF
+
+	RETURN ( retval )
+
+ENDROUTINE  { smidi_que2_action_build_a_sr }
+
+{******************************************************************************}
+
+ROUTINE smidi_que2_action_build_a_se ( self, object, date_started, time_started )
+
+	DECLARE a_se
+
+	retval = TRUE
+
+	CREATE OBJECT "QAISE", a_se                              { OLD_CODE--> psamp = "000000"  source.parent.psamp  <---- ******* }
+
+	IF object.sap_result_type = "A" THEN
+
+		Q_type = "Q51"
+
+	ELSEIF object.sap_result_type = "B" THEN
+
+		Q_type = "Q52"
+
+	ELSEIF object.sap_result_type = "C" THEN
+
+		Q_type = "Q53"
+
+	ELSEIF object.sap_result_type = "J" THEN
+
+		Q_type = "Q51"                                      { OLD_CODE--> psamp  - actual partial sample number }
+
+	ELSEIF object.sap_result_type = "K" THEN
+
+		Q_type = "Q52"
+
+	ELSEIF object.sap_result_type = "L" THEN
+
+		Q_type = "Q53"
+
+	ELSEIF object.sap_result_type = "M" THEN
+
+		Q_type = "Q54"
+
+	ELSEIF object.sap_result_type = "N" THEN
+
+		Q_type = "Q55"
+
+	ELSEIF object.sap_result_type = "O" THEN
+
+		Q_type = "Q56"
+
+	ENDIF
+
+	a_se.record_type    = QType
+	a_se.result_number  = object.sap_result_conf_no
+	a_se.part_sample_no = object.smidi_phys_samp
+
+	IF flag_set( object.sap_serial_required ) THEN
+
+		a_se.serial_no_filled = "X"                          { DEFAULTS --> are the ones for Q58  }
+		a_se.serial_no        = " "                          { OLD_CODE--> leaf.serial_no         }
+		a_se.test_counter     = "0000"
+
+	ELSE
+		
+		
+		{ If set to multiple values allowed then set test _count - else use the last result }
+		a_se.serial_no_filled = " "
+		a_se.serial_no        = pad( " ", " ", 18 )
+		
+		IF (self.get_item("QM_UPL_MULTIPLE")) THEN
+			
+			
+				DECLARE sampleID, analysis, count, upload_flag
+				sampleID = SELECT TEST.SAMPLE WHERE TEST_NUMBER = object.test_number
+				analysis = SELECT TEST.ANALYSIS
+				upload_flag = SELECT TEST.UPLOAD_FLAG
+
+				count = SELECT COUNT TEST WHERE SAMPLE = sampleID AND ANALYSIS = analysis AND UPLOAD_FLAG = "TRUE"
+				
+				{ Increment the test_count if it is a new result or if the modfied result has not been uplaoded  }
+				IF  (object.result_status = "E" ) OR (upload_flag = "FALSE") THEN
+					count = count + 1
+				ENDIF
+				
+				a_se.test_counter     = convert_vg_number( count , 4 )   
+		
+		ELSE
+			a_se.test_counter     = convert_vg_number( 1 , 4 )  
+		ENDIF
+		
+
+	ENDIF
+
+
+	{ ================================================================= }
+	{ Remaining data are set specific to the type of upload             }
+	{ ================================================================= }
+
+	IF QType <> "Q58" THEN
+
+		a_se.last_single_value = "X"                              { OLD_CODE--> leaf.last_entry - is this last rep? }
+		a_se.upload_valuation  = object.sap_subsys_valuates
+
+		IF NOT BLANK ( object.sap_subsys_valuates ) THEN
+			a_se.close = "X"
+		ELSE
+			a_se.close = set_flag ( self.close )
+		ENDIF
+
+		IF flag_set( a_se.upload_valuation ) THEN
+
+			a_se.valuation         = object.sap_valuation     { OLD_CODE--> leaf.valuation                }
+			a_se.samp_valuation    = object.sap_valuation     { OLD_CODE--> leaf.parent.valuation         }
+			a_se.char_valuation    = object.sap_valuation     { OLD_CODE--> leaf.parent.parent.valuation  }
+
+			a_se.defect_class      = "  "                     { OLD_CODE--> leaf.fail_class               }
+			a_se.samp_defect_class = "  "                     { OLD_CODE--> leaf.parent.fail_class        }
+			a_se.char_defect_class = "  "                     { OLD_CODE--> leaf.parent.parent.fail_class }
+
+	
+		ELSE
+
+			a_se.valuation         = " "
+			a_se.defect_class      = "  "
+			a_se.samp_valuation    = " "
+			a_se.samp_defect_class = "  "
+			a_se.char_valuation    = " "
+			a_se.char_defect_class = "  "
+
+		ENDIF
+
+		a_se.attribute         = object.sap_attribute
+		a_se.code_group_2      = "        "
+		a_se.code_2            = "    "
+		a_se.code_group_3      = "        "
+		a_se.code_3            = "    "
+		a_se.code_group_4      = "        "
+		a_se.code_4            = "    "
+		a_se.code_group_5      = "        "
+		a_se.code_5            = "    "
+		a_se.number_of_defects = "00"
+		a_se.date_insp_started = date_started
+		a_se.time_insp_started = time_started
+		a_se.operator          = pad( object.sap_entered_by, " ", 12 )
+		a_se.machine           = "                  "
+		a_se.machine_pos       = "0000"
+		a_se.inspection_short  = object.sap_documentation               
+
+		IF ( QType = "Q54" ) | ( QType = "Q55" ) | ( QType = "Q56" ) THEN
+			a_se.last_sample = " "                                       { OLD_CODE--> leaf.parent.last_entry }
+		ELSE
+			a_se.last_sample = "          "
+		ENDIF
+
+
+		IF ( QType = "Q52" ) | ( QType = "Q55" ) THEN
+
+			a_se.measured_value    = "                "
+			a_se.code_group_1      = object.sap_code_group
+			a_se.code_1            = object.send_result
+
+		ELSEIF ( QType = "Q51" ) | ( QType = "Q54" ) THEN
+
+			a_se.measured_value    = object.send_result
+			a_se.code_group_1      = "        "
+			a_se.code_1            = "    "
+
+		ELSE
+
+			a_se.measured_value    = "                "
+			a_se.code_group_1      = "        "
+			a_se.code_1            = "    "
+		ENDIF
+
+
+	ENDIF  { Q58 default sets all data, all types have special settings }
+
+	{ -------------------------------------------------------------------- }
+	{ Check the new properties for version 2 object                        }
+	{ -------------------------------------------------------------------- }
+
+	IF self.parent.qmidi_object = 2 THEN
+
+		a_se.result_origin = object.sap_result_origin    { only difference in QAISE v2 }
+
+	ENDIF
+
+
+	{ -------------------------------------------------------------------- }
+	{ All done with the SAP object build, allow user to change/veto upload }
+	{ -------------------------------------------------------------------- }
+
+	IF ( self.change_before_send ( object, a_se, retval ) ) THEN              { ***** <<<<<< BUGS fix in user trigger }
+
+		self.se_count                  = self.se_count + 1
+        	self.se_array[ self.se_count ] = smidi_lib_object_to_string ( a_se )
+		retval                         = TRUE
+
+	ENDIF
+
+
+	RETURN ( retval )
+
+ENDROUTINE  { smidi_que2_action_build_a_se }
+
+{******************************************************************************}
+{                                                                              }
+{                                                                              }
+{        ROUTINES TO PERFORM UPLOAD OF DEFECT BUILD OF QUEUE                   }
+{                                                                              }
+{                                                                              }
+{******************************************************************************}
+
+ROUTINE smidi_upload_defects ( self, smidi_queue_item, qmife )
+
+	DECLARE qnum, retval
+
+	retval = TRUE
+	qnum   = "Q90"
+
+	IF qnum = "Q90" THEN                      { defects for inspection lot }
+
+		self.record_type  = qnum
+		self.sort_no      = ""
+		self.type_defects = ""
+		self.code_defects = ""
+		self.defects      = ""
+		self.no_defects   = ""
+		self.lot_no       = ""
+
+	ELSEIF qnum = "Q91" THEN                  { Defects for Operation } 
+
+		self.record_type  = qnum
+		self.sort_no      = ""
+		self.type_defects = ""
+		self.code_defects = ""
+		self.defects      = ""
+		self.no_defects   = ""
+		self.lot_no       = ""
+		self.sequence     = ""
+		self.op_no        = ""
+
+	ELSEIF qnum = "Q92" THEN                  { Defects for Characteristic / Independant Multi sample }
+
+		self.sort_no      = ""
+		self.type_defects = ""
+		self.code_defects = ""
+		self.defects      = ""
+		self.no_defects   = ""
+		self.lot_no       = ""
+		self.sequence     = ""
+		self.op_no        = ""
+		self.char_no      = ""
+		self.part_samp_no = ""    { Optional                 }
+	{ Or }
+		self.result_no    = ""    { Depends on type uploaded        }
+		self.part_samp_no = ""    { if sample defect vs char defect }
+
+	ELSEIF qnum = "Q95" THEN                  { Defects for Operation ( Inspection Point )}
+
+		self.record_type  = qnum
+		self.sort_no      = ""
+		self.type_defects = ""
+		self.code_defects = ""
+		self.defects      = ""
+		self.no_defects   = ""
+		self.lot_no       = ""
+		self.sequence     = ""
+		self.op_no        = ""
+		self.part_samp_no = ""
+
+
+	ELSEIF qnum = "Q96" THEN                  { Defects for Characteristic ( Inspection Point ) }
+
+		self.record_type  = qnum
+		self.sort_no      = ""
+		self.type_defects = ""
+		self.code_defects = ""
+		self.defects      = ""
+		self.no_defects   = ""
+		self.lot_no       = ""
+		self.sequence     = ""
+		self.op_no        = ""
+		self.char_no      = ""
+		self.part_samp_no = ""               { samp defect no need to set result conf no }
+
+		{ Or }
+
+		self.result_no    = ""               { char defect has both   }
+		self.part_samp_no = ""               { char defect of a point }
+
+	ENDIF
+
+	{ -------------------------------------------------------------------- }
+	{ All done with the SAP object build, allow user to change/veto upload }
+	{ -------------------------------------------------------------------- }
+
+	IF ( self.change_before_send ( self, smidi_queue_item, retval ) ) THEN   { ***** <<<<<< BUGS fix in user trigger }
+
+		qnum                   = SIZE_OF_ARRAY ( self.qmife_array ) + 1
+        	self.qmife_array[qnum] = smidi_lib_object_to_string ( qmife )
+		retval                 = TRUE
+
+	ENDIF
+
+	RETURN ( retval )
+
+ENDROUTINE  { smidi_upload_defects }
+
+{*******************************************************************************
+*
+*
+*
+*
+*
+*   G L O B A L   R O U T I N E S   --   A D D   R E C O R D   T O   Q U E U E 
+*
+*
+*
+*
+*
+*******************************************************************************}
+
+GLOBAL ROUTINE smidi_queue_defect ( VALUE request_key, VALUE smidi_system, VALUE smidi_lot, VALUE smidi_op, VALUE smidi_char )
+
+	DECLARE result_array
+	ARRAY result_array
+
+	result_array[1] = request_key
+	result_array[2] = smidi_system
+	result_array[3] = smidi_lot
+	result_array[4] = smidi_op
+	result_array[5] = smidi_char
+
+	retval = smidi_queue_record ( result_array, SMIDI_UPLOAD_DEFECT )
+	RETURN ( retval )
+
+ENDROUTINE { smidi_queue_defect }
+
+{******************************************************************************}
+
+GLOBAL ROUTINE smidi_queue_point  ( VALUE request_key, VALUE smidi_system )
+
+	DECLARE result_array, samp_id
+	ARRAY result_array
+
+	samp_id = SELECT smidi_insppoint.sample WHERE request_key = request_key
+
+	result_array[1] = request_key
+	result_array[2] = samp_id
+	result_array[3] = LEFTSTRING ( request_key, 12 )
+	result_array[4] = smidi_system
+	result_array[5] = EMPTY
+
+	retval = smidi_queue_record ( result_array, SMIDI_UPLOAD_POINT )
+	RETURN ( retval )
+
+ENDROUTINE { smidi_queue_point }
+
+{******************************************************************************}
+
+GLOBAL ROUTINE smidi_queue_point_ud  ( VALUE request_key, VALUE smidi_system )
+
+	DECLARE result_array, samp_id
+	ARRAY result_array
+	
+	samp_id = SELECT smidi_insppoint.sample WHERE request_key = request_key
+
+	result_array[1] = request_key
+	result_array[2] = samp_id
+	result_array[3] = LEFTSTRING ( request_key, 12 )
+	result_array[4] = smidi_system
+	result_array[5] = EMPTY
+
+	retval = smidi_queue_record ( result_array, SMIDI_UPLOAD_POINT_UD )
+
+	RETURN ( retval )
+
+ENDROUTINE { smidi_queue_point_ud }
+
+{******************************************************************************}
+
+GLOBAL ROUTINE smidi_queue_ud  ( VALUE job, VALUE smidi_system )
+
+	DECLARE result_array, job_can_make_ud
+
+	retval          = FALSE
+	job_can_make_ud = SELECT JOB_HEADER.SAP_UD_ENABLED WHERE JOB_NAME = job
+
+	IF ( BLANK ( job_can_make_ud ) ) THEN
+
+		FLASH_MESSAGE ( "Job field 'SAP_UD_ENABLED' will not allow an upload of UD to SAP", TRUE )
+
+	ELSE
+
+		ARRAY result_array
+		result_array[1] = job
+		result_array[2] = SELECT JOB_HEADER.SAP_UD_PHRASE
+		result_array[3] = SELECT JOB_HEADER.SMIDI_LOT
+		result_array[4] = smidi_system
+		result_array[5] = SELECT JOB_HEADER.SAP_UD_TEXT
+
+		retval = smidi_queue_record ( result_array, SMIDI_UPLOAD_UD )
+
+	ENDIF  { job_can_make_ud - check if this lot is allowed to queue UD to SAP }
+
+	RETURN ( retval )
+
+ENDROUTINE { smidi_queue_ud }
+
+{******************************************************************************}
+
+GLOBAL ROUTINE smidi_queue_ud_and_results  ( VALUE job, VALUE smidi_system )
+
+	retval = smidi_queue_results_by_field ( "JOB_NAME", job, EMPTY, EMPTY )
+	IF retval THEN
+		retval = smidi_queue_ud ( job, smidi_system )
+	ENDIF
+	RETURN ( retval )
+
+ENDROUTINE { smidi_queue_ud_and_results }
+
+{******************************************************************************}
+
+GLOBAL ROUTINE smidi_queue_job  ( VALUE job )
+
+	retval = smidi_queue_results_by_field ( "JOB_NAME", job, EMPTY, EMPTY )
+	RETURN ( retval )
+
+ENDROUTINE { smidi_queue_job }
+
+{******************************************************************************}
+
+GLOBAL ROUTINE smidi_queue_sample  ( VALUE sample )
+
+	retval = smidi_queue_results_by_field ( "SAMPLE_ID_NUMERIC", sample, EMPTY, EMPTY  )
+	RETURN ( retval )
+
+ENDROUTINE { smidi_queue_sample }
+
+{******************************************************************************}
+
+GLOBAL ROUTINE smidi_queue_test  ( VALUE test_number )
+
+	retval = smidi_queue_results_by_field ( "TEST_NUMBER", test_number, EMPTY, EMPTY )
+	RETURN ( retval )
+
+ENDROUTINE { smidi_queue_test }
+
+{******************************************************************************}
+
+GLOBAL ROUTINE smidi_queue_result  ( VALUE test_number, VALUE result )
+
+	retval = smidi_queue_results_by_field ( "TEST_NUMBER", test_number, "COMPONENT_NAME", result )
+	RETURN ( retval )
+
+ENDROUTINE { smidi_queue_result }
+
+
+{*******************************************************************************
+*
+*
+*
+*   QUEUE a RECORD - global routines call this for defect, point, point ud and lot ud only
+*
+*
+*
+*******************************************************************************}
+
+                                                              { -------------------------------- }
+ROUTINE smidi_queue_record  ( result_array, VALUE type )      { <--- for queueing of non results }
+                                                              { -------------------------------- }
+
+	DECLARE entry, key, len, commit_it, status, retry_count, found, qmidi_object
+
+	retry_count = 0
+	commit_it   = FALSE     { only set TRUE when not write transaction        }
+	retval      = FALSE     { only set TRUE when we really write to the queue }
+	found       = FALSE     { only set TRUE when an update to queue is needed }
+
+	IF NOT transaction_is_write() THEN
+		START WRITE TRANSACTION (GET_USER_MESSAGE ( "SMIDI_QUE_TRANS", 1 ))
+		commit_it = TRUE
+	ENDIF
+
+	{ ------------------------------------------------------------------------ }
+	{ Set all the parameters to the field sizes of the upload queue            }
+	{ ------------------------------------------------------------------------ }
+
+	GET_FIELD_DETAILS smidi_upload_queue.job_name, "FIELD_SIZE", len
+
+	IF result_array[1] = EMPTY THEN
+		result_array[1] = PAD ( SMIDI_NULL_KEY, " ", len )
+	ELSE
+		result_array[1] = PAD ( result_array[1], " ", len )
+	ENDIF
+
+
+	IF result_array[2] = EMPTY THEN
+		result_array[2] = SELECT MAX SAMPLE.ID_NUMERIC WHERE ID_NUMERIC > 0
+	ELSE
+		result_array[2] = result_array[2]
+	ENDIF
+
+
+	IF result_array[3] = EMPTY THEN
+		result_array[3] = SELECT MAX TEST.TEST_NUMBER WHERE TEST_NUMBER > 0
+	ELSE
+		result_array[3] = result_array[3]
+	ENDIF
+
+
+	GET_FIELD_DETAILS smidi_upload_queue.name, "FIELD_SIZE", len
+
+	IF result_array[5] = EMPTY THEN
+		result_array[5] = PAD ( SMIDI_NULL_KEY, " ", len )
+	ELSE
+		result_array[5] = PAD ( result_array[5], " ", len )
+	ENDIF
+
+
+	{ ------------------------------------------------------------------------------ }
+	{ Get this smidi_system's qmidi_object - for version support of upload           }
+	{ ------------------------------------------------------------------------------ }
+
+	qmidi_object = SELECT SMIDI_SYSTEM.QMIDI_OBJECT WHERE IDENTITY = result_array[4]
+
+	IF ( qmidi_object = EMPTY ) THEN
+
+		qmidi_object = DEFAULT_QMIDI_OBJECT
+
+	ELSEIF ( INDEX ( SMIDI_QMIDI_OBJECT_LIST, "#":STRIP(qmidi_object):"#" ) = 0 ) THEN
+
+		qmidi_object = DEFAULT_QMIDI_OBJECT
+
+	ENDIF
+
+	{ ------------------------------------------------------------------------------ }
+	{ Entry to find is based upon the upload type, retry getting it until not locked }
+	{ ------------------------------------------------------------------------------ }
+
+	entry = LOCKED 
+	key   = result_array[1] : result_array[2] : result_array[3] : result_array[5]
+
+	WHILE entry = LOCKED DO
+
+		entry = SELECT smidi_upload_queue.job_name FOR UPDATE
+				WHERE  job_name = result_array[1]
+				AND    type     = type
+
+		IF entry = LOCKED THEN
+
+			SLEEP FOR "0 00:00:02"
+			retry_count = retry_count + 1
+
+			IF retry_count > MAX_LOCK_RETRY THEN
+				entry = ERROR
+			ENDIF
+
+		ENDIF
+
+	ENDWHILE
+
+	{ ========================================== }
+	{ Either update or add the queue'ed item     }
+	{ ========================================== }
+
+	IF entry = EMPTY THEN
+
+		RESERVE ENTRY smidi_upload_queue, key, status
+
+	ELSEIF ( entry <> LOCKED ) & ( entry <> ERROR ) THEN
+
+		found  = TRUE
+		status = EMPTY
+
+	ELSE
+
+		status = ERROR
+
+	ENDIF { status empty on SELECT }
+
+	{ ------------------------------------------------------------------------------- }
+	{ If we either made a new entry (reserve) or found one to update then do so       }
+	{ ------------------------------------------------------------------------------- }
+
+	IF status = EMPTY THEN
+
+		ASSIGN smidi_upload_queue.type         = type
+		ASSIGN smidi_upload_queue.qmidi_object = qmidi_object
+		ASSIGN smidi_upload_queue.smidi_lot    = result_array[3]
+		ASSIGN smidi_upload_queue.smidi_system = result_array[4]
+
+		IF found THEN          { <-- for some reason the same entity has been re-queued }
+
+			ASSIGN smidi_upload_queue.retry_count    = 0
+			ASSIGN smidi_upload_queue.error          = ""
+			ASSIGN smidi_upload_queue.date_created   = NOW
+			ASSIGN smidi_upload_queue.status         = SMIDI_WAITING_STATUS
+
+		ENDIF
+
+		UPDATE smidi_upload_queue, status
+	
+		IF status = EMPTY THEN
+
+			retval = TRUE
+			IF commit_it THEN
+				COMMIT
+			ENDIF
+
+		ELSE
+
+			FLASH_MESSAGE ( "Update smidi_upload_queue ":key:"->":status, TRUE )
+
+		ENDIF
+
+	ENDIF  { status empty on reserve entry or set to empty when not locked/error }
+
+	RETURN ( retval )
+
+ENDROUTINE { smidi_queue_record }
+
+{ ---------------------------------------------------------------------------- }
+{                                                                              }
+{                                                                              }
+{                                                                              }
+{            ROUTINES that perform the queueing of the results                 }
+{                                                                              }
+{                                                                              }
+{                                                                              }
+{ ---------------------------------------------------------------------------- }
+
+{******************************************************************************}
+
+ROUTINE smidi_queue_results_by_field ( VALUE field1, VALUE record1, VALUE field2, VALUE record2 )
+
+	DECLARE queue_object, A_base, do_commit
+
+	retval    = FALSE
+	do_commit = FALSE
+
+	IF ( NOT TRANSACTION_IS_WRITE() ) THEN
+		START WRITE TRANSACTION "SMIDI_UPLOAD_QUEUE"
+		do_commit = TRUE
+	ENDIF
+
+	smidi_lib_init                  ( OPERATOR : PACKED_DECIMAL(1) )
+ 	smidi_lib_sap_define_base_class ( DEFAULT_QMIDI_OBJECT         )
+	define_smidi_queue_class        ( DEFAULT_QMIDI_OBJECT         )
+
+	CREATE OBJECT SMIDI_BASE_CLASS, A_base
+	CREATE OBJECT SMIDI_QUEUE_ITEM_CLASS, queue_object
+
+	{ --------------------------------------------------------------- }
+	{ Get config data used to decide if we can queue the data to SAP  }
+	{ --------------------------------------------------------------- }
+
+ 	queue_object.test_statuses   = A_base.get_item ( "SAP_UPLOAD_STATUS_TESTS"   )
+	queue_object.result_statuses = A_base.get_item ( "SAP_UPLOAD_STATUS_RESULTS" )
+
+	{ --------------------------------------------------------------------- }
+	{ Config data that determine which pieces of LIMS data are sent to SAP  }
+	{ --------------------------------------------------------------------- }
+
+	queue_object.copy_start_date = A_base.get_item ( "SMIDI_UPLOAD_START_DATE"   )
+
+	IF ( queue_object.copy_start_date = EMPTY ) | ( BLANK ( queue_object.copy_start_date ) ) THEN
+		queue_object.copy_start_date = "SAMPLE.SAMPLED_DATE"
+	ENDIF
+
+	queue_object.lims_valuates_A     = A_base.get_item ( "SMIDI_UPLOAD_VALUATES_A"        )
+	queue_object.lims_valuates_R     = A_base.get_item ( "SMIDI_UPLOAD_VALUATES_R"        )
+	queue_object.send_result_value   = A_base.get_item ( "SMIDI_UPLOAD_RESULT_VALUE"      )
+	queue_object.sap_spec_pass_words = A_base.get_item ( "SAP_SPECIFICATION_ATTRIBUTE_OK" )
+
+	{ ------------------------------------------------------------------------------------------- }
+	{ Build the selection and set cursor for result - starting key is valid since caller did this }
+	{ ------------------------------------------------------------------------------------------- }
+
+	IF field2 <> EMPTY THEN
+
+		retval = queue_by_result ( queue_object, record1, record2 )
+
+	ELSEIF ( field1 = "JOB_NAME" ) THEN
+
+		retval = queue_by_job ( queue_object, record1 )
+
+	ELSEIF ( field1 = "SAMPLE_ID_NUMERIC" ) THEN
+
+		retval = queue_by_sample ( queue_object, record1 )
+
+	ELSEIF ( field1 = "TEST_NUMBER" ) THEN
+
+		retval = queue_by_test ( queue_object, record1 )
+
+	ENDIF  { field sets the way we select to validate that data can be queue'ed }
+
+
+	{ ------------------------------------------------------------- }
+	{ Either the caller or this routine is controlling transactions }
+	{ ------------------------------------------------------------- }
+
+	IF retval AND do_commit THEN
+		COMMIT
+	ELSEIF NOT retval AND do_commit THEN
+		ROLLBACK
+	ENDIF
+
+	RETURN ( retval )    { T.F let's caller know if we completed all ok }
+
+ENDROUTINE { queue results by field }
+
+{******************************************************************************}
+
+ROUTINE queue_by_result ( queue_object, VALUE record1, VALUE record2 )
+
+	queue_object.test_number     = SELECT TEST.TEST_NUMBER         WHERE TEST_NUMBER = record1
+	queue_object.test_status     = SELECT TEST.STATUS
+	queue_object.analysis_id     = SELECT TEST.ANALYSIS
+
+	queue_object.id_numeric      = SELECT TEST.SAMPLE
+	queue_object.sample_status   = SELECT SAMPLE.STATUS            WHERE ID_NUMERIC = queue_object.id_numeric
+	queue_object.smidi_operation = SELECT SAMPLE.SMIDI_OPERATION
+	queue_object.smidi_part_samp = SELECT SAMPLE.SMIDI_PART_SAMPLE
+	queue_object.smidi_phys_samp = SELECT SAMPLE.SMIDI_PHYS_SAMPLE
+
+	queue_object.job_name        = SELECT SAMPLE.JOB_NAME
+	queue_object.job_status      = SELECT JOB_HEADER.JOB_STATUS    WHERE JOB_NAME = queue_object.job_name
+	queue_object.smidi_lot       = SELECT JOB_HEADER.SMIDI_LOT
+	queue_object.smidi_system    = SELECT JOB_HEADER.SMIDI_REQUESTER
+
+	tmpString = SELECT RESULT.NAME WHERE TEST_NUMBER = queue_object.test_number AND NAME = record2
+
+	IF tmpString <> EMPTY THEN
+
+		queue_object.result_status = SELECT RESULT.STATUS
+
+		retval = get_details ( queue_object )
+
+	ENDIF  { current_Result selected empty }
+
+	RETURN ( retval )
+
+ENDROUTINE  { queue_by_result }
+
+{******************************************************************************}
+
+ROUTINE queue_by_test ( queue_object, VALUE record1 )
+
+	queue_object.test_number     = SELECT TEST.TEST_NUMBER           WHERE TEST_NUMBER = record1
+	queue_object.test_status     = SELECT TEST.STATUS
+	queue_object.analysis_id     = SELECT TEST.ANALYSIS
+
+	queue_object.id_numeric      = SELECT TEST.SAMPLE
+	queue_object.sample_status   = SELECT SAMPLE.STATUS              WHERE ID_NUMERIC = queue_object.id_numeric
+	queue_object.smidi_operation = SELECT SAMPLE.SMIDI_OPERATION
+	queue_object.smidi_part_samp = SELECT SAMPLE.SMIDI_PART_SAMPLE
+	queue_object.smidi_phys_samp = SELECT SAMPLE.SMIDI_PHYS_SAMPLE
+
+	queue_object.job_name        = SELECT SAMPLE.JOB_NAME
+	queue_object.job_status      = SELECT JOB_HEADER.JOB_STATUS      WHERE JOB_NAME = queue_object.job_name
+	queue_object.smidi_lot       = SELECT JOB_HEADER.SMIDI_LOT
+	queue_object.smidi_system    = SELECT JOB_HEADER.SMIDI_REQUESTER
+ 
+	tmpString = SELECT RESULT.NAME WHERE TEST_NUMBER = queue_object.test_number
+
+	WHILE tmpString <> EMPTY DO
+
+		queue_object.result_status = SELECT RESULT.STATUS
+
+		retval = get_details ( queue_object )
+
+		NEXT RESULT
+		tmpString = SELECT RESULT.NAME
+
+	ENDWHILE
+
+	RETURN ( retval )
+
+ENDROUTINE  { queue_by_test }
+
+{******************************************************************************}
+
+ROUTINE queue_by_sample ( queue_object, VALUE record1 )
+
+	DECLARE tmp2
+
+	queue_object.id_numeric      = SELECT SAMPLE.ID_NUMERIC            WHERE ID_NUMERIC = record1
+	queue_object.sample_status   = SELECT SAMPLE.STATUS
+	queue_object.smidi_operation = SELECT SAMPLE.SMIDI_OPERATION
+	queue_object.smidi_part_samp = SELECT SAMPLE.SMIDI_PART_SAMPLE
+	queue_object.smidi_phys_samp = SELECT SAMPLE.SMIDI_PHYS_SAMPLE
+
+
+	queue_object.job_name        = SELECT SAMPLE.JOB_NAME
+	queue_object.job_status      = SELECT JOB_HEADER.JOB_STATUS        WHERE JOB_NAME = queue_object.job_name
+	queue_object.smidi_lot       = SELECT JOB_HEADER.SMIDI_LOT
+	queue_object.smidi_system    = SELECT JOB_HEADER.SMIDI_REQUESTER
+
+	queue_object.test_number     = SELECT TEST.TEST_NUMBER             WHERE SAMPLE = queue_object.id_numeric
+	queue_object.test_status     = SELECT TEST.STATUS
+	queue_object.analysis_id     = SELECT TEST.ANALYSIS
+
+	tmp2 = queue_object.test_number
+
+	WHILE tmp2 <> EMPTY DO
+
+		tmpString = SELECT RESULT.NAME WHERE TEST_NUMBER = queue_object.test_number
+
+		WHILE tmpString <> EMPTY DO
+
+			queue_object.result_status = SELECT RESULT.STATUS
+
+			retval = get_details ( queue_object )
+
+			NEXT RESULT
+			tmpString = SELECT RESULT.NAME
+
+		ENDWHILE
+
+		NEXT TEST
+		tmp2 = SELECT TEST.TEST_NUMBER
+
+		IF tmp2 <> EMPTY THEN
+			queue_object.test_number = tmp2
+			queue_object.test_status = SELECT TEST.STATUS
+			queue_object.analysis_id = SELECT TEST.ANALYSIS
+		ENDIF
+
+	ENDWHILE
+
+	RETURN ( retval )
+
+ENDROUTINE  { queue_by_sample }
+
+{******************************************************************************}
+
+ROUTINE queue_by_job ( 	queue_object, VALUE record1 )
+
+	DECLARE tmp1, tmp2, samps_array, cnt
+
+	ARRAY samps_array
+
+	queue_object.job_name        = SELECT JOB_HEADER.JOB_NAME          WHERE JOB_NAME = record1
+	queue_object.job_status      = SELECT JOB_HEADER.JOB_STATUS
+	queue_object.smidi_lot       = SELECT JOB_HEADER.SMIDI_LOT
+	queue_object.smidi_system    = SELECT JOB_HEADER.SMIDI_REQUESTER
+
+	queue_object.id_numeric      = SELECT SAMPLE.ID_NUMERIC            WHERE JOB_NAME = record1
+	queue_object.sample_status   = SELECT SAMPLE.STATUS
+	queue_object.smidi_operation = SELECT SAMPLE.SMIDI_OPERATION
+	queue_object.smidi_part_samp = SELECT SAMPLE.SMIDI_PART_SAMPLE
+	queue_object.smidi_phys_samp = SELECT SAMPLE.SMIDI_PHYS_SAMPLE
+
+	{ ------------------------------------------------------------- }
+	{ Gather all samps into an array for the upload queueing        }
+	{ ------------------------------------------------------------- }
+
+	cnt  = 0
+	tmp1 = queue_object.id_numeric
+
+	WHILE ( tmp1 <> EMPTY ) DO
+
+		cnt              = cnt + 1
+		samps_array[cnt] = tmp1
+
+		NEXT SAMPLE
+		tmp1 = SELECT SAMPLE.ID_NUMERIC
+
+	ENDWHILE
+
+
+	{ -------------------------------------------------------------- }
+	{ Got all samples, collate the data and do the queueing          }
+	{ -------------------------------------------------------------- }
+
+	cnt = 1
+
+	WHILE samps_array[cnt] <> EMPTY DO
+
+		queue_object.test_number = SELECT TEST.TEST_NUMBER WHERE SAMPLE = queue_object.id_numeric
+		queue_object.test_status = SELECT TEST.STATUS
+		queue_object.analysis_id = SELECT TEST.ANALYSIS
+
+		tmp2 = queue_object.test_number
+
+		WHILE tmp2 <> EMPTY DO
+
+			tmpString = SELECT RESULT.NAME WHERE TEST_NUMBER = queue_object.test_number
+
+			WHILE tmpString <> EMPTY DO
+
+				queue_object.result_status = SELECT RESULT.STATUS
+
+				retval = get_details ( queue_object )
+
+				NEXT RESULT
+				tmpString = SELECT RESULT.NAME
+
+			ENDWHILE
+
+			NEXT TEST
+			tmp2 = SELECT TEST.TEST_NUMBER
+
+			IF tmp2 <> EMPTY THEN
+				queue_object.test_number = tmp2
+				queue_object.test_status = SELECT TEST.STATUS
+				queue_object.analysis_id = SELECT TEST.ANALYSIS
+			ENDIF
+
+		ENDWHILE
+
+		{ ---------------------------------------------------------------------- }
+		{ get next sample - some reason this is safer than just trusting next... }
+		{ ---------------------------------------------------------------------- }
+
+		cnt  = cnt + 1
+
+		IF samps_array[cnt] <> EMPTY THEN
+
+			queue_object.id_numeric      = SELECT SAMPLE.ID_NUMERIC WHERE ID_NUMERIC = samps_array[cnt]
+			queue_object.sample_status   = SELECT SAMPLE.STATUS
+			queue_object.smidi_operation = SELECT SAMPLE.SMIDI_OPERATION
+			queue_object.smidi_part_samp = SELECT SAMPLE.SMIDI_PART_SAMPLE
+			queue_object.smidi_phys_samp = SELECT SAMPLE.SMIDI_PHYS_SAMPLE
+
+		ENDIF
+
+		tmp1 = queue_object.id_numeric
+
+	ENDWHILE    { tmp1 is not empty }
+
+
+	RETURN ( retval )
+
+ENDROUTINE  { queue_by_job }
+
+{******************************************************************************}
+
+ROUTINE get_details ( queue_object )
+
+	DECLARE is_sap, tmpString, retval, len
+
+	{ --------------------------------------------------------------------- }
+	{ Get all the results that would qualify, hold in array for queueing    }
+	{ --------------------------------------------------------------------- }
+
+	queue_object.key0 = queue_object.job_name:queue_object.id_numeric:queue_object.test_number
+	retval            = FALSE
+
+	IF  ( INDEX ( queue_object.test_statuses  , queue_object.test_status   ) > 0 ) 
+	AND ( INDEX ( queue_object.result_statuses, queue_object.result_status ) > 0 ) THEN
+
+		{ ----------------------------------------------------------- }
+		{ Copy the key result fields regardless of queueing type      }
+		{ ----------------------------------------------------------- }
+
+		queue_object.type              = SMIDI_UPLOAD_RESULT
+		queue_object.status            = SMIDI_WAITING_STATUS
+		queue_object.retry_count       = 0
+		
+		queue_object.name              = SELECT RESULT.NAME
+		queue_object.test_number       = SELECT RESULT.TEST_NUMBER
+		queue_object.sap_entered_by    = SELECT RESULT.ENTERED_BY
+		queue_object.lims_units        = SELECT RESULT.UNITS
+		queue_object.lims_out_of_range = SELECT RESULT.OUT_OF_RANGE
+		queue_object.result_text       = SELECT RESULT.TEXT
+		queue_object.result_value      = SELECT RESULT.VALUE
+		queue_object.date_created      = SELECT RESULT.ENTERED_ON
+
+		{ ----------------------------------------------------------- }
+		{ Optional LIMS result fields filled in with user triggers    }
+		{ ----------------------------------------------------------- }
+
+		IF ( VALID_FIELD ( "RESULT", SAP_ATTRIBUTE ) ) THEN
+			queue_object.sap_attribute = SELECT RESULT.'SAP_ATTRIBUTE'
+		ELSE
+			queue_object.sap_attribute = " "
+		ENDIF
+		
+		IF ( VALID_FIELD ( "RESULT", SAP_DEFECT_CLASS ) ) THEN
+			queue_object.sap_defect_class = SELECT RESULT.'SAP_DEFECT_CLASS'
+		ELSE
+			queue_object.sap_defect_class = ""
+		ENDIF
+		
+		IF ( VALID_FIELD ( "RESULT", SAP_DOCUMENTATION ) ) THEN
+			queue_object.sap_documentation = SELECT RESULT.'SAP_DOCUMENTATION'
+		ELSE
+			queue_object.sap_documentation = ""
+		ENDIF
+
+		IF ( queue_object.sap_documentation = EMPTY ) OR ( BLANK (queue_object.sap_documentation) ) THEN
+			queue_object.sap_documentation = GET_USER_MESSAGE ( "SMIDI_UPL_INSPECTION_COMMENT", 1 )
+		ENDIF
+
+		IF ( VALID_FIELD ( "RESULT", SAP_RESULT_CONF_NO ) ) THEN
+			queue_object.sap_result_conf_no = SELECT RESULT.'SAP_RESULT_CONF_NO'
+		ELSE
+			queue_object.sap_result_conf_no = ""
+		ENDIF
+
+		IF ( VALID_FIELD ( "RESULT", SAP_RESULT_ORIGIN ) ) THEN
+			queue_object.sap_result_origin = SELECT RESULT.'SAP_RESULT_ORIGIN'
+		ELSE
+			queue_object.sap_result_origin = ""
+		ENDIF
+
+		IF ( VALID_FIELD ( "RESULT", SAP_SERIAL_NO ) ) THEN
+			queue_object.sap_serial_no = SELECT RESULT.'SAP_SERIAL_NO'
+		ELSE
+			queue_object.sap_serial_no = ""
+		ENDIF
+
+		IF ( VALID_FIELD ( "RESULT", SAP_SPECIFICATION ) ) THEN
+			queue_object.sap_specification = SELECT RESULT.'SAP_SPECIFICATION'
+		ELSE
+			queue_object.sap_specification = " "
+		ENDIF
+
+		IF ( VALID_FIELD ( "RESULT", SAP_SUBSAMP_DEFECT ) ) THEN
+			queue_object.sap_subsamp_defect = SELECT RESULT.'SAP_SUBSAMP_DEFECT'
+		ELSE
+			queue_object.sap_subsamp_defect = ""
+		ENDIF
+
+		IF ( VALID_FIELD ( "RESULT", SAP_VALUATION ) ) THEN
+			queue_object.sap_valuation = SELECT RESULT.'SAP_VALUATION'
+		ELSE
+			queue_object.sap_valuation = " "
+		ENDIF
+
+		{ --------------------------------------------------------------------------------- }
+		{ From the clues given so far deduce what time field is used for inspect start date }
+		{ --------------------------------------------------------------------------------- }
+
+		find_start_date ( queue_object )
+
+		{ ------------------------------------------------------------ }
+		{  Find the SAP values from the QAIMV ( smidi_request_record ) }
+		{ ------------------------------------------------------------ }
+
+		IF ( NOT BLANK ( queue_object.sap_result_conf_no ) ) THEN
+
+			is_sap = SELECT SMIDI_REQUEST_RECORD.SMIDI_LOT
+				 WHERE  SMIDI_LOT   = queue_object.smidi_lot
+				 AND    RESULT_KEY  = queue_object.sap_result_conf_no
+
+
+		ELSEIF (NOT BLANK (queue_object.smidi_operation) ) THEN
+
+{---------------------------------
+1.1 
+
+non-customised query had
+WHERE REQUEST_KEY = STRIP(queue_object.job_name):STRIP(queue_object.smidi_operation)
+Job name must be the same as sap lot no for this to work.
+Replace with REQUEST_KEY = STRIP(queue_object.smidi_lot):STRIP(queue_object.smidi_operation)
+--------------------------------}
+
+			is_sap = SELECT SMIDI_REQUEST_RECORD.SMIDI_LOT
+					WHERE REQUEST_KEY = STRIP(queue_object.smidi_lot):
+							    STRIP(queue_object.smidi_operation)
+					AND SMIDI_LOT  = queue_object.smidi_lot
+					AND ANALYSIS_ID = queue_object.analysis_id
+					AND COMPONENT_NAME =queue_object.name 
+
+		ELSE
+
+			is_sap = SELECT SMIDI_REQUEST_RECORD.SMIDI_LOT
+				 WHERE  SMIDI_LOT      = queue_object.smidi_lot
+				 AND    ANALYSIS_ID    = queue_object.analysis_id
+				 AND    COMPONENT_NAME = queue_object.name
+
+		ENDIF   { older results on upgraded systems may not have result_conf_no in table }
+
+		{ ----------------------------------------------------------- }
+		{ If after all this searching we have a real item to queue    }
+		{ ----------------------------------------------------------- }
+
+		GET_FIELD_DETAILS smidi_upload_queue.job_name, "FIELD_SIZE", len
+		queue_object.job_name = PAD ( queue_object.job_name, " ", len )
+			
+		GET_FIELD_DETAILS smidi_upload_queue.id_numeric, "FIELD_SIZE", len
+		queue_object.id_numeric = PAD ( queue_object.id_numeric, " ", len )
+			
+		GET_FIELD_DETAILS smidi_upload_queue.test_number, "FIELD_SIZE", len
+		queue_object.test_number = PAD ( queue_object.test_number, " ", len )
+			
+		GET_FIELD_DETAILS smidi_upload_queue.name, "FIELD_SIZE", len
+		queue_object.name = PAD ( queue_object.name, " ", len )
+
+		queue_object.key0 = queue_object.job_name:queue_object.id_numeric:queue_object.test_number:queue_object.name
+
+		IF is_sap <> EMPTY THEN
+
+			queue_object.sap_result_conf_no  = SELECT SMIDI_REQUEST_RECORD.result_key
+			queue_object.sap_units           = SELECT SMIDI_REQUEST_RECORD.sap_units
+			queue_object.sap_places          = SELECT SMIDI_REQUEST_RECORD.sap_places		
+
+			queue_object.sap_subsys_valuates = SELECT SMIDI_REQUEST_RECORD.sap_subsys_valuates
+			queue_object.sap_need_subsamps   = SELECT SMIDI_REQUEST_RECORD.sap_need_subsamps
+			queue_object.sap_subsamp_valtype = SELECT SMIDI_REQUEST_RECORD.sap_subsamp_valtype
+			queue_object.sap_serial_required = SELECT SMIDI_REQUEST_RECORD.sap_serial_required
+			queue_object.sap_doc_required    = SELECT SMIDI_REQUEST_RECORD.sap_doc_required
+			queue_object.sap_result_type     = SELECT SMIDI_REQUEST_RECORD.sap_result_type
+			queue_object.sap_valuate_type    = SELECT SMIDI_REQUEST_RECORD.sap_valuate_type
+			queue_object.sap_inspect_scope   = SELECT SMIDI_REQUEST_RECORD.sap_inspect_scope
+
+			{ ------------------------------------------------------- }
+			{ If user did something funky with operation reset to SAP }
+			{ ------------------------------------------------------- }
+
+			queue_object.smidi_operation     = RIGHTSTRING (STRIP(SELECT SMIDI_REQUEST_RECORD.request_key),4)
+
+			{ ------------------------------------------------------- }
+			{ config item allows user to choose if send text or value }
+			{ ------------------------------------------------------- }
+
+			IF  ( queue_object.send_result_value ) 
+			AND ( INDEX ( LIMS_NUMERIC_TYPES, queue_object.sap_result_type ) > 0 ) THEN
+
+				queue_object.send_result = queue_object.result_value
+
+			ELSE
+
+				queue_object.send_result = queue_object.result_text
+
+			ENDIF
+
+			{ -------------------------------------------------------------------------------------- }
+			{ If we have a code group, then decode this phrase into the pointer number of the phrase }
+			{ NOTE the value in the srr is the cat_1_sset_group, which may be a grouped code group   }
+			{ so - when we rebuild this result, also find the ACTUAL SAP code group for upload       }
+			{ -------------------------------------------------------------------------------------- }
+
+			queue_object.sap_code_group = SELECT SMIDI_REQUEST_RECORD.sap_code_group
+
+			IF ( INDEX ( LIMS_OPTIONAL_TYPES, queue_object.sap_result_type ) > 0 ) THEN
+
+				queue_object.sap_code_number = SELECT SMIDI_PHRASE_VIEW.PHRASE_ID
+								WHERE SYSTEM     = queue_object.smidi_system
+								AND   MAIN_ID    = queue_object.sap_code_group
+								AND   PHRASE     = queue_object.result_text
+
+
+				IF queue_object.sap_code_number = EMPTY THEN
+
+					queue_object.sap_code_number = SELECT SMIDI_PHRASE_VIEW.PHRASE_ID
+									WHERE SYSTEM     = queue_object.smidi_system
+									AND   CODE_GROUP = queue_object.sap_code_group
+									AND   PHRASE     = queue_object.result_text
+
+					IF queue_object.sap_code_number = EMPTY THEN
+
+						tmpString = "Invalid SAP code group -> ":queue_object.key0:" ":queue_object.sap_code_group:" ":queue_object.result_text
+						window_set_status ( tmpString )
+
+					ELSE
+
+						queue_object.send_result    = queue_object.sap_code_number
+						queue_object.sap_code_group = SELECT SMIDI_PHRASE_VIEW.CODE_GROUP
+
+					ENDIF
+
+				ELSE 
+
+					queue_object.send_result    = queue_object.sap_code_number
+					queue_object.sap_code_group = SELECT SMIDI_PHRASE_VIEW.CODE_GROUP
+
+				ENDIF { try to find the code 2 different ways, one day this will be cleared up }
+
+			ELSE
+
+				queue_object.sap_code_number = ""
+
+			ENDIF
+
+        		{ ------------------------------------------------------------------------------------------------ }
+        		{  Set this attribute - this could have been done during the queueing so do not redo it if it has  }
+        		{ ------------------------------------------------------------------------------------------------ }
+
+			IF BLANK ( queue_object.sap_valuation ) THEN
+
+				{ Check that the value is within the limits - to set the SAP status accordingley}
+				IF ( queue_object.lims_out_of_range ) THEN
+
+					queue_object.sap_valuation = "R"
+
+				ELSEIF ( INDEX ( queue_object.lims_valuates_A, queue_object.result_status ) > 0 ) THEN
+
+					queue_object.sap_valuation = "A"
+
+				ELSEIF ( INDEX ( queue_object.lims_valuates_R, queue_object.result_status ) > 0 ) THEN
+
+					queue_object.sap_valuation = "R"
+
+
+				ELSEIF ( BLANK ( queue_object.lims_valuates_A ) ) & ( BLANK ( queue_object.lims_valuates_R ) ) THEN
+	
+					queue_object.sap_valuation = " "
+
+				ELSE
+
+					queue_object.sap_valuation = "A"
+
+				ENDIF
+
+			ENDIF  { blank valuation means we attempt to set it }
+
+
+        		{ ------------------------------------------------------------------------------------------------ }
+        		{  Set this attribute - this could have been done during the queueing so do not redo it if it has  }
+        		{ ------------------------------------------------------------------------------------------------ }
+
+			IF BLANK ( queue_object.sap_attribute ) THEN      { <- if a user trigger already set this, then trust they did it right }
+
+				IF     INDEX ( queue_object.result_text, "<" ) <> 0 THEN
+	
+					queue_object.sap_attribute = "<"
+
+				ELSEIF INDEX ( queue_object.result_text, ">") <> 0 THEN
+
+					queue_object.sap_attribute = ">"
+
+				ELSEIF INDEX ( queue_object.result_text, "~") <> 0 THEN
+
+					queue_object.sap_attribute = "?"
+					queue_object.send_result   = queue_object.send_result # "~"     { no harm to result value if it is the one being sent }
+
+				ELSEIF ( NOT BLANK ( queue_object.sap_specification ) )
+				AND    ( INDEX ( queue_object.sap_spec_pass_words, queue_object.sap_specification ) = 0 ) THEN
+
+					queue_object.sap_attribute = "/"
+
+				ELSEIF ( queue_object.lims_out_of_range ) | ( queue_object.sap_valuation = "R" ) THEN
+
+					queue_object.sap_attribute = "/"
+
+				ELSE
+
+					queue_object.sap_attribute = " "
+
+				ENDIF  { the attribute can be off spec or a result qualifier }
+
+			ENDIF  { if it is not blank in the queue, then maybe a result entry trigger set it - trust the user trigger }
+
+			{ ------------------------------------------------------------------------------ }
+			{ Finally, give the user another trigger to determine if this should be queue'ed }
+			{ Example in the trigger shows a unit conversion if the 2 unit strings <>        }
+			{ ------------------------------------------------------------------------------ }
+
+			queue_object.qmidi_object = SELECT SMIDI_REQUEST_RECORD.QMIDI_OBJECT
+
+ 			window_set_status ( queue_object.key0 )
+			retval = queue_object.change_before_queue(retval)
+
+		ELSE
+
+			tmpString = "No SAP request to queue-> ":queue_object.key0
+			window_set_status ( tmpString )
+
+		ENDIF  { is really an sap entity }
+
+	ELSE
+
+		tmpString = queue_object.key0:" ":STRIP(queue_object.test_statuses):"> ":queue_object.test_status :
+				" <":STRIP(queue_object.result_statuses):"> ":queue_object.result_status     :
+				" status is invalid for queueing "
+
+		window_set_status ( tmpString )
+
+	ENDIF  { result and test statuses are allowed for upload }
+	
+
+	{ ---------------------------------------------------- }
+	{ Save in the object if this one was successful        }
+	{ ---------------------------------------------------- }
+
+	IF NOT retval THEN
+		queue_object.status = SMIDI_IGNORE_STATUS
+	ELSE
+		retval = smidi_queue_result_object ( queue_object )
+	ENDIF
+
+	RETURN ( retval )
+
+ENDROUTINE  { get_details }
+
+{******************************************************************************}
+
+ROUTINE find_start_date ( object )
+
+	DECLARE a_table		,
+		a_field		,
+		ndex		,
+		key0
+
+	ndex = INDEX ( object.copy_start_date, "." )
+
+	IF ndex = 0 THEN
+		a_table = "SAMPLE"
+		a_field = "SAMPLED_DATE"
+	ELSE
+		a_table = LEFTSTRING ( object.copy_start_date, ndex - 1 )
+		a_field = object.copy_start_date # ( a_table:".")
+	ENDIF
+
+	{ ---------------------------------------------------- }
+	{ We have job.sample.test.result, any other cannot do  }
+	{ ---------------------------------------------------- }
+
+	IF a_table = "JOB_HEADER" THEN
+
+		key0 = "JOB_NAME"
+
+	ELSEIF a_table = "SAMPLE" THEN
+
+		key0 = "ID_NUMERIC"
+
+	ELSEIF a_table = "TEST" THEN
+
+		key0 = "TEST_NUMBER"
+
+	ELSEIF a_table = "RESULT" THEN
+
+		object.sap_start_date = SELECT RESULT.'a_field' WHERE TEST_NUMBER = object.test_number AND NAME = object.name
+
+	ELSE
+
+		a_table = "SAMPLE"
+		a_field = "SAMPLED_DATE"
+
+	ENDIF
+
+	{ -------------------------------------------------------------- }
+	{ If the date is not one of the result dates, then select it     }		
+	{ -------------------------------------------------------------- }
+
+	IF ( NOT VARIABLE_IS_ASSIGNED ( object.sap_start_date ) ) & ( VALID_FIELD ( a_table, a_field ) ) THEN
+		object.sap_start_date = SELECT 'a_table'.'a_field' WHERE 'key0' = object.?key0?
+	ELSE
+		object.sap_start_date = SELECT SAMPLE.SAMPLED_DATE WHERE ID_NUMERIC = object.id_numeric
+	ENDIF
+
+	IF ( object.sap_start_date = EMPTY ) | ( BLANK ( object.sap_start_date ) ) THEN
+		object.sap_start_date = NOW
+	ENDIF
+
+ENDROUTINE  { find_start_date }
+
+{******************************************************************************}
+
+ROUTINE smidi_queue_result_object  ( queue_object )
+
+	DECLARE retry_count, retval, found, entry, status
+
+	retry_count = 0
+	retval      = FALSE     { only set TRUE when we really write to the queue }
+	found       = FALSE     { only set TRUE when an update to queue is needed }
+	entry       = LOCKED 
+
+	{ ============================================================================== }
+	{ Entry to find is based upon the upload type, retry getting it until not locked }
+	{ ============================================================================== }
+
+	WHILE entry = LOCKED DO
+
+		entry = SELECT smidi_upload_queue.job_name FOR UPDATE
+				WHERE  job_name    = queue_object.job_name
+				AND    id_numeric  = queue_object.id_numeric
+				AND    test_number = queue_object.test_number
+				AND    name        = queue_object.name
+				AND    type        = SMIDI_UPLOAD_RESULT
+
+		IF entry = LOCKED THEN
+
+			SLEEP FOR "0 00:00:02"
+			retry_count = retry_count + 1
+
+			IF retry_count > MAX_LOCK_RETRY THEN
+				entry = ERROR
+			ENDIF
+
+		ENDIF
+
+	ENDWHILE
+
+	{ ========================================== }
+	{ Either update or add the queue'ed item     }
+	{ ========================================== }
+
+	IF entry = EMPTY THEN
+
+		RESERVE ENTRY smidi_upload_queue, queue_object.key0, status
+
+	ELSEIF ( entry <> LOCKED ) & ( entry <> ERROR ) THEN
+
+		found  = TRUE
+		status = EMPTY
+
+	ELSE
+
+		status = ERROR
+
+	ENDIF { status empty on SELECT }
+
+	{ ------------------------------------------------------------------------------- }
+	{ If we either made a new entry (reserve) or found one to update then do so       }
+	{ ------------------------------------------------------------------------------- }
+
+	IF status = EMPTY THEN
+
+		ASSIGN smidi_upload_queue.type                = queue_object.type
+		ASSIGN smidi_upload_queue.smidi_system        = queue_object.smidi_system
+		ASSIGN smidi_upload_queue.analysis_id         = queue_object.analysis_id
+		ASSIGN smidi_upload_queue.job_status          = queue_object.job_status
+		ASSIGN smidi_upload_queue.sample_status       = queue_object.sample_status
+		ASSIGN smidi_upload_queue.test_status         = queue_object.test_status
+		ASSIGN smidi_upload_queue.result_status       = queue_object.result_status
+		ASSIGN smidi_upload_queue.result_text         = queue_object.result_text
+		ASSIGN smidi_upload_queue.result_value        = queue_object.result_value
+		ASSIGN smidi_upload_queue.send_result         = queue_object.send_result
+		ASSIGN smidi_upload_queue.lims_units          = queue_object.lims_units
+		ASSIGN smidi_upload_queue.lims_out_of_range   = queue_object.lims_out_of_range
+
+		ASSIGN smidi_upload_queue.smidi_system        = queue_object.smidi_system
+		ASSIGN smidi_upload_queue.qmidi_object        = queue_object.qmidi_object
+		ASSIGN smidi_upload_queue.smidi_lot           = queue_object.smidi_lot
+		ASSIGN smidi_upload_queue.smidi_operation     = queue_object.smidi_operation
+		ASSIGN smidi_upload_queue.smidi_phys_samp     = queue_object.smidi_phys_samp
+		ASSIGN smidi_upload_queue.smidi_part_samp     = queue_object.smidi_part_samp
+		ASSIGN smidi_upload_queue.sap_start_date      = queue_object.sap_start_date
+		ASSIGN smidi_upload_queue.sap_entered_by      = queue_object.sap_entered_by
+		ASSIGN smidi_upload_queue.sap_result_conf_no  = queue_object.sap_result_conf_no
+		ASSIGN smidi_upload_queue.sap_result_origin   = queue_object.sap_result_origin
+		ASSIGN smidi_upload_queue.sap_code_number     = queue_object.sap_code_number
+		ASSIGN smidi_upload_queue.sap_code_group      = queue_object.sap_code_group
+		ASSIGN smidi_upload_queue.sap_documentation   = queue_object.sap_documentation
+		ASSIGN smidi_upload_queue.sap_doc_required    = queue_object.sap_doc_required
+		ASSIGN smidi_upload_queue.sap_serial_no       = queue_object.sap_serial_no
+		ASSIGN smidi_upload_queue.sap_serial_required = queue_object.sap_serial_required
+		ASSIGN smidi_upload_queue.sap_specification   = queue_object.sap_specification
+		ASSIGN smidi_upload_queue.sap_valuation       = queue_object.sap_valuation
+		ASSIGN smidi_upload_queue.sap_attribute       = queue_object.sap_attribute
+		ASSIGN smidi_upload_queue.sap_units           = queue_object.sap_units
+		ASSIGN smidi_upload_queue.sap_places          = queue_object.sap_places
+		ASSIGN smidi_upload_queue.sap_result_type     = queue_object.sap_result_type
+		ASSIGN smidi_upload_queue.sap_subsys_valuates = queue_object.sap_subsys_valuates
+		ASSIGN smidi_upload_queue.sap_valuate_type    = queue_object.sap_valuate_type
+		ASSIGN smidi_upload_queue.sap_need_subsamps   = queue_object.sap_need_subsamps
+		ASSIGN smidi_upload_queue.sap_subsamp_valtype = queue_object.sap_subsamp_valtype
+		ASSIGN smidi_upload_queue.sap_inspect_scope   = queue_object.sap_inspect_scope
+		ASSIGN smidi_upload_queue.sap_defect_class    = queue_object.sap_defect_class
+		ASSIGN smidi_upload_queue.sap_subsamp_defect  = queue_object.sap_subsamp_defect
+
+		IF found THEN          { <-- for some reason the same entity has been re-queued }
+
+			ASSIGN smidi_upload_queue.retry_count    = 0
+			ASSIGN smidi_upload_queue.error          = ""
+			ASSIGN smidi_upload_queue.date_created   = NOW
+			ASSIGN smidi_upload_queue.status         = SMIDI_WAITING_STATUS
+
+		ENDIF
+
+		{ ---------------------------------------------- }
+		{  Write transaction is controlled by the caller }
+		{ ---------------------------------------------- }
+
+		UPDATE smidi_upload_queue, status
+	
+		IF status = EMPTY THEN
+			retval = TRUE
+		ELSE
+			FLASH_MESSAGE ( "Update smidi_upload_queue ":queue_object.key0:"->":status, TRUE )
+		ENDIF
+
+	ENDIF  { status empty on reserve entry or set to empty when not locked/error }
+
+	RETURN ( retval )
+
+ENDROUTINE { smidi_queue_result_object }
+
+{******************************************************************************}
+{ end $smidi_LIB_upload }
+{******************************************************************************}

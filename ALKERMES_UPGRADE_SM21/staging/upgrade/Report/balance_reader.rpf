@@ -1,0 +1,479 @@
+
+{******************************************************************************
+*
+* Module Name	:  BALANCE_READER
+*
+* Purpose	: Balance integration - standalone reader
+*
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By             Description
+* -------   -----------  ----------     ---------------------------------------
+* 1.0       05-Jul-2013  Orbis          Release Version 
+* 2.0       27-Feb-2014  A. Finnerty    Enhancements
+*******************************************************************************}
+
+SET NOTPROTECTED
+
+SET COMPILE_OPTION DECLARE
+
+SET NAME "DEFER/"
+
+ENABLE WINDOWS
+
+
+JOIN STANDARD_LIBRARY STD_arraY 
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_CLIENT
+JOIN STANDARD_LIBRARY STD_MESSAGE
+JOIN STANDARD_LIBRARY STD_STRUCTURE
+JOIN STANDARD_LIBRARY STD_TRANSFER
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_VGL
+JOIN STANDARD_LIBRARY STD_WINDOW
+JOIN STANDARD_LIBRARY std_user_global
+
+JOIN LIBRARY $lib_utils
+JOIN LIBRARY balance_lib
+
+CONSTANT INST_TEST_MODE = FALSE  { Set=TRUE to test without an instrument connected }
+CONSTANT INST_TEST_MODE_VALUE = 1.876
+CONSTANT INST_CRITERIA_CONFIG_ITEM = "ORBIS_BALANCE_CRITERIA_SB"
+
+
+DECLARE g_uom
+
+main (1)
+
+GLOBAL
+ROUTINE dotnet_startup (menu_proc_num, status, required_uom)
+
+	{ status is output: "" id success or else error message}
+
+	status = ""
+
+	{ Menu no is in config item, but for safety, double check it }
+
+	menu_proc_num = SELECT master_menu.procedure_num
+				WHERE procedure_num = GLOBAL ("ORBIS_BALANCE_STOCK_PROCEDURE")
+				AND  library = GLOBAL("current_library")
+
+	status = store_in_buffer_from_dotnet (required_uom)
+
+	IF (status=EMPTY) THEN
+
+		status = ""
+	ENDIF
+
+ENDROUTINE
+
+{*******************************************************************************}
+GLOBAL 
+ROUTINE read_saved (val, inst, status, belowLod)
+
+	{ Can be called from c# to read the value that is in the balance reader }
+	{ i.e. read from the text file }
+
+	DECLARE line, i, delim
+
+	val = ""
+	inst = ""
+	status = ""
+	delim = "?"
+	
+	status = read_in_buffer (line, FALSE)
+
+	IF (status = EMPTY) THEN
+
+		status = ""
+
+		i = INDEX (line, delim)
+
+		IF (i>0) THEN
+			
+			inst = LEFTSTRING (line, i-1)			
+			line = RIGHTSTRING (line, STRINGLENGTH(line)-i)
+
+			i = INDEX (line, delim)
+
+			IF (i>0) THEN
+
+
+				line = RIGHTSTRING (line, STRINGLENGTH(line)-i)
+				i = INDEX (line, delim)
+				IF (i>0) THEN
+
+					belowLod = RIGHTSTRING (line, STRINGLENGTH(line)-i)
+					val = LEFTSTRING (line, i-1)			
+
+				ELSE
+					status = "Instrument incorrect saved format(3)"
+				ENDIF
+
+
+			ELSE
+
+				status = "Instrument incorrect saved format(2)"
+
+			ENDIF
+
+		ELSE
+
+			status = "Instrument incorrect saved format(1)"
+
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE
+
+
+ROUTINE read_saved_from_dotnet (required_uom)
+
+	{ Can be called from c# to read the value that is in the balance reader }
+	{ i.e. read from the text file }
+
+	DECLARE line, i, delim, status
+
+	status = EMPTY
+	required_uom = ""
+	delim = "?"
+
+	status = read_in_buffer (line, TRUE)
+
+	IF (status = EMPTY) THEN
+
+		i = INDEX (line, delim)
+
+		IF (i>0) THEN
+			
+			required_uom = STRIP(LEFTSTRING (line, i-1))
+			line = RIGHTSTRING (line, STRINGLENGTH(line)-i)
+			
+
+		ELSE
+
+			required_uom = STRIP(line)
+
+		ENDIF
+
+	ENDIF
+
+	RETURN (status)
+
+ENDROUTINE
+
+{*******************************************************************************}
+ROUTINE read_in_buffer (line, VALUE is_from_dotnet)
+{
+*  Read from global. Clear it once read.
+********************************************************************************}
+
+	DECLARE status, gl_name
+
+	status = EMPTY
+	line   = ""
+
+	IF (is_from_dotnet) THEN
+
+		gl_name = "DTOV_1"
+
+	ELSE
+
+		gl_name = "VTOD_1"
+	ENDIF
+
+	IF (user_cluster_exists ("ORBIS_BAL")) THEN
+	
+		line = read_user_global ("ORBIS_BAL", gl_name)
+
+		{ Once its read, clear it }
+		add_and_set_global ("ORBIS_BAL",gl_name,"")
+	
+	ELSE
+
+		status = "unable to read vgl/.net data ":gl_name 
+	ENDIF
+
+	RETURN (status)
+
+ENDROUTINE
+
+{*******************************************************************************}
+ROUTINE main (VALUE dummy)
+
+	DECLARE status
+
+	status =  read_saved_from_dotnet (g_uom)
+
+	IF (status <> EMPTY) THEN
+
+		flashmessage ("Error reading property sheet data!  ":STRIP(status), TRUE)
+		EXIT
+
+	ENDIF
+
+	{ Before read this, ensure no old value in the global }
+	store_in_buffer ("", "", FALSE)
+
+	main_prompt ()
+
+	EXIT
+
+ENDROUTINE
+
+{*******************************************************************************}
+ROUTINE main_prompt 
+		
+    DECLARE form,  can_leave 
+
+    create_main_form ( form )
+
+    form . start_prompt ()
+
+    REPEAT
+
+        form . wait_prompt  ()
+        can_leave = TRUE       
+
+    UNTIL  (can_leave) OR (form . get_lastkey () = "EXIT" ) 
+ 
+    form . end_prompt ()
+
+
+ENDROUTINE    {  main_prompt  }
+
+{*******************************************************************************}
+ROUTINE create_main_form ( form )
+
+    DECLARE  pr, start_line, start_col, start_col_btn,
+          the_header, form_height,
+          criteria_name, criteria_table, select_array
+
+    ARRAY select_array
+    criteria_name = GLOBAL (INST_CRITERIA_CONFIG_ITEM)
+    criteria_table = "INSTRUMENT"
+
+    inst_make_criteria (criteria_name, criteria_table, select_array)
+
+    the_header  = "Weight Input"
+    form_height = 5
+
+    PROMPT OBJECT form
+        CLASS PROMPT_CLASS_FORM
+        WITH ( width  = 40                                 ,
+               row    = 5                                   ,
+               column = 10                                  ,
+               height = form_height                          ,
+               header = the_header                          ,
+               footer = "<DO> to Continue, <EXIT> to Cancel",
+               proportional = TRUE                          ,
+		   button_style=FORM_BUTTON_NONE ,
+               return_behaviour = FORM_RETURN_LEAVE     ,
+               user_info = ""  )
+
+    form . add_frame ( "" ,   1, 1, form_height, form.width )
+
+
+    start_line = 1
+    start_col  = 2
+    start_col_btn = 1
+
+    form . add_display ( "Instrument:", 
+                          start_col, 
+                          start_line,
+                          PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+
+    PROMPT OBJECT pr
+            BROWSE ON instrument
+	    on line start_line from start_col+9
+          WITH (mandatory_array = select_array)
+
+    form.add_prompt ( pr )       
+
+
+    start_line = start_line + 2
+
+
+    PROMPT OBJECT pr   CLASS "STD_PROMPT_BUTTON"
+    pr . row                  = start_line
+    pr . column               = start_col_btn + 7  
+    pr . height               = 1
+    pr . width                = 13
+    pr . caption              = "Read Instrument"
+    pr . mouse_click_routine  = "read_button_routine"
+    
+    form.add_prompt ( pr )       
+
+    start_line = start_line + 2
+
+
+    form . add_display ( "Value:", 
+                          start_col, 
+                          start_line,
+                          PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+
+    PROMPT OBJECT pr
+            BROWSE ON TEXT
+	    on line start_line FROM start_col+7 TO start_col+22
+            WITH (display_only=TRUE, lowered=TRUE)
+
+    form.add_prompt ( pr )   
+    
+
+ENDROUTINE     {  create_main_form  }
+
+{*******************************************************************************}
+ROUTINE read_button_routine (self)
+
+	DECLARE val_box	, inst_box, inst_value, status,
+		user_override_lod
+
+	user_override_lod = FALSE
+	inst_box = self . parent_prompt . prompt_objects [1]
+	val_box  = self . parent_prompt . prompt_objects [3]
+
+	val_box . text = ""
+	val_box . value = val_box . text
+
+	IF (STRIP(inst_box.value) <> "") THEN
+
+		IF (INST_TEST_MODE) THEN
+
+			inst_value = INST_TEST_MODE_VALUE
+
+		ELSE
+
+			inst_value = or_read_inst_com_port_result (inst_box.value, 
+						g_uom, user_override_lod)
+
+		ENDIF
+     
+
+            IF ( inst_value=ERROR) OR ( inst_value=EMPTY) THEN
+ 
+                status="No instrument value"
+ 
+            ELSE
+ 
+                inst_value = STRIP(NUMBER_TO_TEXT (inst_value, "9999.99999"))
+ 
+            ENDIF
+ 
+		IF (inst_value=ERROR) OR (inst_value=EMPTY) THEN
+
+			{ Blank out any previous reads }
+			status = store_in_buffer ("", "",FALSE)
+
+		ELSE
+
+	            status = store_in_buffer (inst_value, inst_box.value,
+								user_override_lod)
+
+		ENDIF
+
+		IF (status = EMPTY) THEN
+		
+			val_box . text = inst_value
+			val_box . value = val_box . text
+
+		ELSE
+
+			flashmessage ("Error inputting instrument read!":
+						ASCII(13):ASCII(10):status, TRUE)
+
+		ENDIF
+
+	ELSE
+
+		flashmessage ("Select instrument first!", TRUE)
+
+	ENDIF
+
+	val_box . repaste ()
+
+	{ Close screen, the data is saved by now }
+	EXIT
+
+ENDROUTINE
+
+
+{*******************************************************************************}
+
+ROUTINE store_in_buffer_from_dotnet (VALUE required_uom)
+
+	DECLARE dt, line,  delim, status
+
+	status = EMPTY
+	delim = "?"
+
+	SET DATE FORMAT "YZMZDZH24MI"
+	dt = STRIP(NOW)
+	RESTORE DATE FORMAT 
+
+	line = required_uom:delim:dt 
+
+	add_and_set_global ("ORBIS_BAL","DTOV_1",line)
+	
+
+	RETURN (status)
+
+ENDROUTINE
+
+
+ROUTINE store_in_buffer (VALUE val, VALUE inst, VALUE belowLod)
+
+	DECLARE dt, line, status, delim, belowLodTxt
+
+	status = EMPTY
+	delim = "?"
+
+	belowLodTxt="F"
+	IF(belowLod) THEN
+
+		belowLodTxt="T"
+	ENDIF
+
+	SET DATE FORMAT "YZMZDZH24MI"
+	dt = STRIP(NOW)
+	RESTORE DATE FORMAT 
+
+	line = STRIP(inst):delim:dt:delim:STRIP(val):delim:belowLodTxt
+
+	add_and_set_global ("ORBIS_BAL","VTOD_1",line)
+
+	RETURN (status)
+
+ENDROUTINE
+
+
+ROUTINE add_and_set_global ( VALUE cluster,
+                             VALUE global_name,
+                             VALUE global_value  )
+
+{
+* Sets a user global (adds if necessary)
+*******************************************************************************}
+
+
+    IF NOT user_cluster_exists ( cluster ) THEN
+        add_global_cluster ( cluster )
+    ENDIF
+
+    IF user_global_exists ( cluster, global_name ) THEN
+
+        assign_user_global ( cluster, global_name, global_value )
+
+    ELSE
+
+        add_user_global ( cluster, global_name )
+        assign_user_global ( cluster, global_name, global_value )
+
+    ENDIF
+
+    RETURN ( TRUE )
+
+ENDROUTINE

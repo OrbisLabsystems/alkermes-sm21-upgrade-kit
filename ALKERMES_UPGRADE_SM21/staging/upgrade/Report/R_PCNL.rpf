@@ -1,0 +1,931 @@
+{******************************************************************************
+*
+* Module Name          : 
+*
+* Purpose              : 
+*
+* Portability          : Not Checked
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By                 Description
+* -------   -----------  ----------         ---------------------------------------
+* 1.0       04-Apr-2007  Vincent Molloy     Release Version 
+* 1.1       10-Apr-2007                     Handle Imprint printers
+* 1.2       20-Oct-2008                     Allow print if sample prompt
+* 1.3       14-Feb-2018  Evelyn O'Sullivan  Update sample label printed field
+* 1.4       31-Jul-2018  Liam Dawson        Add Create print event
+*                                           Reorder actions in ROUTINE sample_label
+*                                           Add set_label_printer code to the poly_print_label routine
+*                                           Remove set_label_printer code from the infomaker_report routine
+*                                           Use PACKED_DECIMAL function
+*                                           Added DEBUG_TIME
+*******************************************************************************}
+
+SET PRINTERCODES TRUE
+SET NOTPROTECTED
+
+JOIN STANDARD_LIBRARY std_utils
+JOIN STANDARD_LIBRARY std_database       {1.3}
+JOIN STANDARD_LIBRARY std_array_select   {1.3}
+
+JOIN LIBRARY $lib_utils
+JOIN LIBRARY $prompt_imprint
+JOIN LIBRARY lib_print_event    {1.4}
+
+ENABLE WINDOWS
+SET FORMAT "9999999999"
+SET COMPILE_OPTION DECLARE
+
+{*******************************************************************************}
+
+CONSTANT DEBUG_TIME = FALSE
+
+{*******************************************************************************}
+
+
+{ Notes on paramaters passed in.
+  =============================
+Check to see if any parameters have been passed to the routine.
+
+Parameter 1 - Sample id, either numeric or text.
+
+
+If there is one parameter the assumption made is that the reports output is to be directed to
+the default label printer.
+
+No parameters and the destination box is called.
+}
+
+DECLARE passed_wks_name, wks_name, printer_id
+passed_wks_name = "" 
+wks_name = ""
+printer_id = ""
+
+SET NAME "DEFER/"   { 1.1 }
+IF GLOBAL ("PARAM_ACTIVE") THEN
+
+        PROMPT FOR passed_wks_name
+        wks_name = passed_wks_name
+
+ENDIF
+
+IF GLOBAL ("PARAM_ACTIVE") THEN
+
+        PROMPT FOR printer_id
+
+ENDIF
+
+
+{ 1.1 }
+printer_id = STRIP(printer_id)
+
+IF printer_id = " " THEN
+    printer_id = GLOBAL ( "LABEL_ID" ) 
+ENDIF
+
+
+{ If the printer is blank then after all that stuff, just prompt for it }
+
+sample_label ( passed_wks_name, wks_name, printer_id )
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE sample_label                                                        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{                                                                              }
+{  27-Mar-1996  CNM             Analyse the sample name given.  If none        }
+{                               provided then prompt the user . If it could    }
+{                               not be found tell the user and teminate,       }
+{                               otherwise print the label as requested         }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  passed_wks_name        VALUE                Sample id (could be numeric     }
+{                                              or text) passed in              }
+{  wks_name               VALUE                Sample id_numeric               }
+{  printer_id             VALUE                Identity of printer to print the}
+{                                              label(s) to                     }
+{==============================================================================}
+
+ROUTINE sample_label ( VALUE passed_wks_name,
+		       VALUE wks_name,
+		       VALUE printer_id )
+
+{==============================================================================}
+
+    DECLARE form, continue, event_ok, msg
+
+    msg = ""
+    continue = TRUE
+
+    {1 - Prompt for sample if required ----------------------------------------}
+
+    initialise_screen ( form, wks_name, printer_id )
+
+    IF ( wks_name = " " ) THEN
+
+        continue = get_sample_id ( wks_name, form )
+
+        passed_wks_name = wks_name
+
+    ELSEIF (wks_name = EMPTY) THEN
+
+        flash_message ( GET_USER_MESSAGE ( "SAMPLABEL_DISPLAY_1" ,1 ) :
+                        STRIP ( passed_wks_name ) :
+                        GET_USER_MESSAGE ( "SAMPLABEL_DISPLAY_2" ,1 ),
+                        TRUE )
+
+        continue = FALSE
+
+    ENDIF
+
+    form . end_prompt ()
+
+    {2 - Create Print Event ---------------------------------------------------}
+
+    IF ( continue ) THEN
+
+        IF DEBUG_TIME THEN
+            msg  = msg : STRING(NOW) : ASCII(9) : "Start: create print event" : ASCII(10)
+        ENDIF
+
+        event_ok = create_print_event ( "SAMPLE", wks_name, "R_PCNL" )                      {1.4}
+
+        IF ( event_ok <> EMPTY ) THEN
+
+            flash_message( event_ok, true)
+
+            continue = FALSE
+
+        ENDIF
+
+        IF DEBUG_TIME THEN
+            msg  = msg : STRING(NOW) : ASCII(9) : "End: create print event" : ASCII(10)
+        ENDIF
+
+    ENDIF
+
+    {3 - Print Labels ---------------------------------------------------------}
+
+    IF ( continue ) THEN
+
+        poly_print_label ( passed_wks_name, wks_name, printer_id, msg )
+
+    ENDIF
+
+    IF DEBUG_TIME THEN
+        flash_message(msg,true)
+    ENDIF
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE initialise_screen  	                                               }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{                                                                              }
+{  27-Mar-1996  CNM             Routine to set up windows                      }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{  form                   REFERENCE            Form in which to prompt         }
+{  wks_name               VALUE                Sample id_numeric               }
+{  printer_id             VALUE                Identity of label printer       }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE initialise_screen (       form,
+                            VALUE wks_name,
+                            VALUE printer_id )
+
+	{ Routine to set up windows }
+
+	DECLARE id_prompt, prompt_col, prompt_1, prompt_2, prompt_3,
+            separator, prompt_len, form_height, mand_arr {1.3}
+
+	IF ( printer_id = "" ) THEN
+		form_height = 3
+	ELSE
+		form_height = 4
+	ENDIF
+
+	PROMPT OBJECT form
+		CLASS PROMPT_CLASS_FORM
+		WITH  ( column       = 21,
+                row          = 10,
+                height       = form_height,
+                width        = 40,
+                border       = TRUE,
+                proportional = TRUE,
+                help_context = "$SAMPLABEL_SCREEN",
+                button_style = FORM_BUTTON_NONE,
+                header 	     = GET_USER_MESSAGE ("SAMPLABEL_DISPLAY_3"
+							   ,1 ) )
+
+	prompt_1 = GET_USER_MESSAGE ( "SAMPLABEL_DISPLAY_4", 1 )
+	prompt_2 = GET_USER_MESSAGE ( "SAMPLABEL_DISPLAY_5", 1 )
+	prompt_3 = GET_USER_MESSAGE ( "SAMPLABEL_DISPLAY_6", 1 )
+
+	{ Get the max length of all the prompts }
+
+	prompt_len = find_max_number ( LENGTH ( prompt_1 ),
+                                   find_max_number( LENGTH ( prompt_2 ),
+                                   LENGTH ( prompt_3 ) ) )
+	separator = ""
+
+	{ Put colon separators on the character cell to make the prompts
+	  look nice. }
+
+	IF ( GLOBAL ( "TERMTYPE" ) <> "GUI" ) THEN
+		separator = " :"
+	ENDIF
+
+	prompt_1 = PAD ( prompt_1, " ", prompt_len ) : separator
+	prompt_2 = PAD ( prompt_2, " ", prompt_len ) : separator
+	prompt_3 = PAD ( prompt_3, " ", prompt_len ) : separator
+
+	prompt_col = prompt_len + STRINGLENGTH ( separator ) + 1
+
+	form . add_display ( prompt_1,
+                         1, 1,
+                         PROMPT_RENDITION_RAISED + PROMPT_RENDITION_BOLD )
+
+	form . add_display ( prompt_2,
+                         1, 2,
+                         PROMPT_RENDITION_RAISED + PROMPT_RENDITION_BOLD )
+
+	prompt_col = prompt_col + 1
+
+	IF ( wks_name = " " ) THEN
+
+		{1.3}
+
+		ARRAY mand_arr ARRAYSIZE ( 0, 3 )
+
+		array_select_add ( mand_arr, ARRAY_SELECT_NE, "status", "I" )
+		array_select_add ( mand_arr, ARRAY_SELECT_AND, EMPTY, EMPTY )
+		array_select_add ( mand_arr, ARRAY_SELECT_NE, "status", "A" )
+
+		PROMPT OBJECT id_prompt
+			ON LINE 1 FROM prompt_col TO prompt_col + 30
+			BROWSE ON sample
+			WITH ( mandatory_array = mand_arr )
+
+		{/1.3}
+
+		form . add_prompt ( id_prompt )
+
+	ELSE
+		form . add_display ( PAD( wks_name, " ", 30 ),
+                             prompt_col, 1,
+                             PROMPT_RENDITION_LOWERED )
+	ENDIF
+
+	form . add_display ( PAD ( GLOBAL ( "CURRENT_LIBRARY" ), " ", 20 ),
+                         prompt_col, 2,
+                         PROMPT_RENDITION_LOWERED )
+
+	{ If a printer has been specified then display it on the form }
+
+	IF ( printer_id <> "" ) THEN
+
+		form . add_display ( PAD( printer_id, " ", 10 ),
+                             prompt_col, 3,
+                             PROMPT_RENDITION_LOWERED )
+
+		form . add_display ( prompt_3,
+                             1, 3,
+                             PROMPT_RENDITION_RAISED +
+                             PROMPT_RENDITION_BOLD )
+	ENDIF
+
+	form . start_prompt ()
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE get_sample_id                                                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{                                                                              }
+{  27-Mar-1996  CNM             Get the sample to print a label for            }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{  wks_name               REFERENCE            Sample id_numeric               }
+{  form                   REFERENCE            Form to prompt in               }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE get_sample_id ( wks_name, form )
+
+	{ Get the sample to print a label for }
+
+	REPEAT
+
+		form . wait_prompt ()
+
+		wks_name = form . prompt_objects [ 1 ] . value
+
+	UNTIL ( ( wks_name <> " " ) OR
+          ( form . get_lastkey () = "EXIT" ) )
+
+	RETURN ( form . get_lastkey () <> "EXIT" )
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE get_job_id                                                          }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{                                                                              }
+{  27-Mar-1996  CNM             Get the job_id for the current sample          }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{  wks_name               VALUE                Sample id_numeric               }
+{  job_id                 REFERENCE            Identifier of the job           }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE get_job_id ( VALUE wks_name,
+                           job_id )
+
+	{ Get the job_id for the current sample }
+
+	job_id = SELECT sample . job_name
+                   	WHERE id_numeric = wks_name
+
+	job_id = STRIP ( job_id )
+
+	RETURN ( job_id <> EMPTY )
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE poly_print_label                                                    }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{                                                                              }
+{  27-Mar-1996  CNM             Finds the number of labels to be printed for   }
+{                               each samp_type.  It then prints the label out  }
+{                               the required number of times.                  }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{  wks_name               VALUE                Sample id_numeric               }
+{  job_id                 VALUE                Identifier of a job             }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE poly_print_label ( VALUE passed_wks_name,
+		               VALUE wks_name,
+		               VALUE printer_id,
+                                 msg         )
+
+{==============================================================================}
+
+    DECLARE samp_type, label_report, no_labels
+    DECLARE win_printer_id, curr_printer, actual_printer_used, continue
+
+    continue = TRUE
+
+    samp_type = SELECT sample . sample_type 
+                WHERE  id_numeric = wks_name 
+
+    IF ( samp_type = EMPTY ) OR ( samp_type = "" ) THEN
+       flash_message ( "This Sample has no Sample Type Value, - Exiting..."
+                       , TRUE ) 
+       EXIT
+    ENDIF
+
+    { ================================= }
+    { Set Printer                       }
+    { ================================= }
+  
+    actual_printer_used = ""
+
+    IF DEBUG_TIME THEN
+        msg  = msg : STRING(NOW) : ASCII(9) : "Start: get printer details" : ASCII(10)
+    ENDIF
+
+    win_printer_id = get_win_printer_details (printer_id)
+
+    IF DEBUG_TIME THEN
+        msg  = msg : STRING(NOW) : ASCII(9) : "End: get printer details" : ASCII(10)
+    ENDIF
+
+    IF (win_printer_id <> "") THEN
+        curr_printer = set_label_printer (win_printer_id, FALSE, actual_printer_used, msg)
+    ENDIF
+
+    IF (actual_printer_used = "") THEN
+
+        continue = confirm_with_text ("Printer ":STRIP(printer_id):" not found, do you want to print to the default printer ?")
+
+    ENDIF
+
+    IF continue THEN
+
+
+        IF DEBUG_TIME THEN
+            msg  = msg : STRING(NOW) : ASCII(9) : "Start: print labels" : ASCII(10)
+        ENDIF
+
+        { ================================= }
+        { Label Report 1                    }
+        { ================================= }
+
+        label_report    = SELECT sample_type_labels . report_1  
+                          WHERE  samp_type = samp_type 
+        no_labels       = SELECT sample_type_labels . no_labels_1 
+    
+        IF STRIP ( label_report ) = ""  THEN label_report = EMPTY ENDIF
+
+        IF (STRIP (label_report) <> "") THEN
+
+            infomaker_label (passed_wks_name, label_report, no_labels)  
+
+        ENDIF
+
+        { ================================= }
+        { Label Report 2                    }
+        { ================================= }
+
+        label_report    = SELECT sample_type_labels . report_2  
+                          WHERE  samp_type = samp_type 
+        no_labels       = SELECT sample_type_labels . no_labels_2 
+
+
+        IF (STRIP (label_report) <> "") THEN
+
+            infomaker_label (passed_wks_name, label_report, no_labels)  
+
+        ENDIF
+ 
+        { ================================= }
+        { Label Report 3                    }
+        { ================================= }
+
+        label_report    = SELECT sample_type_labels . report_3  
+                          WHERE  samp_type = samp_type 
+        no_labels       = SELECT sample_type_labels . no_labels_3 
+
+
+        IF (STRIP (label_report) <> "") THEN
+
+            infomaker_label (passed_wks_name, label_report, no_labels)  
+
+        ENDIF
+
+        { ================================= }
+        { Label Report 4                    }
+        { ================================= }
+
+        label_report    = SELECT sample_type_labels . report_4  
+                          WHERE  samp_type = samp_type 
+        no_labels       = SELECT sample_type_labels . no_labels_4 
+
+
+        IF (STRIP (label_report) <> "") THEN
+
+            infomaker_label (passed_wks_name, label_report, no_labels)  
+
+        ENDIF
+
+        { ================================= }
+        { Label Report 5                    }
+        { ================================= }
+
+        label_report    = SELECT sample_type_labels . report_5  
+                          WHERE  samp_type = samp_type 
+        no_labels       = SELECT sample_type_labels . no_labels_5 
+
+
+        IF (STRIP (label_report) <> "") THEN
+
+            infomaker_label (passed_wks_name, label_report, no_labels)  
+
+        ENDIF
+
+        { ================================= }
+        { Label Report 6                    }
+        { ================================= }
+
+        label_report    = SELECT sample_type_labels . report_6  
+                         WHERE  samp_type = samp_type 
+        no_labels       = SELECT sample_type_labels . no_labels_6
+
+
+        IF (STRIP (label_report) <> "") THEN
+
+            infomaker_label (passed_wks_name, label_report, no_labels)  
+
+        ENDIF
+
+        IF DEBUG_TIME THEN
+            msg  = msg : STRING(NOW) : ASCII(9) : "End: print labels" : ASCII(10)
+        ENDIF
+
+       { ================================= }
+       { Set Printer Back                  }
+       { ================================= }
+
+        IF (win_printer_id <> "") AND ( actual_printer_used <> "") THEN
+
+            IF DEBUG_TIME THEN
+                msg  = msg : STRING(NOW) : ASCII(9) : "Start: reset default windows printer" : ASCII(10)
+            ENDIF
+
+            set_label_printer (curr_printer, TRUE, actual_printer_used, msg)
+
+            IF DEBUG_TIME THEN
+                msg  = msg : STRING(NOW) : ASCII(9) : "End: reset default windows printer" : ASCII(10)
+            ENDIF
+
+        ENDIF
+
+    ENDIF
+
+
+ENDROUTINE
+
+{==============================================================================}
+
+ROUTINE infomaker_label (VALUE sample_id, VALUE infomaker_link, VALUE no_copies)
+
+{==============================================================================}
+
+    DECLARE the_template, 
+            the_library, 
+            imprint_report, 
+            preview
+
+    the_template = SELECT infomaker_link . report WHERE identity = infomaker_link
+    the_library  = SELECT infomaker_link . library WHERE identity = infomaker_link
+    preview      = SELECT infomaker_link . preview WHERE identity = infomaker_link
+
+    the_template = STRIP (the_template)
+    the_library  = STRIP (the_library)
+
+    { Need sample_id as a packed decimal }
+    sample_id = STRIP (sample_id)
+    sample_id = PACKED_DECIMAL(sample_id)
+
+    define_imprint_class ( )
+
+    CREATE OBJECT IMPRINT, imprint_report
+
+    imprint_report . create_ole_object()    
+    imprint_report . reset_ole_object()
+
+    imprint_report . enable_mailto = FALSE
+    imprint_report . library       = get_imprint_dir ():"\":the_library
+    imprint_report . report        = the_template
+    imprint_report . copies        = NUMERIC(no_copies)
+
+    imprint_report . add_parameter ( sample_id ) 
+    imprint_report . preview  = preview
+
+    imprint_report . generate ( )    
+
+    imprint_report . ole_object = EMPTY
+
+ENDROUTINE {infomaker_label}
+
+{==============================================================================}
+
+ROUTINE get_win_printer_details (VALUE printer_id)
+
+{==============================================================================}
+
+    DECLARE win_printer
+
+    win_printer = SELECT printer . windows_name
+                     WHERE identity = STRIP(TOUPPER(printer_id))
+                       AND removeflag = FALSE
+
+
+    IF (win_printer = EMPTY) THEN
+        win_printer = ""
+    ELSE
+        win_printer = STRIP (win_printer)
+    ENDIF
+
+    RETURN (win_printer)
+
+ENDROUTINE   { get_win_printer_details }
+
+{==============================================================================}
+{ Gets imprint directory on server }
+
+ROUTINE get_imprint_dir 
+
+{==============================================================================}
+
+   { "smp$imprint:":xxx.yyy   didnt work }
+
+    DECLARE dir , delim, i
+    
+    delim = ";"
+    dir = LOGICAL("SMP$imprint")
+
+    i = INDEX (dir, delim)
+
+    IF (i>0) THEN
+
+        dir = SUBSTRING (dir, 1, i-STRINGLENGTH (delim))
+
+    ENDIF
+
+    dir = STRIP (dir)
+
+    RETURN (dir)
+
+ENDROUTINE    {  get_imprint_dir   }
+
+{==============================================================================}
+{ 1.1 }
+{ Sets default printer so that label can automatically print }
+{ Returns previous default printer                           }
+{ This uses client-side wscript activex                      }
+
+ROUTINE set_label_printer ( VALUE printer_to_use, 
+                            VALUE passing_full_name, 
+                                  actual_printer_used,
+                                  msg )
+
+{
+*    Prompts user for a printer and sets the choice as the default printer
+*    
+*******************************************************************************}
+
+    DECLARE  curr, array_all_printers, the_prn, i, cmp,cmp_printer_to_use ,
+            citrix_suffix
+
+    { Add prefix/suffix to make windows name }
+
+    actual_printer_used = ""
+
+    the_prn = printer_to_use
+
+    IF (passing_full_name) THEN
+
+    ELSE
+
+        { Get list of available printers, and see which match }
+
+        IF DEBUG_TIME THEN
+            msg  = msg : STRING(NOW) : ASCII(9) : "Start: enumerate windows printers" : ASCII(10)
+        ENDIF
+
+        CALL_ROUTINE "enumerate_printers"
+        IN LIBRARY  "print_functions"
+        RETURNING array_all_printers
+
+        IF DEBUG_TIME THEN
+            msg  = msg : STRING(NOW) : ASCII(9) : "End: enumerate windows printers" : ASCII(10)
+        ENDIF
+
+        cmp_printer_to_use = STRIP(TOUPPER(printer_to_use))
+        citrix_suffix = " on "
+        citrix_suffix = citrix_suffix  { remove compiler warning that its not read, when it is being read }
+        the_prn = ""
+        i = 0
+
+        IF DEBUG_TIME THEN
+            msg  = msg : STRING(NOW) : ASCII(9) : "Start: find label printer" : ASCII(10)
+        ENDIF
+
+        WHILE (i < SIZE_OF_ARRAY (array_all_printers)) AND (the_prn = "") DO
+
+            i = i + 1
+
+            cmp = STRIP (TOUPPER(array_all_printers [i,1]))
+
+            { Handle thick client or Citrix 
+              Citrix will add some additional characters
+              The first IF below if the thick client check
+              Dont use /client printers as citrix may see other users printers
+             }
+
+            IF (cmp = cmp_printer_to_use) THEN
+
+                the_prn = array_all_printers [i,1]
+
+            ELSEIF (INDEX (cmp, cmp_printer_to_use:citrix_suffix) >= 1) THEN
+
+                IF (STRINGLENGTH (cmp) > 8) THEN
+              
+                    IF (SUBSTRING (cmp,1,7) <> "CLIENT/") THEN
+
+                        the_prn = array_all_printers [i,1]
+
+                    ENDIF
+
+                ELSE
+
+                    the_prn = array_all_printers [i,1]
+
+                ENDIF
+
+            ENDIF
+
+        ENDWHILE
+
+        IF DEBUG_TIME THEN
+            msg  = msg : STRING(NOW) : ASCII(9) : "End: find label printer" : ASCII(10)
+        ENDIF
+
+        { If not found, message }
+        IF (the_prn = "") THEN
+
+            flashmessage ("There is no printer named ":printer_to_use, TRUE)
+
+        ENDIF
+
+    ENDIF
+
+    IF DEBUG_TIME THEN
+        msg  = msg : STRING(NOW) : ASCII(9) : "Start: get defualt windows printer" : ASCII(10)
+    ENDIF
+
+    CALL_ROUTINE "get_default_printer"
+    IN LIBRARY  "print_functions"
+    RETURNING curr
+
+    IF DEBUG_TIME THEN
+        msg  = msg : STRING(NOW) : ASCII(9) : "End: get default windows printer" : ASCII(10)
+    ENDIF
+
+    IF (the_prn <> EMPTY) AND (the_prn <> "") THEN
+
+        actual_printer_used = the_prn
+
+        IF DEBUG_TIME THEN
+            msg  = msg : STRING(NOW) : ASCII(9) : "Start: set default windows printer" : ASCII(10)
+        ENDIF
+
+        CALL_ROUTINE "set_default_printer"
+        IN LIBRARY  "print_functions"
+        USING the_prn
+
+        IF DEBUG_TIME THEN
+            msg  = msg : STRING(NOW) : ASCII(9) : "End: set default windows printer" : ASCII(10)
+        ENDIF
+
+    ENDIF
+
+    RETURN (curr)
+
+ENDROUTINE {  set_label_printer  }
+
+
+{==============================================================================}
+{ Workaround for issue where imprint tries         } 
+{ to email report the first time after log into SM }
+
+ROUTINE prevent_email (imprint_report)
+
+{==============================================================================}
+
+    DECLARE client_ole_object, ok
+
+    IF imprint_report . client_ole_object = EMPTY THEN
+
+        CREATE OBJECT "STD_OLE_AUTOMATION" , client_ole_object
+
+        ok = client_ole_object . create ( "LabSystems.Imprint" )
+
+        IF ok <> EMPTY THEN
+
+	    fatal_error ( "STD_OLE_AUTOMATION " : ok )
+
+        ENDIF
+
+
+       { It wont work without this line } 
+
+       user_global_write ( IMPRINT               ,
+	                    IMPRINT_CLIENT_OBJECT ,
+		             client_ole_object     )
+
+    ENDIF
+
+ENDROUTINE
+
+
+{1.3}
+
+{***************************************************************************}
+    
+    ROUTINE update_sample ( VALUE samp_id )
+
+{
+*   Update the label printed field on the sample
+*
+****************************************************************************}
+
+DECLARE samp_lock, upgraded, do_commit
+
+    IF ( NOT ( BLANK ( samp_id ) ) ) THEN
+    
+        samp_lock = lock_state ( "SAMPLE" )
+
+        IF ( samp_lock = "EMPTY" ) THEN
+
+            samp_id = SELECT sample . id_numeric
+                          FOR UPDATE
+                          WHERE id_numeric = samp_id
+
+        ELSEIF ( samp_lock = "SELECTED_READ" ) OR ( samp_lock = "SELECTED" ) THEN
+
+            lock_upgrade ( "SAMPLE", upgraded )
+
+        ENDIF
+
+        do_commit = FALSE
+
+        IF ( NOT ( transaction_is_write () ) ) THEN
+
+            START WRITE TRANSACTION "Update sample label date"
+
+            do_commit = TRUE
+
+        ENDIF
+
+        ASSIGN sample . labels_printed = NOW
+
+        UPDATE sample
+
+        IF ( do_commit ) THEN
+
+            COMMIT
+
+        ENDIF
+
+        IF ( upgraded ) THEN
+
+            lock_downgrade ( "SAMPLE" )
+
+        ENDIF
+
+    ENDIF
+    
+ENDROUTINE
+
+{/1.3}
+

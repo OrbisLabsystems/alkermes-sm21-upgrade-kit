@@ -1,0 +1,210 @@
+
+{******************************************************************************
+*
+* Module Name          : LABEL_LIB
+*
+* Purpose              : Generates a Variety of Label Formats (Infomaker Reports)
+*
+* Portability          : Not Checked
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By             Description
+* -------   -----------  ----------     ---------------------------------------
+* 1.0       				     Release Version 
+*
+*******************************************************************************}
+
+
+SET NOTPROTECTED
+SET NAME "DEFER/"
+SET COMPILEOPTION DECLARE
+SET FORMAT "9999999999"
+SET PRINTERCODES TRUE
+SET COMPILE_OPTION DECLARE
+
+ENABLE WINDOWS
+
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_CLIENT
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_DATABASE
+
+JOIN LIBRARY $lib_utils
+JOIN LIBRARY $prompt_imprint
+JOIN LIBRARY $bsmp_lib
+JOIN LIBRARY $lib_menu
+JOIN LIBRARY print_functions
+JOIN LIBRARY prompt_routines
+
+
+
+ROUTINE print_stock_labels (rmb, object, data)
+
+DECLARE the_record, 
+            no_records, 
+            stock_batch,
+            the_table,
+		pos_first,
+		pos_last,
+		pos2,
+		pos3,
+		desc,
+		desc1,
+		desc2,
+		desc3,
+		desc4,
+		len1,
+		desc_string,
+		last_pos
+
+    the_table = data . table
+
+    no_records = data . size()
+
+    data . set_first ()
+
+    WHILE ((data . current_position <= no_records) AND ( data . current_position > 0 )) DO
+
+        	the_record = data . get_by_number (data . current_position)
+
+      	stock_batch = SELECT 'the_table' . stock_batch_id IN OBJECT the_record
+
+		desc = SELECT stock_batch.description WHERE stock_batch_id = stock_batch
+
+		desc = STRIP(desc)
+		
+		desc1 = ""
+		desc2 = ""
+		desc3 = ""
+		desc4 = ""
+
+		len1 = LENGTH (desc)
+
+		pos_first = INDEX (desc, "(*")
+		
+		pos_last = INDEX (desc, "*)")
+
+
+
+
+		IF (pos_first <> 0 )THEN
+
+			desc1 = LEFTSTRING (desc, pos_first-1)
+
+			pos2 = INDEX (desc, ";")
+
+			IF (pos2 <> 0 ) THEN
+
+				desc2 = SUBSTRING (desc, pos_first+2,pos2-(pos_first+2) )
+
+				desc_string = RIGHTSTRING (desc, len1 - pos2)
+				desc_string = STRIP(desc_string)
+
+
+				pos3 = INDEX (desc_string, ";")
+
+				IF (pos3 <> 0) THEN
+
+
+					
+					last_pos = INDEX (desc_string, "*)")
+
+					desc3 = SUBSTRING (desc_string, 1,(pos3-1) )
+				
+					desc4 = SUBSTRING (desc_string, pos3+1,(last_pos-pos3-1) )
+
+							        	
+					imprint_print (stock_batch, "stock_label_comp_4", desc1, desc2, desc3, desc4)
+
+				ELSE
+
+				desc3 = SUBSTRING (desc, pos2+1,pos_last-(pos2+1) )
+
+
+
+		        	imprint_print (stock_batch, "stock_label_comp_3", desc1, desc2, desc3, desc4)
+
+				ENDIF
+				
+			ELSE
+
+			desc2 = SUBSTRING (desc,pos_first+2,pos_last-(pos_first+2))  
+			
+			imprint_print (stock_batch, "stock_label_comp_2", desc1, desc2, desc3, desc4)
+			
+			ENDIF
+
+		ELSE
+
+       		imprint_print (stock_batch, "stock_label_comp_1", desc, desc2, desc3, desc4)
+
+		ENDIF
+
+        	data . set_next()
+    
+    ENDWHILE
+
+
+
+ENDROUTINE {print_stock_labels}	
+
+ROUTINE imprint_print ( VALUE stock_batch, VALUE report, VALUE desc1, VALUE desc2, VALUE desc3, VALUE desc4 )
+
+DECLARE path, imprint_report
+
+stock_batch = STRIP (stock_batch)
+
+
+        path = LOGICAL ("smp$imprint")
+
+        IF ( INDEX (path , ";") > 0)  THEN
+
+            path = LEFTSTRING (path, INDEX(path, ";") - 1 )
+
+        ENDIF
+
+	{ Define the class, then create an instance }
+
+	define_imprint_class ( )
+
+	CREATE OBJECT IMPRINT, imprint_report
+
+
+
+	{ Generate a report }
+
+	imprint_report . create_ole_object( )
+
+	imprint_report . reset_ole_object( )
+ 
+	imprint_report . add_parameter ( stock_batch )
+
+	imprint_report . add_parameter ( desc1 )
+
+	imprint_report . add_parameter ( desc2 )
+
+	imprint_report . add_parameter ( desc3 )
+
+	imprint_report . add_parameter ( desc4)
+ 
+	imprint_report . library  = path : "\" : "smrpt.pbl"   
+
+	imprint_report . report  = report
+
+
+
+	imprint_report . generate ( )
+
+	imprint_report . ole_object = EMPTY 
+
+ENDROUTINE
+
+
+
+
+
+
+

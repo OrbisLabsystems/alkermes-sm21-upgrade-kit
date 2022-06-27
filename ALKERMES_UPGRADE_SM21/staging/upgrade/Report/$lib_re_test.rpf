@@ -1,0 +1,1687 @@
+﻿{******************************************************************************
+*
+* Module Name   : $LIB_RE_TEST
+*
+* Purpose       : Handling for the base test class for Result Entry code
+*
+* Document Ref. : SE/T/TVGL-WORK-RESENTO/1/5
+*
+* Specification :
+*
+* Portability   : Not Checked
+*
+* Re-entrant    : Yes
+*
+*******************************************************************************}
+
+{
+
+MODIFICATION HISTORY
+====================
+
+SM      Ref.    Change  Date        Name                Description
+------- ------- ------- ----------- ------------------- -------------------------------------------------------
+10.1    1       KJ1     14-AUG-2012 Ken Jacobs          Control analysis training checks with configuration
+10.1    2       1.1     06-OCT-2016 Felipe Piccirillo   Changes made to divert Authorization and Cancel action 
+                                                        to the auxiliary reports
+}
+
+{ ----------------------------------------------------------------------------------------------- }
+
+SET COMPILE_OPTION DECLARE
+
+SET NOTPROTECTED
+
+JOIN STANDARD_LIBRARY std_array
+JOIN STANDARD_LIBRARY std_array_select
+JOIN STANDARD_LIBRARY std_class
+JOIN STANDARD_LIBRARY std_database
+JOIN STANDARD_LIBRARY std_general
+JOIN STANDARD_LIBRARY std_message
+JOIN STANDARD_LIBRARY std_user_global
+
+JOIN LIBRARY $lib_re_globals
+JOIN LIBRARY $lib_oa
+JOIN LIBRARY $lib_instrument
+JOIN LIBRARY $lib_training_record
+JOIN LIBRARY $lib_test_validate
+JOIN LIBRARY $lib_samp_validate
+JOIN LIBRARY $role_lib
+JOIN LIBRARY $explorer_rmb
+JOIN LIBRARY $explorer_lib
+JOIN LIBRARY $lib_utils
+JOIN LIBRARY $lib_stock
+JOIN LIBRARY $incident_login
+
+{******************************************************************************}
+{ GLOBAL constants                                                             }
+{******************************************************************************}
+
+GLOBAL CONSTANT LIB_RE_TEST_SUCCESS   = 0
+GLOBAL CONSTANT LIB_RE_TEST_NOTESTS   = 1
+GLOBAL CONSTANT LIB_RE_TEST_STATUS    = 2
+GLOBAL CONSTANT LIB_RE_TEST_SECURITY  = 3
+GLOBAL CONSTANT LIB_RE_TEST_OA        = 4
+GLOBAL CONSTANT LIB_RE_TEST_TR_INST   = 5
+GLOBAL CONSTANT LIB_RE_TEST_TR_ANAL   = 6
+GLOBAL CONSTANT LIB_RE_TEST_NOSAMPLES = 7
+
+GLOBAL CONSTANT LIB_RE_TEST_NULL_TEST_NUMBER = "999999999"
+
+{******************************************************************************}
+{ LOCAL constants                                                              }
+{******************************************************************************}
+
+CONSTANT LIB_RE_TEST_CLASS = "LIB_RE_TEST_CLASS"
+CONSTANT AUTHORISE_TEST = 11018 {1.1}
+CONSTANT CANCEL_TEST    = 11019 {1.1}
+
+{******************************************************************************}
+
+GLOBAL
+
+ROUTINE lib_re_test_initialise
+
+{
+*
+*
+******************************************************************************}
+
+	IF NOT class_defined ( LIB_RE_TEST_CLASS ) THEN
+
+		DEFINE CLASS LIB_RE_TEST_CLASS
+
+			INHERIT "STD_COLLECTED"
+
+			PROPERTIES
+				"TEST_NUMBER"        ,
+				"SAMPLE_OBJECT"      ,
+				"ANALYSIS_OBJECT"    ,
+				"FIRST_RESULT"       ,
+				"NUMBER_OF_RESULTS"  ,
+				"SELECTED"           ,
+				"HAS_BEEN_RELEASED"  ,
+				"INCIDENT_ARRAY"     ,
+				"READ_INCIDENTS"     ,
+				"INCIDENT_COUNT"     ,
+				"TREE_POS"           ,
+				"INITIAL_STATUS"     ,
+				"NULL_TEST"          ,
+
+				"PENDING_INCIDENTS"  ,
+				"ANAL_TRAIN_REASON"  ,
+				"INST_TRAIN_REASON"  ,
+				"INST_STATUS_REASON" ,
+				"READ_ONLY"          ,
+				"READ_ONLY_MESSAGE"  ,
+				"ANAL_TRAIN_LOCK"    ,
+				"INST_TRAIN_LOCK"    ,
+				"INST_REQ_LOCK"      ,
+				"INST_STATUS_LOCK"   ,
+				"INST_CALIB_OK"      ,
+				"INST_SERV_OK"       ,
+				"INST_AVAIL_OK"      ,
+				"INST_PARTS_OK"      ,
+				"INST_MAINT_OK"      ,
+
+				"STOCK_GRID"         ,
+
+				"TABLE"              , { The Name of the Table         }
+				"FOLDER"             , { The Folder Number             }
+				"CABINET"            , { Cabinet Name                  }
+
+				"TARGET_STATUS"      ,
+				"STORE_PENDING"      ,
+
+				"COLUMN"             ,
+				"ROW"                ,
+				"GRID"               ,
+				"STATUS_PRE_STATUS_UPDATE" { Used for updating test status }
+
+			ACTIONS
+				"SET_STORE_PENDING"       ,
+				"STORE_STATUS"            ,
+				"FLUSH_TEST"              ,
+				"RESELECT"                ,
+				"RESET_TEST"              ,
+				"GET_TREE_POS"            ,
+				"SET_TREE_POS"            ,
+				"RELEASE_TEST"            ,
+				"IS_NULL_TEST"            ,
+
+				"SET_POSITION"            ,
+				"REDISPLAY"               ,
+				"UNDO_STATUS"             , { Used for undoing test status                }
+				"UPDATE"                  , { Used to update test object                  }
+				"CREATE_PENDING_INCIDENT" , { Add incidents to pending array              }
+				"CREATE_INCIDENTS"        , { Create pending incidents from pending array }
+				"UNLOCK_TEST"             , { Unlock a training locked test               }
+				"CAN_UNLOCK_TEST"         , { Can unlock a test                           }
+				"NEEDS_INSTRUMENT"        , { True if needs inst but everything else ok   }
+				"SET_INSTRUMENT"          , { Updates the test with provided instrument   }
+				"CHECK_TRAINING"          , { Check tests training reqs                   }
+				"COPY_STOCK_DEFAULT"      , { Copy default stock to new tests             }
+				"COPY_STOCK"              , { Copy stock to a new stock grid instance     }
+				"PROMPT_FOR_STOCKS"       , { Prompt for stock usage                      }
+				"CREATE_STOCKS"           ,  { Create stock in background                  }
+				"UPGRADE"
+
+			TABLES
+				test
+
+			INITIALISATION
+
+		END CLASS
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE security_allowed_analysis ( re_mode )
+
+{
+*
+*
+******************************************************************************}
+
+        DECLARE security_option, analysis_is_ok, analysis_group,
+	        group_list, entry_num, searching, found
+
+        IF re_mode = RE_DISPLAY THEN
+
+                security_option = GLOBAL ( "RES_GROUP_DISP" )
+
+        ELSE
+
+                security_option = GLOBAL ( "RES_GROUP_ENT" )
+
+        ENDIF
+
+	IF role_lib_has_privilege ( ROLE_LIB_PRIV_NO_GROUPS ) THEN
+
+                analysis_is_ok = TRUE
+
+        ELSEIF security_option = RE_TEST_OWN_GROUP THEN
+
+                analysis_group =
+                        SELECT versioned_analysis . group_id
+                        WHERE ( identity = ( SELECT test . analysis )) AND
+                              ( analysis_version =
+                                         ( SELECT test . analysis_version ))
+
+                analysis_is_ok = ( analysis_group = " " ) OR
+                                 ( analysis_group = GLOBAL ( "DEFAULT_GROUP" ))
+
+        ELSEIF security_option = RE_TEST_GROUP_LIST THEN
+
+                analysis_group =
+                        SELECT versioned_analysis . group_id
+                        WHERE ( identity = ( SELECT test . analysis )) AND
+                              ( analysis_version =
+                                         ( SELECT test . analysis_version ))
+
+		IF analysis_group = " " THEN
+
+			found = TRUE
+
+		ELSEIF role_lib_has_privilege ( ROLE_LIB_PRIV_NO_GROUPS ) THEN
+
+			found = TRUE
+
+		ELSE
+
+			get_group_list ( group_list )
+			entry_num = 1
+			searching = TRUE
+			found     = FALSE
+
+			WHILE searching DO
+
+				IF group_list [ entry_num ] = EMPTY THEN
+
+					searching = FALSE
+
+				ELSEIF group_list [ entry_num ] =
+				       analysis_group THEN
+
+					searching = FALSE
+					found     = TRUE
+
+				ELSE
+
+					entry_num = entry_num + 1
+
+				ENDIF
+
+			ENDWHILE
+
+		ENDIF
+
+                analysis_is_ok = found
+
+        ELSE
+
+                analysis_is_ok = TRUE
+
+        ENDIF
+
+        RETURN ( analysis_is_ok )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE test_status_is_valid ( VALUE allowed_test_status )
+
+{
+*
+*
+******************************************************************************}
+
+        RETURN ( index ( allowed_test_status,
+                         ( SELECT test . status )) > 0 )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE test_is_valid (       result_context_object ,
+                        VALUE allowed_test_status   ,
+                        VALUE re_mode               )
+
+{
+*
+*
+******************************************************************************}
+
+        DECLARE reason_code
+
+        IF NOT test_status_is_valid ( allowed_test_status ) THEN
+
+                reason_code = LIB_RE_TEST_STATUS
+
+        ELSEIF NOT security_allowed_analysis ( re_mode ) THEN
+
+                reason_code = LIB_RE_TEST_SECURITY
+
+	ELSEIF ( re_mode = RE_DISPLAY ) THEN
+
+                reason_code = LIB_RE_TEST_SUCCESS
+
+	ELSEIF NOT lib_oa_analysis_approved ( SELECT test . analysis ) THEN
+
+    		reason_code = LIB_RE_TEST_OA
+
+	ELSEIF NOT lib_oa_instrument_approved ( SELECT test . instrument ) THEN
+
+	        reason_code = LIB_RE_TEST_OA
+
+        ELSE
+
+                reason_code = LIB_RE_TEST_SUCCESS
+
+        ENDIF
+
+        RETURN ( reason_code )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+GLOBAL
+
+ROUTINE lib_re_test_create_test_object (       result_context_object ,
+                                         VALUE allowed_test_status   ,
+                                         VALUE re_mode               ,
+                                               sample_object         ,
+                                               test_object           )
+
+{
+*
+*
+******************************************************************************}
+
+        DECLARE valid_status, analysis, version
+
+        valid_status = test_is_valid ( result_context_object ,
+                                       allowed_test_status   ,
+                                       re_mode               )
+
+        IF valid_status = LIB_RE_TEST_SUCCESS THEN
+
+                analysis = SELECT versioned_analysis . identity
+
+                IF ( analysis = EMPTY ) THEN
+
+                        analysis = SELECT test . analysis
+                        version  = SELECT test . analysis_version
+
+                        analysis = SELECT versioned_analysis . identity
+                                   WHERE  identity         = analysis
+                                   AND    analysis_version = version
+
+                ENDIF
+
+                CREATE OBJECT LIB_RE_TEST_CLASS, test_object
+
+                ARRAY test_object . incident_array
+
+                object_copy_current_table ( test_object, "TEST" )
+
+                IF ( analysis <> EMPTY ) THEN
+
+                       CREATE OBJECT "STD_OBJECT_RECORD", test_object . analysis_object
+
+                       object_add_table ( test_object . analysis_object ,
+                                          "VERSIONED_ANALYSIS"          )
+
+                ENDIF
+
+                IF ( re_mode = RE_MODIFY ) THEN
+
+                        test_object . check_training ( result_context_object )
+
+                ENDIF
+
+                test_object . read_incidents = TRUE
+                test_object . incident_count = 0
+                test_object . selected       = FALSE
+
+                test_object . test_number    = SELECT test.test_number IN OBJECT test_object
+                test_object . initial_status = SELECT test.status IN OBJECT test_object
+                test_object . sample_object  = sample_object
+
+        ENDIF
+
+        RETURN ( valid_status )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+GLOBAL
+
+ROUTINE lib_re_test_create_test_null (       result_context_object ,
+                                       VALUE allowed_test_status   ,
+                                       VALUE re_mode               ,
+                                             sample_object         ,
+                                             test_object           )
+
+{
+*
+*
+******************************************************************************}
+
+	CREATE OBJECT LIB_RE_TEST_CLASS, test_object
+
+	ARRAY test_object . incident_array
+
+	RESERVE ENTRY test, LIB_RE_TEST_NULL_TEST_NUMBER
+
+	object_copy_current_table ( test_object, "TEST" )
+	lock_downgrade_object ( "TEST", test_object )
+
+	test_object . read_incidents = TRUE
+	test_object . incident_count = 0
+	test_object . selected       = FALSE
+	test_object . null_test      = TRUE
+	test_object . read_only      = TRUE
+
+	test_object . test_number    = LIB_RE_TEST_NULL_TEST_NUMBER
+	test_object . sample_object  = sample_object
+
+	RETURN ( EMPTY )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+GLOBAL
+
+ROUTINE lib_re_test_error_to_message ( VALUE main_reason )
+
+{
+*
+*
+******************************************************************************}
+
+	DECLARE return_message
+
+        IF main_reason = LIB_RE_TEST_NOTESTS THEN
+
+		return_message = "RESULT_ENTRY_NO_TESTS"
+
+        ELSEIF main_reason = LIB_RE_TEST_NOSAMPLES THEN
+
+		return_message = "RESULT_ENTRY_NO_SAMPLES"
+
+        ELSEIF main_reason = LIB_RE_TEST_STATUS THEN
+
+		return_message = "RESULT_ENTRY_INVALID_TEST_STATUS"
+
+        ELSEIF main_reason = LIB_RE_TEST_SECURITY THEN
+
+		return_message = "RESULT_ENTRY_CNF_SECURITY"
+
+        ELSEIF main_reason = LIB_RE_TEST_OA THEN
+
+		return_message = "RESULT_ENTRY_OA"
+
+        ELSEIF main_reason = LIB_RE_TEST_TR_INST THEN
+
+		return_message = "RESULT_ENTRY_TR_INST"
+
+        ELSEIF main_reason = LIB_RE_TEST_TR_ANAL THEN
+
+		return_message = "RESULT_ENTRY_TR_ANAL"
+
+	ELSE
+
+		return_message = EMPTY
+
+        ENDIF
+
+	RETURN ( return_message )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_re_test_class_class_initialisation ( test_object )
+
+{
+*
+*
+******************************************************************************}
+
+	test_object . table   = "TEST"
+	test_object . cabinet = EXPLORER_RMB_INTERNAL
+	test_object . folder  = FOLDER_TEST
+
+	test_object . sample_object     = EMPTY
+	test_object . analysis_object   = EMPTY
+	test_object . has_been_released = FALSE
+
+	test_object . target_status = " "
+	test_object . store_pending = FALSE
+	test_object . null_test     = FALSE
+
+	test_object . status_pre_status_update = " "
+
+	test_object . column = EMPTY
+	test_object . row    = EMPTY
+	test_object . grid   = EMPTY
+	
+	test_object . anal_train_reason  = ""
+	test_object . inst_train_reason  = ""
+
+	ARRAY test_object . pending_incidents ARRAYSIZE ( 0 )
+
+	IF ( role_lib_has_privilege ( ROLE_LIB_TRAINING_OVERRIDE ) ) THEN
+
+		IF ( user_global_exists ( LIMSML_CLUSTER , TRAINING_REASON_ANALYSIS ) ) THEN
+
+			test_object . anal_train_reason = read_user_global ( LIMSML_CLUSTER , TRAINING_REASON_ANALYSIS  )
+
+		ENDIF
+
+		IF ( user_global_exists ( LIMSML_CLUSTER , TRAINING_REASON_INSTRUMENT ) ) THEN
+
+			test_object . inst_train_reason = read_user_global ( LIMSML_CLUSTER , TRAINING_REASON_INSTRUMENT  )
+
+		ENDIF
+	
+	ENDIF
+	
+	test_object . inst_status_reason = ""
+	test_object . read_only          = FALSE
+	test_object . read_only_message  = ""
+	test_object . anal_train_lock    = FALSE
+	test_object . inst_train_lock    = FALSE
+	test_object . inst_req_lock      = FALSE
+	test_object . inst_status_lock   = FALSE
+	test_object . inst_calib_ok      = TRUE
+	test_object . inst_serv_ok       = TRUE
+	test_object . inst_avail_ok      = TRUE
+	test_object . inst_parts_ok      = TRUE
+	test_object . inst_maint_ok      = TRUE
+
+	test_object . stock_grid = EMPTY
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_re_test_class_action_flush_test ( test_object           ,
+                                              result_context_object )
+
+{
+*	Update test status
+*
+*******************************************************************************}
+
+    DECLARE check_ok
+
+	test_object . create_incidents ( )
+
+	IF test_object . store_pending THEN
+
+		{ Put the test back the way it was }
+
+		IF NOT BLANK ( test_object . target_status ) AND
+		   ( test_object . target_status <> test_object . initial_status ) THEN
+
+			ASSIGN test . status IN OBJECT test_object =
+			                             test_object . initial_status
+
+			CHANGE TEST STATUS TO test_object . target_status
+			       USING test   IN OBJECT test_object,
+			             sample IN OBJECT test_object . sample_object
+			       PROPAGATE, check_ok
+
+		ELSE
+			check_ok = EMPTY
+		ENDIF
+
+		IF check_ok = EMPTY THEN
+
+			IF ROW_HAS_UPDATES_OBJECT ( "TEST", test_object ) THEN
+				UPDATE test   IN OBJECT test_object
+			ENDIF
+
+			IF ROW_HAS_UPDATES_OBJECT ( "SAMPLE", test_object . sample_object ) THEN
+				UPDATE sample IN OBJECT test_object . sample_object
+			ENDIF
+
+			IF test_object . stock_grid <> EMPTY THEN
+				test_object . stock_grid . stock_screen_save ( )
+			ENDIF
+
+			IF ( "C" = ( SELECT test . status IN OBJECT test_object )        ) AND
+			   ( INDEX ( " VP", test_object . status_pre_status_update ) > 0 ) THEN
+
+				auto_validate_test ( test_object )
+
+			ELSEIF ( ( "A" = SELECT test . status IN OBJECT test_object )   OR
+			         ( "X" = SELECT test . status IN OBJECT test_object )   OR
+			         ( "R" = SELECT test . status IN OBJECT test_object ) ) AND
+			       ( ( test_object . status_pre_status_update = "C"     )   OR
+			         ( test_object . status_pre_status_update = "P"     )   OR
+			         ( test_object . status_pre_status_update = "V"     ) ) THEN
+
+				auto_validate_sample ( SELECT test . sample      IN OBJECT test_object ,
+				                       SELECT test . test_number IN OBJECT test_object )
+
+			ENDIF
+
+			test_object . store_pending  = FALSE
+
+			test_object . initial_status = SELECT test . status IN OBJECT test_object
+
+		ELSE
+
+			flash_message ( check_ok, TRUE )
+
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE lib_re_test_class_action_set_store_pending ( test_object           ,
+                                                     result_context_object )
+
+{
+*	Mark the test as needing store
+*
+*******************************************************************************}
+
+	result_context_object . add_to_test_cache (
+	                  SELECT test . test_number IN OBJECT test_object ,
+	                  test_object                                     )
+
+	IF NOT test_object . store_pending THEN
+
+		test_object . store_pending            = TRUE
+		result_context_object . tests_to_store =
+		         result_context_object . tests_to_store + 1
+
+	ENDIF
+
+ENDROUTINE
+
+
+{******************************************************************************}
+
+ROUTINE lib_re_test_class_action_upgrade (       test_object           ,
+                                                      result_context_object ,
+                                                VALUE test_status           )
+
+{
+*	Upgrade test
+*
+*******************************************************************************}
+
+	DECLARE test_upgrade     ,
+	        test_reselected  ,
+	        status
+
+		status = EMPTY
+
+		test_upgrade = result_context_object . lock_upgrade_object ( "TEST"          ,
+		                                                             test_object     ,
+		                                                             test_reselected )
+
+		IF NOT test_upgrade THEN
+
+			status = "RESULT_ENTRY_TESTLOCKED"
+
+		ELSE
+
+			test_upgrade = result_context_object . lock_upgrade_object ( "SAMPLE"                    ,
+			                                                             test_object . sample_object ,
+			                                                             test_reselected )
+
+			IF NOT test_upgrade THEN
+
+				status = "RESULT_ENTRY_SAMPLELOCKED"
+
+			ENDIF
+
+		ENDIF
+
+		RETURN ( status )
+
+ENDROUTINE
+{******************************************************************************}
+
+ROUTINE lib_re_test_class_action_store_status (       test_object           ,
+                                                      result_context_object ,
+                                                VALUE test_status           )
+
+{
+*	Update test status or mark test status as needing update
+*
+*******************************************************************************}
+
+	DECLARE test_upgrade     ,
+	        test_reselected  ,
+	        status
+
+	status = EMPTY
+
+	IF ( test_status = ( SELECT test . status IN OBJECT test_object )) THEN
+
+		test_upgrade = FALSE
+
+{1.1 - Don't lock the object in Authorisation or Cancellation}
+
+      ELSEIF (test_status = "X") OR (test_status = "A") THEN
+            test_upgrade = TRUE
+
+{/1.1}
+
+	ELSE
+
+		test_upgrade = result_context_object . lock_upgrade_object ( "TEST"          ,
+		                                                             test_object     ,
+		                                                             test_reselected )
+
+		IF NOT test_upgrade THEN
+
+			status = "RESULT_ENTRY_TESTLOCKED"
+
+		ELSE
+
+			test_upgrade = result_context_object . lock_upgrade_object ( "SAMPLE"                    ,
+			                                                             test_object . sample_object ,
+			                                                             test_reselected )
+
+			IF NOT test_upgrade THEN
+
+				status = "RESULT_ENTRY_SAMPLELOCKED"
+
+			ENDIF
+
+		ENDIF
+
+	ENDIF
+
+	IF test_upgrade THEN
+
+		IF result_context_object . single_result_commit THEN
+
+			result_context_object . start_write_transaction ( "test" )
+
+{1.1}
+                  IF (test_status = "X") THEN
+                     
+                     MENUPROC CANCEL_TEST USING test_object . test_number
+                     
+                  ELSEIF (test_status = "A") THEN
+
+                     MENUPROC AUTHORISE_TEST USING test_object . test_number
+                     
+                  ELSE
+{/1.1}
+			CHANGE TEST STATUS TO test_status
+			       USING test   IN OBJECT test_object,
+			             sample IN OBJECT test_object . sample_object
+			       PROPAGATE, status
+{1.1}
+                  ENDIF
+{/1.1}
+
+			IF status = EMPTY THEN
+
+				IF ROW_HAS_UPDATES_OBJECT ( "TEST", test_object ) THEN
+					UPDATE test   IN OBJECT test_object
+				ENDIF
+
+				IF ROW_HAS_UPDATES_OBJECT ( "SAMPLE", test_object . sample_object ) THEN
+					UPDATE sample IN OBJECT test_object . sample_object
+				ENDIF
+
+				IF ( "C" = ( SELECT test . status IN OBJECT test_object )        ) AND
+				   ( INDEX ( " VP", test_object . status_pre_status_update ) > 0 ) THEN
+
+					auto_validate_test ( test_object )
+
+				ELSEIF ( "A" = ( SELECT test . status IN OBJECT test_object ) ) AND
+				       ( test_object . status_pre_status_update = " "         ) THEN
+
+					auto_validate_sample (
+					               SELECT test . sample      IN OBJECT test_object ,
+					               SELECT test . test_number IN OBJECT test_object )
+
+				ENDIF
+
+				result_context_object . commit ( )
+
+			ELSE
+
+				result_context_object . rollback ( )
+
+			ENDIF
+
+			result_context_object . lock_downgrade_object ( "SAMPLE", test_object . sample_object )
+			result_context_object . lock_downgrade_object ( "TEST"  , test_object                 )
+
+		ELSE
+
+			test_object . status_pre_status_update =
+			SELECT test . status IN OBJECT test_object
+
+			ASSIGN test . status IN OBJECT test_object = test_status
+
+			test_object . target_status = test_status
+
+			test_object . set_store_pending ( result_context_object )
+
+			status = EMPTY
+
+		ENDIF
+
+	ENDIF
+
+	RETURN ( status )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_re_test_class_action_reselect ( test_object )
+
+{
+*
+*
+******************************************************************************}
+
+	DECLARE test_lock_state,
+	        testno
+
+	testno = SELECT test . test_number IN OBJECT test_object
+
+	test_lock_state = lock_state_object ( "TEST", test_object )
+
+	IF ( test_lock_state = "EMPTY" ) OR ( test_lock_state = "SELECTED" ) THEN
+
+		testno = SELECT test . test_number
+		         WHERE  test_number = testno
+
+	ELSE
+
+		testno = SELECT test . test_number FOR READ_LOCK
+		         WHERE  test_number = testno
+
+	ENDIF
+
+	object_copy_current_table ( test_object, "TEST" )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_re_test_class_action_reset_test ( test_object )
+
+{
+*
+*
+******************************************************************************}
+
+	test_object . reselect ( )
+
+	test_object . target_status = " "
+	test_object . store_pending = FALSE
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_re_test_class_action_get_tree_pos ( test_object )
+
+{
+*
+*
+******************************************************************************}
+
+	DECLARE ret_pos
+
+	IF variable_is_assigned ( test_object . tree_pos ) THEN
+		ret_pos = test_object . tree_pos
+	ELSE
+		ret_pos = EMPTY
+	ENDIF
+
+	RETURN ( ret_pos )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_re_test_class_action_set_tree_pos ( test_object, VALUE pos )
+
+{
+*
+*
+******************************************************************************}
+
+	test_object . tree_pos = pos
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_re_test_class_action_release_test ( test_object )
+
+{
+*	Release the test and higher objects
+*
+*******************************************************************************}
+
+	IF NOT test_object . has_been_released THEN
+
+		IF test_object . sample_object <> EMPTY THEN
+
+			test_object . sample_object . release_sample ( )
+
+			test_object . sample_object = EMPTY
+
+		ENDIF
+
+		lock_downgrade_object ( "TEST", test_object )
+		lock_unretain_object  ( "TEST", test_object )
+		unlock_object         ( "TEST", test_object )
+
+		test_object . has_been_released = TRUE
+
+	ENDIF
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE lib_re_test_class_action_set_position (       test_object ,
+                                            VALUE column        ,
+                                            VALUE row           ,
+                                                  grid          )
+
+{
+*	Store the position of the test on the RE screen
+*
+*******************************************************************************}
+
+	test_object . column = column
+	test_object . row    = row
+
+	object_assign_uncounted ( test_object . grid, grid )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE lib_re_test_class_action_redisplay ( test_object )
+
+{
+*	Using the stored coordinates redisplay the test data
+*
+*******************************************************************************}
+
+	DECLARE grid
+
+	grid = test_object . grid
+
+	IF grid = EMPTY THEN
+
+	ELSEIF test_object . column = EMPTY THEN
+
+		grid . redisplay_row ( test_object . row    )
+
+	ELSEIF test_object . row    = EMPTY THEN
+
+		grid . redisplay_column ( test_object . column )
+
+	ELSE
+
+		grid . redisplay_cell ( test_object . column ,
+		                        test_object . row    )
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_re_test_class_action_undo_status ( test_object           ,
+                                               result_context_object )
+
+{
+*
+*
+******************************************************************************}
+
+	IF ( test_object . status_pre_status_update <> " " ) AND
+	   ( test_object . status_pre_status_update <> test_object . initial_status ) THEN
+
+	   test_object . store_status( result_context_object                  ,
+	                               test_object . status_pre_status_update )
+
+	   test_object . status_pre_status_update = " "
+
+	ELSEIF( test_object . status_pre_status_update <> " " ) THEN
+
+	   test_object . store_status( result_context_object                  ,
+	                               test_object . status_pre_status_update )
+
+	   test_object . status_pre_status_update = " "
+
+	   result_context_object . remove_from_test_cache( SELECT test . test_number IN OBJECT test_object ,
+                                                           test_object                                     )
+	ELSE
+
+	   test_object . store_status( result_context_object        ,
+	                               test_object . initial_status )
+
+	   result_context_object . remove_from_test_cache( SELECT test . test_number IN OBJECT test_object ,
+	                                                   test_object                                     )
+
+	   test_object . status_pre_status_update = " "
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_re_test_class_action_update ( test_object )
+
+{
+*
+*
+******************************************************************************}
+
+	DECLARE current_lock_state,
+	        test_reselected,
+	        return_state
+
+	IF transaction_is_write() THEN
+
+		current_lock_state = lock_state_object( "TEST", test_object )
+
+		IF ( ( current_lock_state = "SELECTED_WRITE" )   OR
+		     ( current_lock_state = "RESERVED_WRITE" ) ) THEN
+
+			UPDATE test IN OBJECT test_object
+
+			return_state = TRUE
+
+		ELSE
+
+			IF( lock_upgrade_object( "TEST"          ,
+			                         test_object     ,
+			                         test_reselected ) ) THEN
+
+				UPDATE test IN OBJECT test_object
+
+				lock_downgrade_object( "TEST"      ,
+				                       test_object )
+
+				return_state = TRUE
+
+			ELSE
+
+				return_state = FALSE
+
+			ENDIF
+
+		ENDIF
+
+		test_object . initial_status = SELECT test . status IN OBJECT test_object
+
+	ELSE
+
+		flash_message( GET_USER_MESSAGE( "TEST_UPDATE_NO_WRITE", 1 ), TRUE )
+
+		return_state = FALSE
+
+	ENDIF
+
+	RETURN ( return_state )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE lib_re_test_class_action_create_incidents ( test_object )
+
+{
+*
+*
+******************************************************************************}
+
+	DECLARE incident_obj ,
+	        count        ,
+	        record_obj
+
+	test_object . create_pending_incident ( )
+
+	IF size_of_array ( test_object . pending_incidents ) > 0 THEN
+
+		count = 1
+
+		WHILE count <= size_of_array ( test_object . pending_incidents ) DO
+
+			incident_obj = test_object . pending_incidents [ count ]
+
+			UPDATE incidents IN OBJECT incident_obj
+
+			incident_obj . checklist_db . invoke_all ( "UPDATE" )
+
+			incident_obj . table_id = TOUPPER ( incident_obj . table_id )
+
+			IF ( STRIP ( incident_obj . table_id ) ) = "TEST" THEN
+
+				record_obj = test_object
+				record_obj . read_incidents = TRUE
+
+			ELSEIF ( STRIP ( incident_obj . table_id ) ) = "SAMPLE" THEN
+
+				record_obj = test_object . sample_object
+				record_obj . read_incidents = TRUE
+
+			ENDIF
+
+			object_set_current_table ( record_obj , incident_obj . table_id )
+
+			inc_login_set_has_incidents_flag ( incident_obj . table_id ,
+							   incident_obj . key0     )
+
+			count = count + 1
+
+		ENDWHILE
+
+		{ Reset for next transaction }
+
+		ARRAY test_object . pending_incidents ARRAYSIZE ( 0 )
+
+		test_object . anal_train_reason  = ""
+		test_object . inst_train_reason  = ""
+		test_object . inst_status_reason = ""
+
+		object_copy_current_table ( record_obj , incident_obj . table_id )
+
+	ENDIF
+
+ENDROUTINE    { lib_re_test_class_action_create_incidents }
+
+{******************************************************************************}
+
+ROUTINE lib_re_test_class_action_create_pending_incident ( test_object )
+
+{
+*
+*
+******************************************************************************}
+
+	DECLARE incident_template ,
+	        empty_var
+
+	empty_var = EMPTY
+
+	IF ( NOT BLANK ( test_object . anal_train_reason )) THEN
+
+		incident_template = GLOBAL ( "TRAINING_INCIDENT_ANALYSIS" )
+
+		IF ( NOT BLANK ( incident_template )) THEN
+
+			incidents_login_background ( incident_template               ,
+						     test_object . test_number       ,
+						     test_object . pending_incidents ,
+						     empty_var                       )
+
+			ASSIGN incidents . description
+			       IN OBJECT test_object . pending_incidents
+			                  [ size_of_array (test_object . pending_incidents)] = test_object . anal_train_reason
+
+		ENDIF
+
+	ENDIF
+
+	IF ( NOT BLANK ( test_object . inst_train_reason )) THEN
+
+		incident_template = GLOBAL ( "TRAINING_INCIDENT_INSTRUMENT" )
+
+		IF ( NOT BLANK ( incident_template )) THEN
+
+			incidents_login_background ( incident_template               ,
+						     test_object . test_number       ,
+						     test_object . pending_incidents ,
+						     empty_var                       )
+
+			ASSIGN incidents . description
+			       IN OBJECT test_object . pending_incidents
+			                  [ size_of_array (test_object . pending_incidents)] = test_object . inst_train_reason
+
+		ENDIF
+
+	ENDIF
+
+	IF ( NOT BLANK ( test_object . inst_status_reason )) THEN
+
+		incident_template = GLOBAL ( "INSTRUMENT_STATUS_INCIDENT" )
+
+		IF ( NOT BLANK ( incident_template )) THEN
+
+			incidents_login_background ( incident_template               ,
+						     test_object . test_number       ,
+						     test_object . pending_incidents ,
+						     empty_var                       )
+
+			ASSIGN incidents . description
+			       IN OBJECT test_object . pending_incidents
+			                  [ size_of_array (test_object . pending_incidents)] = test_object . inst_status_reason
+
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_re_test_class_action_check_training ( test_object           ,
+                                                  result_context_object )
+
+{
+*
+*
+******************************************************************************}
+
+	test_object . read_only         = FALSE
+	test_object . read_only_message = ""
+	test_object . anal_train_lock   = FALSE
+	test_object . inst_train_lock   = FALSE
+	test_object . inst_req_lock     = FALSE
+	test_object . inst_status_lock  = FALSE
+	test_object . inst_calib_ok     = TRUE
+	test_object . inst_serv_ok      = TRUE
+	test_object . inst_avail_ok     = TRUE
+	test_object . inst_parts_ok     = TRUE
+	test_object . inst_maint_ok     = TRUE
+
+	IF NOT BLANK ( test_object . anal_train_reason ) THEN
+
+		{ Already overriden }
+
+	ELSEIF (   GLOBAL( "RES_TRAINING_ANALYSIS_ENABLED" )                {KJ1}
+           AND ( NOT lib_tr_analysis_approved ( SELECT test . analysis IN OBJECT test_object,
+	                                            SELECT test . analysis_version IN OBJECT test_object ) 
+               )
+           )
+           
+		test_object . anal_train_lock   = TRUE
+		test_object . read_only         = TRUE
+
+		test_object . read_only_message = GET_USER_MESSAGE ( "RESULT_ENTRY_TR_ANAL", 1 )
+	ENDIF
+
+	IF NOT BLANK ( test_object . inst_train_reason ) THEN
+
+		{ Already overriden }
+
+	ELSEIF NOT lib_tr_instrument_approved ( SELECT test . instrument IN OBJECT test_object ) THEN
+
+		test_object . inst_train_lock   = TRUE
+		test_object . read_only         = TRUE
+
+		IF NOT BLANK ( test_object . read_only_message ) THEN
+			test_object . read_only_message = test_object . read_only_message : " / "
+		ENDIF
+
+		test_object . read_only_message = test_object . read_only_message :
+						  GET_USER_MESSAGE ( "RESULT_ENTRY_TR_INST", 1 )
+	ENDIF
+
+	IF BLANK ( SELECT test . instrument IN OBJECT test_object ) THEN
+
+		IF ( SELECT test . instrument_required IN OBJECT test_object ) THEN
+
+			test_object . inst_calib_ok = FALSE
+			test_object . inst_serv_ok  = FALSE
+			test_object . inst_avail_ok = FALSE
+			test_object . inst_parts_ok = FALSE
+			test_object . inst_maint_ok = FALSE
+
+			test_object . inst_req_lock = TRUE
+			test_object . read_only     = TRUE
+
+			IF NOT BLANK ( test_object . read_only_message ) THEN
+				test_object . read_only_message = test_object . read_only_message : " / "
+			ENDIF
+
+			test_object . read_only_message = test_object . read_only_message :
+							  GET_USER_MESSAGE ( "RESULT_ENTRY_INST_REQ", 1 )
+		ENDIF
+
+	ELSEIF NOT lib_instrument_status ( result_context_object . is_override_cache      ,
+	                                   SELECT test . instrument IN OBJECT test_object ,
+	                                   test_object . inst_calib_ok                    ,
+	                                   test_object . inst_serv_ok                     ,
+	                                   test_object . inst_avail_ok                    ,
+	                                   test_object . inst_parts_ok                    ,
+	                                   test_object . inst_maint_ok                    ) THEN
+
+		test_object . inst_status_lock = TRUE
+		test_object . read_only        = TRUE
+
+		IF NOT BLANK ( test_object . read_only_message ) THEN
+			test_object . read_only_message = test_object . read_only_message : " / "
+		ENDIF
+
+		test_object . read_only_message = test_object . read_only_message :
+		                                  GET_USER_MESSAGE ( "RESULT_ENTRY_INST_STATUS", 1 )
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_re_test_class_action_can_unlock_test ( test_object )
+
+{
+*
+*
+******************************************************************************}
+
+	RETURN (( test_object . anal_train_lock OR test_object . inst_train_lock ) AND
+	        test_object . read_only AND
+	        role_lib_has_privilege ( ROLE_LIB_TRAINING_OVERRIDE ))
+
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_re_test_class_action_needs_instrument ( test_object )
+
+{
+*
+*
+******************************************************************************}
+
+	RETURN ( NOT test_object . anal_train_lock AND
+	         NOT test_object . inst_train_lock AND
+	             test_object . inst_req_lock       )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_re_test_class_action_unlock_test ( test_object           ,
+                                               result_context_object ,
+                                               anal_unlock           ,
+                                               inst_unlock           )
+
+{
+*
+*
+******************************************************************************}
+
+	DECLARE unlocked          ,
+	        anal_id           ,
+	        anal_vers         ,
+	        inst_id           ,
+	        anal_train_reason ,
+	        inst_train_reason
+
+	unlocked = TRUE
+
+	anal_train_reason = ""
+	inst_train_reason = ""
+
+	anal_unlock = FALSE
+	inst_unlock = FALSE
+
+	IF test_object . read_only THEN
+
+		anal_id   = SELECT test . analysis IN OBJECT test_object
+		anal_vers = SELECT test . analysis_version IN OBJECT test_object
+
+        IF  ( GLOBAL( "RES_TRAINING_ANALYSIS_ENABLED" ) )               {KJ1}
+        AND ( NOT lib_tr_analysis_approved ( anal_id, anal_vers ) ) THEN
+
+			unlocked = FALSE
+
+			IF ( role_lib_has_privilege ( ROLE_LIB_TRAINING_OVERRIDE ) AND
+			     ( GLOBAL ( "TERMTYPE" ) = "GUI" ))                    THEN
+
+				IF lib_tr_override_anal ( result_context_object . tr_override_cache ,
+							  anal_id                                   ,
+							  anal_vers                                 ,
+							  anal_train_reason                         ) THEN
+
+					unlocked = TRUE
+					anal_unlock = TRUE
+
+				ENDIF
+
+			ENDIF
+
+		ENDIF
+
+		IF ( unlocked ) THEN
+
+			inst_id = SELECT test . instrument IN OBJECT test_object
+
+			IF NOT lib_tr_instrument_approved ( inst_id ) THEN
+
+				unlocked = FALSE
+
+				IF ( role_lib_has_privilege ( ROLE_LIB_TRAINING_OVERRIDE ) AND
+				     ( GLOBAL ( "TERMTYPE" ) = "GUI" ))                    THEN
+
+					IF lib_tr_override_inst ( result_context_object . tr_override_cache ,
+								  inst_id                                   ,
+								  inst_train_reason                         ) THEN
+
+						unlocked = TRUE
+						inst_unlock = TRUE
+
+					ENDIF
+
+				ENDIF
+
+			ENDIF
+
+		ENDIF
+
+		IF ( unlocked ) THEN
+			test_object . anal_train_reason = anal_train_reason
+			test_object . inst_train_reason = inst_train_reason
+
+			test_object . check_training ( result_context_object )
+			unlocked = NOT test_object . read_only
+		ENDIF
+
+	ENDIF
+
+	RETURN ( unlocked )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_re_test_class_action_set_instrument (       test_object           ,
+                                                        result_context_object ,
+                                                  VALUE instrument_id         )
+
+{
+*
+*
+******************************************************************************}
+
+	DECLARE ok            ,
+	        inst_calib_ok ,
+	        inst_serv_ok  ,
+	        inst_avail_ok ,
+	        inst_parts_ok ,
+	        inst_maint_ok
+
+	IF NOT BLANK ( instrument_id ) THEN
+
+		IF NOT lib_instrument_status ( result_context_object . is_override_cache  ,
+		                               instrument_id                              ,
+		                               inst_calib_ok                              ,
+		                               inst_serv_ok                               ,
+		                               inst_avail_ok                              ,
+		                               inst_parts_ok                              ,
+		                               inst_maint_ok                              ) THEN
+
+			ok = lib_instrument_override_status ( result_context_object . is_override_cache ,
+			                                      instrument_id                             ,
+			                                      test_object . inst_status_reason          )
+
+		ELSE
+			ok = TRUE
+		ENDIF
+
+		IF ok THEN
+			ASSIGN test . instrument IN OBJECT test_object = instrument_id
+			test_object . set_store_pending ( result_context_object )
+		ENDIF
+
+	ENDIF
+
+	OBJECT_SET_CURRENT_TABLE ( test_object, "TEST" )
+
+	test_object . check_training ( result_context_object )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_re_test_class_action_prompt_for_stocks (       test_object           ,
+                                                           result_context_object ,
+                                                     VALUE display_only          )
+
+{
+*
+*
+******************************************************************************}
+
+	DECLARE ok, default_stock, before_grid
+
+	default_stock = FALSE
+	lib_stock_test_use_initialise ( )
+
+	before_grid = test_object . stock_grid
+
+	test_object . copy_stock_default ( result_context_object )
+
+	IF test_object . stock_grid = EMPTY THEN
+		CREATE OBJECT LIB_STOCK_TEST_USE_SCREEN_CLASS, test_object . stock_grid
+	ELSE
+		test_object . stock_grid . display_only = display_only
+	ENDIF
+
+	OBJECT_SET_CURRENT_TABLE ( test_object, "TEST" )
+
+	ok = test_object . stock_grid . stock_screen_setup ( display_only )
+
+	IF ok THEN
+
+		ok = test_object . stock_grid . stock_screen_prompt ( )
+
+		IF ( ok ) THEN
+
+			IF GLOBAL ( "STOCK_BATCH_SELECT_COPY" ) THEN
+
+				default_stock = confirm_with_text (
+					GET_USER_MESSAGE( "LIB_RE_STOCK_DEFAULT", 1 ) )
+
+			ENDIF
+
+			IF ( default_stock )
+
+				result_context_object . default_stock_batch =
+					test_object . copy_stock ( test_object . stock_grid . collection )
+
+				result_context_object . set_test_stock_batches ( )
+
+			ELSE
+
+				result_context_object . default_stock_batch = EMPTY
+
+			ENDIF
+
+		ENDIF
+
+		IF ok THEN
+
+			test_object . set_store_pending ( result_context_object )
+
+		ENDIF
+
+	ENDIF
+
+	IF NOT ok THEN
+
+		test_object . stock_grid = before_grid
+
+	ENDIF
+
+ENDROUTINE
+
+
+{******************************************************************************}
+
+ROUTINE lib_re_test_class_action_copy_stock_default ( test_object           ,
+                                                      result_context_object )
+
+{
+*	If default stock has been stored in the result context copy the stock
+*	information to the empty test_object
+*
+******************************************************************************}
+
+
+	IF  ( result_context_object . default_stock_batch <> EMPTY ) AND
+	    ( test_object . stock_grid = EMPTY ) THEN
+
+		IF result_context_object . default_stock_batch . valid_test ( test_object ) THEN
+
+			OBJECT_SET_CURRENT_TABLE ( test_object, "TEST" )
+
+			test_object . stock_grid = test_object . copy_stock (
+				result_context_object . default_stock_batch . collection )
+
+			IF NOT ( test_object . store_pending ) THEN
+
+				test_object . set_store_pending ( result_context_object )
+
+			ENDIF
+
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE
+
+ROUTINE lib_re_test_class_action_copy_stock ( test_object            ,
+                                              stock_batch_collection )
+
+{
+*
+*	Create a new TEST_USE_SCREEN_CLASS and initialize it with a collection
+*
+******************************************************************************}
+
+	DECLARE stock_grid
+
+	CREATE OBJECT LIB_STOCK_TEST_USE_SCREEN_CLASS, stock_grid
+
+	stock_grid . initialize_data()
+	stock_grid . copy_data ( stock_batch_collection )
+
+	RETURN ( stock_grid )
+
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_re_test_class_action_create_stocks ( test_object           ,
+                                                 result_context_object )
+
+{
+*
+*
+******************************************************************************}
+
+	DECLARE data_found
+
+	test_object . copy_stock_default ( result_context_object )
+
+	IF ( test_object . stock_grid = EMPTY ) THEN
+
+		lib_stock_test_use_initialise ( )
+
+		OBJECT_SET_CURRENT_TABLE ( test_object, "TEST" )
+
+		CREATE OBJECT LIB_STOCK_TEST_USE_SCREEN_CLASS, test_object . stock_grid
+
+		test_object . stock_grid . initialize_data()
+
+		data_found = test_object . stock_grid . get_data()
+
+		IF ( data_found )  AND NOT ( test_object . store_pending ) THEN
+
+			test_object . set_store_pending ( result_context_object )
+
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_re_test_class_action_is_null_test ( test_object )
+
+{
+*
+*
+******************************************************************************}
+
+	RETURN ( test_object . null_test )
+
+ENDROUTINE
+
+{******************************************************************************}
+{******************************************************************************}
+{******************************************************************************}
+

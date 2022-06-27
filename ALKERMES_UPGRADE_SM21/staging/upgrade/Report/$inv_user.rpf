@@ -1,0 +1,34 @@
+{******************************************************************************
+*
+* Module Name   : INV_USER
+*
+* Purpose       : User routines for Inventory Management Module
+*
+* Document Ref. : 
+*
+* Specification :
+*
+* Portability   : Not Checked
+*
+* Re-entrant    :
+*
+*******************************************************************************}
+
+SET NOTPROTECTED
+ENABLE WINDOWS
+
+JOIN LIBRARY $LIB_UTILS
+
+
+{******************************************************************************}
+
+GLOBAL ROUTINE inv_user_get_more_supply ( VALUE inventory_id	,
+                                          VALUE re_order_amount	,
+                                          VALUE item_name		)
+{
+*   
+*
+*******************************************************************************}
+
+ENDROUTINE { inv_user_get_more_supply }
+

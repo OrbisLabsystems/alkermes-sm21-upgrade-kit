@@ -1,0 +1,219 @@
+
+
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN LIBRARY $SQCWIN_LIB
+JOIN LIBRARY $SQCWIN_CLASS
+JOIN LIBRARY $SQCWIN_DRAW
+JOIN LIBRARY $PROMPT_GRAPH
+JOIN LIBRARY $LIB_UTILS
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN STANDARD_LIBRARY STD_GENERAL
+JOIN STANDARD_LIBRARY STD_PROMPT
+ 
+
+GLOBAL ROUTINE run_sqc_calculations ( sqc_chart )
+
+    CALL_ROUTINE "run_sqc_calculations"
+      IN LIBRARY "$sqcwin_draw"
+       USING sqc_chart
+
+ENDROUTINE
+
+GLOBAL ROUTINE create_graph_object ( form )
+
+  CALL_ROUTINE "create_graph_object"
+      IN LIBRARY "$sqcwin_draw"
+       USING form
+
+ENDROUTINE
+
+GLOBAL ROUTINE create_graph_form ( sqc_chart, form )
+
+  CALL_ROUTINE "create_graph_form"
+      IN LIBRARY "$sqcwin_draw"
+       USING sqc_chart, form 
+
+ENDROUTINE
+
+ROUTINE select_sqc_data ( sqc_chart, chart_id ) 
+
+    DECLARE data_selection_type
+
+     CALL_ROUTINE "select_sqc_data"
+      IN LIBRARY "$sqcwin_lib"
+       USING sqc_chart, chart_id 
+        RETURNING data_selection_type
+
+    RETURN (data_selection_type)
+
+ENDROUTINE
+
+GLOBAL ROUTINE  ressqc_tsr_toolbox_graph_button ( self )
+{ 
+* Routine that launch the graph functions from the result entry screen
+*
+* Parameters: self (Button object)
+* Return Value: None
+*
+***************************************************************}
+
+        DECLARE grid , result_object , analysis , comp , tmp, samp
+        DECLARE mlp_id , test_number,samp_id 
+	DECLARE form, res_type,anal_version, res_sqc_chart_id
+	DECLARE log_date , sqc_chart , select_array, samp_test_result_data
+	DECLARE res_retrieve_int
+
+        res_sqc_chart_id = "RESULT"
+      
+	{ for efficiency, limit the amount of results returned by query, 
+          use date although its not ideal as not all tests have same frequency 
+        }
+        res_retrieve_int = INTERVAL ("365 00:00:00.0")
+
+	ARRAY select_array
+
+        grid = self . user_info
+
+        tmp           = self.user_info.tsr_form.prompt_objects[1]
+	result_object = tmp.result_array[tmp.current_row]
+
+	test_number	= result_object . test_number
+	samp_id		= SELECT test . sample
+			   WHERE test_number = test_number
+	log_date	= SELECT sample . login_date
+			   WHERE id_numeric = samp_id
+	
+			
+        analysis = result_object . analysis
+
+	anal_version = result_object . analysis_version
+
+	comp = result_object . name
+
+	res_type = SELECT versioned_component . result_type
+		    WHERE name = comp
+		      AND analysis = analysis
+		      AND analysis_version = anal_version
+
+	IF ( (res_type = "N") OR (res_type = "K") ) THEN
+
+                mlp_id = SELECT samp_test_view . product 
+                              WHERE test_number = result_object.test_number 
+
+		IF (mlp_id <> EMPTY) THEN
+
+			array_select_add (  select_array        ,
+					ARRAY_SELECT_EQ         ,
+					"PRODUCT"              ,
+					 mlp_id)
+
+			array_select_add (  select_array        ,
+					ARRAY_SELECT_AND        ,
+					EMPTY              ,
+					EMPTY			)
+
+			array_select_add (  select_array        ,
+					ARRAY_SELECT_EQ         ,
+					"ANALYSIS"              ,
+					analysis )
+
+			array_select_add (  select_array        ,
+					ARRAY_SELECT_AND        ,
+					EMPTY              ,
+					EMPTY			)
+
+			array_select_add (  select_array        ,
+					ARRAY_SELECT_EQ         ,
+					"COMPONENT_NAME"        ,
+					comp )
+
+			array_select_add (  select_array        ,
+					ARRAY_SELECT_AND        ,
+					EMPTY              	,
+					EMPTY			)
+
+			array_select_add (  select_array        ,
+					ARRAY_SELECT_LE         ,
+					"LOGIN_DATE"            ,
+					log_date 		)
+			
+			array_select_add (  select_array        ,
+					ARRAY_SELECT_AND        ,
+					EMPTY              	,
+					EMPTY			)
+
+
+			array_select_add (  select_array        ,
+					ARRAY_SELECT_GE         ,
+					"LOGIN_DATE"            ,
+					log_date - res_retrieve_int  )
+
+
+			define_sqc_chart()
+			CREATE OBJECT "SQC_CHART", sqc_chart
+			sqc_chart . edit_mode = "VIEW"
+			sqc_chart . chart_id = res_sqc_chart_id
+
+			IF ( sqc_chart . next_screen <> "EXIT" ) THEN
+
+				sqc_chart . selection_criteria = select_array
+
+				IF select_sqc_data ( sqc_chart, sqc_chart . chart_id ) THEN
+
+					samp_test_result_data = get_samp_test_result_data ( sqc_chart )
+					change_to_sqcpoint_table ( samp_test_result_data, sqc_chart )
+
+				ENDIF
+
+				IF sqc_chart . sqc_point . size () = 0 THEN
+
+					flash_message ( GET_USER_MESSAGE ( "VIEW_VALID_ERROR1", 1 ), TRUE )
+
+				ELSE
+
+					sqc_chart . next_screen = "DRAW"
+
+					sqc_chart . sqc_header . set_by_number (1)
+
+					create_graph_form( sqc_chart, form )
+
+					sqc_chart . active_array = get_active_array (sqc_chart)
+
+					IF ( sqc_chart . edit_mode = "VIEW" ) THEN
+
+					    run_sqc_calculations ( sqc_chart )
+
+					ENDIF
+
+					sqc_chart . selected_graph = sqc_chart . active_array [ 1, 1 ]
+					sqc_chart . selected_chart = sqc_chart . active_array [ 1, 2 ]
+					set_sqc_chart_index_value ( sqc_chart )
+
+					set_up_std_prompt_graph_class ()            
+
+					create_graph_object ( form )
+
+					form . start_prompt()
+
+					draw_graph (sqc_chart, sqc_chart . active_array[1,1], FALSE, form)
+
+					form.wait_prompt()
+
+					form.end_prompt()
+
+					sqc_chart . next_screen = "EXIT"
+
+				ENDIF
+
+			ENDIF
+
+		ELSE
+
+			flash_message ( GET_USER_MESSAGE ( "TREND_NO_PRODUCT" , 1 ), TRUE )
+
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE    {  ressqc_tsr_toolbox_graph_button   }
+

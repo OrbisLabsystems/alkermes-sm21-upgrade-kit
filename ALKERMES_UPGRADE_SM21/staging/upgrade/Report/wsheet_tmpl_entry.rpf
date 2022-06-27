@@ -1,0 +1,1623 @@
+{******************************************************************************
+*
+* Module Name          : WSHEET_TMPL_ENTRY
+*
+* Purpose              : List Editor for Worksheet Parameters.
+*
+* Portability          : Not Checked
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By             Description
+* -------   -----------  ----------     ---------------------------------------
+* 1.0       06-May-2005  Vincent Molloy Release Version 
+*
+* 1.2       07-JUL-2012  Ken Jacobs     Add toolbar button for criteria
+*           18-JUL02012  Ken Jacobs     Redeign way criteria saved
+*
+*******************************************************************************}
+
+
+JOIN STANDARD_LIBRARY STD_CLIENT
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_VGL
+JOIN STANDARD_LIBRARY STD_WINDOW
+
+JOIN LIBRARY $criteria_edit                                             {1.2}
+JOIN LIBRARY $criteria_saved                                            {1.2}
+JOIN LIBRARY $LABTABLIB
+JOIN LIBRARY $LIST_EDITOR
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $LIB_GRID
+JOIN LIBRARY $PROMPT_IMPRINT
+JOIN LIBRARY $LTE_INFOMAKER
+JOIN LIBRARY $LIB_TEXT
+JOIN LIBRARY $PROMPT_TOOLBAR
+
+JOIN LIBRARY wsheet_info                                                {1.2}
+
+SET NOTPROTECTED
+SET NAME "DEFER/"
+
+{**Local Constants ************************************************************} 
+
+CONSTANT ColumnCriteriaName  = 1                                        {1.2}
+CONSTANT ColumnTableName     = 2                                        {1.2}
+CONSTANT ColumnSelectArray   = 3                                        {1.2}
+
+{** Global Constants **********************************************************} 
+GLOBAL CONSTANT WSHEET_PARAMS_CLASS              = "WSHEET_PARAMS"
+
+GLOBAL CONSTANT WSHEET_PARAM_RADIO_BROWSE        = 1
+GLOBAL CONSTANT WSHEET_PARAM_PROMPT_TABLE        = 2
+GLOBAL CONSTANT WSHEET_PARAM_PROMPT_FIELD        = 3
+GLOBAL CONSTANT WSHEET_PARAM_RADIO_PHRASE        = 4
+GLOBAL CONSTANT WSHEET_PARAM_PROMPT_PHRASE       = 5
+GLOBAL CONSTANT WSHEET_PARAM_RADIO_FORMAT        = 6
+GLOBAL CONSTANT WSHEET_PARAM_PROMPT_TYPE         = 7
+GLOBAL CONSTANT WSHEET_PARAM_PROMPT_LENGTH       = 8
+GLOBAL CONSTANT WSHEET_PARAM_RADIO_CUSTOM        = 9
+GLOBAL CONSTANT WSHEET_PARAM_PROMPT_LIBRARY      = 10
+GLOBAL CONSTANT WSHEET_PARAM_PROMPT_ROUTINE      = 11
+GLOBAL CONSTANT WSHEET_PARAM_PROMPT_DEFAULT      = 12
+GLOBAL CONSTANT WSHEET_PARAM_BUTTON_OK           = 13
+
+{** Global Variables **********************************************************} 
+
+DECLARE criteriaCache   ARRAY criteriaCache                             {1.2}
+
+{** Main Code *****************************************************************} 
+
+{* Start Of Routines **********************************************************} 
+
+{******************************************************************************}
+
+
+{*******************************************************************************
+*                             M A I N   C O D E
+*******************************************************************************}
+
+
+{*******************************************************************************
+*                        G L O B A L   R O U T I N E S
+*******************************************************************************}
+
+GLOBAL ROUTINE lte_entry_point ( VALUE identity        , 
+                                 VALUE copied_identity ,
+                                 VALUE operation       )
+{ 
+* Summary    : The LTE Entry Point.
+*
+* Parameters   : Identity        - The Identity.
+*                Copied_Identity - The Copied Identity.
+*                Operation       - The Current LTE Operation Mode.
+* Return Value : N/a
+*
+*******************************************************************************}
+
+    DECLARE answer
+
+    IF operation = "PRINT" THEN
+
+        print_option ( identity )
+
+    ELSE
+
+        answer = other_option ( identity, copied_identity, operation )
+        RETURN ( answer )
+
+    ENDIF
+    
+    
+
+ENDROUTINE
+
+{*******************************************************************************
+*                                R O U T I N E S
+*******************************************************************************}
+
+ROUTINE print_option ( VALUE identity ) 
+
+{ 
+* Summary    : Routine to call when printing the LTE.
+*
+* Parameters   : Identity        - The Identity.
+*
+* Return Value : N/a
+*
+*******************************************************************************}
+
+    DECLARE field_details
+    ARRAY field_details ARRAY_SIZE ( 0 , 2 )
+
+    field_details [ 1 , 1 ] = "DESCRIPTION"
+    field_details [ 1 , 2 ] = "Description"
+
+    field_details [ 2 , 1 ] = "DEFAULT_VALUE"
+    field_details [ 2 , 2 ] = "Default Value"
+
+    field_details [ 3 , 1 ] = "TYPE"
+    field_details [ 3 , 2 ] = "Type"
+
+    field_details [ 4 , 1 ] = "PROMPT1"
+    field_details [ 4 , 2 ] = "Prompt 1"
+
+    field_details [ 5 , 1 ] = "PROMPT2"
+    field_details [ 5 , 2 ] = "Prompt 2"
+    
+    field_details [ 5 , 1 ] = "TYPE_ANALYST"
+    field_details [ 5 , 2 ] = "Type Analyst"
+    
+    field_details [ 6 , 1 ] = "TYPE_CHECKER"
+    field_details [ 6 , 2 ] = "Type Checker"
+
+    field_details [ 7 , 1 ] = "MANDATORY"
+    field_details [ 7 , 2 ] = "Mandatory"
+
+    field_details [ 10, 1 ] = "IDENTITY"
+    field_details [ 10, 2 ] = "Identity"
+
+    print_fields (  "WSHEET_TMPL_ENTRY"                ,
+                    PAD ( identity , " " , 10 )     ,
+                    ""                              ,
+                    ""                              ,
+                    2                               ,
+                    28                              ,
+                    field_details                   )
+
+ENDROUTINE { print_option }
+
+{******************************************************************************}
+
+ROUTINE other_option (  VALUE identity        , 
+                        VALUE copied_identity ,
+                        VALUE operation       )
+{
+* Summary      : Handle the Data.
+*
+* Parameters   : Identity        - The Identity.
+*                Copied_Identity - The Copied Identity.
+*                Operation       - The Current LTE Operation Mode.
+* Return Value : N/a
+*
+*******************************************************************************}
+
+    DECLARE prompt_details, answer, heading, library, report, arguments, 
+            prompt_array
+            
+    ARRAY prompt_array
+    
+    initialise ( prompt_details, heading )
+
+    list_editor_create_object ( the_list_editor )
+
+    the_list_editor . table         = "WSHEET_TMPL_ENTRY"
+    the_list_editor . header        = "Wsheet Parameters"
+    the_list_editor . footer        = ""
+    the_list_editor . pre_insert    = "PRE_INSERT_ROUTINE"
+    the_list_editor . post_insert   = EMPTY
+    the_list_editor . delete        = EMPTY
+    the_list_editor . library       = GLOBAL ( "CURRENT_LIBRARY" )
+    the_list_editor . compatability = PROMPT_DETAILS_310
+    the_list_editor . add_toolbutton_callback = "ADD_TOOLBUTTONS"
+
+    the_list_editor . setup_prompt_details ( prompt_details,
+                                             heading       )
+
+
+    the_list_editor . grid .user_info = prompt_array
+
+    {***********************************************************************
+    * When the secondary screen is called the grid is populated depending
+    * on the library and report.
+    ***********************************************************************}
+        
+    IF ( operation = "MODIFY" ) THEN
+
+            the_list_editor . set_table ()
+
+            the_list_editor . get_data ( TRUE )
+            the_list_editor . build_screens ()
+
+    ELSEIF ( operation = "ADD" )                                        {1.2}                       
+        OR ( operation = "READ_FOR_MODIFY" )
+        OR ( operation = "READ_FOR_DISPLAY" )
+
+        ARRAY criteriaCache                                             {1.2}
+
+    ELSEIF ( operation = "COPY" )                                       {1.2}
+    
+        ARRAY criteriaCache                                             {1.2}
+        copyCriteria( identity, copied_identity )                       {1.2}
+        
+    ELSEIF ( operation = "SAVE" )                                       {1.2}
+    
+        saveCriteriaCache()                                             {1.2}
+        
+    ENDIF
+       
+    answer = the_list_editor . operation ( identity       ,
+                                           copied_identity,
+                                           operation      )
+
+    
+    RETURN ( answer ) 
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE add_toolbuttons( self, toolbar )
+
+{ 
+* Summary    : Create toolbar on list editor.
+
+* Parameters   : Self - List Editor
+*                Toolbar - Main toolbar on list editor.
+* Return Value : N/a
+*
+*******************************************************************************}
+
+    DECLARE toolbutton
+    
+    CREATE OBJECT TOOLBAR_BUTTON_CLASS , toolbutton_sel
+    toolbutton_sel . tooltip = 
+        "Build"
+    toolbutton_sel . mouse_click_routine = "define_prompt"
+    toolbutton_sel . set_icon( "INT_BUILD" )
+    toolbutton_sel . display_only    = TRUE
+    toolbar . add_separator( )
+    
+    toolbar . add_item ( toolbutton_sel )
+    
+    {1.2/}
+    CREATE OBJECT TOOLBAR_BUTTON_CLASS, toolbutton
+    toolbutton.tooltip = "Criteria"
+    toolbutton.mouse_click_routine = "editCriteria"
+    IF ( operation = "MODIFY" )
+        toolbutton.set_icon( "INT_CRITERIA_EDIT" )
+    ELSE
+        toolbutton.set_icon( "INT_CRITERIA" )
+    ENDIF
+    toolbutton.display_only = TRUE
+    toolbar.add_item ( toolbutton )
+    {/1.2}
+    
+ENDROUTINE
+
+
+{******************************************************************************}
+
+ROUTINE pre_insert_routine ( self        ,
+                             grid        ,
+                             cell_column ,
+                             cell_row    ,
+                             window      ,
+                             column      ,
+                             row         ,
+                             cell_width  ,
+                             cell_height ,
+                             new_value   )
+
+{ 
+* Summary    : Routine to insert a row. 
+
+* Parameters   : Self        - List Editor Object
+*                Grid        - A Grid Object.
+*                Cell_Column - An Integer holding the Current Grid Column.
+*                Cell_Row    - An Integer holding the Current Grid Row.
+*                Window      - The Current Window
+*                Column      - An Integer holding the Window Column for Display
+*                Row         - An Integer holding the Window Row for Display.
+*                Cell_Width  - An Integer representing the cell width.
+*                Cell_Height - An Integer representing the cell height.
+*                New_Value   - The New Value.
+* Return Value : N/a
+*
+*******************************************************************************}
+
+    
+    PROMPT FOR new_value
+        ON LINE row
+        FROM column TO column + ( cell_width - 5 )
+        FORMAT identity
+        IN WINDOW window
+        WITH  ( vgl_library          = GLOBAL ( "CURRENT_LIBRARY" )  ,
+                lowered              = TRUE                          )
+
+
+
+
+ENDROUTINE { pre_insert }
+
+
+
+
+
+
+{*****************************************************************************}
+
+ROUTINE initialise ( prompt_details  ,
+                     heading         )
+
+{ 
+* Summary    : Initialise the Field List.
+
+* Parameters   : Prompt_Details - The Details Array
+*                Heading        - The Heading Line.
+* Return Value : N/a
+*
+*******************************************************************************}
+
+    DECLARE head_count, col_head, count
+    ARRAY prompt_details ARRAY_SIZE ( 0 , 6 )
+
+    {***********************************************************************
+    * Set up the list of fields to be processed.
+    ***********************************************************************}
+    
+    count = 1
+
+    prompt_details [ count , 1 ] = "Identity"
+    prompt_details [ count , 2 ] = "DISPLAY"
+    prompt_details [ count , 3 ] = "WSHEET_TMPL_ENTRY"
+    prompt_details [ count , 4 ] = "IDENTITY"
+    prompt_details [ count , 5 ] = 10 
+    prompt_details [ count , 6 ] = 10 
+
+    count = count + 1
+
+    prompt_details [ count , 1 ] = "Description"
+    prompt_details [ count , 2 ] = "FORMAT"
+    prompt_details [ count , 3 ] = "WSHEET_TMPL_ENTRY"
+    prompt_details [ count , 4 ] = "DESCRIPTION"
+    prompt_details [ count , 5 ] = 20 
+    prompt_details [ count , 6 ] = 25 
+
+    count = count + 1
+    
+    prompt_details [ count , 1 ] = "Section"
+    prompt_details [ count , 2 ] = "FORMAT"
+    prompt_details [ count , 3 ] = "WSHEET_TMPL_ENTRY"
+    prompt_details [ count , 4 ] = "SECTION"
+    prompt_details [ count , 5 ] = 25 
+    prompt_details [ count , 6 ] = 25 
+
+    count = count + 1
+
+    prompt_details [ count , 1 ] = "Description Prompt"
+    prompt_details [ count , 2 ] = "ROUTINE"
+    prompt_details [ count , 3 ] = GLOBAL ("CURRENT_LIBRARY")
+    prompt_details [ count , 4 ] = "DECRIPTION_PROMPT"
+    prompt_details [ count , 5 ] = 35
+    prompt_details [ count , 6 ] = 35
+
+    {JON 1.1}
+    count = count + 1
+    
+    prompt_details [ count , 1 ] = "Type 2"
+    prompt_details [ count , 2 ] = "FORMAT"
+    prompt_details [ count , 3 ] = "WSHEET_TMPL_ENTRY"
+    prompt_details [ count , 4 ] = "TYPE2"
+    prompt_details [ count , 5 ] = 0 
+    prompt_details [ count , 6 ] = 10
+    {/JON 1.1}
+    
+    count = count + 1
+
+    prompt_details [ count , 1 ] = "Mandatory"
+    prompt_details [ count , 2 ] = "ROUTINE"
+    prompt_details [ count , 3 ] = GLOBAL ("CURRENT_LIBRARY")
+    prompt_details [ count , 4 ] = "mandatory_prompt"
+    prompt_details [ count , 5 ] = 0 
+    prompt_details [ count , 6 ] = 10
+    
+    {JON 1.1}
+    count = count + 1
+            
+    prompt_details [ count , 1 ] = "Type Analyst"
+    prompt_details [ count , 2 ] = "FORMAT"
+    prompt_details [ count , 3 ] = "WSHEET_TMPL_ENTRY"
+    prompt_details [ count , 4 ] = "TYPE_ANALYST"
+    prompt_details [ count , 5 ] = 0 
+    prompt_details [ count , 6 ] = 10
+        
+    count = count + 1
+            
+    prompt_details [ count , 1 ] = "Type Checker"
+    prompt_details [ count , 2 ] = "FORMAT"
+    prompt_details [ count , 3 ] = "WSHEET_TMPL_ENTRY"
+    prompt_details [ count , 4 ] = "TYPE_CHECKER"
+    prompt_details [ count , 5 ] = 0 
+    prompt_details [ count , 6 ] = 10
+    {/JON 1.1}
+
+    {***********************************************************************
+    * Build up the Heading Line from the field list.  
+    ***********************************************************************}
+
+    head_count = 1
+    heading    = ""
+
+    WHILE head_count <= count DO
+
+        col_head = PAD ( prompt_details [ head_count, 1 ], " ",
+                         prompt_details [ head_count, 6 ]       )
+
+        heading    = heading : col_head : " "
+        head_count = head_count + 1 
+
+    ENDWHILE
+
+    
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE define_prompt ( self )
+{
+* Summary    : Call the build prompt form from any field, buy pressing the 
+*              toolbar
+*
+* Parameters : toolbar object
+*
+* Return     : None
+*
+*******************************************************************************}
+
+    DECLARE prompt1, prompt2, prompt_desc, form, selected_row
+    
+    selected_row = self . parent_prompt . grid . current_row
+    wsheet_params_class_define()
+        
+    CREATE OBJECT WSHEET_PARAMS_CLASS, form
+ 
+    IF self . parent_prompt . display_only THEN
+    	form . display_only = TRUE
+    ENDIF
+
+    form . load ()
+    form . create_build_form ()
+
+    prompt_desc = build_description ()
+
+    lib_grid_redisplay_row ( self . parent_prompt . grid, 
+    	     selected_row )
+
+ENDROUTINE 
+
+
+
+ROUTINE decription_prompt (      self        ,
+                  grid          ,
+              VALUE cell_column     ,
+              VALUE cell_row    ,
+              VALUE column        ,
+              VALUE row        ,
+              VALUE cell_width    ,
+                  window        ,
+              VALUE is_display     )
+
+{
+* Summary    : Prompt Description routine.
+*
+* Parameters : Standard prompt routine values.
+*
+* Return     : None
+*
+*******************************************************************************}
+
+    DECLARE val, description
+    
+    description = build_description ()
+    
+    IF description <> EMPTY THEN
+        val = description
+    ELSE
+        val = GET_USER_MESSAGE("WSHEET_PROMPT_TEXT", 1)
+    ENDIF
+    
+    the_type = SELECT wsheet_tmpl_entry.type2 IN OBJECT self        
+    
+    IF the_type = "CHECK" THEN
+        
+        val = ""               
+
+        ASSIGN wsheet_tmpl_entry.mandatory IN OBJECT self = FALSE
+            	                            	        
+    ENDIF
+    
+    val = PAD ( val, "", 60 )
+    
+    IF is_display THEN
+        
+        DISPLAY val AT 1 , 1 IN WINDOW window
+        
+    ELSE
+        
+        IF the_type = "CHECK" THEN
+                
+            display_only = TRUE            
+        
+            PROMPT FOR val AT 1 , 1 IN WINDOW window
+	      FORMAT text    
+	      WITH ( display_only = TRUE )	          
+            
+        ELSE        
+            
+            PROMPT FOR val AT 1 , 1 IN WINDOW window
+            FORMAT text    
+            WITH ( display_only = TRUE ,
+                vgl_library    = global ( "current_library" ) ,
+                browse_routine  = "description_prompt_browse" ) 
+        
+        ENDIF
+        
+    ENDIF
+    
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE mandatory_prompt (       self          ,
+                                  grid          ,
+                            VALUE cell_column   ,
+                            VALUE cell_row      ,
+                            VALUE column        ,
+                            VALUE row           ,
+                            VALUE cell_width    ,
+                                  window        ,
+                            VALUE is_display     )
+
+{
+* Summary    : Prompt Description routine.
+*
+* Parameters : Standard prompt routine values.
+*
+* Return     : None
+*
+*******************************************************************************}
+
+    DECLARE the_val, 
+            description,
+            the_type
+       
+    the_type = SELECT wsheet_tmpl_entry.type2 IN OBJECT self
+    the_val  = SELECT wsheet_tmpl_entry.mandatory IN OBJECT self
+    
+    IF the_val = TRUE THEN
+        the_val = "Yes"
+    ELSE
+        the_val = "No"
+    ENDIF
+    
+    old_val = the_val
+    
+    display_only = FALSE
+    
+    IF is_display THEN
+        
+        DISPLAY the_val AT 1 , 1 IN WINDOW window
+        
+    ELSE
+    
+        IF the_type = "CHECK" THEN
+        
+            display_only = TRUE            
+            
+        ENDIF
+        
+        PROMPT FOR the_val AT 1 , 1 IN WINDOW window            
+              BROWSE ON BOOLEAN
+              WITH ( display_only = display_only )            
+                
+        IF the_type = "CHECK" THEN                
+            
+            the_val = FALSE
+        
+        ENDIF
+        
+        IF the_val <> old_val THEN
+		
+	    ASSIGN wsheet_tmpl_entry.mandatory IN OBJECT self = the_val
+		
+	    grid . redisplay_row ( grid . current_row )
+		
+        ENDIF
+
+    ENDIF
+
+ENDROUTINE
+
+
+{******************************************************************************}
+
+ROUTINE description_prompt_browse ( self )
+
+{
+* Summary    : Once the browse has been selected, display the build prompt form.
+*
+* Parameters : self - description prompt object
+*
+* Return     : None
+*
+*******************************************************************************}
+
+    DECLARE prompt1, prompt2, prompt_desc, form
+    
+    wsheet_params_class_define()
+        
+    CREATE OBJECT WSHEET_PARAMS_CLASS, form
+    
+    form . load ()
+    form . create_build_form ()
+    
+    prompt_desc = build_description ()
+    
+    self . set_text (  prompt_desc )
+    self . repaste()
+
+
+ENDROUTINE
+
+{******************************************************************************}
+
+GLOBAL
+
+ROUTINE wsheet_params_class_define
+{
+* Summary    : Wsheet params class initialisation
+*
+* Parameters : self - WSHEET_PARAMS_CLASS
+*
+* Return     : None
+*
+*******************************************************************************}
+
+    DEFINE CLASS WSHEET_PARAMS_CLASS
+
+        INHERIT "STD_FORM"
+
+        INITIALISATION
+
+        PROPERTIES
+            "prompt_description"     { Desciption of the prompts 1 & 2 }
+            
+
+        ACTIONS
+            "create_build_form"      ,{ Returns current criteria name      }
+            "save"            ,
+            "load"            
+            
+    END CLASS
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE wsheet_params_class_initialisation( self )
+{
+* Summary    : WSHEET params class initialisation
+*
+* Parameters : WSHEET_PARAMS_CLASS
+*
+* Return     : None
+*
+*******************************************************************************}
+
+    DECLARE tables, count, field_names, routines, routine_array
+
+        self . header             = GET_USER_MESSAGE ("WSHEET_HEADER_BUILD_PROMPT",1)
+        self . row                = 5
+        self . column             = 5
+        self . height             = 17
+        self . width              = 36
+        self . vgl_library        = global ( "current_library" )
+        self . button_style       = FORM_BUTTON_OK_CANCEL
+        self . return_behaviour   = FORM_RETURN_STAY
+        self . prompt_id      = "$INFOMAKER_PARAMS_PROMPT"
+
+    PROMPT OBJECT self . prompt_objects [ WSHEET_PARAM_RADIO_BROWSE ]
+        BROWSE ON BOOLEAN
+        WITH (
+            caption = GET_USER_MESSAGE ("WSHEET_TYPE_BROWSE",1),
+        row         = 1 ,
+        column      = 4 ,
+        height      = 1 ,
+        width       = 1 ,
+        vgl_library = global ( "current_library" ) ,
+        is_radio    = TRUE , 
+        toggled_routine = "toggle_routine" ,
+        value = TRUE )
+
+        self . add_display ( GET_USER_MESSAGE ("WSHEET_PROMPT_TABLE",1)
+                    , 7 , 2, PROMPT_RENDITION_NORMAL ) 
+
+    GET_TABLE_NAMES ( tables )
+    count = 1
+    WHILE count <= SIZE_OF_ARRAY ( tables ) DO
+
+        tables [ count, 2 ] = tables [ count, 1 ]
+        count = count + 1
+
+    ENDWHILE
+
+
+    PROMPT OBJECT self . prompt_objects [ WSHEET_PARAM_PROMPT_TABLE ]
+    CHOOSE OUTOF tables
+        WITH (
+        value       = "SAMPLE" ,
+        row         = 2 ,
+        column      = 19 ,
+        height      = 1 ,
+        width       = 15 ,
+        length      = 30 ,
+        vgl_library = global ( "current_library" ) ,
+        leave_prompt_routine = "leave_prompt_routine" ,
+        is_spin     = FALSE )
+
+        self . add_display ( GET_USER_MESSAGE ("WSHEET_PROMPT_FIELD",1)
+                    , 7 , 3, PROMPT_RENDITION_NORMAL ) 
+
+    
+    fields_names = browse_array_table ( "SAMPLE" )
+    
+    PROMPT OBJECT self . prompt_objects [ WSHEET_PARAM_PROMPT_FIELD ]
+        CHOOSE OUTOF fields_names
+        WITH (
+        value       = "" ,
+        row         = 3 ,
+        column      = 19 ,
+        height      = 1 ,
+        width       = 15 ,
+        vgl_library = global ( "current_library" ) )
+
+    PROMPT OBJECT self . prompt_objects [ WSHEET_PARAM_RADIO_PHRASE ]
+        BROWSE ON BOOLEAN
+        WITH (
+            caption = GET_USER_MESSAGE ("WSHEET_TYPE_PHRASE",1),
+        row         = 5 ,
+        column      = 4 ,
+        height      = 1 ,
+        width       = 1 ,
+        vgl_library = global ( "current_library" ) ,
+        is_radio    = TRUE , 
+        toggled_routine = "toggle_routine" )
+
+        self . add_display ( GET_USER_MESSAGE ("WSHEET_PROMPT_PHRASE",1)
+                    , 7 , 6, PROMPT_RENDITION_NORMAL ) 
+
+    PROMPT OBJECT self . prompt_objects [ WSHEET_PARAM_PROMPT_PHRASE ]
+        BROWSE ON phrase_header.identity
+        WITH (
+        value       = "" ,
+        row         = 6 ,
+        column      = 19 ,
+        height      = 1 ,
+        width       = 15 ,
+        vgl_library = global ( "current_library" ) )
+
+        
+
+    PROMPT OBJECT self . prompt_objects [ WSHEET_PARAM_RADIO_FORMAT ]
+        BROWSE ON BOOLEAN
+        WITH (
+        caption = GET_USER_MESSAGE ("WSHEET_TYPE_FORMAT",1),
+        row         = 8 ,
+        column      = 4 ,
+        height      = 1 ,
+        width       = 1 ,
+        vgl_library = global ( "current_library" ),
+        is_radio    = TRUE , 
+        toggled_routine = "toggle_routine" )
+
+        self . add_display ( GET_USER_MESSAGE ("WSHEET_LTE_2_TYPE",1)
+                    , 7 , 9, PROMPT_RENDITION_NORMAL ) 
+
+    PROMPT OBJECT self . prompt_objects [WSHEET_PARAM_PROMPT_TYPE ]
+        BROWSE ON VALID_PHRASE_ID.FORMAT_TYP
+
+        WITH (
+        value       = "TEXT" ,
+        row         = 9 ,
+        column      = 19 ,
+        height      = 1 ,
+        width       = 15 ,
+        vgl_library = global ( "current_library" ) ,
+        leave_prompt_routine = "leave_prompt_routine" )
+
+        self . add_display ( GET_USER_MESSAGE ("WSHEET_PROMPT_LENGTH",1)
+                    , 7 , 10, PROMPT_RENDITION_NORMAL ) 
+
+    PROMPT OBJECT self . prompt_objects [ WSHEET_PARAM_PROMPT_LENGTH ]
+        FORMAT INTEGER
+        WITH (
+        value       = 10 ,
+        row         = 10 ,
+        column      = 19 ,
+        height      = 1 ,
+        width       = 15 ,
+        minimum     = 1,
+        lowered = TRUE,
+        vgl_library = global ( "current_library" ) )
+
+    PROMPT OBJECT self . prompt_objects [ WSHEET_PARAM_RADIO_CUSTOM ]
+        BROWSE ON BOOLEAN
+        WITH (
+            caption = GET_USER_MESSAGE ("WSHEET_TYPE_ROUTINE",1),
+        row         = 12 ,
+        column      = 4 ,
+        height      = 1 ,
+        width       = 1 ,
+        vgl_library = global ( "current_library" ) ,
+        is_radio    = TRUE , 
+        toggled_routine = "toggle_routine" )
+
+        self . add_display ( GET_USER_MESSAGE ("WSHEET_PROMPT_VGL",1)
+                    , 7 , 13, PROMPT_RENDITION_NORMAL ) 
+
+        PROMPT OBJECT self . prompt_objects [ WSHEET_PARAM_PROMPT_LIBRARY ]
+        BROWSE ON report . identity
+        WITH (
+        value       = global ( "current_library" ) ,
+        row         = 13 ,
+        column      = 19 ,
+        height      = 1 ,
+        width       = 15 ,
+        vgl_library = global ( "current_library" ) ,
+        leave_prompt_routine = "leave_prompt_routine" )
+
+        self . add_display ( GET_USER_MESSAGE ("WSHEET_PROMPT_ROUTINE",1)
+                    , 7 , 14, PROMPT_RENDITION_NORMAL ) 
+
+    routine_array = browse_array_library ( global ( "current_library" ) )
+    
+    PROMPT OBJECT self . prompt_objects [ WSHEET_PARAM_PROMPT_ROUTINE ]
+        CHOOSE OUTOF routine_array
+        WITH (
+        value       = "" ,
+        row         = 14 ,
+        column      = 19 ,
+        height      = 1 ,
+        width       = 15 ,
+        vgl_library = global ( "current_library" ) )
+            
+    self . add_display ( 
+        GET_USER_MESSAGE ("WSHEET_TYPE_DEFAULT",1), 
+        4 , 16, PROMPT_RENDITION_NORMAL ) 
+
+    PROMPT OBJECT self . prompt_objects [ WSHEET_PARAM_PROMPT_DEFAULT ]
+        CLASS "STD_PROMPT_TEXT"
+        WITH ( 
+        value       = "" ,
+        row         = 16 ,
+        column      = 19 ,
+        height      = 1  ,
+        width       = 15 )
+
+        self . add_display ( GET_USER_MESSAGE ("WSHEET_FOOTER_BUILD_PROMPT",1)
+                    , 2 , 17.5, PROMPT_RENDITION_NORMAL ) 
+
+    self . add_frame ( GET_USER_MESSAGE ("WSHEET_TYPE_DEFAULT",1), 2 , 16, 1 , 34  ) 
+    self . add_frame ( GET_USER_MESSAGE ("WSHEET_TYPE_ROUTINE",1), 2 , 12, 3 , 34  )
+    self . add_frame ( GET_USER_MESSAGE ("WSHEET_TYPE_FORMAT",1), 2 , 8, 3 , 34  )
+    self . add_frame ( GET_USER_MESSAGE ("WSHEET_TYPE_PHRASE",1), 2 , 5 , 2 , 34  )
+    self . add_frame ( GET_USER_MESSAGE ("WSHEET_TYPE_BROWSE",1), 2 , 1, 3 , 34  ) 
+
+ENDROUTINE
+
+{******************************************************************************}
+
+{******************************************************************************}
+
+ROUTINE wsheet_params_action_create_build_form ( self )
+{
+* Summary    : Create build prompt.
+*
+* Parameters : self - WSHEET_PARAMS_CLASS
+*
+* Return     : None
+*
+*******************************************************************************}
+
+   
+    self . start_prompt ()
+    
+    IF self . display_only THEN
+    
+        self . active_prompt = WSHEET_PARAM_BUTTON_OK
+
+    
+    ENDIF
+	
+    self . load ()
+
+    self . wait_prompt ()
+    self . end_prompt ()
+
+
+
+    IF ( self . get_lastkey ( ) <> "EXIT" )
+
+        self . save ()
+        
+    ENDIF    
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE  wsheet_params_action_save ( self )
+{
+* Summary    : Save prompt information to the db. Note save information depends
+*              on which radio button is set to true.
+*
+* Parameters : self - WSHEET_PARAMS_CLASS
+*
+* Return     : None
+*
+*******************************************************************************}
+
+    DECLARE argument, text_prompt
+
+    argument = SELECT wsheet_tmpl_entry . identity
+
+    IF self . prompt_objects [ WSHEET_PARAM_RADIO_BROWSE ] . value THEN
+
+        ASSIGN wsheet_tmpl_entry . type    = "BROWSE"
+        ASSIGN wsheet_tmpl_entry . prompt1 = self . prompt_objects [ WSHEET_PARAM_PROMPT_TABLE ] . value
+        ASSIGN wsheet_tmpl_entry . prompt2 = self . prompt_objects [ WSHEET_PARAM_PROMPT_FIELD ] . value
+
+    ELSEIF self . prompt_objects [ WSHEET_PARAM_RADIO_PHRASE ] . value THEN
+
+        ASSIGN wsheet_tmpl_entry . type    = "PHRASE"
+        ASSIGN wsheet_tmpl_entry. prompt1 = self . prompt_objects [ WSHEET_PARAM_PROMPT_PHRASE ] . value
+        ASSIGN wsheet_tmpl_entry . prompt2 = ""    
+
+    ELSEIF self . prompt_objects [ WSHEET_PARAM_RADIO_FORMAT ] . value THEN
+
+        ASSIGN wsheet_tmpl_entry . type = "FORMAT"
+
+        IF self . prompt_objects [ WSHEET_PARAM_PROMPT_TYPE ] . value = "TEXT" THEN
+        
+            text_prompt = STRIP ( self . prompt_objects [ WSHEET_PARAM_PROMPT_TYPE ] . value ) :
+                          STRIP ( STRING ( self . prompt_objects [ WSHEET_PARAM_PROMPT_LENGTH ] . value) )
+            
+            ASSIGN wsheet_tmpl_entry . prompt1 = text_prompt
+
+        ELSE
+        
+            ASSIGN wsheet_tmpl_entry . prompt1 = self . prompt_objects [ WSHEET_PARAM_PROMPT_TYPE ] . value
+
+        ENDIF
+        
+        ASSIGN wsheet_tmpl_entry . prompt2 = ""
+
+
+    ELSEIF self . prompt_objects [ WSHEET_PARAM_RADIO_CUSTOM ] . value THEN
+
+        ASSIGN wsheet_tmpl_entry . type = "ROUTINE"
+
+        ASSIGN wsheet_tmpl_entry . prompt1 = self . prompt_objects [ WSHEET_PARAM_PROMPT_LIBRARY ] . value
+        ASSIGN wsheet_tmpl_entry . prompt2 = self . prompt_objects [ WSHEET_PARAM_PROMPT_ROUTINE ] . value
+        
+    ENDIF
+
+    ASSIGN wsheet_tmpl_entry . default_value =  self . prompt_objects [ WSHEET_PARAM_PROMPT_DEFAULT ] . value
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE  wsheet_params_action_load ( self )
+{
+* Summary    : Load prompt information for the db into the prompts on the
+*              build prompt.
+*
+* Parameters : self - WSHEET_PARAMS_CLASS
+*
+* Return     : None
+*
+*******************************************************************************}
+
+    DECLARE prompt_type, prompt1, prompt2, text_length, default, fields_names,
+        routines
+    
+    prompt_type = SELECT wsheet_tmpl_entry . type
+    prompt1 = SELECT wsheet_tmpl_entry . prompt1
+    prompt2 = SELECT wsheet_tmpl_entry . prompt2    
+    
+    IF ( prompt_type <> EMPTY ) AND ( prompt1 <> EMPTY ) THEN
+    
+        prompt1 = STRIP ( prompt1 )
+        prompt2 = STRIP ( prompt2 )
+
+        IF prompt_type = "BROWSE" THEN
+
+            toggle_routine ( self . prompt_objects [WSHEET_PARAM_RADIO_BROWSE] )
+            
+            fields_names = browse_array_table ( prompt1 )
+            
+            self . prompt_objects 
+                [ WSHEET_PARAM_PROMPT_FIELD ] . choose_array = fields_names
+            self . prompt_objects 
+                [ WSHEET_PARAM_PROMPT_TABLE ] . set_text ( prompt1 )
+            self . prompt_objects 
+                [ WSHEET_PARAM_PROMPT_FIELD ] . set_text ( prompt2 )
+
+        ELSEIF prompt_type = "PHRASE"
+        
+            toggle_routine ( self . prompt_objects [WSHEET_PARAM_RADIO_PHRASE] )        
+
+            self . prompt_objects 
+                [ WSHEET_PARAM_PROMPT_PHRASE ] . set_text ( prompt1 )
+
+        ELSEIF prompt_type = "FORMAT"
+        
+            toggle_routine ( self . prompt_objects [WSHEET_PARAM_RADIO_FORMAT] )
+
+            IF INDEX ( prompt1 , "TEXT") > 0 THEN
+                text_length = RIGHTSTRING( prompt1 , LENGTH (prompt1)  - 4 )
+
+                self . prompt_objects 
+                    [ WSHEET_PARAM_PROMPT_TYPE ] . set_text ( "TEXT" )
+                self . prompt_objects 
+                    [ WSHEET_PARAM_PROMPT_LENGTH ] . 
+                    set_text ( STRIP ( text_length ) )
+            ELSE
+            
+                self . prompt_objects [ WSHEET_PARAM_PROMPT_LENGTH ] . 
+                        set_enabled ( FALSE )
+            
+                self . prompt_objects 
+                    [ WSHEET_PARAM_PROMPT_TYPE ] . set_text ( prompt1 )
+                
+            ENDIF
+
+        ELSEIF prompt_type = "ROUTINE"
+
+            toggle_routine ( self . prompt_objects [WSHEET_PARAM_RADIO_CUSTOM] )
+            
+            routines = browse_array_library ( prompt1 )
+                        
+            self . prompt_objects 
+                [ WSHEET_PARAM_PROMPT_ROUTINE ] . choose_array = routines
+            
+            self . prompt_objects [ WSHEET_PARAM_PROMPT_LIBRARY ] . set_text ( prompt1 )
+            self . prompt_objects [ WSHEET_PARAM_PROMPT_ROUTINE ] . set_text ( prompt2 )
+
+        
+        ELSE
+        
+            toggle_routine ( self . prompt_objects [WSHEET_PARAM_RADIO_BROWSE] )
+        
+        ENDIF
+        
+        
+    
+    ENDIF
+
+    default = SELECT wsheet_tmpl_entry . default_value    
+    
+    IF default <> EMPTY THEN
+    
+        self . prompt_objects [ WSHEET_PARAM_PROMPT_DEFAULT ] . set_text ( default )
+    
+    ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE  build_description
+{
+* Summary    : Routine to build the prompt description depending on data stored
+*           in the wsheet_tmpl_entry table.
+*
+* Parameters : None
+*
+* Return     : None
+*
+*******************************************************************************}
+
+
+    DECLARE prompt1, prompt2, description, type, default, sep
+    
+    
+    description = EMPTY
+    
+    type    = SELECT wsheet_tmpl_entry . type
+    prompt1 = SELECT wsheet_tmpl_entry . prompt1
+    prompt2 = SELECT wsheet_tmpl_entry . prompt2
+    default = SELECT wsheet_tmpl_entry . default_value
+    
+    IF NOT BLANK ( prompt1 ) THEN
+    
+        IF type = "ROUTINE" THEN
+        
+            description = GET_USER_MESSAGE("WSHEET_PROMPT_TEXT" , 2)
+            sep = "\"
+        
+        ELSE 
+        
+            description = GET_USER_MESSAGE("WSHEET_PROMPT_TEXT" , 3)
+            sep = "."
+        
+        ENDIF
+    
+        
+        prompt1 = STRIP ( prompt1 )
+        prompt2 = STRIP ( prompt2 )
+        type = STRIP ( type )
+        
+        IF ( INDEX ( prompt1, "TEXT") = 1 ) AND ( type = "FORMAT" ) THEN
+            description = description : prompt1 : prompt2
+        ELSE
+        
+            IF NOT BLANK ( prompt2 ) THEN
+                prompt2 = STRIP ( prompt2 )
+                description = description: prompt1 : sep : prompt2
+            ELSE
+                description = description : prompt1
+        
+            ENDIF
+        
+        
+        ENDIF
+        
+        
+        IF NOT BLANK (  default ) THEN
+        
+            description = description : "(" : STRIP ( default ) : ")"
+            
+        ENDIF
+    ENDIF
+
+
+    RETURN ( description )
+    
+ENDROUTINE
+
+
+{******************************************************************************}
+
+
+ROUTINE toggle_routine ( self )
+{
+* Summary    : Main toggle routine for build prompt radio buttons.
+*
+* Parameters : self - form object
+*
+* Return     : None
+*
+*******************************************************************************}
+
+    DECLARE form
+
+    form = self . parent_prompt
+
+    IF self . tag = WSHEET_PARAM_RADIO_BROWSE THEN
+
+        form . prompt_objects [ WSHEET_PARAM_RADIO_BROWSE ] . set_text ( TRUE )
+        form . prompt_objects [ WSHEET_PARAM_RADIO_CUSTOM ] . set_text ( FALSE )
+        form . prompt_objects [ WSHEET_PARAM_RADIO_PHRASE ] . set_text ( FALSE )
+        form . prompt_objects [ WSHEET_PARAM_RADIO_FORMAT ] . set_text ( FALSE )
+        
+        form . prompt_objects [ WSHEET_PARAM_PROMPT_TABLE ] . set_enabled ( TRUE )    
+        form . prompt_objects [ WSHEET_PARAM_PROMPT_FIELD ] . set_enabled ( TRUE )    
+        form . prompt_objects [ WSHEET_PARAM_PROMPT_LIBRARY ] . set_enabled ( FALSE )
+        form . prompt_objects [ WSHEET_PARAM_PROMPT_ROUTINE ] . set_enabled ( FALSE )
+        form . prompt_objects [ WSHEET_PARAM_PROMPT_PHRASE ] . set_enabled ( FALSE )
+        form . prompt_objects [ WSHEET_PARAM_PROMPT_TYPE ] . set_enabled ( FALSE ) 
+        form . prompt_objects [ WSHEET_PARAM_PROMPT_LENGTH ] . set_enabled ( FALSE )
+
+    ELSEIF self . tag = WSHEET_PARAM_RADIO_CUSTOM THEN
+
+        form . prompt_objects [ WSHEET_PARAM_RADIO_BROWSE ] . set_text ( FALSE )
+        form . prompt_objects [ WSHEET_PARAM_RADIO_CUSTOM ] . set_text ( TRUE )
+        form . prompt_objects [ WSHEET_PARAM_RADIO_PHRASE ] . set_text ( FALSE )
+        form . prompt_objects [ WSHEET_PARAM_RADIO_FORMAT ] . set_text ( FALSE )
+
+        form . prompt_objects [ WSHEET_PARAM_PROMPT_TABLE ] . set_enabled ( FALSE )    
+        form . prompt_objects [ WSHEET_PARAM_PROMPT_FIELD ] . set_enabled ( FALSE )    
+        form . prompt_objects [ WSHEET_PARAM_PROMPT_LIBRARY ] . set_enabled ( TRUE )
+        form . prompt_objects [ WSHEET_PARAM_PROMPT_ROUTINE ] . set_enabled ( TRUE )
+        form . prompt_objects [ WSHEET_PARAM_PROMPT_PHRASE ] . set_enabled ( FALSE )
+        form . prompt_objects [ WSHEET_PARAM_PROMPT_TYPE ] . set_enabled ( FALSE ) 
+        form . prompt_objects [ WSHEET_PARAM_PROMPT_LENGTH ] . set_enabled ( FALSE )
+
+    ELSEIF self . tag = WSHEET_PARAM_RADIO_PHRASE THEN
+
+        form . prompt_objects [ WSHEET_PARAM_RADIO_BROWSE ] . set_text ( FALSE )
+        form . prompt_objects [ WSHEET_PARAM_RADIO_CUSTOM ] . set_text ( FALSE )
+        form . prompt_objects [ WSHEET_PARAM_RADIO_PHRASE ] . set_text ( TRUE )
+        form . prompt_objects [ WSHEET_PARAM_RADIO_FORMAT ] . set_text ( FALSE )
+
+        form . prompt_objects [ WSHEET_PARAM_PROMPT_TABLE ] . set_enabled ( FALSE )    
+        form . prompt_objects [ WSHEET_PARAM_PROMPT_FIELD ] . set_enabled ( FALSE )    
+        form . prompt_objects [ WSHEET_PARAM_PROMPT_LIBRARY ] . set_enabled ( FALSE )
+        form . prompt_objects [ WSHEET_PARAM_PROMPT_ROUTINE ] . set_enabled ( FALSE )
+        form . prompt_objects [ WSHEET_PARAM_PROMPT_PHRASE ] . set_enabled ( TRUE )
+        form . prompt_objects [ WSHEET_PARAM_PROMPT_TYPE ] . set_enabled ( FALSE ) 
+        form . prompt_objects [ WSHEET_PARAM_PROMPT_LENGTH ] . set_enabled ( FALSE )
+
+    ELSEIF self . tag = WSHEET_PARAM_RADIO_FORMAT THEN
+
+        form . prompt_objects [ WSHEET_PARAM_RADIO_BROWSE ] . set_text ( FALSE )
+        form . prompt_objects [ WSHEET_PARAM_RADIO_CUSTOM ] . set_text ( FALSE )
+        form . prompt_objects [ WSHEET_PARAM_RADIO_PHRASE ] . set_text ( FALSE )
+        form . prompt_objects [ WSHEET_PARAM_RADIO_FORMAT ] . set_text ( TRUE )
+        
+        form . prompt_objects [ WSHEET_PARAM_PROMPT_TABLE ] . set_enabled ( FALSE )    
+        form . prompt_objects [ WSHEET_PARAM_PROMPT_FIELD ] . set_enabled ( FALSE )    
+        form . prompt_objects [ WSHEET_PARAM_PROMPT_LIBRARY ] . set_enabled ( FALSE )
+        form . prompt_objects [ WSHEET_PARAM_PROMPT_ROUTINE ] . set_enabled ( FALSE )
+        form . prompt_objects [ WSHEET_PARAM_PROMPT_PHRASE ] . set_enabled ( FALSE )
+        form . prompt_objects [ WSHEET_PARAM_PROMPT_TYPE ] . set_enabled ( TRUE ) 
+        form . prompt_objects [ WSHEET_PARAM_PROMPT_LENGTH ] . set_enabled ( TRUE )
+    ENDIF
+
+
+ENDROUTINE
+
+
+{******************************************************************************}
+
+ROUTINE leave_prompt_routine ( self )
+{
+* Summary    : Leave prompt routine, modifys prompts based on data selected.
+*
+* Parameters : self - prompt object
+*
+* Return     : None
+*
+*******************************************************************************}
+
+    DECLARE parent, fields_names, count, routines, routine_array
+
+    parent = self . parent_prompt
+
+    IF self . tag = WSHEET_PARAM_PROMPT_TABLE THEN
+        
+        fields_names = browse_array_table ( 
+            parent . prompt_objects [WSHEET_PARAM_PROMPT_TABLE ] . text )
+
+        parent . prompt_objects 
+            [ WSHEET_PARAM_PROMPT_FIELD ] . choose_array = fields_names
+  
+    ELSEIF self . tag = WSHEET_PARAM_PROMPT_LIBRARY THEN
+
+        ARRAY routine_array
+                        
+        routine_array = browse_array_library ( 
+            parent . prompt_objects [ WSHEET_PARAM_PROMPT_LIBRARY ] . text )
+        
+        parent . prompt_objects 
+            [ WSHEET_PARAM_PROMPT_ROUTINE ] . choose_array = routine_array
+
+    ELSEIF self . tag = WSHEET_PARAM_PROMPT_TYPE THEN
+
+        IF self . value = "TEXT" THEN
+            parent . prompt_objects    
+                [ WSHEET_PARAM_PROMPT_LENGTH ] . display_only = FALSE
+        ELSE
+            parent . prompt_objects    
+                [ WSHEET_PARAM_PROMPT_LENGTH ] . display_only = TRUE
+        ENDIF
+
+    ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE browse_array_table ( VALUE table )
+{
+* Summary    : Return a browse array based on parameter.
+*
+* Parameters : VALUE table_name
+*
+* Return     : ARRAY 2 dimensional browse array
+*
+*******************************************************************************}
+
+    DECLARE browse_array    
+    
+    {Get field names based on table}
+    GET_FIELD_NAMES( table , browse_array )
+    count = 1
+    WHILE count <= SIZE_OF_ARRAY ( browse_array ) DO
+
+        browse_array [ count, 2 ] = browse_array [ count, 1 ]
+        count = count + 1
+    
+    ENDWHILE
+    
+    RETURN ( browse_array )
+
+ENDROUTINE
+
+
+{******************************************************************************}
+
+ROUTINE browse_array_library ( VALUE library )
+{
+* Summary    : Return a browse array based on parameter.
+*
+* Parameters : VALUE table_name
+*
+* Return     : ARRAY 2 dimensional browse array
+*
+*******************************************************************************}
+
+    DECLARE browse_array, count    
+    
+    ARRAY browse_array
+    ARRAY routine_array
+        
+    vgl_find_routines ( library , routine_array )
+    count = 1
+    WHILE count <= SIZE_OF_ARRAY ( routine_array ) DO
+
+        browse_array [ count , 1 ] = STRIP ( routine_array [ count ] )
+        browse_array [ count , 2 ] = STRIP ( routine_array [ count ] )
+        count = count + 1
+    
+    ENDWHILE
+        
+    RETURN ( browse_array )
+
+ENDROUTINE
+
+{******************************************************************************}
+{******************************************************************************}
+{******************************************************************************}
+
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE editCriteria
+    (
+            buttonObject   
+    )
+
+    {
+    Description :
+    1.2
+    }
+    
+    DECLARE type
+    DECLARE prompt1
+    DECLARE prompt2
+    DECLARE table
+    DECLARE selectArray         ARRAY selectArray       ARRAY_SIZE(0,3)
+    DECLARE mandatoryArray      ARRAY mandatoryArray    ARRAY_SIZE(0,3)
+    DECLARE editable
+    DECLARE criteriaName
+    DECLARE status
+
+    type    = SELECT wsheet_tmpl_entry.type
+    prompt1 = SELECT wsheet_tmpl_entry.prompt1
+    prompt2 = SELECT wsheet_tmpl_entry.prompt2
+    
+    IF ( getTableName( type, prompt1, prompt2, table ) )
+    
+        editable        = ( operation = "MODIFY" )
+        criteriaName    = getCriteriaName( SELECT wsheet_tmpl_entry.wsheet_identity, SELECT wsheet_tmpl_entry.identity )
+
+        readCriteriaCache( criteriaName, table, selectArray )
+        
+        IF ( criteria_edit_criteria( table, selectArray, mandatoryArray, editable, editable ) )
+
+            storeCriteriaCache( criteriaName, table, selectArray )
+            
+        ENDIF
+        
+    ELSE
+    
+        flash_message( "Criteria not applicable for this type of field", TRUE )
+    
+    ENDIF
+    
+    RETURN
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE saveCriteriaCache
+
+    {
+    Description :
+    1.2
+    
+    Outstanding Issue
+    If an entry is deleted or the table name that a field is linked to is changed, then
+    we may end up with criteria in the cache that are no longer valid. As yet have not found
+    a way of dealing with these. It may result in some orphaned criteria. This will not affect
+    the functionality, accept if the entry is added back in again or the table name changed back 
+    to its original, then the criteria will suddenly reappear.
+    }
+    
+    DECLARE i
+    DECLARE table
+    DECLARE criteriaName
+    DECLARE selectArray         ARRAY selectArray   ARRAY_SIZE(0,3)
+    DECLARE status
+    
+    i = 1
+    WHILE ( i <= size_of_array( criteriaCache ) )
+    
+        criteriaName = criteriaCache[i,ColumnCriteriaName]
+        table        = criteriaCache[i,ColumnTableName]
+        array_copy( selectArray, criteriaCache[i,ColumnSelectArray] )
+
+        status = criteria_saved_save_squirrel( table, criteriaName, selectArray )
+
+        IF ( status <> EMPTY )
+
+            flash_message( status, TRUE )
+
+        ENDIF
+        
+        i = i + 1
+
+    ENDWHILE
+    
+    RETURN
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE storeCriteriaCache
+    (
+    VALUE   criteriaName,
+    VALUE   table,
+            selectArray
+    )
+
+    {
+    Description :
+    1.2
+    }
+    
+    DECLARE i
+    DECLARE found
+    
+    i = 1
+    found = FALSE
+    
+    WHILE ( i <= size_of_array( criteriaCache ) )
+    AND   ( found = FALSE )
+
+        IF ( criteriaCache[i,ColumnCriteriaName] = criteriaName )
+        
+            found = TRUE
+
+        ELSE
+        
+            i = i + 1
+            
+        ENDIF            
+
+    ENDWHILE
+    
+    IF ( NOT found )
+    
+        criteriaCache[i,ColumnCriteriaName] = criteriaName
+        
+    ENDIF
+
+    criteriaCache[i,ColumnTableName] = table
+    array_copy( criteriaCache[i,ColumnSelectArray], selectArray )
+    
+    RETURN
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE readCriteriaCache
+    (
+    VALUE   criteriaName,
+    VALUE   table,
+            selectArray
+    )
+
+    {
+    Description :
+    1.2
+    }
+    
+    DECLARE i
+    DECLARE found
+    
+    i = 1
+    found = FALSE
+    
+    WHILE ( i <= size_of_array( criteriaCache ) )
+    AND   ( found = FALSE )
+
+        IF  ( criteriaCache[i,ColumnCriteriaName] = criteriaName )
+        AND ( criteriaCache[i,ColumnTableName] = table )
+
+            found = TRUE
+            array_copy( selectArray, criteriaCache[i,ColumnSelectArray] )
+
+        ELSE
+        
+            i = i + 1
+            
+        ENDIF            
+
+    ENDWHILE
+
+    IF ( NOT found )
+    
+        status = criteria_saved_load_squirrel_check( table, criteriaName, selectArray, TRUE )
+
+        IF ( status <> EMPTY )
+
+            flash_message( status, TRUE )
+
+        ENDIF
+
+    ENDIF
+    
+    RETURN( found )
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE copyCriteria
+    (
+    VALUE   identity,
+    VALUE   copiedIdentity
+    )
+
+    {
+    Description :
+    1.2
+    }
+    
+    DECLARE fieldIdentity    
+    DECLARE criteriaName
+    DECLARE table
+    DECLARE type
+    DECLARE prompt1
+    DECLARE prompt2
+    
+    fieldIdentity = SELECT wsheet_tmpl_entry.identity
+                    WHERE  ( wsheet_identity = copiedIdentity )
+
+    WHILE ( fieldIdentity <> EMPTY )
+
+        type    = SELECT wsheet_tmpl_entry.type
+        prompt1 = SELECT wsheet_tmpl_entry.prompt1
+        prompt2 = SELECT wsheet_tmpl_entry.prompt2
+
+        IF ( getTableName( type, prompt1, prompt2, table ) )
+
+            criteriaName = getCriteriaName( copiedIdentity, fieldIdentity )
+            readCriteriaCache( criteriaName, table, selectArray )
+
+            criteriaName = getCriteriaName( identity, fieldIdentity )
+            storeCriteriaCache( criteriaName, table, selectArray )
+            
+        ENDIF
+        
+        NEXT wsheet_tmpl_entry
+        fieldIdentity = SELECT wsheet_tmpl_entry.identity
+    
+    ENDWHILE
+    
+    RETURN
+    
+ENDROUTINE
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            

@@ -1,0 +1,333 @@
+{*******************************************************************************
+*
+* Module Name   :  stb_im_reports
+*
+* Purpose       :  Use for all the reports which are run without user
+*                  intervention
+*                  Launch infomaker reports using IMPRINT for Stability Reports
+*
+* Document Ref  :
+*
+* Specification :
+*
+*******************************************************************************
+* Version   Date      Author           Modify Details
+*******************************************************************************
+* 1.0       20/2/98  S. MEEK
+* 1.1       04/4/00  K. Poku-Agyemang
+******************************************************************************}
+
+SET NAME "/DEFER"
+ENABLE WINDOWS
+JOIN STANDARD_LIBRARY STD_DDE
+
+JOIN LIBRARY $PROMPT_JOB
+JOIN STANDARD_LIBRARY STD_BLOCK
+
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_CLIENT
+JOIN STANDARD_LIBRARY STD_DDE
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $PROMPT_IMPRINT
+
+SET COMPILE_OPTION DECLARE
+SET NOTPROTECTED
+
+GLOBAL CONSTANT IMPRINT_CLASS        = "IMPRINT"
+
+CONSTANT DEFAULT_COPIES              = "1"
+CONSTANT DEFAULT_DELIMITER           = "'"
+CONSTANT DEFAULT_SEPARATOR           = " "
+
+
+DECLARE a
+
+inv_expiry ( a )
+
+EXIT
+
+{****************************************************************************
+*                      G L O B A L   R O U T I N E S
+*****************************************************************************}
+
+{****************************************************************************}
+
+GLOBAL ROUTINE inv_expiry ( a )
+
+{****************************************************************************}
+
+DECLARE report
+
+	report = "r_stab_inv_expiry"
+
+	print_infomaker_report ( report     ,
+                                 EMPTY      ,
+                                 EMPTY      ,
+                                 EMPTY      )
+
+ENDROUTINE { inv_expiry }
+
+
+{****************************************************************************}
+
+GLOBAL ROUTINE study_inventory ( VALUE study_id )
+
+{
+*
+*	This routine displays the report
+*
+*	Parameters   : study id
+*	Return Value : N/A
+*
+*******************************************************************************}
+
+DECLARE report
+
+	report = "r_stab_study_inventory"
+
+	print_infomaker_report ( report     ,
+                                 study_id   ,
+                                 EMPTY      ,
+                                 EMPTY      )
+
+ENDROUTINE { study_inventory }
+
+
+{****************************************************************************}
+
+GLOBAL ROUTINE inv_batch_allocation ( VALUE product_id, VALUE batch_id )
+
+{
+*
+*	This routine displays the report
+*
+*	Parameters   : study id
+*	Return Value : N/A
+*
+*******************************************************************************}
+
+DECLARE report
+
+	report = "r_stab_batch_allocation"
+
+	print_infomaker_report ( report     ,
+                                 product_id ,
+                                 batch_id   ,
+                                 EMPTY      )
+	
+ENDROUTINE { inv_batch_allocation }
+
+{****************************************************************************}
+
+GLOBAL ROUTINE inv_low_supply 
+
+{
+*
+*	This routine displays the report
+*
+*	Parameters   : study id
+*	Return Value : N/A
+*
+*******************************************************************************}
+
+DECLARE report
+
+	report = "r_stab_product_low_supply"
+
+	print_infomaker_report ( report ,
+                                 EMPTY  ,
+                                 EMPTY  ,
+                                 EMPTY  )	
+ENDROUTINE { inv_low_supply }
+
+
+{****************************************************************************}
+
+GLOBAL ROUTINE inv_date_allocation ( VALUE start_date, VALUE end_date )
+
+{
+*
+*	This routine displays the report
+*
+*	Parameters   : study id
+*	Return Value : N/A
+*
+*******************************************************************************}
+
+DECLARE report
+
+	report = "r_stab_batch_allocation_bt_dates"
+
+	print_infomaker_report ( report     ,
+                                 start_date ,
+                                 end_date   ,
+                                 EMPTY      )
+	
+ENDROUTINE { inv_date_allocation }
+
+
+{****************************************************************************}
+
+GLOBAL ROUTINE inv_location_history ( VALUE product_id, VALUE batch_id )
+
+{
+*
+*	This routine displays the report
+*
+*	Parameters   : study id
+*	Return Value : N/A
+*
+*******************************************************************************}
+
+DECLARE report
+
+	report = "r_stab_location_history"
+
+	print_infomaker_report ( report     ,
+                                 product_id ,
+                                 batch_id   ,
+                                 EMPTY      )
+	
+ENDROUTINE { inv_batch_allocation }
+
+
+{****************************************************************************}
+
+ROUTINE print_infomaker_report ( VALUE report_name ,
+                                 VALUE param1      ,
+                                 VALUE param2      ,
+                                 VALUE param3      )
+{
+*
+*	This routine displays the report
+*
+*	Parameters   : Report_name
+*	Return Value : N/A
+*
+*******************************************************************************}
+
+DECLARE imprint_report, one_param, two_params, three_params
+
+	{ Define the class, then create an instance }
+
+	define_imprint_class ( )
+
+	CREATE OBJECT IMPRINT, imprint_report
+
+	{ Generate a report }
+
+	imprint_report . create_ole_object ()
+
+	imprint_report . reset_ole_object ()
+
+	imprint_report . report  = report_name
+
+	one_param = ( ( param1 <> EMPTY) AND ( param2 = EMPTY ) AND ( param3 = EMPTY ) )
+	two_params = ( ( param1 <> EMPTY) AND ( param2 <> EMPTY) AND ( param3 = EMPTY ) )
+	three_params = ( ( param1 <> EMPTY) AND ( param2 <> EMPTY) AND ( param3 <>EMPTY ))
+
+	IF ( one_param ) THEN
+
+		imprint_report . add_parameter ( param1 )
+
+	ELSEIF ( two_params ) THEN
+
+		imprint_report . add_parameter ( param1 )
+		imprint_report . add_parameter ( param2 )
+
+	ELSEIF ( three_params ) THEN
+
+		imprint_report . add_parameter ( param1 )
+		imprint_report . add_parameter ( param2 )
+		imprint_report . add_parameter ( param3 )
+	ENDIF
+
+	imprint_report . generate ()
+
+	imprint_report . ole_object = EMPTY
+
+ENDROUTINE { print_infomaker_report }
+
+
+{*****************************************************************************}
+
+ROUTINE imprint_class_initialisation ( self )
+
+{
+*
+*	This routine is used for Class initialisation action
+*
+*	Parameters   : Self
+*	Return Value : N/A
+*
+*******************************************************************************}
+
+DECLARE imp_location
+
+	imp_location = client_get_imprint_path ( )
+
+	imp_location = imp_location:"\IMPRINT.EXE"
+
+	self . location         = imp_location
+	self . copies           = DEFAULT_COPIES
+	self . report           = ""
+
+	ARRAY self . parameters
+
+ENDROUTINE { imprint_class_initialisation }
+
+{*****************************************************************************}
+
+ROUTINE imprint_action_generate ( self )
+
+{
+*
+*	This routine generates the report
+*
+*	Parameters   : Self
+*	Return Value : status
+*
+*******************************************************************************}
+
+DECLARE status, parameters, count, parameter
+
+	parameters = ""
+
+	count = 1
+
+	WHILE self . parameters [ count ] <> EMPTY DO
+
+		parameter = DEFAULT_DELIMITER : self . parameters [ count ] :
+			    DEFAULT_DELIMITER
+
+		parameters = parameters : DEFAULT_SEPARATOR : parameter
+		count = count + 1
+
+	ENDWHILE
+
+	dde_winexec ( self . location : DEFAULT_SEPARATOR : self . report   :
+	              DEFAULT_SEPARATOR : self . copies : DEFAULT_SEPARATOR :
+	              parameters, 1, status                                 )
+
+	RETURN ( status <> EMPTY )
+
+ENDROUTINE { imprint_action_generate }
+
+
+{******************************************************************************
+*                      C A L L B A C K   R O U T I N E S
+*******************************************************************************}
+
+ROUTINE not_blank_validation_routine ( self )
+
+{ This validation callback ensures that no one can leave the  prompt until
+* they have filled it in. Stops them moving around.
+*
+*******************************************************************************}
+
+        RETURN ( NOT BLANK ( self . text ) )
+
+ENDROUTINE
+	

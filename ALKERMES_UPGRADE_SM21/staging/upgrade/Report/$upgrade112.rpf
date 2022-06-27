@@ -1,0 +1,402 @@
+{******************************************************************************
+*
+* Module Name   : $UPGRADE
+*
+* Purpose       : Upgrade SampleManager to 11.2
+*
+* Document Ref. : 
+*
+* Specification :
+*
+* Portability   : Not Checked
+*
+* Re-entrant    : No
+*
+*******************************************************************************}
+
+SET COMPILE_OPTION DECLARE
+SET NOTPROTECTED
+SET NAME "DEFER/"                      
+ENABLE WINDOWS
+
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN STANDARD_LIBRARY STD_STRUCTURE
+JOIN STANDARD_LIBRARY STD_UTILS
+
+JOIN LIBRARY $LIB_MENU
+JOIN LIBRARY $TABLE_LOAD_SAVE_LIB
+JOIN LIBRARY $MENU_CONVERT
+JOIN LIBRARY $LOAD_TABLE_DEFAULTS
+JOIN LIBRARY $LOAD_WORKFLOW_OLD
+JOIN LIBRARY $ENTITY_NAMES
+JOIN LIBRARY $CONVERT_CRITERIA
+JOIN LIBRARY $CONVERT_INSTTYPE
+
+{******************************************************************************}
+
+CONSTANT data_dir = "smp$datafiles:"
+CONSTANT data_extn = ".csv"
+
+CONSTANT menu_toolbar_10_1120   = "smp$datafiles:menu_toolbar_10_1120.mtb"
+CONSTANT menu_toolbar_1100_1120 = "smp$datafiles:menu_toolbar_1100_1120.mtb"
+CONSTANT menu_toolbar_1110_1120 = "smp$datafiles:menu_toolbar_1110_1120.mtb"
+
+{******************************************************************************}
+
+DECLARE upgrade_version, is_sm10
+
+IF GLOBAL ( "PARAM_ACTIVE" ) THEN
+
+	PROMPT FOR upgrade_version
+	
+ELSE
+
+	upgrade_version = ""
+
+ENDIF
+
+is_sm10 = ( SUBSTRING ( upgrade_version, 1, 2 ) = "10" )
+
+IF ( is_sm10 ) THEN
+
+	load_table_defaults ( "", "_1050_1100", ".td_csv" )
+
+	import_new_menu_options ( menu_toolbar_10_1120 )
+
+	upgrade_overwrites_for_sm1100 ( )
+
+	add_default_workflows ( )
+
+ELSE
+
+	upgrade_default_workflows ( )
+
+ENDIF
+
+IF ( is_sm10 )                   OR
+   ( upgrade_version = "11.0"  ) THEN
+
+	load_table_defaults ( "", "_1100_1110", ".td_csv" )
+
+	upgrade_overwrites_for_sm1110 ( )
+
+ENDIF
+
+
+IF ( upgrade_version = "11.0"  ) THEN
+
+	import_new_menu_options ( menu_toolbar_1100_1120 )
+
+ENDIF
+
+IF ( upgrade_version = "11.1"  ) THEN
+
+	import_new_menu_options ( menu_toolbar_1110_1120 )
+
+ENDIF
+
+upgrade_menu_builtin_to_procnum ( )
+
+upgrade_remove_lot_icons ( )
+
+upgrade_overwrites_for_sm1120 ( )
+
+upgrade_explorer_updates_sm1120 ( )
+
+load_table_defaults ( "", "_1110_1120", ".td_csv" )
+
+EXIT
+
+{*****************************************************************************}
+
+ROUTINE upgrade_overwrites_for_sm1100
+
+{
+* Load CSV files containing overwrites for SM11
+*
+******************************************************************************}
+
+	load_if_present ( data_dir:"phrase_10_11":data_extn                   ,
+	                  OVERWRITE_TABLE                                     )
+
+	load_if_present ( data_dir:"master_menu_10_11":data_extn              ,
+	                  OVERWRITE_TABLE                                     )
+
+	load_if_present ( data_dir:"explorer_aux_10_11":data_extn             ,
+	                  OVERWRITE_TABLE                                     )
+
+	load_if_present ( data_dir:"criteria_condition_10_11":data_extn       ,
+	                  OVERWRITE_TABLE                                     )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE upgrade_overwrites_for_sm1110
+
+{
+* Load CSV files containing overwrites for SM1110
+*
+******************************************************************************}
+
+	load_if_present ( data_dir:"master_menu_1100_1110":data_extn          ,
+	                  OVERWRITE_TABLE                                     )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE upgrade_overwrites_for_sm1120
+
+{
+* Load CSV files containing overwrites for SM1120
+*
+******************************************************************************}
+
+	load_if_present ( data_dir:"master_menu_1110_1120":data_extn          ,
+	                  OVERWRITE_TABLE                                     )
+
+	load_if_present ( data_dir:"syntax_1120":data_extn                    ,
+	                  OVERWRITE_TABLE                                     )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE upgrade_explorer_updates_sm1120
+
+{
+* Load CSV files containing cabinets for SM1120
+*
+******************************************************************************}
+
+	load_if_present ( data_dir:"explorer_cabinet_1120":data_extn          ,
+	                  IGNORE_FILE                                         )
+
+	load_if_present ( data_dir:"explorer_cabinet_role_1120":data_extn     ,
+	                  IGNORE_FILE                                         )
+
+	load_if_present ( data_dir:"explorer_aux_1120":data_extn              ,
+	                  OVERWRITE_TABLE                                     )
+
+	load_if_present ( data_dir:"explorer_icon_1120":data_extn             ,
+	                  OVERWRITE_TABLE                                     )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE load_if_present ( VALUE file_nam  ,
+                          VALUE load_mode )
+
+{
+* Load CSV if present
+*
+******************************************************************************}
+
+	IF FILE EXISTS ( file_nam ) THEN
+
+		input_csv_file ( file_nam                  ,
+		                 load_mode                 ,
+		                 FALSE                     ,
+		                 SINGLE_TRANSACTION_NUMBER ,
+		                 TRUE                      )
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE import_new_menu_options ( VALUE menu_import_file )
+
+{
+*     Import the new menu options into the SYSTEM menu
+*
+*******************************************************************************}
+
+	menu_convert_load_menu_file ( "SYSTEM", menu_import_file )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE add_default_workflows
+
+{
+*     Add the default workflow CSVs - $setup skips these in upgrade mode.
+*     Upgrade from the 10 series won't have any existing workflows.
+*
+*******************************************************************************}
+
+	load_if_present ( data_dir:"workflow":data_extn         ,
+	                  IGNORE_FILE                           )
+
+	load_if_present ( data_dir:"workflow_node":data_extn    ,
+	                  IGNORE_FILE                           )
+
+	load_if_present ( data_dir:"workflow_role":data_extn    ,
+	                  IGNORE_FILE                           )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_default_workflows
+
+{
+*     Upgrade the default workflow CSVs - $setup skips these in upgrade mode.
+*     Upgrade from the 11 series needs to selectively import workflows.
+*
+*******************************************************************************}
+
+	load_workflow_defaults ( "default_1120_", ".wf_csv" )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_menu_builtin_to_procnum
+
+{
+*     Convert old style builtin menu options to procedure numbers
+*
+*******************************************************************************}
+
+	upgrade_specific_builtin ( "FILE_RUN",      "MENU_35286", 35286 )
+	upgrade_specific_builtin ( "VIEW_REFRESH",  "MENU_35287", 35287 )
+	upgrade_specific_builtin ( "VIEW_REMOVED",  "MENU_35285", 35285 )
+	upgrade_specific_builtin ( "VIEW_VERSIONS", "MENU_35284", 35284 )
+	upgrade_specific_builtin ( "HELP_ABOUT",    "MENU_35283", 35283 )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_specific_builtin ( VALUE old_name ,
+                                   VALUE new_name ,
+                                   VALUE proc_num )
+
+{
+*     Convert old style builtin menu options to procedure numbers
+*
+*******************************************************************************}
+
+	DECLARE menu_values ,
+	        count ,
+	        menu_item
+
+	ARRAY menu_values ARRAYSIZE ( 0, 2 )
+
+	count = 0
+
+	menu_item = SELECT menu_toolbar . item_number
+	            WHERE  internal_item_name = old_name
+
+	WHILE menu_item <> EMPTY DO
+
+		count = count + 1
+
+		menu_values [ count, 1 ] = SELECT menu_toolbar . toolbar_name
+		menu_values [ count, 2 ] = menu_item
+
+		NEXT menu_toolbar
+		menu_item = SELECT menu_toolbar . item_number
+
+	ENDWHILE
+
+	count = 1
+
+	START WRITE TRANSACTION "Updating menu toolbars"
+
+	WHILE count <= size_of_array ( menu_values ) DO
+
+		menu_item = SELECT menu_toolbar . item_number FOR UPDATE
+		            WHERE  toolbar_name = menu_values [ count, 1 ] AND
+		                   item_number  = menu_values [ count, 2 ]
+
+		ASSIGN menu_toolbar . internal_item_name = new_name
+		ASSIGN menu_toolbar . procedure_num      = proc_num
+
+		UPDATE menu_toolbar
+
+		count = count + 1
+
+	ENDWHILE
+
+	COMMIT
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_remove_lot_icons
+
+{
+*     Remove spevific lot icons
+*
+*******************************************************************************}
+
+	DECLARE lot_folder_number ,
+	        lot_icon_number ,
+	        pos ,
+	        delete_array
+
+	lot_folder_number = SELECT explorer_folder . folder_number
+	                     WHERE ( cabinet    = "TABLE_DETAILS" )
+	                       AND ( table_name = "LOT_DETAILS"   )
+
+	IF ( lot_folder_number <> EMPTY ) THEN
+
+		lot_icon_number = SELECT explorer_folder_icon . item_number
+		                   WHERE ( cabinet       = "TABLE_DETAILS"   )
+		                     AND ( folder_number = lot_folder_number )
+
+		ARRAY delete_array ARRAYSIZE ( 0 )
+
+		pos = 0
+
+		WHILE ( lot_icon_number <> EMPTY ) DO
+
+			pos = pos + 1
+
+			delete_array [ pos ] = lot_icon_number
+
+			NEXT explorer_folder_icon
+			lot_icon_number = SELECT explorer_folder_icon . item_number
+
+		ENDWHILE
+
+		IF pos > 0 THEN
+
+			START WRITE TRANSACTION "Upgrade removing unused icons"
+
+			WHILE pos > 0 DO
+
+				lot_icon_number = SELECT explorer_folder_icon . item_number FOR UPDATE
+				                   WHERE ( cabinet       = "TABLE_DETAILS"      )
+				                     AND ( folder_number = lot_folder_number    )
+				                     AND ( item_number   = delete_array [ pos ] )
+
+				IF ( lot_icon_number <> EMPTY ) AND ( lot_icon_number <> LOCKED ) THEN
+
+					DELETE explorer_folder_icon
+
+				ENDIF
+
+				pos = pos - 1
+
+			ENDWHILE
+
+			COMMIT
+
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE
+
+{*****************************************************************************}
+{*****************************************************************************}
+{*****************************************************************************}

@@ -1,0 +1,458 @@
+{******************************************************************************
+*
+* Module Name          : LTE_MATERIALS
+*
+* Purpose              : Materials LTE callback routines.
+*
+* Portability          : Not Checked
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By             Description
+* -------   -----------  ----------     ---------------------------------------
+* 1.0       17-Jun-2005  J. O'Neill     Release Version 
+* 2.0       11-Jun-2012  H. Bryan       Added material supplier second page
+*                                       support 
+*
+*******************************************************************************}
+
+JOIN STANDARD_LIBRARY STD_UTILS
+
+JOIN LIBRARY $LABTABLIB
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $LAB
+JOIN LIBRARY $LIST_EDITOR
+JOIN LIBRARY $LIB_GRID
+
+SET COMPILE_OPTION DECLARE
+SET NOTPROTECTED
+SET NAME "DEFER/"
+ENABLE WINDOWS
+
+DECLARE the_list_editor
+
+{*******************************************************************************
+*                          M A I N   C O D E
+*******************************************************************************}
+
+EXIT { Do nothing. This report is used for LTE Callbacks. }
+
+{*******************************************************************************
+*                             R O U T I N E S 
+*
+* The following routines are provided as call back points for LTE processing
+* User code may be added as appropriate.
+*
+*******************************************************************************}
+
+ROUTINE validation_routine
+
+{ Called after each ID value has been entered.
+*
+* Parameters   : New_Id   - The newly entered identity
+* Return Value : Boolean  - True if the the save operation should continue. If
+*                           the return is false then the user will stay on the
+*                           LTE screen.
+*
+*******************************************************************************}
+
+	RETURN ( TRUE )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE prompt_object_routine (       prompt_object ,
+                                VALUE key0_count    ,
+                                VALUE operation     )
+
+{ Called during the creation of the identity prompts
+*
+* Parameters   : Prompt_Object - The Prompt object for the specified prompt
+*                Key0_Count    - The current Key0 Segment number
+*                                e.g. this would be 2 for the version number
+*                                of the Versioned Analysis table.
+* Return Value : N/a
+*
+*******************************************************************************}
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE ident_prompt_object_routine (       prompt_object ,
+				      VALUE ident_field   )
+
+{ Called from the ident form for for each identity prompt when copying, 
+* printing etc. You can get hold of the operation etc using the following code;
+*
+* 	DECLARE operation, labtable
+*	labtablib_get_labtable ( labtable )
+*	operation = labtable . operation
+*
+* Parameters   : Prompt_Object - The Prompt object for the specified prompt
+*                Ident_Field   - The name of the identity field to prompt for
+*                                e.g. ANALYSIS_VERSION for the Versioned
+*                                Analysis Table.
+* Return Value : N/a
+*
+*******************************************************************************}
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE create_id_routine
+
+
+{ Called before starting the identity prompts of an LTE for the ADD and 
+* COPY options.
+*
+* Parameters   : N/a
+* Return Value : String   - The identity of the new record. Returning EMPTY 
+*                           will start the prompt as normal.
+*
+*******************************************************************************}  
+
+        RETURN ( EMPTY )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE update_routine ( labtable )
+
+{ Called on pressing the DO key to save LTE screen. Called after the LTE write 
+* transaction has been started.
+*
+* The labtable . operation property is set to either ;
+*
+*             "REMOVE_IDENT"  for the remove option
+*             "RESTORE_IDENT" for the restore option
+*
+* Parameters   : Labtable - The Labtable Object
+* Return Value : Boolean  - TRUE if updates have been performed
+*                           FALSE if updates have NOT been performed
+*                           EMPTY - the systems checks for updates
+*
+*******************************************************************************}    
+
+        RETURN ( FALSE )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE read_data_routine (       labtable  ,
+                            VALUE operation )
+
+{ Called after the record has been selected / reserved but before the editor 
+* screen has been built.
+*
+* Parameters   : Labtable  - The Labtable Object
+*                Operation - The current LTE operation eg ADD, MODIFY, DISPLAY
+* Return Value : N/a
+*
+*******************************************************************************}
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE validate_new_id_routine ( VALUE new_id )
+
+{ Called after each ID value has been entered.
+*
+* Parameters   : New_Id   - The newly entered identity
+* Return Value : Boolean  - True if the ID is allowed.
+*
+*******************************************************************************}
+
+	RETURN ( TRUE )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE remove_restore_routine ( labtable )
+
+{ Called on pressing the DO key to remove or restore an LTE entry and after 
+* the LTE write transaction has been started
+*
+* The labtable . operation property is set to either ;
+*
+*             "REMOVE_IDENT"  for the remove option
+*             "RESTORE_IDENT" for the restore option
+*
+* Parameters   : Labtable - The Labtable Object
+* Return Value : Boolean  - True if the operation is allowed.
+*
+*******************************************************************************}    
+
+        RETURN ( TRUE )
+
+ENDROUTINE
+
+
+{*** Material Suppliers Screen ************************************************}
+
+{*****************************************************************************}
+
+	ROUTINE material_suppliers ( VALUE material_id ,
+                                   VALUE copy_val    ,
+                                   VALUE operation   )
+
+{ 
+*
+* Parameters   : Identity - The Identity.
+*                Copied_Identity - The Copied Identity.
+*                Operation - The Current LTE Operation Mode.
+* Return Value : N/a
+*
+*******************************************************************************}
+
+	DECLARE answer
+
+	IF operation = "PRINT" THEN
+
+		print_option ( material_id )
+
+	ELSE
+
+		answer = other_option ( material_id , 
+					      copy_val    ,
+					      operation   )
+
+		RETURN ( answer )
+
+	ENDIF
+
+ENDROUTINE { material_suppliers }
+
+
+{* Routines *******************************************************************}
+
+{******************************************************************************}
+
+ROUTINE print_option ( VALUE identity )
+
+{ Routine to call when printing the LTE.
+*
+* Parameters   : Identity - The Identity.
+* Return Value : N/a
+*
+*******************************************************************************}
+
+	DECLARE field_details
+	ARRAY field_details ARRAY_SIZE ( 0 , 2 )
+
+	field_details [ 1  , 1 ] = "SUPPLIER"
+	field_details [ 1  , 2 ] = "Supplier"
+
+	field_details [ 2  , 1 ] = "QUALIFICATION_STATUS"
+	field_details [ 2  , 2 ] = "Qualification Status"
+
+	field_details [ 3  , 1 ] = "LABELS_REQUIRED"
+	field_details [ 3  , 2 ] = "Labels Required?"
+
+		
+	print_fields (  "MATERIALS_SUPPLIERS"      ,
+	                PAD ( identity , " " , 10 ),
+	                ""                         ,
+	                ""                         ,
+	                2                          ,
+	                28                         ,
+	                field_details              )
+
+ENDROUTINE { print_option }
+
+{******************************************************************************}
+
+ROUTINE other_option ( VALUE identity        ,
+                       VALUE copied_identity ,
+                       VALUE operation       )
+
+{ Handle the Data Non print/list option for second screen LTE.
+*
+*
+*******************************************************************************}
+
+	DECLARE prompt_details, answer, heading
+
+	initialise ( prompt_details, heading )
+
+	list_editor_create_object ( the_list_editor )
+
+	the_list_editor . table              = "MATERIALS_SUPPLIERS"
+	the_list_editor . header             = "Materials suppliers Data Entry Screen"
+	the_list_editor . footer             = ""
+	the_list_editor . pre_insert         = "pre_insert_routine"
+	the_list_editor . delete             = EMPTY
+	the_list_editor . select             = EMPTY
+	the_list_editor . library            = GLOBAL ( "CURRENT_LIBRARY" )
+	the_list_editor . compatability      = PROMPT_DETAILS_310
+
+	the_list_editor . setup_prompt_details ( prompt_details,
+	                                         heading       )
+
+	the_list_editor . add_toolbutton_callback = "set_fixed_cols"
+
+	answer = the_list_editor . operation ( identity       ,
+	                                       copied_identity,
+	                                       operation      )
+
+	RETURN ( answer )
+
+ENDROUTINE { other_option }
+
+{******************************************************************************}
+
+ROUTINE set_fixed_cols ( self        ,
+                         toolbar     )
+
+{
+*	Highjacking the toolbox callback to set the fixed columns for the
+*	list editor
+*
+*******************************************************************************}
+
+	self . grid . fixed_columns_left = 1
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE pre_insert_routine ( self        ,
+                             grid        ,
+                             cell_column ,
+                             cell_row    ,
+                             window      ,
+                             column      ,
+                             row         ,
+                             cell_width  ,
+                             cell_height ,
+                             new_value   )
+
+{ Routine to insert a row. Constructs a key for the MATERIALS_SUPPLIERS record
+*
+*******************************************************************************}
+
+	PROMPT FOR new_value ON LINE cell_row FROM 1 IN WINDOW window
+			     FORMAT materials_suppliers . supplier
+
+	{ Deal with key presses etc. }
+
+	IF ( LASTKEY <> "EXIT" ) AND ( new_value <> "" ) THEN
+
+        	SET GLOBAL "LASTKEY" TO "CONTINUE"
+
+	ELSE
+
+		IF ( cell_row = grid . cell_rows ) THEN
+
+			IF cell_row = 1 THEN
+
+				SET GLOBAL "LASTKEY" TO "DO"
+
+			ELSE
+				SET GLOBAL "LASTKEY" TO "UP"
+			ENDIF
+
+		ELSE
+
+			IF cell_row = 1 THEN
+
+				SET GLOBAL "LASTKEY" TO "REMOVE"
+
+			ELSE
+				SET GLOBAL "LASTKEY" TO "DO"
+			ENDIF
+
+		ENDIF
+
+		new_value = ""
+
+	ENDIF
+
+ENDROUTINE { pre_insert }
+
+
+{******************************************************************************}
+
+	ROUTINE initialise ( prompt_details  ,
+	                     heading         )
+
+{ Initialise the Field List.
+*
+* Parameters   : Prompt_Details - The Details Array
+*		 Heading - The Heading Line.
+* Return Value : N/a
+*
+*******************************************************************************}
+
+	DECLARE head_count, col_head, count
+	ARRAY prompt_details ARRAY_SIZE ( 0 , 6 )
+
+	{***********************************************************************
+	* Set up the list of fields to be processed.
+	***********************************************************************}
+
+	count = 1
+
+	prompt_details [ count , 1 ] = "Supplier"
+	prompt_details [ count , 2 ] = "DISPLAY"
+	prompt_details [ count , 3 ] = "MATERIALS_SUPPLIERS"
+	prompt_details [ count , 4 ] = "SUPPLIER"
+	prompt_details [ count , 5 ] =  0
+	prompt_details [ count , 6 ] =  20
+
+	count = count + 1
+
+	prompt_details [ count , 1 ] = "Labels Required"
+	prompt_details [ count , 2 ] = "FORMAT"
+	prompt_details [ count , 3 ] = "MATERIALS_SUPPLIERS"
+	prompt_details [ count , 4 ] = "LABELS_REQUIRED"
+	prompt_details [ count , 5 ] =  0
+	prompt_details [ count , 6 ] =  15
+
+	count = count + 1
+
+	prompt_details [ count , 1 ] = "Qualification Status"
+	prompt_details [ count , 2 ] = "FORMAT"
+	prompt_details [ count , 3 ] = "MATERIALS_SUPPLIERS"
+	prompt_details [ count , 4 ] = "QUALIFICATION_STATUS"
+	prompt_details [ count , 5 ] =  0
+	prompt_details [ count , 6 ] =  20
+
+	{***********************************************************************
+	* Build up the Heading Line from the field list.
+	***********************************************************************}
+
+	head_count = 1
+	heading	= ""
+
+	WHILE head_count <= count DO
+
+
+		col_head = PAD ( prompt_details [ head_count, 1 ], " ",
+				 prompt_details [ head_count, 6 ]	   )
+
+		heading	= heading : col_head : " "
+		head_count = head_count + 1
+
+	ENDWHILE
+
+ENDROUTINE { initialise }
+
+
+
+
+{******************************************************************************}
+{******************************************************************************}
+{******************************************************************************}
+
+{******************************************************************************}
+{******************************************************************************}
+{******************************************************************************}

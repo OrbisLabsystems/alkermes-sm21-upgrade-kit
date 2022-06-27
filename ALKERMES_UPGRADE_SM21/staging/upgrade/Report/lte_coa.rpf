@@ -1,0 +1,3665 @@
+{******************************************************************************
+*
+* Module Name          : LTE_COA
+*
+* Purpose              : Certificates Of Analysis (COA) module lab table editor
+*
+* Portability          : Not Checked
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By             Description
+* -------   -----------  ----------     ---------------------------------------
+* 1.0       21-Jul-2005  J. O'Neill     Release Version 
+* 1.1       01-Jun-2006  Vincent Molloy Added Mandatory field to CoA Template Results
+* 1.2       18-Mar-2014  M. Allen       Additional fields added 
+* 1.3       29-May-2014  L. Dawson      Added Sample Field prompt
+*******************************************************************************}
+
+
+SET NAME "DISPLAY/"
+ENABLE WINDOWS
+{SET COMPILE_OPTION DECLARE}
+SET NOTPROTECTED
+
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_CLIENT
+JOIN STANDARD_LIBRARY STD_VGL
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_STRUCTURE
+
+JOIN LIBRARY $LABTABLIB
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $PROMPT_IMPRINT
+JOIN LIBRARY $LIST_EDITOR
+JOIN LIBRARY $LIB_GRID
+JOIN LIBRARY $PROMPT_TOOLBAR
+JOIN LIBRARY $CRITERIA_CACHE
+JOIN LIBRARY $EXPLORER_UTILS
+JOIN LIBRARY $GEN_APPR
+JOIN LIBRARY $LIB_UNIT
+
+{** Global Constants **********************************************************} 
+GLOBAL CONSTANT COA_PARAMS_CLASS              = "COA_PARAMS"
+
+GLOBAL CONSTANT COA_PARAM_RADIO_BROWSE        = 1
+GLOBAL CONSTANT COA_PARAM_PROMPT_TABLE        = 2
+GLOBAL CONSTANT COA_PARAM_PROMPT_FIELD        = 3
+GLOBAL CONSTANT COA_PARAM_RADIO_PHRASE        = 4
+GLOBAL CONSTANT COA_PARAM_PROMPT_PHRASE       = 5
+GLOBAL CONSTANT COA_PARAM_RADIO_FORMAT        = 6
+GLOBAL CONSTANT COA_PARAM_PROMPT_TYPE         = 7
+GLOBAL CONSTANT COA_PARAM_PROMPT_LENGTH       = 8
+GLOBAL CONSTANT COA_PARAM_RADIO_CUSTOM        = 9
+GLOBAL CONSTANT COA_PARAM_PROMPT_LIBRARY      = 10
+GLOBAL CONSTANT COA_PARAM_PROMPT_ROUTINE      = 11
+GLOBAL CONSTANT COA_PARAM_RADIO_JOB_FIELD     = 12
+GLOBAL CONSTANT COA_PARAM_PROMPT_JOB_FIELD    = 13
+GLOBAL CONSTANT COA_PARAM_RADIO_SAMP_FIELD    = 14    {1.3}
+GLOBAL CONSTANT COA_PARAM_PROMPT_SAMP_FIELD   = 15    {1.3}
+GLOBAL CONSTANT COA_PARAM_PROMPT_DEFAULT      = 16
+GLOBAL CONSTANT COA_PARAM_BUTTON_OK           = 17
+
+
+
+{ -------------------------- Table Setup Routine ---------------------------- }
+
+ROUTINE table_setup
+
+    {DECLARE prompt_details,
+            fields_to_output,
+            name_of_table,
+            header_mess,
+            footer_mess,
+            display_footer_mess,
+            count,
+            displayed_name_of_table,
+	    directory,
+	    extn,
+	    input_mess,
+            default_value,
+            special_actions_report,
+            labtable_messages,
+            help_context}
+
+    ARRAY prompt_details    ARRAY_SIZE ( 0 , 6 )
+    ARRAY fields_to_output  ARRAY_SIZE ( 0 )
+
+    name_of_table       = "COA_TEMPLATE"
+    header_mess         = GET_USER_MESSAGE("COA_LTE_HEADER", 1)
+    footer_mess         = "****"
+    display_footer_mess = "****"
+
+    count = 1
+
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_CREATED_ON", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "CREATED_ON"
+    prompt_details [ count , TYPE_POSITION       ] = "DISPLAY"
+		
+    count = count + 1
+
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_CREATED_BY", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "CREATED_BY"
+    prompt_details [ count , TYPE_POSITION       ] = "DISPLAY"
+
+    count = count + 1
+
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_VERSION_COMMENT", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "VERSION_COMMENT"
+		
+    count = count + 1
+		
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_DESCRIPTION", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "DESCRIPTION"
+		
+    count = count + 1
+    
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_INSPECTION", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "INSPECTION_PLAN"
+    		
+    count = count + 1
+    
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_INFOMAKER_LIBRARY", 1)
+    prompt_details [ count , FIELD_NAME_POSITION ] = "INFOMAKER_LIBRARY"
+		
+    count = count + 1
+		
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_INFOMAKER_REPORT", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "INFOMAKER_REPORT"
+
+    count = count + 1
+		
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_DOCUMENT_TEMPLATE", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "DOCUMENT_TEMPLATE"
+	
+    count = count + 1
+		
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_LANGUAGE", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "LANGUAGE"
+	
+    count = count + 1
+		
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_PRESENTATION", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "PRESENTATION"
+		
+    count = count + 1
+				
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_METHOD", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "METHOD"
+				
+    count = count + 1
+				
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_SPECIFICATION", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "SPECIFICATION"
+    
+    count = count + 1
+    				
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_COMMENT_GMP", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "COMMENT_GMP"
+				
+    count = count + 1
+				
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_L_TITLE_1", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_TITLE_1"
+				
+    count = count + 1
+				
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_L_TITLE_2", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_TITLE_2"
+				
+    count = count + 1
+				
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_L_TITLE_3", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_TITLE_3"
+				
+    count = count + 1
+				
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_L_METHOD", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_METHOD"
+				
+    count = count + 1
+				
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_L_PRODUCT_DESCRIPTION", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_PRODUCT_DESCRIPTION"
+				
+    count = count + 1
+			
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_L_PRODUCT_TAG", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_PRODUCT_TAG"
+			
+    count = count + 1
+			
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_L_MATERIAL_TAG", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_MATERIAL_TAG"
+			
+    count = count + 1
+				
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_L_ANALYSIS", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_ANALYSIS"
+				
+    count = count + 1
+				
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_L_BATCH_NO", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_BATCH_NO"
+				
+    count = count + 1
+				
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_L_PACKAGING_BATCH_NO", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_PACKAGING_BATCH_NO"
+				
+    count = count + 1
+				
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_L_TESTS", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_TESTS"
+				
+    count = count + 1
+				
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_L_SPECIFICATION", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_SPECIFICATION"
+				
+    count = count + 1
+				
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_L_SPECIFICATION_2", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_SPECIFICATION_2"
+				
+    count = count + 1
+				
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_L_UNITS", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_UNITS"
+				
+    count = count + 1
+				
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_L_RESULTS", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_RESULTS"
+				
+    count = count + 1
+				
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_L_EXPIRY_DATE", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_EXPIRY_DATE"
+				
+    count = count + 1
+			
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_L_EXPIRY_2", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_EXPIRY_2"
+			
+    count = count + 1
+				
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_L_MANUFACTURE_DATE", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_MANUFACTURE_DATE"
+				
+    count = count + 1
+				
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_L_ACCEPTED_DATE", 1)
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_ACCEPTED_DATE"
+				
+    count = count + 1
+
+			
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_L_RELEASE_DATE", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_RELEASE_DATE"
+			
+    count = count + 1
+				
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_L_SIGNATORY", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_SIGNATORY"
+				
+    count = count + 1
+				
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_L_COMMENT_1", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_COMMENT_1"		
+		
+    count = count + 1
+				
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_L_STANDARDS", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_STANDARDS"				
+		
+    count = count + 1		
+		
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_L_PRESENTATION", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_PRESENTATION"		
+		
+    count = count + 1
+			
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_L_REGISTRATION_NO", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_REGISTRATION_NO"
+			
+    count = count + 1
+			
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_L_HEADER_FIELD_1", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_HEADER_FIELD_1"
+			
+    count = count + 1
+
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_L_HEADER_FIELD_2", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_HEADER_FIELD_2"
+			
+    count = count + 1
+				
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_L_MARKET", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_MARKET"		
+		
+    count = count + 1
+				
+    prompt_details [ count , MESSAGE_POSITION    ] = GET_USER_MESSAGE("COA_LTE_L_MARKET_DESCRIPTION", 1) 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_MARKET_DESCRIPTION"
+{1.2}
+    count = count + 1
+				
+    prompt_details [ count , MESSAGE_POSITION    ] = "L Expiry Date 3"
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_EXPIRY_3"	
+
+    count = count + 1
+				
+    prompt_details [ count , MESSAGE_POSITION    ] = "L Average weight" 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_AVERAGE_WEIGHT"	
+
+    count = count + 1
+				
+    prompt_details [ count , MESSAGE_POSITION    ] = "L Quantity Shipped" 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_QUANTITY_SHIPPED"
+
+    count = count + 1
+				
+    prompt_details [ count , MESSAGE_POSITION    ] = "L Lot No. 1" 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_LOT_NO_1"
+
+    count = count + 1
+				
+    prompt_details [ count , MESSAGE_POSITION    ] = "L Lot No. 2"
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_LOT_NO_2"
+
+    count = count + 1
+				
+    prompt_details [ count , MESSAGE_POSITION    ] = "L Comment 2"
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_COMMENT_2"
+
+    count = count + 1
+				
+    prompt_details [ count , MESSAGE_POSITION    ] = "Comment 2"
+    prompt_details [ count , FIELD_NAME_POSITION ] = "COMMENT_2"
+
+    count = count + 1
+				
+    prompt_details [ count , MESSAGE_POSITION    ] = "L Comment 3" 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "L_COMMENT_3"
+
+    count = count + 1
+				
+    prompt_details [ count , MESSAGE_POSITION    ] = "Comment 3" 
+    prompt_details [ count , FIELD_NAME_POSITION ] = "COMMENT_3"
+		
+{/1.2}
+    displayed_name_of_table    = GET_USER_MESSAGE("COA_LTE_TEMPLATE", 1)
+
+    directory = EMPTY
+    extn = EMPTY
+
+	input_mess = "****"
+	default_value = EMPTY {Specify default unique key value for new additions to the table}
+
+	fields_to_output [ 1 ]  = 1
+	fields_to_output [ 2 ]  = 2
+      fields_to_output [ 3 ]  = 3
+      fields_to_output [ 4 ]  = 4
+      fields_to_output [ 5 ]  = 5
+      fields_to_output [ 6 ]  = 6
+      fields_to_output [ 7 ]  = 7
+	fields_to_output [ 8 ]  = 8
+	fields_to_output [ 9 ]  = 9
+      fields_to_output [ 10 ]  = 10
+      fields_to_output [ 11 ]  = 11
+	fields_to_output [ 12 ]  = 12
+	fields_to_output [ 13 ]  = 13
+	fields_to_output [ 14 ]  = 14
+      fields_to_output [ 15 ]  = 15
+      fields_to_output [ 16 ]  = 16
+	fields_to_output [ 17 ]  = 17
+	fields_to_output [ 18 ]  = 18
+	fields_to_output [ 19 ]  = 19
+      fields_to_output [ 20 ]  = 20
+      fields_to_output [ 21 ]  = 21
+	fields_to_output [ 22 ]  = 22
+	fields_to_output [ 23 ]  = 23
+	fields_to_output [ 24 ]  = 24
+      fields_to_output [ 25 ]  = 25
+      fields_to_output [ 26 ]  = 26
+	fields_to_output [ 27 ]  = 27
+	fields_to_output [ 28 ]  = 28
+	fields_to_output [ 29 ]  = 29
+      fields_to_output [ 30 ]  = 30
+
+
+	ARRAY 	special_actions_report 	ARRAY_SIZE ( 0 , 4 )
+	
+	special_actions_report [ 1 , CHARACTER_POSITION ] = "*"
+	special_actions_report [ 1 , TITLE_POSITION     ] = ""
+		
+	special_actions_report [ 2 , CHARACTER_POSITION ] = "1"
+	special_actions_report [ 2 , TITLE_POSITION     ] = GET_USER_MESSAGE("COA_LTE_RESULTS", 1) 
+	special_actions_report [ 2 , LIBRARY_POSITION   ] = GLOBAL ( "CURRENT_LIBRARY" )
+	special_actions_report [ 2 , ROUTINE_POSITION   ] = "result_initialise"
+		
+	special_actions_report [ 3 , CHARACTER_POSITION ] = "2"
+	special_actions_report [ 3 , TITLE_POSITION     ] = GET_USER_MESSAGE("COA_LTE_PARAMETERS", 1) 
+	special_actions_report [ 3 , LIBRARY_POSITION   ] = GLOBAL ( "CURRENT_LIBRARY" )
+	special_actions_report [ 3 , ROUTINE_POSITION   ] = "parameters_initialise"
+
+
+        ARRAY 	labtable_messages 	ARRAY_SIZE ( 0 )
+              
+        labtable_messages [ IDENTITY1_MESSAGE ] = GET_USER_MESSAGE("COA_LTE_PRODUCT", 1){GET MESSAGE ( 2545 , 1 )}
+					        { "Identity" }
+        labtable_messages [ IDENTITY2_MESSAGE ] = "Market (Level)" {GET MESSAGE ( 2884 , 1 )}
+					        { "Identity 2" }
+        labtable_messages [ IDENTITY3_MESSAGE ] = "Version" {GET MESSAGE ( 2884 , 2 )}
+					        { "Identity 3" }
+        labtable_messages [ IDENTITY4_MESSAGE ] = GET MESSAGE ( 2884 , 3 )
+					        { "Identity 4" }
+        labtable_messages [ MOD_ON_MESSAGE    ] = GET MESSAGE ( 2546 , 1 )
+						{ "Modified On" }
+        labtable_messages [ MOD_BY_MESSAGE    ] = GET MESSAGE ( 2547 , 1 )
+                                                { "Modified By" }
+        labtable_messages [ READ_MESSAGE      ] = GET MESSAGE ( 2566 , 1 )
+                                                { "Labtable Read Transaction" }
+        labtable_messages [ WRITE_MESSAGE     ] = GET MESSAGE ( 2567 , 1 )
+                                                { "Labtable Write Transaction" }
+
+
+	help_context = "$LTE_TEM_EDIT"
+
+
+ {   ------	THERE ARE NO MORE FIELDS TO BE SETUP  --------    }
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+{                                                                             }
+{ The following routines are provided as call back points for LTE processing. }
+{ User code may be added as appropriate.                                      }
+{ --------------------------------------------------------------------------- }
+
+ROUTINE validation_routine
+
+	{ Called on pressing the DO key to save LTE screen.               }
+	{ Called outside of the LTE write transaction.                    }
+        {                                                                 }
+	{ Returns a boolean value to indicate whether to proceed with     }
+	{ the save process - if FALSE is returned the user is forced back }
+	{ into the editor                                                 }
+
+	RETURN ( TRUE )
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE prompt_object_routine (       prompt_object ,
+                                VALUE key0_count    ,
+                                VALUE operation     )
+
+	{ Called during the creation of the identity prompts              }
+        {                                                                 }
+	{ prompt_object is the prompt object for the specified prompt     }
+	{ key0_count    is the current key0 segment number                }
+	{               eg this would be 2 for the version_number         }
+	{                  field of the versioned_analysis table          }
+	{ operation     the current LTE operation eg ADD, MODIFY, DISPLAY }
+        {                                                                 }
+	{ No return value is required                                     }
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE ident_prompt_object_routine (       prompt_object ,
+				      VALUE ident_field   )
+
+	{ Called from the ident form for for each identity prompt when    }
+	{ copying, printing etc.                                          }
+        {                                                                 }
+	{ prompt_object is the prompt object for the specified prompt     }
+	{ ident_field   is the name of the identity field to prompt for   }
+	{               eg ANALYSIS_VERSION                               }
+	{                  version field of the versioned_analysis table  }
+        {                                                                 }
+	{ No return value is required                                     }
+
+DECLARE operation , labtable
+
+	labtablib_get_labtable ( labtable )
+
+	operation = labtable . operation
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE create_id_routine
+
+	{ Called before starting the identity prompts of an LTE for the   }
+	{ ADD and COPY options.                                           }
+	{                                                                 }
+	{ The return value is used as the identity of the new record      }
+	{ instead of starting the identity prompts.                       }
+	{ Returning EMPTY causes the identity prompt to be started.       }
+
+        RETURN ( EMPTY )
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE update_routine ( labtable )
+
+	{ Called on pressing the DO key to save LTE screen.               }
+	{ Called after the LTE write transaction has been started.        }
+	{                                                                 }
+	{ labtable is the labtable object.                                }
+	{                                                                 }
+	{ The return value is TRUE  if updates have been performed        }
+	{                     FALSE if updates have NOT been performed    }
+	{                     EMPTY - the systems checks for updates      }
+
+        RETURN ( FALSE )
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE read_data_routine (       labtable  ,
+                            VALUE operation )
+
+	{ Called after the record has been selected / reserved but before }
+	{ the editor screen has been built.                               }
+        {                                                                 }
+	{ labtable      the labtable object.                              }
+	{ operation     the current LTE operation eg ADD, MODIFY, DISPLAY }
+        {                                                                 }
+	{ No return value is required                                     }
+
+
+    IF ( operation = "ADD") THEN
+
+        ASSIGN coa_template . created_on = NOW
+        ASSIGN coa_template . created_by = GLOBAL("OPERATOR")
+
+    ELSEIF (operation = "NEW_VERSION") THEN
+
+        ASSIGN coa_template . created_on = NOW
+        ASSIGN coa_template . created_by = GLOBAL("OPERATOR")
+   
+        ASSIGN coa_template . version_comment = ""
+
+    ENDIF
+
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE validate_new_id_routine ( VALUE new_id )
+
+	{ Called after each ID value has been entered.                    }
+	{                                                                 }
+	{ new_id is the value entered at the prompt.                      }
+	{                                                                 }
+	{ Returns a boolean value to indicate whether the value is valid. }
+
+	RETURN ( TRUE )
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE remove_restore_routine ( labtable )
+
+	{ Called on pressing the DO key to remove or restore an LTE entry.}
+	{ Called after the LTE write transaction has been started.        }
+	{                                                                 }
+	{ labtable is the labtable object.                                }
+	{                                                                 }
+	{ The labtable . operation field is set to either                 }
+	{             "REMOVE_IDENT"  for the remove option               }
+	{             "RESTORE_IDENT" for the restore option              }
+
+        RETURN ( TRUE )
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE do_the_work  ( VALUE operation )
+
+table_setup ()
+smp_lte_perform_option  ( name_of_table              ,
+	    	          displayed_name_of_table    ,
+			  prompt_details             ,
+                          labtable_messages          ,
+                          default_value		     ,
+                          input_mess		     ,
+		          header_mess                ,
+		          footer_mess                ,
+			  display_footer_mess        ,
+			  directory                  ,
+			  extn                       ,
+			  help_context               ,
+		          GLOBAL ("CURRENT_LIBRARY") ,
+			  fields_to_output           ,
+			  special_actions_report     ,
+			  operation                  )
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE add_option ( option )
+
+do_the_work ( "add_ident" )
+
+ENDROUTINE
+
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE copy_option ( option )
+
+do_the_work ( "copy_ident" )
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE modify_option ( option )
+
+do_the_work ( "modify_ident" )
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE display_option ( option )
+
+do_the_work ( "display_ident" )
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE remove_option ( option )
+
+do_the_work ( "remove_ident" )
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE restore_option ( option )
+
+do_the_work ( "restore_ident" )
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE list_option ( option )
+
+do_the_work ( "list_idents" )
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE print_option ( option )
+
+do_the_work ( "print_ident" )
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE smp_lte_initialise
+
+ENDROUTINE
+
+
+{JON 1.1}
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE new_version_option ( option )
+
+do_the_work ( "new_version" )
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE approve_option ( option )
+
+do_the_work ( "approve_ident" )
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE submit_option ( option )
+
+do_the_work ( "submit_ident" )
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE history_option ( option )
+
+	table_setup ()
+	inspection_labtable_history ( name_of_table ,
+	                              input_mess    )
+
+ENDROUTINE
+
+{/JON 1.1}
+
+
+
+
+{*******************************************************************************
+*                I N F O M A K E R  R E P O R T  B R O W S E 
+*******************************************************************************}
+
+{******************************************************************************}
+
+{
+* Summary    : Browse, for infomaker pbl.
+*
+* Parameters : self - prompt
+*
+* Return     : None
+*
+*******************************************************************************}
+
+ROUTINE browse_for_pbl (self) 
+   
+   DECLARE file_name, directory, filter, new_file_name
+   
+   file_name = self . value
+
+   directory = client_get_imprint_path ( )
+
+   IF directory = EMPTY THEN
+
+      flash_message ( GET_USER_MESSAGE ("INFOMAKER_LINK_ERROR_BROWSE_SMW",1 ) , 
+        		    TRUE )
+
+   ELSE
+
+      filter = "Powerbuilder Libraries (*.pbl) | *.pbl"
+
+      new_file_name = client_find_file (  
+			TRUE          , 
+			file_name     ,
+			directory     , 
+			filter        , 
+			GET_USER_MESSAGE ( "INFOMAKER_LINK_REP_TO_RUN" , 1 ) ,
+			""	       )
+			
+    ENDIF
+
+ENDROUTINE {browse_for_pbl}
+
+{******************************************************************************}
+
+ROUTINE strip_off_filename ( self )
+
+{
+* Summary    : Wrap around function for strip_file_from_path, takes prompt
+*              value, strips then sets prompt value.
+*
+* Parameters : self - prompt
+*
+* Return     : None
+*
+*******************************************************************************}
+
+    DECLARE new_file_name, file_name
+    
+    new_file_name = self . value
+    
+    IF ( new_file_name <> EMPTY ) AND ( NOT BLANK ( new_file_name ) ) THEN
+
+        file_name = strip_file_from_path ( new_file_name )
+
+        self . value = file_name
+        self . set_text ( file_name )
+
+    ENDIF
+
+ENDROUTINE { strip_off_filename }
+
+
+ROUTINE strip_file_from_path ( file_name )
+
+{
+* Summary    : Takes file path and returns file name only.
+*
+* Parameters : file path
+*
+* Return     : file name
+*
+*******************************************************************************}
+
+
+    DECLARE slash_pos , str_len , result
+
+    IF INDEX ( file_name , "smp$imprint/" ) > 0 THEN
+    
+        result = file_name # "smp$imprint/"
+        
+    ELSE
+    
+        result = STRIP ( file_name )
+
+        slash_pos = INDEX ( result , "\" )
+
+        WHILE ( slash_pos > 0 ) DO
+
+            str_len = LENGTH ( result )
+
+            result = RIGHTSTRING ( result , str_len - slash_pos )
+
+            slash_pos = INDEX ( result , "\" )
+            
+            {Check for server additions}
+            IF slash_pos = 0 THEN
+            	slash_pos = INDEX ( result , "/" )
+            ENDIF
+
+        ENDWHILE
+
+    ENDIF
+    
+    RETURN ( result )
+
+ENDROUTINE
+
+ROUTINE report_list ( self )
+
+{
+* Summary    : Connects the user to infomaker and provides the list of reports
+*              then sets the prompts text, with the selected report name.
+*
+* Parameters : self - prompt
+*
+* Return     : None
+*
+*******************************************************************************}
+
+
+	DECLARE pbl_name , rep_list , report_name , imprint_path , imprint_obj, 
+		  rep_array
+
+	pbl_name = SELECT coa_template . infomaker_library
+
+	report_name = SELECT coa_template . infomaker_report
+	
+
+	IF report_name = EMPTY THEN
+
+	report_name = ""
+
+	ENDIF
+
+
+	imprint_path = client_get_imprint_path ()
+
+	IF imprint_path = EMPTY THEN
+
+	    flash_message ( 
+	    	GET_USER_MESSAGE ( "IMPRINT_CONNECT_UNSUCCESSFUL" , 1 ) , TRUE )
+
+	ELSE
+
+	    IF GLOBAL ( "OLEIMPRINT_SERVER_SIDE" ) THEN
+
+		imprint_path = lib_utils_logical_to_string ( "smp$imprint" )
+
+	    ENDIF
+
+	    define_imprint_class ()
+
+	    CREATE OBJECT IMPRINT , imprint_obj
+
+	    imprint_obj . create_ole_object ()
+
+	    imprint_obj . reset_ole_object ()
+
+	    imprint_obj . login ()
+
+	    imprint_obj . library = imprint_path : "\" : pbl_name
+
+	    imprint_obj . set_PBL_Library ( imprint_obj . library )
+
+	    rep_list = imprint_obj . list_reports ()
+
+	    rep_array = convert_list_to_array ( rep_list )
+
+	    imprint_obj . ole_object = EMPTY
+
+	    ARRAY_SORT ( rep_array , ARRAY_SORT_ASCENDING )
+
+	    BROWSE_ON_ARRAY ( 20 , report_name , rep_array )
+
+	    self . set_text ( report_name )
+
+	ENDIF
+
+
+ENDROUTINE
+
+ROUTINE validate_browse_reports ( self )
+
+{
+* Summary    : Validate report entered into the reports field
+*
+* Parameters : prompt object
+*
+* Return     : If report is valid
+*
+*******************************************************************************}
+
+
+	DECLARE handled, pbl_name
+	
+	handled  = FALSE
+		
+	pbl_name = SELECT coa_template . infomaker_library
+	
+	handled = valid_infomaker_report ( pbl_name , self . value )
+
+	IF NOT handled THEN
+
+		flash_message ( 
+			GET_USER_MESSAGE ( "INFOMAKER_LINK_ERROR_INVALID_REPORT" , 1 ) , 1 )
+	ENDIF
+	
+	RETURN ( handled )
+	
+	
+
+ENDROUTINE
+
+ROUTINE convert_list_to_array ( VALUE rep_list  )
+
+{
+* Summary    : Takes a string, inwhich this case is a list of report names,
+*              and puts them in an array.
+*
+* Parameters : rep_list - string
+*
+* Return     : rep_array - array of reports
+*
+*******************************************************************************}
+
+    DECLARE row_count, rep_txt, sep_pos, rep_txt_1, rep_txt_2,rep_txt_3,
+            lenstr, lenstr_1, lenstr_2, col_1, col_2 , rep_array
+
+    ARRAY rep_array
+
+    row_count = 0
+    sep_pos   = 1
+
+    WHILE ( rep_list <> "" ) AND
+          ( sep_pos  >  0  ) DO
+
+        row_count = row_count + 1
+        lenstr    = STRINGLENGTH ( rep_list )
+        sep_pos   = INDEX ( rep_list, ASCII(10) )
+        rep_txt   = ""
+        rep_txt_1 = ""
+        rep_txt_2 = ""
+        rep_txt_3 = ""
+
+        IF sep_pos > 1 THEN
+
+            rep_txt   = SUBSTRING ( rep_list, 1, sep_pos - 1 )
+
+            col_1     = INDEX ( rep_txt, ASCII (9) )
+
+            IF col_1 > 0 THEN
+
+                rep_txt_1 = SUBSTRING ( rep_txt, 1, col_1-1 )
+
+                lenstr_1  = STRINGLENGTH ( rep_txt )
+                rep_txt_2 = SUBSTRING ( rep_txt, col_1+1 , lenstr_1 - col_1 )
+
+                col_2     = INDEX ( rep_txt_2, ASCII (9) )
+
+                lenstr_2  = STRINGLENGTH ( rep_txt_2 )
+                rep_txt_3 = SUBSTRING ( rep_txt_2, col_2 + 1 , lenstr_2 - col_2 )
+                rep_txt_2 = SUBSTRING ( rep_txt_2, 1 , col_2 - 1 )
+
+
+            ELSE
+
+                rep_txt_1 = rep_txt
+
+            ENDIF
+
+        ENDIF
+
+        rep_array [ row_count, 1 ] = rep_txt_1
+        rep_array [ row_count, 2 ] = rep_txt_3
+
+        rep_list = SUBSTRING ( rep_list, sep_pos + 1, lenstr - sep_pos )
+        
+    ENDWHILE
+
+    RETURN ( rep_array )
+
+ENDROUTINE { convert_list_to_array }
+
+
+ROUTINE browse_reports ( prompt_object )
+{
+* Summary    : Browse for infomaker reports
+*
+* Parameters : prompt object
+*
+* Return     : None
+*
+*******************************************************************************}
+
+    PROMPT OBJECT prompt_object
+        FORMAT TEXT50
+        WITH (  browse_routine = "report_list" ,
+        	validation_routine = "validate_browse_reports" )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE find_pbl_name ( prompt_object )
+
+{
+* Summary    : RMB menu routine
+*
+* Parameters : standard rmb parameters
+*
+* Return     : None
+*
+*******************************************************************************}
+
+	DECLARE pbl_name, client_browse, imprint_path
+
+	pbl_name = SELECT coa_template . infomaker_library
+
+	IF pbl_name = EMPTY THEN
+
+		pbl_name = ""
+
+	ENDIF
+
+
+	IF GLOBAL ( "OLEIMPRINT_SERVER_SIDE" ) THEN
+
+		imprint_path = lib_utils_logical_to_string ( "smp$imprint" )
+		client_browse = FALSE
+		
+	ELSE
+
+		imprint_path = client_get_imprint_path ()
+		client_browse = TRUE
+		
+	ENDIF
+
+	PROMPT OBJECT prompt_object    
+	BROWSE ON FILE
+	ON LINE 1 FROM 15
+	WITH ( 	file_extension = "pbl" 				,
+	   	file_directory = imprint_path 			,
+	   	client_file = client_browse 			,
+	   	leave_prompt_routine = "strip_off_filename" 	,
+	   	vgl_library = GLOBAL ( "CURRENT_LIBRARY" ) 	)
+
+        
+ENDROUTINE
+
+
+
+
+
+ROUTINE valid_infomaker_report ( VALUE pbl, VALUE report )
+
+{
+* Summary    : Connects the user to infomaker and provides the list of reports
+*              then checks the pass report is valid.
+*
+* Parameters : pbl - Powerbuilder Library
+*              report - infomaker report to check
+*
+* Return     : Boolean based on it report is found in pbl
+*
+*******************************************************************************}
+
+
+	DECLARE valid_report, imprint_path, imprint_obj, rep_list, rep_array,
+	count
+
+
+	valid_report = FALSE
+	count = 0
+
+	imprint_path = client_get_imprint_path ()
+
+	IF imprint_path = EMPTY THEN
+
+		flash_message ( 
+		GET_USER_MESSAGE ( "IMPRINT_CONNECT_UNSUCCESSFUL" , 1 ) , TRUE )
+
+	ELSE
+
+		IF GLOBAL ( "OLEIMPRINT_SERVER_SIDE" ) THEN
+
+			imprint_path = lib_utils_logical_to_string ( "smp$imprint" )
+
+		ENDIF
+
+		define_imprint_class ()
+
+		CREATE OBJECT IMPRINT , imprint_obj
+
+		imprint_obj . create_ole_object ()
+
+		imprint_obj . reset_ole_object ()
+
+		imprint_obj . login ()
+
+		imprint_obj . library = imprint_path : "\" : pbl
+
+		imprint_obj . set_PBL_Library ( imprint_obj . library )
+
+		rep_list = imprint_obj . list_reports ()
+
+		rep_array = convert_list_to_array ( rep_list )
+
+		report = STRIP ( TOUPPER (report) )
+		WHILE ( count < size_of_array ( rep_array ) ) DO
+
+			count = count + 1
+	
+			IF report = TOUPPER ( STRIP ( rep_array [ count , 1 ] )  ) THEN
+
+				valid_report = TRUE
+
+			ENDIF
+
+		ENDWHILE	    
+
+	ENDIF
+
+	RETURN ( valid_report )
+
+ENDROUTINE { valid_infomaker_report }
+
+
+{*******************************************************************************
+*                List Editor for COA_TEMPLATE_RESULTS
+*******************************************************************************}
+
+GLOBAL ROUTINE result_initialise ( VALUE identity        , 
+                                 VALUE copied_identity ,
+                                 VALUE operation       )
+{ 
+* Summary    : The LTE Entry Point.
+*
+* Parameters   : Identity        - The Identity.
+*                Copied_Identity - The Copied Identity.
+*                Operation       - The Current LTE Operation Mode.
+* Return Value : N/a
+*
+*******************************************************************************}
+
+    DECLARE answer
+
+    IF operation = "PRINT" THEN
+
+        print_option_results ( identity )
+
+    ELSE
+
+        answer = other_option_results ( identity, copied_identity, operation )
+        RETURN ( answer )
+
+    ENDIF
+    
+    
+
+ENDROUTINE { result_initialise }
+
+{******************************************************************************}
+
+ROUTINE print_option_results ( VALUE identity ) 
+
+{ Routine to call when printing the LTE.
+*
+* Parameters   : Identity        - The Identity.
+* Return Value : N/a
+*
+*******************************************************************************}
+
+    DECLARE field_details
+	
+    ARRAY field_details ARRAY_SIZE ( 0 , 2 )
+
+    field_details [ 1, 1 ] = "PRODUCT"
+    field_details [ 1, 2 ] = "PRODUCT" 
+    field_details [ 2, 1 ] = "COUNTRY"
+    field_details [ 2, 2 ] = "COUNTRY"
+    field_details [ 3, 1 ] = "ANALYSIS"
+    field_details [ 3, 2 ] = "ANALYSIS"
+    field_details [ 4, 1 ] = "COMPONENT"
+    field_details [ 4, 2 ] = "COMPONENT"
+    field_details [ 5, 1 ] = "COMPONENT"
+    field_details [ 5, 2 ] = "COMPONENT"
+    field_details [ 6, 1 ] = "ENABLE_FACTOR"
+    field_details [ 6, 2 ] = "ENABLE_FACTOR"
+    field_details [ 7, 1 ] = "FACTOR"
+    field_details [ 7, 2 ] = "FACTOR"
+
+    print_fields (  "COA_TEMPLATE_RESULTS",
+                    identity        ,
+                    ""              ,
+                    ""              ,
+                    2               ,
+                    28              ,
+                    field_details   )
+
+ENDROUTINE { print_option }
+
+{******************************************************************************}
+
+ROUTINE other_option_results (  VALUE identity        , 
+                                VALUE copied_identity ,
+                                VALUE operation       )
+{
+* Summary      : Builds list editor for results
+*
+* Parameters   : Identity        - The Identity.
+*                Copied_Identity - The Copied Identity.
+*                Operation       - The Current LTE Operation Mode.
+*
+* Return Value : 
+*
+*******************************************************************************}
+
+    DECLARE prompt_details, 
+            answer, 
+            heading, 
+            library, 
+            report, 
+            arguments, 
+            prompt_array,
+            head_count,
+            col_head,
+            count
+            
+    ARRAY prompt_array    
+    ARRAY prompt_details ARRAY_SIZE ( 0 , 6 )
+    
+    {***********************************************************************
+    * Set up the list of fields to be processed.
+    ***********************************************************************}
+        
+    count = 1
+    
+    prompt_details [ count , 1 ] = GET_USER_MESSAGE("COA_LTERES_ANALYSIS", 1)
+    prompt_details [ count , 2 ] = "DISPLAY"
+    prompt_details [ count , 3 ] = "COA_TEMPLATE_RESULTS"
+    prompt_details [ count , 4 ] = "ANALYSIS"
+    prompt_details [ count , 5 ] = 0 
+    prompt_details [ count , 6 ] = 10
+        
+    count = count + 1
+        
+    prompt_details [ count , 1 ] = GET_USER_MESSAGE("COA_LTERES_COMPONENT", 1)
+    prompt_details [ count , 2 ] = "DISPLAY"
+    prompt_details [ count , 3 ] = "COA_TEMPLATE_RESULTS"
+    prompt_details [ count , 4 ] = "COMPONENT"
+    prompt_details [ count , 5 ] = 0
+    prompt_details [ count , 6 ] = 20
+        
+    count = count + 1
+    
+    prompt_details [ count , 1 ] = GET_USER_MESSAGE("COA_LTERES_ANALYSIS_ALIAS", 1)
+    prompt_details [ count , 2 ] = "FORMAT"
+    prompt_details [ count , 3 ] = "COA_TEMPLATE_RESULTS"
+    prompt_details [ count , 4 ] = "ANALYSIS_ALIAS"
+    prompt_details [ count , 5 ] = 0
+    prompt_details [ count , 6 ] = 20
+    
+    count = count + 1
+        
+    prompt_details [ count , 1 ] = GET_USER_MESSAGE("COA_LTERES_COMPONENT_ALIAS", 1)
+    prompt_details [ count , 2 ] = "FORMAT"
+    prompt_details [ count , 3 ] = "COA_TEMPLATE_RESULTS"
+    prompt_details [ count , 4 ] = "COMPONENT_ALIAS"
+    prompt_details [ count , 5 ] = 0
+    prompt_details [ count , 6 ] = 20
+    
+    
+    count = count + 1
+    
+    prompt_details [ count , 1 ] = GET_USER_MESSAGE("COA_LTERES_STANDARD", 1) 
+    prompt_details [ count , 2 ] = "FORMAT"
+    prompt_details [ count , 3 ] = "COA_TEMPLATE_RESULTS"
+    prompt_details [ count , 4 ] = "STANDARD"
+    prompt_details [ count , 5 ] = 0
+    prompt_details [ count , 6 ] = 20
+       
+    count = count + 1
+       
+    prompt_details [ count , 1 ] = GET_USER_MESSAGE("COA_LTERES_STANDARD_2", 1) 
+    prompt_details [ count , 2 ] = "FORMAT"
+    prompt_details [ count , 3 ] = "COA_TEMPLATE_RESULTS"
+    prompt_details [ count , 4 ] = "STANDARD_2"
+    prompt_details [ count , 5 ] = 0
+    prompt_details [ count , 6 ] = 20
+        
+    count = count + 1
+       
+    prompt_details [ count , 1 ] = GET_USER_MESSAGE("COA_LTERES_RESULT_ALIAS", 1)
+    prompt_details [ count , 2 ] = "FORMAT"
+    prompt_details [ count , 3 ] = "COA_TEMPLATE_RESULTS"
+    prompt_details [ count , 4 ] = "RESULT_ALIAS"
+    prompt_details [ count , 5 ] = 0
+    prompt_details [ count , 6 ] = 20
+                
+    count = count + 1
+    
+    prompt_details [ count , 1 ] = GET_USER_MESSAGE("COA_LTERES_FLAGS", 1)
+    prompt_details [ count , 2 ] = "FORMAT"
+    prompt_details [ count , 3 ] = "COA_TEMPLATE_RESULTS"
+    prompt_details [ count , 4 ] = "FLAGS"
+    prompt_details [ count , 5 ] = 0
+    prompt_details [ count , 6 ] = 5
+        
+    count = count + 1
+    	    
+    prompt_details [ count , 1 ] = GET_USER_MESSAGE("COA_LTERES_DECIMAL_PLACES", 1) 
+    prompt_details [ count , 2 ] = "ROUTINE"
+    prompt_details [ count , 3 ] = GLOBAL ( "CURRENT_LIBRARY" )
+    prompt_details [ count , 4 ] = "DP_PROMPT"
+    prompt_details [ count , 5 ] = 0
+    prompt_details [ count , 6 ] = 4
+        
+    count = count + 1
+	     
+    prompt_details [ count , 1 ] = GET_USER_MESSAGE("COA_LTERES_UNIT", 1)
+    prompt_details [ count , 2 ] = "ROUTINE"
+    prompt_details [ count , 3 ] = GLOBAL ( "CURRENT_LIBRARY" )
+    prompt_details [ count , 4 ] = "UNIT_PROMPT"
+    prompt_details [ count , 5 ] = 0
+    prompt_details [ count , 6 ] = 10
+
+    count = count + 1
+	     
+    prompt_details [ count , 1 ] = GET_USER_MESSAGE("COA_LTERES_BOOKMARK", 1)
+    prompt_details [ count , 2 ] = "ROUTINE"
+    prompt_details [ count , 3 ] = GLOBAL ( "CURRENT_LIBRARY" )
+    prompt_details [ count , 4 ] = "BOOKMARK_PROMPT"
+    prompt_details [ count , 5 ] = 0
+    prompt_details [ count , 6 ] = 20
+    
+    count = count + 1
+	     
+    prompt_details [ count , 1 ] = GET_USER_MESSAGE("COA_LTERES_MANDATORY", 1)
+    prompt_details [ count , 2 ] = "FORMAT"
+    prompt_details [ count , 3 ] = "COA_TEMPLATE_RESULTS"
+    prompt_details [ count , 4 ] = "MANDATORY"
+    prompt_details [ count , 5 ] = 0
+    prompt_details [ count , 6 ] = 10
+
+    {***********************************************************************
+    * Build up the Heading Line from the field list.  
+    ***********************************************************************}
+    
+    head_count = 1
+    heading    = ""
+    
+    WHILE head_count <= count DO
+    
+        col_head = PAD ( prompt_details [ head_count, 1 ], " ",
+                         prompt_details [ head_count, 6 ]       )
+    
+        heading    = heading : col_head : " "
+        head_count = head_count + 1 
+    
+    ENDWHILE
+    
+    
+
+    list_editor_create_object ( the_list_editor_res )
+
+    the_list_editor_res . table         = "COA_TEMPLATE_RESULTS"
+    the_list_editor_res . header        = "Results"
+    the_list_editor_res . footer        = ""
+    the_list_editor_res . pre_insert    = "THE_INSERT_ROUTINE"
+    the_list_editor_res . post_insert   = EMPTY
+    the_list_editor_res . delete        = EMPTY
+    the_list_editor_res . library       = GLOBAL ( "CURRENT_LIBRARY" )
+    the_list_editor_res . compatability = PROMPT_DETAILS_310
+
+    the_list_editor_res . setup_prompt_details ( prompt_details,
+                                                 heading       )
+
+
+    the_list_editor_res . grid .user_info = prompt_array
+    
+    
+    {***********************************************************************
+    * When the secondary screen is called the grid is populated depending
+    * on the library and report.
+    ***********************************************************************}
+        
+    IF ( operation = "MODIFY" ) THEN
+
+        the_list_editor_res . set_table ()
+
+        the_list_editor_res . get_data ( TRUE )
+        the_list_editor_res . build_screens ()
+
+    ENDIF
+    
+       
+    answer = the_list_editor_res . operation ( identity       ,
+                                               copied_identity,
+                                               operation      )
+
+    RETURN ( answer ) 
+
+ENDROUTINE { other_option_results }
+
+{******************************************************************************}
+
+ROUTINE dp_prompt (      self        ,
+                         grid        ,
+                   VALUE cell_column ,
+                   VALUE cell_row    ,
+                   VALUE column      ,
+                   VALUE row         ,
+                   VALUE cell_width  ,
+                         window      ,
+                   VALUE is_display   )
+                              
+{
+*	Does a special prompt on the decimal places, significant figures and
+*	rounding prompts.
+*
+*******************************************************************************}
+    
+    DECLARE the_val,
+            old_val,
+            places_browse_array
+                
+    ARRAY places_browse_array ARRAY_SIZE ( 11 , 2 )    
+    
+    places_browse_array [ 1 , 1 ] = "X"
+    places_browse_array [ 1 , 2 ] = "X"    
+    places_browse_array [ 2 , 1 ] = "0"
+    places_browse_array [ 2 , 2 ] = "0"    
+    places_browse_array [ 3 , 1 ] = "1"
+    places_browse_array [ 3 , 2 ] = "1"   
+    places_browse_array [ 4 , 1 ] = "2"
+    places_browse_array [ 4 , 2 ] = "2"   
+    places_browse_array [ 5 , 1 ] = "3"
+    places_browse_array [ 5 , 2 ] = "3"    
+    places_browse_array [ 6 , 1 ] = "4"
+    places_browse_array [ 6 , 2 ] = "4"    
+    places_browse_array [ 7 , 1 ] = "5"
+    places_browse_array [ 7 , 2 ] = "5"    
+    places_browse_array [ 8 , 1 ] = "6"
+    places_browse_array [ 8 , 2 ] = "6"    
+    places_browse_array [ 9 , 1 ] = "7"
+    places_browse_array [ 9 , 2 ] = "7"    
+    places_browse_array [ 10 , 1 ] = "8"
+    places_browse_array [ 10 , 2 ] = "8"    
+    places_browse_array [ 11 , 1 ] = "9"
+    places_browse_array [ 11 , 2 ] = "9"
+    
+    the_val = SELECT coa_template_results . sig_figs_number  IN OBJECT self
+        
+    old_val = the_val
+    
+    IF the_val = -1 THEN
+        the_val = "X"
+    ELSE
+        the_val = STRIP ( the_val )
+    ENDIF
+    
+    IF is_display THEN
+    
+        DISPLAY the_val
+            ON LINE   row
+    	    FROM      column
+    	    TO        column + cell_width - 1
+    	    IN WINDOW window
+    
+    ELSE
+    
+        IF the_val = -1 THEN
+            the_val = "X"
+        ELSE
+            the_val = STRIP ( the_val )
+        ENDIF		
+
+        PROMPT FOR the_val
+            ON LINE   row
+            FROM      column
+	    TO        column + cell_width - 1
+	    IN WINDOW window
+	    CHOOSE OUTOF places_browse_array
+	    WITH ( display_only = is_display                 ,
+	           zap_on_first = TRUE                       ,
+	           always_validate = TRUE                    ,
+	           validation_routine = "validate_dp_prompt" ,
+	           is_spin = TRUE 
+	         )
+	
+        IF the_val = "X" THEN
+            the_val = -1
+        ELSE
+	    the_val = NUMERIC ( the_val )
+        ENDIF
+        
+        IF the_val <> old_val THEN
+	
+	    ASSIGN coa_template_results . sig_figs_number IN OBJECT self = the_val
+	
+	    grid . redisplay_row ( grid . current_row )
+	
+        ENDIF
+        
+    ENDIF
+
+ENDROUTINE { dp_prompt }
+
+{******************************************************************************}
+
+ROUTINE validate_dp_prompt ( self )
+
+{
+*	Validates the prompt for significant figures etc.
+*
+*******************************************************************************}
+
+    DECLARE return_value
+
+    return_value = FALSE
+
+    IF STRIP ( self . text ) <> "X" THEN
+
+        IF NUMERIC ( self . text ) <> ERROR THEN
+            IF NUMERIC ( self . text ) >= 0 THEN
+                return_value = TRUE
+       	    ENDIF
+	ENDIF
+
+    ELSE
+
+        return_value = TRUE
+
+    ENDIF
+
+    RETURN ( return_value )
+
+ENDROUTINE { validate_dp_prompt }
+
+
+ROUTINE unit_prompt ( self        ,
+                      grid        ,
+                      VALUE cell_column ,
+                      VALUE cell_row    ,
+                      VALUE column      ,
+                      VALUE row         ,
+                      VALUE cell_width  ,
+                      window      ,
+                      VALUE is_display   )
+                              
+{
+*
+*	Browse on Units
+*
+*******************************************************************************}
+    
+    DECLARE the_val,
+            old_val
+
+    the_val = SELECT coa_template_results . unit IN OBJECT self
+
+    old_val = the_val
+
+    unit_prompt_initialise()
+
+    IF is_display THEN
+
+        DISPLAY the_val
+                ON LINE   row
+    	        FROM      column
+    	        TO        column + cell_width - 1
+    	        IN WINDOW window
+
+    ELSE
+
+        PROMPT FOR the_val
+        CLASS UNIT_PROMPT_CLASS
+        WITH ( column       = column ,
+               row 	      = row    ,
+               window       = window ,
+               width 	= cell_width,
+               display_only = is_display )
+
+        IF (the_val <> old_val) THEN
+	
+	    ASSIGN coa_template_results . unit IN OBJECT self = the_val
+	
+	    grid . redisplay_row ( grid . current_row )
+	
+        ENDIF
+
+    ENDIF
+
+
+ENDROUTINE { unit_prompt }
+
+
+
+ROUTINE bookmark_prompt ( self        ,
+                          grid        ,
+                          VALUE cell_column ,
+                          VALUE cell_row    ,
+                          VALUE column      ,
+                          VALUE row         ,
+                          VALUE cell_width  ,
+                          window      ,
+                          VALUE is_display   )
+                              
+{
+*
+*	Validate BookMark Name
+*
+*******************************************************************************}
+    
+    DECLARE the_val,
+            old_val
+
+    the_val = SELECT coa_template_results . bookmark IN OBJECT self
+
+    old_val = the_val
+
+    unit_prompt_initialise()
+
+    IF is_display THEN
+
+        DISPLAY the_val
+                ON LINE   row
+    	        FROM      column
+    	        TO        column + cell_width - 1
+    	        IN WINDOW window
+
+    ELSE
+
+        PROMPT FOR the_val
+        FORMAT coa_template_results . bookmark
+        WITH ( column       = column ,
+               row 	      = row    ,
+               window       = window ,
+               width 	= cell_width,
+               display_only = is_display,
+               validation_routine = "validate_bookmark_prompt"  )
+
+        IF (the_val <> old_val) THEN
+	
+	    ASSIGN coa_template_results . bookmark IN OBJECT self = the_val
+	
+	    grid . redisplay_row ( grid . current_row )
+	
+        ENDIF
+
+    ENDIF
+
+
+ENDROUTINE { bookmark_prompt }
+
+ROUTINE validate_bookmark_prompt ( self )
+
+{
+*	Disallows Spaces from Bookmark Field
+*       Disallows Use of CoA Header Field Names as Bookmark Names
+*
+*******************************************************************************}
+
+    DECLARE return_value
+
+    return_value = FALSE
+
+    IF (INDEX ( self . text, " " ) <> 0) THEN
+
+        flash_message (GET_USER_MESSAGE("COA_LTERES_NO_SPACES", 1), true)
+
+        return_value = FALSE
+
+    ELSEIF valid_field("COA_HEADER", STRIP(self . text)) THEN
+
+        flash_message (GET_USER_MESSAGE("COA_LTERES_BOOKMARK_INVALID", 1), true)
+
+        return_value = FALSE
+
+    ELSE
+
+        return_value = TRUE
+
+    ENDIF
+
+    RETURN ( return_value )
+
+ENDROUTINE { validate_bookmark_prompt }
+
+
+
+{******************************************************************************}
+
+ROUTINE the_insert_routine ( self        ,
+                             grid        ,
+                             cell_column ,
+                             cell_row    ,
+                             window      ,
+                             column      ,
+                             row         ,
+                             cell_width  ,
+                             cell_height ,
+                             new_value   )
+{
+   
+*
+*******************************************************************************}
+
+    DECLARE form, wid, display_prompt_1, display_prompt_2, prompt_obj_1, 
+            prompt_obj_2
+
+    CREATE OBJECT PROMPT_CLASS_FORM, form
+
+    form . header = GET_USER_MESSAGE("COA_LTERES_ANAL_COMP_SEL", 1)
+    form . footer = ""
+    form . height = 3
+    form . width  = 43
+    form . row    = ( GLOBAL ( "SCREEN_HEIGHT") - form . height) / 2
+    form . column = ( GLOBAL ( "SCREEN_WIDTH" ) - form . width ) / 2
+    form . border = TRUE
+    form . active_prompt = 1
+    form . return_behaviour = FORM_RETURN_STAY
+    form . add_frame ( ""  ,   1, 1, 1, 42 )
+    form . add_frame ( "",   1, 3, 1, 42 )
+
+    PROMPT OBJECT display_prompt_1
+            CLASS "STD_PROMPT_TEXT"
+            ON LINE 1 FROM 2 TO 20
+            WITH ( VALUE      = GET_USER_MESSAGE("COA_LTERES_SELECT_ANALYSIS", 1) ,
+                   RAISED     =  TRUE       )
+
+    form . add_display ( display_prompt_1 )
+
+    PROMPT OBJECT display_prompt_2
+            CLASS "STD_PROMPT_TEXT"
+            ON LINE 3 FROM 2 TO 20
+            WITH ( VALUE      = GET_USER_MESSAGE("COA_LTERES_SELECT_COMPONENT", 1) ,
+                   RAISED     =  TRUE )
+
+    form . add_display ( display_prompt_2 )
+
+
+    PROMPT OBJECT prompt_obj_1
+                BROWSE ON VERSIONED_ANALYSIS . identity
+                ON LINE 1 FROM 22 to 40
+                WITH ( LOWERED = TRUE,
+                       ALWAYS_VALIDATE = TRUE ,
+                       ENTER_PROMPT_ROUTINE = "GET_ANALYSES",
+                       LEAVE_PROMPT_ROUTINE = "GET_COMP_NAMES" )
+
+
+    PROMPT OBJECT prompt_obj_2
+                BROWSE ON VERSIONED_COMPONENT . name
+                ON LINE 3 FROM 22 to 40
+                WITH ( LOWERED = TRUE,
+                       ALWAYS_VALIDATE = TRUE,
+                       ENTER_PROMPT_ROUTINE = "GET_COMP_SEL_ARRAY")
+
+
+    form . add_prompt ( prompt_obj_1 )
+    form . add_prompt ( prompt_obj_2 )
+
+    form . start_prompt ()
+    form . wait_prompt ()
+    form . end_prompt ()
+
+    IF ( form . get_lastkey ( ) <> "EXIT"                  ) AND 
+       ( NOT BLANK ( form . prompt_objects [ 1 ] . value ) ) AND 
+       ( NOT BLANK ( form . prompt_objects [ 2 ] . value ) ) THEN 
+
+	GET_FIELD_DETAILS COA_TEMPLATE_RESULTS . analysis, "FIELD_SIZE", wid
+
+	new_value = PAD ( form . prompt_objects [ 1 ] . value, " ", wid ) : 
+		          form . prompt_objects [ 2 ] . text
+
+	SET GLOBAL "LASTKEY" TO "CONTINUE"
+
+    ELSE
+        
+        {IF form . get_lastkey ( ) = "EXIT" THEN
+        
+            SET GLOBAL "LASTKEY" TO "EXIT"
+        
+        ELSE
+        }
+	    IF ( cell_row = grid . cell_rows ) THEN
+
+	        IF cell_row = 1 THEN
+
+	            SET GLOBAL "LASTKEY" TO "DO"
+
+	        ELSE
+
+		    SET GLOBAL "LASTKEY" TO "UP"
+	
+                ENDIF
+                
+	    ELSE
+
+	        SET GLOBAL "LASTKEY" TO "REMOVE"
+
+	    ENDIF
+           
+        {ENDIF}
+        
+        new_value = ""
+
+    ENDIF
+    
+
+ENDROUTINE { the_insert_routine }
+
+{******************************************************************************}
+
+ROUTINE get_analyses ( anal_prompt ) 
+
+    DECLARE sel_array
+
+    ARRAY sel_array
+
+    array_select_add ( sel_array,
+                       ARRAY_SELECT_EQ,
+                       "APPROVAL_STATUS",
+                       "A" )
+
+
+    anal_prompt . parent_prompt . prompt_objects[1] . user_info = sel_array
+    anal_prompt . select_array = anal_prompt . user_info
+
+    RETURN ( TRUE )
+
+
+ENDROUTINE { get_analyses }
+
+{******************************************************************************}
+
+ROUTINE get_comp_names ( anal_prompt )
+
+    DECLARE sel_array
+
+    ARRAY sel_array
+
+    array_select_add ( sel_array,
+                       ARRAY_SELECT_EQ,
+                       "ANALYSIS",
+                       anal_prompt . parent_prompt . prompt_objects[1] . value )
+
+    array_select_add ( sel_array,
+                       ARRAY_SELECT_ORDER,
+                       "ORDER_NUMBER",
+                       ARRAY_SELECT_ASCENDING )
+
+    anal_prompt . parent_prompt . prompt_objects[2] . user_info = sel_array
+
+    RETURN ( TRUE )
+
+ENDROUTINE { get_comp_names }
+
+{******************************************************************************}
+
+ROUTINE component_prompt_routine (        self        ,
+                                          grid        ,
+                                    VALUE cell_column ,
+                                    VALUE cell_row    ,
+                                    VALUE column      ,
+                                    VALUE row         ,
+                                    VALUE cell_width  ,
+                                          window      ,
+                                    VALUE is_display   )
+ 
+{
+*
+*	Browse for components of the analysis.
+*
+*******************************************************************************}
+
+	DECLARE type, old_type, options
+	ARRAY options
+
+	type = SELECT coa_template_results . component IN OBJECT self 
+
+	old_type = type
+
+	IF is_display THEN
+
+		DISPLAY type
+		    ON LINE   row
+		    FROM      column
+		    TO        column + cell_width - 1
+		    IN WINDOW window
+		    FORMAT    coa_template_results . component
+
+	ELSE
+
+		options [ 1, 1 ] = "Result 1"
+		options [ 1, 2 ] = "Result 1"
+		options [ 2, 1 ] = "Result 2"
+		options [ 2, 2 ] = "Result 2"
+
+		PROMPT FOR type
+		    ON LINE   row
+		    FROM      column
+		    TO        column + cell_width - 1
+		    IN WINDOW window 
+		    CHOOSE OUTOF options
+
+		IF type <> old_type THEN
+
+			{ASSIGN coa_template_results . component IN OBJECT self = type}
+
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE { component_prompt_routine }
+
+{******************************************************************************}
+
+{******************************************************************************}
+
+ROUTINE get_comp_sel_array ( comp_prompt )
+
+    comp_prompt . select_array = comp_prompt . user_info
+
+ENDROUTINE { get_comp_sel_array }
+
+
+{*******************************************************************************
+*                List Editor for COA_TEMPLATE_PARAMETERS
+*******************************************************************************}
+
+
+GLOBAL ROUTINE parameters_initialise ( VALUE identity        , 
+                                 VALUE copied_identity ,
+                                 VALUE operation       )
+{ 
+* Summary    : The LTE Entry Point.
+*
+* Parameters   : Identity        - The Identity.
+*                Copied_Identity - The Copied Identity.
+*                Operation       - The Current LTE Operation Mode.
+* Return Value : N/a
+*
+*******************************************************************************}
+
+    DECLARE answer
+
+    IF operation = "PRINT" THEN
+
+        print_option_parameters ( identity )
+
+    ELSE
+
+        answer = other_option ( identity, copied_identity, operation )
+        RETURN ( answer )
+
+    ENDIF
+    
+    
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE print_option_parameters ( VALUE identity ) 
+
+{ 
+* Summary    : Routine to call when printing the LTE.
+*
+* Parameters   : Identity        - The Identity.
+*
+* Return Value : N/a
+*
+*******************************************************************************}
+
+    DECLARE field_details
+    ARRAY field_details ARRAY_SIZE ( 0 , 2 )
+
+    field_details [ 1 , 1 ] = "DESCRIPTION"
+    field_details [ 1 , 2 ] = GET_USER_MESSAGE ( "COA_LTE_2_DESCRIPTION", 1 )
+
+    field_details [ 2 , 1 ] = "DEFAULT_VALUE"
+    field_details [ 2 , 2 ] = GET_USER_MESSAGE ( "COA_LTE_2_DEFAULT", 1 )
+
+    field_details [ 3 , 1 ] = "TYPE"
+    field_details [ 3 , 2 ] = GET_USER_MESSAGE ( "COA_LTE_2_TYPE", 1 )
+
+    field_details [ 4 , 1 ] = "PROMPT1"
+    field_details [ 4 , 2 ] = GET_USER_MESSAGE ( "COA_LTE_2_PROMPT1", 1 )
+
+    field_details [ 5 , 1 ] = "PROMPT2"
+    field_details [ 5 , 2 ] = GET_USER_MESSAGE ( "COA_LTE_2_PROMPT2", 1 )
+
+    field_details [ 6 , 1 ] = "MANDATORY"
+    field_details [ 6 , 2 ] = GET_USER_MESSAGE ( "COA_LTE_2_MANDATORY", 1 )
+
+    field_details [ 10, 1 ] = "IDENTITY"
+    field_details [ 10, 2 ] = GET_USER_MESSAGE ( "COA_LTE_2_PROMPT2", 1 )
+
+    print_fields (  "COA_TEMPLATE_PARAMETERS"                ,
+                    PAD ( identity , " " , 10 )     ,
+                    ""                              ,
+                    ""                              ,
+                    2                               ,
+                    28                              ,
+                    field_details                   )
+
+ENDROUTINE { print_option }
+
+{******************************************************************************}
+
+ROUTINE other_option (  VALUE identity        , 
+                        VALUE copied_identity ,
+                        VALUE operation       )
+{
+* Summary      : Handle the Data.
+*
+* Parameters   : Identity        - The Identity.
+*                Copied_Identity - The Copied Identity.
+*                Operation       - The Current LTE Operation Mode.
+* Return Value : N/a
+*
+*******************************************************************************}
+
+    DECLARE prompt_details, 
+            answer, 
+            heading, 
+            library, 
+            report, 
+            arguments, 
+            prompt_array
+            
+    ARRAY prompt_array
+    
+    initialise ( prompt_details, heading )
+
+    list_editor_create_object ( the_list_editor )
+
+    the_list_editor . table         = "COA_TEMPLATE_PARAMETERS"
+    the_list_editor . header        = GET_USER_MESSAGE("COA_LTE_COA_PARAMETERS", 1)
+    the_list_editor . footer        = ""
+    the_list_editor . pre_insert    = "PRE_INSERT_ROUTINE"
+    the_list_editor . post_insert   = EMPTY
+    the_list_editor . delete        = EMPTY
+    the_list_editor . library       = GLOBAL ( "CURRENT_LIBRARY" )
+    the_list_editor . compatability = PROMPT_DETAILS_310
+    the_list_editor . add_toolbutton_callback = "ADD_TOOLBUTTONS"
+
+    the_list_editor . setup_prompt_details ( prompt_details,
+                                             heading       )
+
+
+    the_list_editor . grid .user_info = prompt_array
+    
+    
+    {***********************************************************************
+    * When the secondary screen is called the grid is populated depending
+    * on the library and report.
+    ***********************************************************************}
+        
+    IF ( operation = "MODIFY" ) THEN
+
+            the_list_editor . set_table ()
+
+            the_list_editor . get_data ( TRUE )
+            the_list_editor . build_screens ()
+
+    ENDIF
+    
+       
+    answer = the_list_editor . operation ( identity       ,
+                                           copied_identity,
+                                           operation      )
+
+    RETURN ( answer ) 
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE add_toolbuttons( self, toolbar )
+
+{ 
+* Summary    : Create toolbar on list editor.
+
+* Parameters   : Self - List Editor
+*                Toolbar - Main toolbar on list editor.
+* Return Value : N/a
+*
+*******************************************************************************}
+
+    DECLARE toolbutton
+    
+    CREATE OBJECT TOOLBAR_BUTTON_CLASS , toolbutton_sel
+    toolbutton_sel . tooltip = 
+    	GET_USER_MESSAGE ( "COA_HEADER_BUILD_PROMPT" , 1 ) 
+    toolbutton_sel . mouse_click_routine = "define_prompt"
+    toolbutton_sel . set_icon( "INT_BUILD" )
+    toolbutton_sel . display_only    = TRUE
+    toolbar . add_separator( )
+    
+    toolbar . add_item ( toolbutton_sel )
+    
+
+ENDROUTINE
+
+
+{******************************************************************************}
+
+ROUTINE pre_insert_routine ( self        ,
+                             grid        ,
+                             cell_column ,
+                             cell_row    ,
+                             window      ,
+                             column      ,
+                             row         ,
+                             cell_width  ,
+                             cell_height ,
+                             new_value   )
+
+{ 
+* Summary    : Routine to insert a row. 
+
+* Parameters   : Self        - List Editor Object
+*                Grid        - A Grid Object.
+*                Cell_Column - An Integer holding the Current Grid Column.
+*                Cell_Row    - An Integer holding the Current Grid Row.
+*                Window      - The Current Window
+*                Column      - An Integer holding the Window Column for Display
+*                Row         - An Integer holding the Window Row for Display.
+*                Cell_Width  - An Integer representing the cell width.
+*                Cell_Height - An Integer representing the cell height.
+*                New_Value   - The New Value.
+* Return Value : N/a
+*
+*******************************************************************************}
+
+    
+    PROMPT FOR new_value
+        ON LINE row
+        FROM column TO column + ( cell_width - 5 )
+        FORMAT identity
+        IN WINDOW window
+        WITH  ( vgl_library          = GLOBAL ( "CURRENT_LIBRARY" )  ,
+                lowered              = TRUE
+              )
+
+
+
+
+ENDROUTINE { pre_insert }
+
+{******************************************************************************}
+
+ROUTINE initialise ( prompt_details  ,
+                     heading         )
+
+{ 
+* Summary    : Initialise the Field List.
+
+* Parameters   : Prompt_Details - The Details Array
+*                Heading        - The Heading Line.
+* Return Value : N/a
+*
+*******************************************************************************}
+
+    DECLARE head_count, col_head, count
+    ARRAY prompt_details ARRAY_SIZE ( 0 , 6 )
+
+    {***********************************************************************
+    * Set up the list of fields to be processed.
+    ***********************************************************************}
+    
+    count = 1
+
+    prompt_details [ count , 1 ] = GET_USER_MESSAGE("COA_LTE_PARAMS_IDENTITY",1) 
+    prompt_details [ count , 2 ] = "DISPLAY"
+    prompt_details [ count , 3 ] = "COA_TEMPLATE_PARAMETERS"
+    prompt_details [ count , 4 ] = "IDENTITY"
+    prompt_details [ count , 5 ] = 10 
+    prompt_details [ count , 6 ] = 10
+    
+    count = count + 1
+    
+    prompt_details [ count , 1 ] = GET_USER_MESSAGE("COA_LTE_FIELD_NAME",1) 
+    prompt_details [ count , 2 ] = "ROUTINE"
+    prompt_details [ count , 3 ] = GLOBAL ("CURRENT_LIBRARY")
+    prompt_details [ count , 4 ] = "FIELD_PROMPT_ROUTINE"
+    prompt_details [ count , 5 ] = 25
+    prompt_details [ count , 6 ] = 25
+    
+    count = count + 1
+
+    prompt_details [ count , 1 ] = GET_USER_MESSAGE("COA_LTE_PARAMS_DESCRIPTION",1) 
+    prompt_details [ count , 2 ] = "ROUTINE"
+    prompt_details [ count , 3 ] = GLOBAL ("CURRENT_LIBRARY")
+    prompt_details [ count , 4 ] = "MESSAGE_PROMPT"
+    prompt_details [ count , 5 ] = 25
+    prompt_details [ count , 6 ] = 25
+
+    count = count + 1
+    
+    prompt_details [ count , 1 ] = GET_USER_MESSAGE("COA_LTE_PARAMS_PROMPT_DESCRIPTION",1) 
+    prompt_details [ count , 2 ] = "ROUTINE"
+    prompt_details [ count , 3 ] = GLOBAL ("CURRENT_LIBRARY")
+    prompt_details [ count , 4 ] = "DECRIPTION_PROMPT"
+    prompt_details [ count , 5 ] = 35
+    prompt_details [ count , 6 ] = 35
+
+
+    count = count + 1
+
+    prompt_details [ count , 1 ] = GET_USER_MESSAGE("COA_LTE_PARAMS_MANDATORY",1) 
+    prompt_details [ count , 2 ] = "ROUTINE"
+    prompt_details [ count , 3 ] = GLOBAL ("CURRENT_LIBRARY")
+    prompt_details [ count , 4 ] = "MANDATORY_PROMPT"
+    prompt_details [ count , 5 ] = 10
+    prompt_details [ count , 6 ] = 10
+
+    {***********************************************************************
+    * Build up the Heading Line from the field list.  
+    ***********************************************************************}
+
+    head_count = 1
+    heading    = ""
+
+    WHILE head_count <= count DO
+
+        col_head = PAD ( prompt_details [ head_count, 1 ], " ",
+                         prompt_details [ head_count, 6 ]       )
+
+        heading    = heading : col_head : " "
+        head_count = head_count + 1 
+
+    ENDWHILE
+
+    
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE define_prompt ( self )
+{
+* Summary    : Call the build prompt form from any field, buy pressing the 
+*              toolbar
+*
+* Parameters : toolbar object
+*
+* Return     : None
+*
+*******************************************************************************}
+
+    DECLARE prompt1, prompt2, prompt_desc, form, selected_row
+    
+    selected_row = self . parent_prompt . grid . current_row
+    coa_params_class_define()
+        
+    CREATE OBJECT COA_PARAMS_CLASS, form
+ 
+    IF self . parent_prompt . display_only THEN
+    	form . display_only = TRUE
+    ENDIF
+
+    form . load ()
+    form . create_build_form ()
+
+    lib_grid_redisplay_row ( self . parent_prompt . grid, 
+    	     selected_row )
+    	     
+
+ENDROUTINE { define_prompt }
+
+{******************************************************************************}
+
+ROUTINE decription_prompt (       self          ,
+                                  grid          ,
+                            VALUE cell_column   ,
+                            VALUE cell_row      ,
+                            VALUE column        ,
+                            VALUE row           ,
+                            VALUE cell_width    ,
+                                  window        ,
+                            VALUE is_display     )
+
+{
+* Summary    : Prompt Description routine.
+*
+* Parameters : Standard prompt routine values.
+*
+* Return     : None
+*
+*******************************************************************************}
+
+    DECLARE val, 
+            description,
+            the_type
+    
+    description = build_description ()
+        
+    IF description <> EMPTY THEN
+        val = description
+    ELSE
+        val = GET_USER_MESSAGE("COA_PROMPT_TEXT", 1)
+    ENDIF
+    
+    val = PAD ( val, "", 60 )
+    IF is_display THEN
+        
+        DISPLAY val AT 1 , 1 IN WINDOW window
+        
+    ELSE
+
+        PROMPT FOR val AT 1 , 1 IN WINDOW window
+        FORMAT text    
+        WITH (     display_only    = TRUE ,
+            vgl_library    = global ( "current_library" ) ,
+            browse_routine  = "description_prompt_browse" )
+
+    ENDIF
+    
+    the_type = SELECT coa_template_parameters.type IN OBJECT self
+    
+    IF the_type = "JOB_FIELD" THEN    
+            
+        ASSIGN coa_template_parameters.description IN OBJECT self = ""
+        ASSIGN coa_template_parameters.mandatory IN OBJECT self = FALSE
+    	                            	        
+    ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE message_prompt (       self          ,
+                                  grid          ,
+                            VALUE cell_column   ,
+                            VALUE cell_row      ,
+                            VALUE column        ,
+                            VALUE row           ,
+                            VALUE cell_width    ,
+                                  window        ,
+                            VALUE is_display     )
+
+{
+* Summary    : Prompt Description routine.
+*
+* Parameters : Standard prompt routine values.
+*
+* Return     : None
+*
+*******************************************************************************}
+
+    DECLARE the_val, 
+            description,
+            the_type,
+            old_val
+       
+    the_type = SELECT coa_template_parameters.type IN OBJECT self
+    the_val  = SELECT coa_template_parameters.description IN OBJECT self
+    
+    old_val = the_val
+    
+    display_only = FALSE
+    
+    IF is_display THEN
+        
+        DISPLAY the_val AT 1 , 1 IN WINDOW window
+        
+    ELSE
+
+        IF the_type = "JOB_FIELD" THEN
+		        	   
+            display_only = TRUE            
+		            
+	ENDIF
+        
+        PROMPT FOR the_val AT 1 , 1 IN WINDOW window
+        FORMAT text    
+        WITH ( display_only = display_only )        
+                            
+        IF the_type = "JOB_FIELD" THEN        
+            
+            the_val = ""
+	        
+        ENDIF
+        
+        IF the_val <> old_val THEN
+	
+            ASSIGN coa_template_parameters.description IN OBJECT self = the_val
+	
+	    grid . redisplay_row ( grid . current_row )
+	
+        ENDIF
+                
+    ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE mandatory_prompt (       self          ,
+                                  grid          ,
+                            VALUE cell_column   ,
+                            VALUE cell_row      ,
+                            VALUE column        ,
+                            VALUE row           ,
+                            VALUE cell_width    ,
+                                  window        ,
+                            VALUE is_display     )
+
+{
+* Summary    : Prompt Description routine.
+*
+* Parameters : Standard prompt routine values.
+*
+* Return     : None
+*
+*******************************************************************************}
+
+    DECLARE the_val, 
+            description,
+            the_type
+       
+    the_type = SELECT coa_template_parameters.type IN OBJECT self
+    the_val  = SELECT coa_template_parameters.mandatory IN OBJECT self
+    
+    IF the_val = TRUE THEN
+        the_val = "Yes"
+    ELSE
+        the_val = "No"
+    ENDIF
+    
+    old_val = the_val
+    
+    display_only = FALSE
+    
+    IF is_display THEN
+        
+        DISPLAY the_val AT 1 , 1 IN WINDOW window
+        
+    ELSE
+    
+        IF the_type = "JOB_FIELD" THEN
+        
+            display_only = TRUE
+            
+        ENDIF
+        
+        PROMPT FOR the_val AT 1 , 1 IN WINDOW window            
+              BROWSE ON BOOLEAN
+              WITH ( display_only = display_only )            
+                
+        IF the_type = "JOB_FIELD" THEN                
+            
+            the_val = FALSE
+        
+        ENDIF
+        
+        IF the_val <> old_val THEN
+		
+	    ASSIGN coa_template_parameters.mandatory IN OBJECT self = the_val
+		
+	    grid . redisplay_row ( grid . current_row )
+		
+        ENDIF
+
+    ENDIF
+
+ENDROUTINE
+
+
+{******************************************************************************}
+
+ROUTINE description_prompt_browse ( self )
+
+{
+* Summary    : Once the browse has been selected, display the build prompt form.
+*
+* Parameters : self - description prompt object
+*
+* Return     : None
+*
+*******************************************************************************}
+
+    DECLARE prompt_desc, form
+    
+    coa_params_class_define()
+        
+    CREATE OBJECT COA_PARAMS_CLASS, form
+    
+    form . load ()
+    form . create_build_form ()
+    
+    prompt_desc = build_description ()
+    
+    self . set_text (  prompt_desc )
+    self . repaste()
+
+
+ENDROUTINE
+
+{******************************************************************************}
+
+GLOBAL ROUTINE coa_params_class_define
+{
+* Summary    : CoA params class initialisation
+*
+* Parameters : self - COA_PARAMS_CLASS
+*
+* Return     : None
+*
+*******************************************************************************}
+
+    DEFINE CLASS COA_PARAMS_CLASS
+
+        INHERIT "STD_FORM"
+
+        INITIALISATION
+
+        PROPERTIES
+            "prompt_description"     { Desciption of the prompts 1 & 2 }
+            
+
+        ACTIONS
+            "create_build_form"      ,{ Returns current criteria name      }
+            "save"            ,
+            "load"            
+            
+    END CLASS
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE coa_params_class_initialisation( self )
+{
+* Summary    : CoA params class initialisation
+*
+* Parameters : COA_PARAMS_CLASS
+*
+* Return     : None
+*
+*******************************************************************************}
+
+    DECLARE tables, count, field_names, routines, routine_array
+
+        self . header             = GET_USER_MESSAGE ("COA_HEADER_BUILD_PROMPT",1)
+        self . row                = 5
+        self . column             = 5
+        self . height             = 23
+        self . width              = 56
+        self . vgl_library        = global ( "current_library" )
+        self . button_style       = FORM_BUTTON_OK_CANCEL
+        self . return_behaviour   = FORM_RETURN_STAY
+        self . prompt_id          = "$INFOMAKER_PARAMS_PROMPT"
+
+    PROMPT OBJECT self . prompt_objects [ COA_PARAM_RADIO_BROWSE ]
+        BROWSE ON BOOLEAN
+        WITH (
+            caption = GET_USER_MESSAGE ("COA_TYPE_BROWSE",1),
+        row         = 1 ,
+        column      = 4 ,
+        height      = 1 ,
+        width       = 1 ,
+        vgl_library = global ( "current_library" ) ,
+        is_radio    = TRUE , 
+        toggled_routine = "toggle_routine" ,
+        value = TRUE )
+
+        self . add_display ( GET_USER_MESSAGE ("COA_PROMPT_TABLE",1)
+                    , 7 , 2, PROMPT_RENDITION_NORMAL ) 
+
+    GET_TABLE_NAMES ( tables )
+    count = 1
+    WHILE count <= SIZE_OF_ARRAY ( tables ) DO
+
+        tables [ count, 2 ] = tables [ count, 1 ]
+        count = count + 1
+
+    ENDWHILE
+
+
+    PROMPT OBJECT self . prompt_objects [ COA_PARAM_PROMPT_TABLE ]
+    CHOOSE OUTOF tables
+        WITH (
+        value       = "SAMPLE" ,
+        row         = 2 ,
+        column      = 19 ,
+        height      = 1 ,
+        width       = 25 ,
+        length      = 30 ,
+        vgl_library = global ( "current_library" ) ,
+        leave_prompt_routine = "leave_prompt_routine" ,
+        is_spin     = FALSE )
+
+        self . add_display ( GET_USER_MESSAGE ("COA_PROMPT_FIELD",1)
+                    , 7 , 3, PROMPT_RENDITION_NORMAL ) 
+
+    
+    fields_names = browse_array_table ( "SAMPLE" )
+    
+    PROMPT OBJECT self . prompt_objects [ COA_PARAM_PROMPT_FIELD ]
+        CHOOSE OUTOF fields_names
+        WITH (
+        value       = "" ,
+        row         = 3 ,
+        column      = 19 ,
+        height      = 1 ,
+        width       = 25 ,
+        vgl_library = global ( "current_library" ) )
+
+    PROMPT OBJECT self . prompt_objects [ COA_PARAM_RADIO_PHRASE ]
+        BROWSE ON BOOLEAN
+        WITH (
+            caption = GET_USER_MESSAGE ("COA_TYPE_PHRASE",1),
+        row         = 5 ,
+        column      = 4 ,
+        height      = 1 ,
+        width       = 1 ,
+        vgl_library = global ( "current_library" ) ,
+        is_radio    = TRUE , 
+        toggled_routine = "toggle_routine" )
+
+        self . add_display ( GET_USER_MESSAGE ("COA_PROMPT_PHRASE",1)
+                    , 7 , 6, PROMPT_RENDITION_NORMAL ) 
+
+    PROMPT OBJECT self . prompt_objects [ COA_PARAM_PROMPT_PHRASE ]
+        BROWSE ON phrase_header.identity
+        WITH (
+        value       = "" ,
+        row         = 6 ,
+        column      = 19 ,
+        height      = 1 ,
+        width       = 25 ,
+        vgl_library = global ( "current_library" ) )
+
+        
+
+    PROMPT OBJECT self . prompt_objects [ COA_PARAM_RADIO_FORMAT ]
+        BROWSE ON BOOLEAN
+        WITH (
+        caption = GET_USER_MESSAGE ("COA_TYPE_FORMAT",1),
+        row         = 8 ,
+        column      = 4 ,
+        height      = 1 ,
+        width       = 1 ,
+        vgl_library = global ( "current_library" ),
+        is_radio    = TRUE , 
+        toggled_routine = "toggle_routine" )
+
+        self . add_display ( GET_USER_MESSAGE ("COA_LTE_2_TYPE",1)
+                    , 7 , 9, PROMPT_RENDITION_NORMAL ) 
+
+    PROMPT OBJECT self . prompt_objects [ COA_PARAM_PROMPT_TYPE ]
+        BROWSE ON VALID_PHRASE_ID.FORMAT_TYP
+
+        WITH (
+        value       = "TEXT" ,
+        row         = 9 ,
+        column      = 19 ,
+        height      = 1 ,
+        width       = 25 ,
+        vgl_library = global ( "current_library" ) ,
+        leave_prompt_routine = "leave_prompt_routine" )
+
+        self . add_display ( GET_USER_MESSAGE ("COA_PROMPT_LENGTH",1)
+                    , 7 , 10, PROMPT_RENDITION_NORMAL ) 
+
+    PROMPT OBJECT self . prompt_objects [ COA_PARAM_PROMPT_LENGTH ]
+        FORMAT INTEGER
+        WITH (
+        value       = 10 ,
+        row         = 10 ,
+        column      = 19 ,
+        height      = 1 ,
+        width       = 25 ,
+        minimum     = 1,
+        lowered = TRUE,
+        vgl_library = global ( "current_library" ) )
+
+    PROMPT OBJECT self . prompt_objects [ COA_PARAM_RADIO_CUSTOM ]
+        BROWSE ON BOOLEAN
+        WITH (
+            caption = GET_USER_MESSAGE ("COA_TYPE_ROUTINE",1),
+        row         = 12 ,
+        column      = 4 ,
+        height      = 1 ,
+        width       = 1 ,
+        vgl_library = global ( "current_library" ) ,
+        is_radio    = TRUE , 
+        toggled_routine = "toggle_routine" )
+
+        self . add_display ( GET_USER_MESSAGE ("COA_PROMPT_VGL",1)
+                    , 7 , 13, PROMPT_RENDITION_NORMAL ) 
+
+        PROMPT OBJECT self . prompt_objects [ COA_PARAM_PROMPT_LIBRARY ]
+        BROWSE ON report . identity
+        WITH (
+        value       = global ( "current_library" ) ,
+        row         = 13 ,
+        column      = 19 ,
+        height      = 1 ,
+        width       = 25 ,
+        vgl_library = global ( "current_library" ) ,
+        leave_prompt_routine = "leave_prompt_routine" )
+
+        self . add_display ( GET_USER_MESSAGE ("COA_PROMPT_ROUTINE",1)
+                    , 7 , 14, PROMPT_RENDITION_NORMAL ) 
+
+    routine_array = browse_array_library ( global ( "current_library" ) )
+    
+    PROMPT OBJECT self . prompt_objects [ COA_PARAM_PROMPT_ROUTINE ]
+        CHOOSE OUTOF routine_array
+        WITH (
+        value       = "" ,
+        row         = 14 ,
+        column      = 19 ,
+        height      = 1 ,
+        width       = 25 ,
+        vgl_library = global ( "current_library" ) )
+            
+    self . add_display ( 
+        GET_USER_MESSAGE ("COA_TYPE_DEFAULT",1), 
+        4 , 22, PROMPT_RENDITION_NORMAL ) 
+
+    PROMPT OBJECT self . prompt_objects [ COA_PARAM_PROMPT_DEFAULT ]
+        CLASS "STD_PROMPT_TEXT"
+        WITH ( 
+        value       = "" ,
+        row         = 22 ,
+        column      = 19 ,
+        height      = 1  ,
+        width       = 25 )
+    
+    PROMPT OBJECT self . prompt_objects [ COA_PARAM_RADIO_JOB_FIELD ]
+            BROWSE ON BOOLEAN
+            WITH (
+                caption = GET_USER_MESSAGE ("COA_TYPE_JOB_FIELD",1),
+            row         = 16 ,
+            column      = 4 ,
+            height      = 1 ,
+            width       = 1 ,
+            vgl_library = global ( "current_library" ) ,
+            is_radio    = TRUE , 
+            toggled_routine = "toggle_routine" )
+        
+    self . add_display ( 
+        GET_USER_MESSAGE ("COA_PROMPT_FIELD",1), 
+        7 , 17, PROMPT_RENDITION_NORMAL )
+               
+    fields_names = browse_array_table ( "JOB_HEADER" )
+	    
+    PROMPT OBJECT self . prompt_objects [ COA_PARAM_PROMPT_JOB_FIELD ]
+            CHOOSE OUTOF fields_names
+	    WITH (
+	    value       = "" ,
+	    row         = 17 ,
+	    column      = 19 ,
+	    height      = 1 ,
+	    width       = 25 ,
+            vgl_library = global ( "current_library" ) )
+
+{1.3}
+   PROMPT OBJECT self . prompt_objects [ COA_PARAM_RADIO_SAMP_FIELD ]
+            BROWSE ON BOOLEAN
+            WITH (
+                caption = "Sample Field",
+            row         = 19 ,
+            column      = 4 ,
+            height      = 1 ,
+            width       = 1 ,
+            vgl_library = global ( "current_library" ) ,
+            is_radio    = TRUE , 
+            toggled_routine = "toggle_routine" )
+        
+    self . add_display ( 
+        GET_USER_MESSAGE ("COA_PROMPT_FIELD",1), 
+        7 , 19, PROMPT_RENDITION_NORMAL )
+               
+    fields_names = browse_array_table ( "SAMPLE" )
+	    
+    PROMPT OBJECT self . prompt_objects [ COA_PARAM_PROMPT_SAMP_FIELD ]
+            CHOOSE OUTOF fields_names
+	    WITH (
+	    value       = "" ,
+	    row         = 20 ,
+	    column      = 19 ,
+	    height      = 1 ,
+	    width       = 25 ,
+            vgl_library = global ( "current_library" ) )
+{/1.3}
+
+    
+    self . add_display ( GET_USER_MESSAGE ("COA_FOOTER_BUILD_PROMPT",1)
+                         , 2 , 23.5, PROMPT_RENDITION_NORMAL ) 
+
+
+    self . add_frame ( GET_USER_MESSAGE ("COA_TYPE_DEFAULT",1)  , 2 , 22, 1 , 54  )  
+    self . add_frame ( "Sample Field"                           , 2 , 19, 2 , 54  ) {1.3}   
+    self . add_frame ( GET_USER_MESSAGE ("COA_TYPE_JOB_FIELD",1), 2 , 16, 2 , 54  )                     
+    self . add_frame ( GET_USER_MESSAGE ("COA_TYPE_ROUTINE",1)  , 2 , 12, 3 , 54  )
+    self . add_frame ( GET_USER_MESSAGE ("COA_TYPE_FORMAT",1)   , 2 , 8,  3 , 54  )
+    self . add_frame ( GET_USER_MESSAGE ("COA_TYPE_PHRASE",1)   , 2 , 5 , 2 , 54  )
+    self . add_frame ( GET_USER_MESSAGE ("COA_TYPE_BROWSE",1)   , 2 , 1,  3 , 54  )
+
+ENDROUTINE { coa_params_class_initialisation }
+
+{******************************************************************************}
+
+ROUTINE coa_params_action_create_build_form ( self )
+{
+* Summary    : Create build prompt.
+*
+* Parameters : self - COA_PARAMS_CLASS
+*
+* Return     : None
+*
+*******************************************************************************}
+
+   
+    self . start_prompt ()
+    
+    IF self . display_only THEN
+    
+        self . active_prompt = COA_PARAM_BUTTON_OK
+
+    
+    ENDIF
+	
+    self . load ()
+
+    self . wait_prompt ()
+    self . end_prompt ()
+
+
+
+    IF ( self . get_lastkey ( ) <> "EXIT" )
+
+        self . save ()
+        
+    ENDIF    
+
+ENDROUTINE { coa_params_action_create_build_form }
+
+{******************************************************************************}
+
+ROUTINE  coa_params_action_save ( self )
+{
+* Summary    : Save prompt information to the db. Note save information depends
+*              on which radio button is set to true.
+*
+* Parameters : self - COA_PARAMS_CLASS
+*
+* Return     : None
+*
+*******************************************************************************}
+
+    DECLARE argument, 
+            text_prompt
+
+    argument = SELECT coa_template_parameters . identity
+
+    IF self . prompt_objects [ COA_PARAM_RADIO_BROWSE ] . value THEN
+
+        ASSIGN coa_template_parameters . type    = "BROWSE"
+        ASSIGN coa_template_parameters . prompt1 = self . prompt_objects [ COA_PARAM_PROMPT_TABLE ] . value
+        ASSIGN coa_template_parameters . prompt2 = self . prompt_objects [ COA_PARAM_PROMPT_FIELD ] . value
+
+    ELSEIF self . prompt_objects [ COA_PARAM_RADIO_PHRASE ] . value THEN
+
+        ASSIGN coa_template_parameters . type    = "PHRASE"
+        ASSIGN coa_template_parameters . prompt1 = self . prompt_objects [ COA_PARAM_PROMPT_PHRASE ] . value
+        ASSIGN coa_template_parameters . prompt2 = ""    
+
+    ELSEIF self . prompt_objects [ COA_PARAM_RADIO_FORMAT ] . value THEN
+
+        ASSIGN coa_template_parameters . type = "FORMAT"
+
+        IF self . prompt_objects [ COA_PARAM_PROMPT_TYPE ] . value = "TEXT" THEN
+        
+            text_prompt = STRIP ( self . prompt_objects [ COA_PARAM_PROMPT_TYPE ] . value ) :
+                          STRIP ( STRING ( self . prompt_objects [ COA_PARAM_PROMPT_LENGTH ] . value) )
+            
+            ASSIGN coa_template_parameters . prompt1 = text_prompt
+
+        ELSE
+        
+            ASSIGN coa_template_parameters . prompt1 = self . prompt_objects [ COA_PARAM_PROMPT_TYPE ] . value
+
+        ENDIF
+        
+        ASSIGN coa_template_parameters . prompt2 = ""
+
+
+    ELSEIF self . prompt_objects [ COA_PARAM_RADIO_CUSTOM ] . value THEN
+
+        ASSIGN coa_template_parameters . type = "ROUTINE"
+
+        ASSIGN coa_template_parameters . prompt1 = self . prompt_objects [ COA_PARAM_PROMPT_LIBRARY ] . value
+        ASSIGN coa_template_parameters . prompt2 = self . prompt_objects [ COA_PARAM_PROMPT_ROUTINE ] . value
+        
+    ELSEIF self . prompt_objects [ COA_PARAM_RADIO_JOB_FIELD ] . value THEN
+    
+        ASSIGN coa_template_parameters . type = "JOB_FIELD"
+    
+        ASSIGN coa_template_parameters . prompt1 = self . prompt_objects [ COA_PARAM_PROMPT_JOB_FIELD ] . value
+        ASSIGN coa_template_parameters . prompt2 = ""
+        
+{1.3}
+    ELSEIF self . prompt_objects [ COA_PARAM_RADIO_SAMP_FIELD ] . value THEN
+    
+        ASSIGN coa_template_parameters . type = "SAMP_FIELD"
+    
+        ASSIGN coa_template_parameters . prompt1 = self . prompt_objects [ COA_PARAM_PROMPT_SAMP_FIELD ] . value
+        ASSIGN coa_template_parameters . prompt2 = ""
+{/1.3}
+        
+    ENDIF
+
+    ASSIGN coa_template_parameters . default_value =  self . prompt_objects [ COA_PARAM_PROMPT_DEFAULT ] . value
+
+ENDROUTINE { coa_params_action_save }
+
+{******************************************************************************}
+
+ROUTINE  coa_params_action_load ( self )
+{
+* Summary    : Load prompt information for the db into the prompts on the
+*              build prompt.
+*
+* Parameters : self - COA_PARAMS_CLASS
+*
+* Return     : None
+*
+*******************************************************************************}
+
+    DECLARE prompt_type, 
+            prompt1, 
+            prompt2, 
+            text_length, 
+            default, 
+            fields_names,
+            routines
+    
+    prompt_type = SELECT coa_template_parameters . type
+    prompt1 = SELECT coa_template_parameters . prompt1
+    prompt2 = SELECT coa_template_parameters . prompt2  
+       
+    
+    IF ( prompt_type <> EMPTY ) AND ( prompt1 <> EMPTY ) THEN
+    
+        prompt1 = STRIP ( prompt1 )
+        prompt2 = STRIP ( prompt2 )
+
+        IF prompt_type = "BROWSE" THEN
+
+            toggle_routine ( self . prompt_objects [COA_PARAM_RADIO_BROWSE] )
+            
+            fields_names = browse_array_table ( prompt1 )
+            
+            self . prompt_objects 
+                [ COA_PARAM_PROMPT_FIELD ] . choose_array = fields_names
+            self . prompt_objects 
+                [ COA_PARAM_PROMPT_TABLE ] . set_text ( prompt1 )
+            self . prompt_objects 
+                [ COA_PARAM_PROMPT_FIELD ] . set_text ( prompt2 )
+
+        ELSEIF prompt_type = "PHRASE"
+        
+            toggle_routine ( self . prompt_objects [COA_PARAM_RADIO_PHRASE] )        
+
+            self . prompt_objects 
+                [ COA_PARAM_PROMPT_PHRASE ] . set_text ( prompt1 )
+
+        ELSEIF prompt_type = "FORMAT"
+        
+            toggle_routine ( self . prompt_objects [COA_PARAM_RADIO_FORMAT] )
+
+            IF INDEX ( prompt1 , "TEXT") > 0 THEN
+                text_length = RIGHTSTRING( prompt1 , LENGTH (prompt1)  - 4 )
+
+                self . prompt_objects 
+                    [ COA_PARAM_PROMPT_TYPE ] . set_text ( "TEXT" )
+                self . prompt_objects 
+                    [ COA_PARAM_PROMPT_LENGTH ] . 
+                    set_text ( STRIP ( text_length ) )
+            ELSE
+            
+                self . prompt_objects [ COA_PARAM_PROMPT_LENGTH ] . 
+                        set_enabled ( FALSE )
+            
+                self . prompt_objects 
+                    [ COA_PARAM_PROMPT_TYPE ] . set_text ( prompt1 )
+                
+            ENDIF
+
+        ELSEIF prompt_type = "ROUTINE"
+
+            toggle_routine ( self . prompt_objects [COA_PARAM_RADIO_CUSTOM] )
+            
+            routines = browse_array_library ( prompt1 )
+                        
+            self . prompt_objects 
+                [ COA_PARAM_PROMPT_ROUTINE ] . choose_array = routines
+            
+            self . prompt_objects [ COA_PARAM_PROMPT_LIBRARY ] . set_text ( prompt1 )
+            self . prompt_objects [ COA_PARAM_PROMPT_ROUTINE ] . set_text ( prompt2 )
+        
+        ELSEIF prompt_type = "JOB_FIELD"
+            
+            toggle_routine ( self . prompt_objects [COA_PARAM_RADIO_JOB_FIELD] )
+            
+            self . prompt_objects [ COA_PARAM_PROMPT_JOB_FIELD ] . set_text ( prompt1 )
+{1.3}
+        ELSEIF prompt_type = "SAMP_FIELD"
+            
+            toggle_routine ( self . prompt_objects [COA_PARAM_RADIO_SAMP_FIELD] )
+            
+            self . prompt_objects [ COA_PARAM_PROMPT_SAMP_FIELD ] . set_text ( prompt1 )
+        
+        ELSE
+{/1.3}
+        
+            toggle_routine ( self . prompt_objects [COA_PARAM_RADIO_BROWSE] )
+        
+        ENDIF
+        
+        
+    
+    ENDIF
+
+    default = SELECT coa_template_parameters. default_value    
+    
+    IF default <> EMPTY THEN
+    
+        self . prompt_objects [ COA_PARAM_PROMPT_DEFAULT ] . set_text ( default )
+    
+    ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE  build_description
+{
+* Summary    : Routine to build the prompt description depending on data stored
+*              in the coa_parameters table.
+*
+* Parameters : None
+*
+* Return     : None
+*
+*******************************************************************************}
+
+
+    DECLARE prompt1, 
+            prompt2, 
+            description, 
+            type, 
+            default, 
+            sep
+    
+    description = EMPTY
+    
+    type    = SELECT coa_template_parameters . type
+    prompt1 = SELECT coa_template_parameters . prompt1
+    prompt2 = SELECT coa_template_parameters . prompt2
+    default = SELECT coa_template_parameters . default_value
+    
+    IF NOT BLANK ( prompt1 ) THEN
+    
+        IF type = "ROUTINE" THEN
+        
+            description = GET_USER_MESSAGE("COA_PROMPT_TEXT" , 2)
+            sep = "\"
+        
+        ELSEIF type = "JOB_FIELD" THEN
+            
+            description = GET_USER_MESSAGE("COA_PROMPT_TEXT" , 4)
+            sep = "JOB_HEADER."
+        
+        ELSE 
+        
+            description = GET_USER_MESSAGE("COA_PROMPT_TEXT" , 3)
+            sep = "."
+        
+        ENDIF
+    
+        
+        prompt1 = STRIP ( prompt1 )
+        prompt2 = STRIP ( prompt2 )
+        type = STRIP ( type )
+        
+        IF ( INDEX ( prompt1, "TEXT") = 1 ) AND ( type = "FORMAT" ) THEN
+            description = description : prompt1 : prompt2
+        ELSE
+        
+            IF NOT BLANK ( prompt2 ) THEN
+                prompt2 = STRIP ( prompt2 )
+                description = description: prompt1 : sep : prompt2
+            ELSE
+                description = description : prompt1
+        
+            ENDIF
+        
+        
+        ENDIF
+        
+        
+        IF NOT BLANK (  default ) THEN
+        
+            description = description : "(" : STRIP ( default ) : ")"
+            
+        ENDIF
+    ENDIF
+    
+    RETURN ( description )
+    
+ENDROUTINE
+
+
+{******************************************************************************}
+
+
+ROUTINE toggle_routine ( self )
+{
+* Summary    : Main toggle routine for build prompt radio buttons.
+*
+* Parameters : self - form object
+*
+* Return     : None
+*
+*******************************************************************************}
+
+    DECLARE form
+
+    form = self . parent_prompt
+
+    IF self . tag = COA_PARAM_RADIO_BROWSE THEN
+
+        form . prompt_objects [ COA_PARAM_RADIO_BROWSE ]    . set_text ( TRUE )
+        form . prompt_objects [ COA_PARAM_RADIO_CUSTOM ]    . set_text ( FALSE )
+        form . prompt_objects [ COA_PARAM_RADIO_PHRASE ]    . set_text ( FALSE )
+        form . prompt_objects [ COA_PARAM_RADIO_FORMAT ]    . set_text ( FALSE )
+        form . prompt_objects [ COA_PARAM_RADIO_JOB_FIELD ] . set_text ( FALSE )
+        form . prompt_objects [ COA_PARAM_RADIO_SAMP_FIELD ] . set_text ( FALSE )   {1.3}
+        
+        form . prompt_objects [ COA_PARAM_PROMPT_TABLE ]    . set_enabled ( TRUE )    
+        form . prompt_objects [ COA_PARAM_PROMPT_FIELD ]    . set_enabled ( TRUE )    
+        form . prompt_objects [ COA_PARAM_PROMPT_LIBRARY ]  . set_enabled ( FALSE )
+        form . prompt_objects [ COA_PARAM_PROMPT_ROUTINE ]  . set_enabled ( FALSE )
+        form . prompt_objects [ COA_PARAM_PROMPT_PHRASE ]   . set_enabled ( FALSE )
+        form . prompt_objects [ COA_PARAM_PROMPT_TYPE ]     . set_enabled ( FALSE ) 
+        form . prompt_objects [ COA_PARAM_PROMPT_LENGTH ]   . set_enabled ( FALSE )
+        form . prompt_objects [ COA_PARAM_PROMPT_JOB_FIELD ]. set_enabled ( FALSE )
+        form . prompt_objects [ COA_PARAM_PROMPT_SAMP_FIELD ]. set_enabled ( FALSE )  {1.3}
+
+    ELSEIF self . tag = COA_PARAM_RADIO_CUSTOM THEN
+
+        form . prompt_objects [ COA_PARAM_RADIO_BROWSE ]    . set_text ( FALSE )
+        form . prompt_objects [ COA_PARAM_RADIO_CUSTOM ]    . set_text ( TRUE )
+        form . prompt_objects [ COA_PARAM_RADIO_PHRASE ]    . set_text ( FALSE )
+        form . prompt_objects [ COA_PARAM_RADIO_FORMAT ]    . set_text ( FALSE )
+        form . prompt_objects [ COA_PARAM_RADIO_JOB_FIELD ] . set_text ( FALSE )
+        form . prompt_objects [ COA_PARAM_RADIO_SAMP_FIELD ] . set_text ( FALSE )   {1.3}
+
+        form . prompt_objects [ COA_PARAM_PROMPT_TABLE ]    . set_enabled ( FALSE )    
+        form . prompt_objects [ COA_PARAM_PROMPT_FIELD ]    . set_enabled ( FALSE )    
+        form . prompt_objects [ COA_PARAM_PROMPT_LIBRARY ]  . set_enabled ( TRUE )
+        form . prompt_objects [ COA_PARAM_PROMPT_ROUTINE ]  . set_enabled ( TRUE )
+        form . prompt_objects [ COA_PARAM_PROMPT_PHRASE ]   . set_enabled ( FALSE )
+        form . prompt_objects [ COA_PARAM_PROMPT_TYPE ]     . set_enabled ( FALSE ) 
+        form . prompt_objects [ COA_PARAM_PROMPT_LENGTH ]   . set_enabled ( FALSE )
+        form . prompt_objects [ COA_PARAM_PROMPT_JOB_FIELD ]. set_enabled ( FALSE )
+        form . prompt_objects [ COA_PARAM_PROMPT_SAMP_FIELD ]. set_enabled ( FALSE )  {1.3}
+
+    ELSEIF self . tag = COA_PARAM_RADIO_PHRASE THEN
+
+        form . prompt_objects [ COA_PARAM_RADIO_BROWSE ]    . set_text ( FALSE )
+        form . prompt_objects [ COA_PARAM_RADIO_CUSTOM ]    . set_text ( FALSE )
+        form . prompt_objects [ COA_PARAM_RADIO_PHRASE ]    . set_text ( TRUE )
+        form . prompt_objects [ COA_PARAM_RADIO_FORMAT ]    . set_text ( FALSE )
+        form . prompt_objects [ COA_PARAM_RADIO_JOB_FIELD ] . set_text ( FALSE )
+        form . prompt_objects [ COA_PARAM_RADIO_SAMP_FIELD ] . set_text ( FALSE )   {1.3}
+
+        form . prompt_objects [ COA_PARAM_PROMPT_TABLE ]    . set_enabled ( FALSE )    
+        form . prompt_objects [ COA_PARAM_PROMPT_FIELD ]    . set_enabled ( FALSE )    
+        form . prompt_objects [ COA_PARAM_PROMPT_LIBRARY ]  . set_enabled ( FALSE )
+        form . prompt_objects [ COA_PARAM_PROMPT_ROUTINE ]  . set_enabled ( FALSE )
+        form . prompt_objects [ COA_PARAM_PROMPT_PHRASE ]   . set_enabled ( TRUE )
+        form . prompt_objects [ COA_PARAM_PROMPT_TYPE ]     . set_enabled ( FALSE ) 
+        form . prompt_objects [ COA_PARAM_PROMPT_LENGTH ]   . set_enabled ( FALSE )
+        form . prompt_objects [ COA_PARAM_PROMPT_JOB_FIELD ]. set_enabled ( FALSE )    
+        form . prompt_objects [ COA_PARAM_PROMPT_SAMP_FIELD ]. set_enabled ( FALSE )  {1.3}    
+
+    ELSEIF self . tag = COA_PARAM_RADIO_FORMAT THEN
+
+        form . prompt_objects [ COA_PARAM_RADIO_BROWSE ]    . set_text ( FALSE )
+        form . prompt_objects [ COA_PARAM_RADIO_CUSTOM ]    . set_text ( FALSE )
+        form . prompt_objects [ COA_PARAM_RADIO_PHRASE ]    . set_text ( FALSE )
+        form . prompt_objects [ COA_PARAM_RADIO_FORMAT ]    . set_text ( TRUE )
+        form . prompt_objects [ COA_PARAM_RADIO_JOB_FIELD ] . set_text ( FALSE )
+        form . prompt_objects [ COA_PARAM_RADIO_SAMP_FIELD ] . set_text ( FALSE )   {1.3}
+        
+        form . prompt_objects [ COA_PARAM_PROMPT_TABLE ]    . set_enabled ( FALSE )    
+        form . prompt_objects [ COA_PARAM_PROMPT_FIELD ]    . set_enabled ( FALSE )    
+        form . prompt_objects [ COA_PARAM_PROMPT_LIBRARY ]  . set_enabled ( FALSE )
+        form . prompt_objects [ COA_PARAM_PROMPT_ROUTINE ]  . set_enabled ( FALSE )
+        form . prompt_objects [ COA_PARAM_PROMPT_PHRASE ]   . set_enabled ( FALSE )
+        form . prompt_objects [ COA_PARAM_PROMPT_TYPE ]     . set_enabled ( TRUE ) 
+        form . prompt_objects [ COA_PARAM_PROMPT_LENGTH ]   . set_enabled ( TRUE )
+        form . prompt_objects [ COA_PARAM_PROMPT_JOB_FIELD ]. set_enabled ( FALSE )    
+        form . prompt_objects [ COA_PARAM_PROMPT_SAMP_FIELD ]. set_enabled ( FALSE )  {1.3}    
+        
+    ELSEIF self . tag = COA_PARAM_RADIO_JOB_FIELD THEN
+    
+        form . prompt_objects [ COA_PARAM_RADIO_BROWSE ]    . set_text ( FALSE )
+        form . prompt_objects [ COA_PARAM_RADIO_CUSTOM ]    . set_text ( FALSE )
+        form . prompt_objects [ COA_PARAM_RADIO_PHRASE ]    . set_text ( FALSE )
+        form . prompt_objects [ COA_PARAM_RADIO_FORMAT ]    . set_text ( FALSE )            
+        form . prompt_objects [ COA_PARAM_RADIO_JOB_FIELD ] . set_text ( TRUE )
+        form . prompt_objects [ COA_PARAM_RADIO_SAMP_FIELD ] . set_text ( FALSE )   {1.3}
+        
+        form . prompt_objects [ COA_PARAM_PROMPT_TABLE ]    . set_enabled ( FALSE )    
+        form . prompt_objects [ COA_PARAM_PROMPT_FIELD ]    . set_enabled ( FALSE )    
+        form . prompt_objects [ COA_PARAM_PROMPT_LIBRARY ]  . set_enabled ( FALSE )
+        form . prompt_objects [ COA_PARAM_PROMPT_ROUTINE ]  . set_enabled ( FALSE )
+        form . prompt_objects [ COA_PARAM_PROMPT_PHRASE ]   . set_enabled ( FALSE )
+        form . prompt_objects [ COA_PARAM_PROMPT_TYPE ]     . set_enabled ( FALSE ) 
+        form . prompt_objects [ COA_PARAM_PROMPT_LENGTH ]   . set_enabled ( FALSE )
+        form . prompt_objects [ COA_PARAM_PROMPT_DEFAULT ]  . set_enabled ( FALSE )        
+        form . prompt_objects [ COA_PARAM_PROMPT_JOB_FIELD ]. set_enabled ( TRUE )    
+        form . prompt_objects [ COA_PARAM_PROMPT_SAMP_FIELD ]. set_enabled ( FALSE )  {1.3}            
+{1.3}        
+    ELSEIF self . tag = COA_PARAM_RADIO_SAMP_FIELD THEN
+    
+        form . prompt_objects [ COA_PARAM_RADIO_BROWSE ]    . set_text ( FALSE )
+        form . prompt_objects [ COA_PARAM_RADIO_CUSTOM ]    . set_text ( FALSE )
+        form . prompt_objects [ COA_PARAM_RADIO_PHRASE ]    . set_text ( FALSE )
+        form . prompt_objects [ COA_PARAM_RADIO_FORMAT ]    . set_text ( FALSE )            
+        form . prompt_objects [ COA_PARAM_RADIO_JOB_FIELD ] . set_text ( FALSE )
+        form . prompt_objects [ COA_PARAM_RADIO_SAMP_FIELD ] . set_text ( TRUE )   
+        
+        form . prompt_objects [ COA_PARAM_PROMPT_TABLE ]    . set_enabled ( FALSE )    
+        form . prompt_objects [ COA_PARAM_PROMPT_FIELD ]    . set_enabled ( FALSE )    
+        form . prompt_objects [ COA_PARAM_PROMPT_LIBRARY ]  . set_enabled ( FALSE )
+        form . prompt_objects [ COA_PARAM_PROMPT_ROUTINE ]  . set_enabled ( FALSE )
+        form . prompt_objects [ COA_PARAM_PROMPT_PHRASE ]   . set_enabled ( FALSE )
+        form . prompt_objects [ COA_PARAM_PROMPT_TYPE ]     . set_enabled ( FALSE ) 
+        form . prompt_objects [ COA_PARAM_PROMPT_LENGTH ]   . set_enabled ( FALSE )
+        form . prompt_objects [ COA_PARAM_PROMPT_DEFAULT ]  . set_enabled ( FALSE )        
+        form . prompt_objects [ COA_PARAM_PROMPT_JOB_FIELD ]. set_enabled ( FALSE )    
+        form . prompt_objects [ COA_PARAM_PROMPT_SAMP_FIELD ]. set_enabled ( TRUE )  
+{/1.3}   
+    ENDIF
+
+
+ENDROUTINE {toggle_routine}
+
+
+{******************************************************************************}
+
+ROUTINE leave_prompt_routine ( self )
+{
+* Summary    : Leave prompt routine, modifys prompts based on data selected.
+*
+* Parameters : self - prompt object
+*
+* Return     : None
+*
+*******************************************************************************}
+
+    DECLARE parent, 
+            fields_names, 
+            count, 
+            routines, 
+            routine_array
+
+    parent = self . parent_prompt
+
+    IF self . tag = COA_PARAM_PROMPT_TABLE THEN
+        
+        fields_names = browse_array_table ( 
+            parent . prompt_objects [ COA_PARAM_PROMPT_TABLE ] . text )
+
+        parent . prompt_objects 
+            [ COA_PARAM_PROMPT_FIELD ] . choose_array = fields_names
+  
+    ELSEIF self . tag = COA_PARAM_PROMPT_LIBRARY THEN
+
+        ARRAY routine_array
+                        
+        routine_array = browse_array_library ( 
+            parent . prompt_objects [ COA_PARAM_PROMPT_LIBRARY ] . text )
+        
+        parent . prompt_objects 
+            [ COA_PARAM_PROMPT_ROUTINE ] . choose_array = routine_array
+
+    ELSEIF self . tag = COA_PARAM_PROMPT_TYPE THEN
+
+        IF self . value = "TEXT" THEN
+            parent . prompt_objects    
+                [ COA_PARAM_PROMPT_LENGTH ] . display_only = FALSE
+        ELSE
+            parent . prompt_objects    
+                [ COA_PARAM_PROMPT_LENGTH ] . display_only = TRUE
+        ENDIF
+
+    ENDIF
+
+ENDROUTINE {leave_prompt_routine}
+
+{******************************************************************************}
+
+ROUTINE browse_array_table ( VALUE table )
+{
+* Summary    : Return a browse array based on parameter.
+*
+* Parameters : VALUE table_name
+*
+* Return     : ARRAY 2 dimensional browse array
+*
+*******************************************************************************}
+
+    DECLARE browse_array    
+    
+    {Get field names based on table}
+
+    GET_FIELD_NAMES( table , browse_array )
+
+    count = 1
+
+    WHILE count <= SIZE_OF_ARRAY ( browse_array ) DO
+
+        browse_array [ count, 2 ] = browse_array [ count, 1 ]
+
+        count = count + 1
+    
+    ENDWHILE
+    
+    RETURN ( browse_array )
+
+ENDROUTINE {browse_array_table}
+
+
+{******************************************************************************}
+
+ROUTINE browse_array_library ( VALUE library )
+{
+* Summary    : Return a browse array based on parameter.
+*
+* Parameters : VALUE table_name
+*
+* Return     : ARRAY 2 dimensional browse array
+*
+*******************************************************************************}
+
+    DECLARE browse_array, 
+            count    
+    
+    ARRAY browse_array
+    ARRAY routine_array
+        
+    vgl_find_routines ( library , routine_array )
+
+    count = 1
+
+    WHILE count <= SIZE_OF_ARRAY ( routine_array ) DO
+
+        browse_array [ count , 1 ] = STRIP ( routine_array [ count ] )
+        browse_array [ count , 2 ] = STRIP ( routine_array [ count ] )
+
+        count = count + 1
+    
+    ENDWHILE
+        
+    RETURN ( browse_array )
+
+ENDROUTINE { browse_array_library }
+
+{******************************************************************************}
+
+ROUTINE field_prompt_routine (      self        ,
+                                    grid        ,
+                              VALUE cell_column ,
+                              VALUE cell_row    ,
+                              VALUE column      ,
+                              VALUE row         ,
+                              VALUE cell_width  ,
+                                    window      ,
+                              VALUE is_display   )
+
+{
+*
+*   Gets a list of field names from the COA_HEADER table but excludes
+*   selected fields
+*
+*******************************************************************************}
+
+	DECLARE field, 
+	        old_field,  
+	        table, 
+	        name,
+	        array_all_fields,
+	        array_std_fields,
+	        array_fields,
+	        std_field,
+	        i,
+	        j,
+	        k
+	        
+	ARRAY array_std_fields
+	ARRAY array_fields
+
+	field = SELECT coa_template_parameters . field_name  IN OBJECT self 
+        table = "COA_HEADER"
+
+	old_field = field
+
+	IF is_display THEN
+
+		DISPLAY field
+		    ON LINE   row
+		    FROM      column
+		    TO        column + cell_width - 1
+		    IN WINDOW window
+		    FORMAT    TEXT100
+
+	ELSE
+
+		{Fill array with fields from the table}
+		array_all_fields = explorer_utils_get_table_fields ( table, TRUE )
+
+		{Fill array with fields to exclude}
+		array_std_fields [1] = "COA_ID"
+		array_std_fields [2] = "COA_ID_TEXT"
+		array_std_fields [3] = "PRODUCT"
+		array_std_fields [4] = "PRODUCT_LEVEL"
+		array_std_fields [5] = "COA_TEMPLATE_VERSION"
+		array_std_fields [6] = "GENERATED_BY"
+		
+		{Build array of fields to be used in the prompt}
+		i = 1
+		k = 1
+		
+		WHILE i <= SIZE_OF_ARRAY ( array_all_fields ) DO
+				    
+		    j = 1
+		    std_field = FALSE
+		    
+		    WHILE (j <= SIZE_OF_ARRAY ( array_std_fields )) AND ( std_field = FALSE ) DO
+		    
+		        IF array_all_fields [ i, 2 ] = array_std_fields [ j ]
+		        
+		            std_field = TRUE
+		        		       		        		       		        
+		        ENDIF
+		        
+		        j = j + 1
+		        
+		    ENDWHILE
+		    
+		    IF std_field = FALSE
+		    
+		        array_fields [ k, 1 ] = array_all_fields [ i, 2 ]
+		        array_fields [ k, 2 ] = array_all_fields [ i, 2 ]
+		        k = k + 1
+		    
+		    ENDIF
+		    
+		    i = i + 1
+		    
+                ENDWHILE
+	        
+	        {Prompt routine}
+	        
+		PROMPT FOR field
+		    ON LINE   row
+		    FROM      column
+		    TO        column + cell_width - 1
+		    IN WINDOW window 
+		    CHOOSE OUTOF array_fields
+		    WITH ( always_validate = TRUE )
+
+		IF field <> old_field THEN
+
+			ASSIGN coa_template_parameters. field_name 
+			    IN OBJECT self = field
+
+			grid . redisplay_row ( grid . current_row )
+
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE { field_prompt_routine }
+
+
+{***************************************************************************************
+
+       WORD DOCUMENT TEMPLATE ROUTINES  
+
+***************************************************************************************}
+
+ROUTINE document_browse ( prompt_object )
+
+{
+*
+*  Browse for MS Word Document Template
+*
+*
+*******************************************************************************}
+
+    DECLARE document_name, 
+            client_browse, 
+            path,
+            document_array,
+            choose_array,
+            var,
+            i
+
+    ARRAY choose_array
+
+    FILE FIND "smp$userfiles:*.doc", document_array, var   
+
+    array_insert_slice (document_array, 1, 1)
+
+    document_array[1] = ""     {Includes a Blank Entry so User Can Set field to Blank}
+
+    IF (var = EMPTY) THEN
+
+        i = 1
+
+        WHILE (i <= size_of_array(document_array)) DO
+
+            choose_array [i, 1] = parse_document_filename(document_array[i])
+            choose_array [i, 2] = parse_document_filename(document_array[i])
+
+            i = i + 1
+
+        ENDWHILE
+
+        PROMPT OBJECT prompt_object    
+               CHOOSE OUTOF choose_array
+               ON LINE 1 FROM 15
+         WITH ( validation_routine = "validate_document_browse",
+	   	vgl_library = GLOBAL ( "CURRENT_LIBRARY" ))
+
+    ELSE
+
+        flash_message(var, true)
+
+    ENDIF
+
+        
+ENDROUTINE
+
+
+ROUTINE parse_document_filename ( VALUE full_file_name )
+
+{
+*
+*     Strips out actual filename from full path
+*
+****************************************************************************}
+
+    DECLARE new_file_name, 
+            file_name,
+            slash_pos,
+            str_len,
+            result
+
+    new_file_name = full_file_name
+    
+    IF ( new_file_name <> EMPTY ) AND ( NOT BLANK ( new_file_name ) ) THEN
+
+            result = STRIP ( new_file_name )
+
+            slash_pos = INDEX ( result , "\" )
+
+            WHILE ( slash_pos > 0 ) DO
+
+                str_len = LENGTH ( result )
+
+                result = RIGHTSTRING ( result , str_len - slash_pos )
+
+                slash_pos = INDEX ( result , "\" )
+            
+                { Check for server additions }
+
+                IF (slash_pos = 0) THEN
+
+                    slash_pos = INDEX ( result , "/" )
+
+                ENDIF
+
+            ENDWHILE
+
+            new_file_name = result
+
+    ENDIF
+
+    RETURN (new_file_name)
+
+
+ENDROUTINE { parse_document_filename }
+
+ROUTINE validate_document_browse ( self )
+
+{
+* Summary    : 
+*
+* Parameters : prompt object
+*
+* Return     : 
+*
+*******************************************************************************}
+
+	RETURN ( TRUE )
+	
+ENDROUTINE
+
+    
+
+

@@ -1,0 +1,222 @@
+
+{*******************************************************************************
+*
+* Module Name   : LABTABLE_DB_TASKS
+*
+* Purpose       : Database Driven Laboratory Table Editors Defaults. This report
+*                 Should be copied when you want to do clever stuff with data
+*                 Driven LTE's. It wouldn't be a good idea to modify this one.
+*
+* Document Ref  : N/a
+*
+*******************************************************************************}
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN LIBRARY $LABTABLIB
+JOIN LIBRARY $LIB_UTILS
+
+JOIN LIBRARY ALKERMES_RESOURCE
+
+SET COMPILE_OPTION DECLARE
+SET NOTPROTECTED
+SET NAME "DEFER/"
+ENABLE WINDOWS
+
+{*******************************************************************************
+*                          M A I N   C O D E
+*******************************************************************************}
+
+EXIT { Do nothing. This report is used for LTE Callbacks. }
+
+{*******************************************************************************
+*                             R O U T I N E S 
+*
+* The following routines are provided as call back points for LTE processing
+* User code may be added as appropriate.
+*
+*******************************************************************************}
+
+ROUTINE validation_routine
+
+{ Called after each ID value has been entered.
+*
+* Parameters   : New_Id   - The newly entered identity
+* Return Value : Boolean  - True if the the save operation should continue. If
+*                           the return is false then the user will stay on the
+*                           LTE screen.
+*
+*******************************************************************************}
+
+     DECLARE desc,
+             continue,
+             duration
+
+     continue = TRUE
+
+     desc     = SELECT tasks . description
+     duration = SELECT tasks . duration
+
+     IF (STRIP(desc) = "") THEN
+
+         continue = FALSE
+
+         flash_message( get_user_message ( "CREATE_TASK_ENTER_DESC", 1 ), true)
+
+     ENDIF
+
+     IF (duration = 0) THEN
+
+         continue = FALSE
+
+         flash_message( get_user_message ( "CREATE_TASK_ENTER_DURATION", 1 ), true)
+
+     ENDIF
+
+	RETURN ( continue )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE prompt_object_routine (       prompt_object ,
+                                VALUE key0_count    ,
+                                VALUE operation     )
+
+{ Called during the creation of the identity prompts
+*
+* Parameters   : Prompt_Object - The Prompt object for the specified prompt
+*                Key0_Count    - The current Key0 Segment number
+*                                e.g. this would be 2 for the version number
+*                                of the Versioned Analysis table.
+* Return Value : N/a
+*
+*******************************************************************************}
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE ident_prompt_object_routine (       prompt_object ,
+				      VALUE ident_field   )
+
+{ Called from the ident form for for each identity prompt when copying, 
+* printing etc. You can get hold of the operation etc using the following code;
+*
+* 	DECLARE operation, labtable
+*	labtablib_get_labtable ( labtable )
+*	operation = labtable . operation
+*
+* Parameters   : Prompt_Object - The Prompt object for the specified prompt
+*                Ident_Field   - The name of the identity field to prompt for
+*                                e.g. ANALYSIS_VERSION for the Versioned
+*                                Analysis Table.
+* Return Value : N/a
+*
+*******************************************************************************}
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE create_id_routine
+
+
+{ Called before starting the identity prompts of an LTE for the ADD and 
+* COPY options.
+*
+* Parameters   : N/a
+* Return Value : String   - The identity of the new record. Returning EMPTY 
+*                           will start the prompt as normal.
+*
+*******************************************************************************}  
+      
+    DECLARE task_id
+
+    CALL_ROUTINE "lab_table_add_task"
+    IN LIBRARY "ALKERMES_RESOURCE"
+    RETURNING task_id
+
+        RETURN ( task_id)
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE update_routine ( labtable )
+
+{ Called on pressing the DO key to save LTE screen. Called after the LTE write 
+* transaction has been started.
+*
+* The labtable . operation property is set to either ;
+*
+*             "REMOVE_IDENT"  for the remove option
+*             "RESTORE_IDENT" for the restore option
+*
+* Parameters   : Labtable - The Labtable Object
+* Return Value : Boolean  - TRUE if updates have been performed
+*                           FALSE if updates have NOT been performed
+*                           EMPTY - the systems checks for updates
+*
+*******************************************************************************}    
+
+        RETURN ( FALSE )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE read_data_routine (       labtable  ,
+                            VALUE operation )
+
+{ Called after the record has been selected / reserved but before the editor 
+* screen has been built.
+*
+* Parameters   : Labtable  - The Labtable Object
+*                Operation - The current LTE operation eg ADD, MODIFY, DISPLAY
+* Return Value : N/a
+*
+*******************************************************************************}
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE validate_new_id_routine ( VALUE new_id )
+
+{ Called after each ID value has been entered.
+*
+* Parameters   : New_Id   - The newly entered identity
+* Return Value : Boolean  - True if the ID is allowed.
+*
+*******************************************************************************}
+    
+     
+  
+	RETURN ( TRUE )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE remove_restore_routine ( labtable )
+
+{ Called on pressing the DO key to remove or restore an LTE entry and after 
+* the LTE write transaction has been started
+*
+* The labtable . operation property is set to either ;
+*
+*             "REMOVE_IDENT"  for the remove option
+*             "RESTORE_IDENT" for the restore option
+*
+* Parameters   : Labtable - The Labtable Object
+* Return Value : Boolean  - True if the operation is allowed.
+*
+*******************************************************************************}    
+
+        RETURN ( TRUE )
+
+ENDROUTINE
+
+{******************************************************************************}
+{******************************************************************************}
+{******************************************************************************}
+

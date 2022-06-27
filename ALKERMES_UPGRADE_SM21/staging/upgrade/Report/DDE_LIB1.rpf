@@ -1,0 +1,766 @@
+{ ============================== DDE_LIB.RPF =================================}
+{                                                                             }
+{ Created by : JMWHYTE                          Date: 24-04-1996              }
+{                                                                             }
+{ Purpose    : DDE Library for Reports          (c) TENSOR Technologies       }
+{                                                                             }
+{ Description: There is a requirement at Elan to produce Sample Analysis      }
+{              Reports ( for example, the SAR at EPRC ). The Samples have     }
+{              associated results and specifications. A Sample Report is      }
+{              required which presents the Test Components, the Test Results  }
+{              and the Specifications for the Components. In the majority of  }
+{              cases where the result meets the specification, there is a     }
+{              requirement to substitute the actual result with the text      }
+{              "Complies". In cases where the results does not meet the       }
+{              specification, the text "Does not Comply" should be substituted}
+{              for the result.                                                }
+{              This file contains a library of routines for outputting to Word}
+{=============================================================================}
+{                                                                             }
+{  Modification History                                                       }
+{                                                                             }
+{  Ver.     Date        By          Description                               }
+{  ----     ----        --          -----------                               }
+{  1.0      03/05/96    JMW         Release Version                           }
+{  1.01     26/05/96    JMW         see below                                 }
+{ Version 1.01: Version returned from ELAN, 16/05/96 and further modifications}
+{               1) Dispositioned Status and Date Bolded.                      }
+{               2) Batch quantity and Manufacturer name included.             }
+{               3) Test Description, Specification and Result Bolded          }
+{               4) Result Column reduced by 30%,Spec. Column increased to fill}
+{               5) Analysis / component sequence as per test schedule.        }
+{ ============================================================================}
+
+
+JOIN STANDARD_LIBRARY STD_FLAGS
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_DDE
+JOIN STANDARD_LIBRARY STD_VGL_TOOLS
+JOIN LIBRARY $LIB_UTILS
+
+CONSTANT WORD_DDE_CLASS   = "STD_WORD_DDE"
+CONSTANT WORD_FONT_CLASS  = "STD_WORD_FONT"
+
+{ Elan }
+{CONSTANT WORD_FOR_WINDOWS = "J\WORD6\WINWORD.EXE"
+}
+{ Tensor }
+
+CONSTANT WORD_FOR_WINDOWS = "C:\PROGRAM FILES\MICROSOFT OFFICE\OFFICE\WINWORD.EXE"
+
+
+
+GLOBAL ROUTINE word_initialise_nt
+{
+vgl_tools_class_redefinable ( WORD_DDE_CLASS, TRUE )
+}
+DEFINE CLASS WORD_DDE_CLASS
+    PROPERTIES "DDE_ID"
+    ACTIONS "CONNECT"         ,
+            "EXIT"            ,
+            "DISCONNECT"      ,
+            "INSERT_PARAGRAPH",
+            "INSERT_TEXT"     ,
+            "SET_FONT"        ,
+            "SET_BOLD"        ,
+            "SET_ITALIC"      ,
+            "SET_UNDERLINE"   ,
+            "INDENT"          ,
+            "UNINDENT"        ,
+            "CENTER_PARAGRAPH",
+            "LEFT_PARAGRAPH"  ,
+            "RIGHT_PARAGRAPH" ,
+            "INSERT_ARRAY"    ,
+            "FILE_NEW"        ,
+            "IS_CONNECTED"    ,
+            "SEND"            ,
+            "FILE_SUMMARY_INFO",
+            "FILE_SAVE_AS"    ,
+            "FILE_CLOSE"      ,
+            "FILE_OPEN"       ,
+            "FILE_CLOSE_ALL"  ,
+            "APP_MINIMIZE"    ,
+            "APP_RESTORE"     ,
+            "END_OF_DOCUMENT" ,
+            "VIEW_PAGE"       ,
+            "INSERT_QA_ARRAY" ,
+            "DMPK_INSERT_ARRAY"
+
+    INITIALISATION
+END CLASS
+
+
+{vgl_tools_class_redefinable ( WORD_FONT_CLASS, TRUE )
+}
+
+DEFINE CLASS WORD_FONT_CLASS
+    ACTIONS "GET_EXEC_LINE"   ,
+            "RESET"
+
+
+ PROPERTIES "POINTS"          ,
+            "UNDERLINE"       ,
+            "COLOUR"          ,
+            "STRIKETHROUGH"   ,
+            "SUPERSCRIPT"     ,
+            "SUBSCRIPT"       ,
+            "HIDDEN"          ,
+            "SMALLCAPS"       ,
+            "ALLCAPS"         ,
+            "SPACING"         ,
+            "POSITION"        ,
+            "KERNING"         ,
+            "KERNINGMIN"      ,
+            "DEFAULT"         ,
+            "FONT"            ,
+            "BOLD"            ,
+            "ITALIC"
+
+    INITIALISATION
+
+    END CLASS
+
+ENDROUTINE
+
+ROUTINE std_word_font_class_initialisation ( self )
+self . reset ()
+ENDROUTINE
+
+ROUTINE std_word_font_action_reset ( self )
+self . points        = 12
+self . underline     = EMPTY
+self . colour        = 0
+self . strikethrough = EMPTY
+self . superscript   = EMPTY
+self . subscript     = EMPTY
+self . hidden        = EMPTY
+self . allcaps       = EMPTY
+self . smallcaps     = EMPTY
+self . spacing       = 0
+self . position      = 0
+self . kerning       = EMPTY
+self . kerningmin    = EMPTY
+self . default       = EMPTY
+self . font          = "Times New Roman"
+self . bold          = EMPTY
+self . italic        = EMPTY
+ENDROUTINE
+
+ROUTINE std_word_font_action_get_exec_line ( self )
+DECLARE exec_line
+exec_line = ""
+
+IF self . points <> EMPTY THEN
+    exec_line = exec_line : ".Points = " : self . points : ","
+ENDIF
+
+IF self . underline <> EMPTY THEN
+    exec_line = exec_line : ".Underline = 1,"
+ELSE
+    exec_line = exec_line : ".Underline = 0,"
+ENDIF
+
+exec_line = exec_line : ".Color = " : self . colour : ","
+
+IF self . strikethrough <> EMPTY THEN
+    exec_line = exec_line : ".Strikethrough = 1,"
+ELSE
+    exec_line = exec_line : ".Strikethrough = 0,"
+ENDIF
+
+IF self . superscript <> EMPTY THEN
+    exec_line = exec_line : ".Superscript = 1,"
+ELSE
+    exec_line = exec_line : ".Superscript = 0,"
+ENDIF
+
+
+IF self . subscript <> EMPTY THEN
+    exec_line = exec_line : ".Subscript = 1,"
+ELSE
+    exec_line = exec_line : ".Subscript = 0,"
+ENDIF
+
+IF self . hidden <> EMPTY THEN
+    exec_line = exec_line : ".Hidden = 1,"
+ELSE
+    exec_line = exec_line : ".Hidden = 0,"
+ENDIF
+
+IF self . smallcaps <> EMPTY THEN
+    exec_line = exec_line : ".Smallcaps = 1,"
+ELSE
+    exec_line = exec_line : ".Smallcaps = 0,"
+ENDIF
+
+IF self . allcaps <> EMPTY THEN
+    exec_line = exec_line : ".Allcaps = 1,"
+ELSE
+    exec_line = exec_line : ".Allcaps = 0,"
+ENDIF
+
+
+exec_line = exec_line : " .Spacing = " : self . spacing : ","
+exec_line = exec_line : " .Position= " : self . position: ","
+
+IF self . default <> EMPTY THEN
+    exec_line = exec_line : ".Default = " : self . default:","
+ENDIF
+
+exec_line = exec_line : ".Font = ":ASCII(34):self . font :ASCII(34):","
+
+IF self . bold <> EMPTY THEN
+    exec_line = exec_line : ".Bold = 1,"
+ELSE
+    exec_line = exec_line : ".Bold = 0,"
+ENDIF
+
+
+IF self . italic <> EMPTY THEN
+    exec_line = exec_line : ".Italic = 1"
+ELSE
+    exec_line = exec_line : ".Italic = 0"
+ENDIF
+
+exec_line = "FormatFont " : exec_line
+
+RETURN ( exec_line )
+
+ENDROUTINE
+
+ROUTINE std_word_dde_class_initialisation ( self )
+    self . dde_id = EMPTY
+ENDROUTINE
+
+ROUTINE std_word_dde_action_connect ( self )
+
+DECLARE topic, status
+status = "Not Set"
+IF NOT self . is_connected () THEN
+    self . ddeid = 0
+    topic = "System"
+    dde_connect ( "WINWORD"      ,
+                  topic          ,
+                  self . ddeid   ,
+                  status         )
+
+    IF status <> EMPTY THEN
+
+        dde_winexec ( WORD_FOR_WINDOWS ,
+                      "SW_SHOW"        ,
+                      status           )
+
+        dde_connect ( "WINWORD"        ,
+                      topic          ,
+                      self . ddeid   ,
+                      status         )
+
+        IF status <> EMPTY THEN
+            flash_message ( "Word Connect ": status, TRUE )
+            self . dde_id = ERROR
+        ENDIF
+    ENDIF
+ELSE
+ENDIF
+RETURN ( status )
+
+ENDROUTINE
+
+ROUTINE std_word_dde_action_is_connected ( self )
+RETURN (( self . dde_id <> EMPTY ) AND ( self . dde_id <> ERROR ))
+ENDROUTINE
+
+ROUTINE std_word_dde_action_disconnect ( self )
+DECLARE status
+status = EMPTY
+IF self . is_connected () THEN
+    dde_disconnect ( self . ddeid ,
+                     status       )
+    IF ( status <> EMPTY ) THEN
+        flash_message ( " Word Close " : status , TRUE )
+    ENDIF
+ENDIF
+RETURN ( status )
+ENDROUTINE
+
+ROUTINE std_word_dde_action_insert_paragraph ( self )
+RETURN ( self . send ( "InsertPara" ))
+ENDROUTINE
+
+ROUTINE std_word_dde_action_insert_text ( self , VALUE text )
+DECLARE exec_line
+exec_line = "Insert " : ASCII ( 34 ) : text : ASCII ( 34 )
+RETURN ( self . send ( exec_line ))
+ENDROUTINE
+
+ROUTINE std_word_dde_action_set_font    ( self , font )
+DECLARE exec_line, status
+exec_line = font . get_exec_line ()
+status = self . send ( exec_line )
+RETURN ( status )
+ENDROUTINE
+
+ROUTINE std_word_dde_action_set_bold    ( self , VALUE is_bold )
+DECLARE exec_line
+IF is_bold THEN
+    exec_line = "BOLD 1"
+ELSE
+    exec_line = "BOLD 0"
+ENDIF
+self . send ( exec_line )
+ENDROUTINE
+
+ROUTINE std_word_dde_action_set_italic    ( self , VALUE is_italic )
+DECLARE exec_line
+IF is_italic THEN
+    exec_line = "ITALIC 1"
+ELSE
+    exec_line = "ITALIC 0"
+ENDIF
+self . send ( exec_line )
+ENDROUTINE
+
+ROUTINE std_word_dde_action_set_underline    ( self , VALUE is_underline )
+DECLARE exec_line
+IF is_underline THEN
+    exec_line = "UNDERLINE 1"
+ELSE
+    exec_line = "UNDERLINE 0"
+ENDIF
+self . send ( exec_line )
+ENDROUTINE
+
+ROUTINE std_word_dde_action_indent ( self )
+    self . send ( "Indent" )
+ENDROUTINE
+
+ROUTINE std_word_dde_action_unindent ( self )
+DECLARE exec_line
+exec_line = "Unindent"
+self . send ( exec_line )
+ENDROUTINE
+
+ROUTINE std_word_dde_action_center_paragraph ( self )
+    self . send ( "CenterPara" )
+ENDROUTINE
+
+ROUTINE std_word_dde_action_left_paragraph ( self )
+    self . send ( "LeftPara" )
+ENDROUTINE
+
+ROUTINE std_word_dde_action_right_paragraph ( self )
+    self . send ( "RightPara" )
+ENDROUTINE
+
+{ This routine modified, V1.01, JMW, 26/05/96 for bolding and col width    }
+
+ROUTINE std_word_dde_action_insert_array ( self,
+                                           details,
+                                           VALUE rows,
+                                           VALUE columns,
+                                           VALUE style,
+                                           VALUE is_bold )
+
+DECLARE exec_line, row_count, col_count, move_next, change_no_columns
+
+change_no_columns = FALSE
+
+SET FORMAT "9999"
+
+IF ( columns = 5 ) THEN
+
+    columns = 2
+    change_no_columns = TRUE
+
+ENDIF
+
+exec_line = "TableInsertTable "
+
+exec_line = exec_line : " .NumColumns = " : columns : ","
+exec_line = exec_line : " .NumRows = "    : rows : ","
+exec_line = exec_line : " .Format = " : style : ","
+exec_line = exec_line : " .Apply = " : ( 1 + 2 + 4 + 32 + 128 )
+
+self . send ( exec_line )
+
+IF ( change_no_columns ) THEN
+exec_line = "TableSelectColumn"
+self . send ( exec_line )
+
+{ 1st Column }
+exec_line = "TableColumnWidth .ColumnWidth = ":ASCII(34):"2.7 cm":ASCII(34):
+            ", .SpaceBetweenCols = " : ASCII(34): "0.38 cm":ASCII(34):
+            ", .NextColumn, .RulerStyle = " : ASCII(34) : "0" : ASCII(34)
+
+self . send ( exec_line )
+
+{ 2nd Column }
+exec_line = "TableColumnWidth .ColumnWidth = ":ASCII(34):"13.3 cm":ASCII(34):
+            ", .SpaceBetweenCols = " : ASCII(34): "0.38 cm":ASCII(34):
+            ", .NextColumn, .RulerStyle = " : ASCII(34) : "0" : ASCII(34)
+
+self . send ( exec_line )
+
+ENDIF { number of columns = 5 }
+
+
+IF ( columns = 3 ) THEN
+exec_line = "TableSelectColumn"
+self . send ( exec_line )
+
+{ 1st Column }
+exec_line = "TableColumnWidth .ColumnWidth = ":ASCII(34):"5.5 cm":ASCII(34):
+            ", .SpaceBetweenCols = " : ASCII(34): "0.38 cm":ASCII(34):
+            ", .NextColumn, .RulerStyle = " : ASCII(34) : "0" : ASCII(34)
+
+self . send ( exec_line )
+
+{ 2nd Column }
+exec_line = "TableColumnWidth .ColumnWidth = ":ASCII(34):"7.0 cm":ASCII(34):
+            ", .SpaceBetweenCols = " : ASCII(34): "0.38 cm":ASCII(34):
+            ", .NextColumn, .RulerStyle = " : ASCII(34) : "0" : ASCII(34)
+
+self . send ( exec_line )
+
+{ 3rd Column }
+exec_line = "TableColumnWidth .ColumnWidth = ":ASCII(34):"3.5 cm":ASCII(34):
+            ", .SpaceBetweenCols = " : ASCII(34): "0.38 cm":ASCII(34):
+            ", .NextColumn, .RulerStyle = " : ASCII(34) : "0" : ASCII(34)
+
+self . send ( exec_line )
+ENDIF { number of columns = 3 }
+
+
+
+IF ( columns = 4 ) THEN
+exec_line = "TableSelectColumn"
+self . send ( exec_line )
+
+{ 1st Column }
+exec_line = "TableColumnWidth .ColumnWidth = ":ASCII(34):"2.7 cm":ASCII(34):
+            ", .SpaceBetweenCols = " : ASCII(34): "0.38 cm":ASCII(34):
+            ", .NextColumn, .RulerStyle = " : ASCII(34) : "0" : ASCII(34)
+
+self . send ( exec_line )
+
+{ 2nd Column }
+exec_line = "TableColumnWidth .ColumnWidth = ":ASCII(34):"4.3 cm":ASCII(34):
+            ", .SpaceBetweenCols = " : ASCII(34): "0.38 cm":ASCII(34):
+            ", .NextColumn, .RulerStyle = " : ASCII(34) : "0" : ASCII(34)
+
+self . send ( exec_line )
+
+{ 3rd Column }
+exec_line = "TableColumnWidth .ColumnWidth = ":ASCII(34):"5.6 cm":ASCII(34):
+            ", .SpaceBetweenCols = " : ASCII(34): "0.38 cm":ASCII(34):
+            ", .NextColumn, .RulerStyle = " : ASCII(34) : "0" : ASCII(34)
+
+self . send ( exec_line )
+
+{ 4th Column }
+exec_line = "TableColumnWidth .ColumnWidth = ":ASCII(34):"3.4 cm":ASCII(34):
+            ", .SpaceBetweenCols = " : ASCII(34): "0.38 cm":ASCII(34):
+            ", .NextColumn, .RulerStyle = " : ASCII(34) : "0" : ASCII(34)
+
+self . send ( exec_line )
+ENDIF { number of columns = 4 }
+
+
+move_next = FALSE
+row_count = 1
+
+
+WHILE row_count <= rows DO
+    col_count = 1
+    WHILE col_count <= columns DO
+
+        IF move_next THEN
+           self . send ( "Nextcell" )
+        ELSE
+           move_next = TRUE
+        ENDIF
+
+        IF ( is_bold ) OR
+           (( columns = 3 ) AND ( row_count = 1 )) THEN
+           self . send ( "Bold 1" )
+        ELSE
+           self . send ( "Bold 0" )
+        ENDIF
+
+        self . insert_text ( details [ row_count, col_count ] )
+        col_count = col_count + 1
+    ENDWHILE
+    row_count = row_count + 1
+ENDWHILE
+
+self . send ( "LineDown 1")
+
+ENDROUTINE
+
+ROUTINE std_word_dde_action_file_new ( self , VALUE template_name )
+DECLARE exec_line
+exec_line = "FileNew ":
+".Template=":ASCII(34):"Normal":ASCII(34):
+",.NewTemplate=0"
+
+
+IF ( template_name <> "" ) AND ( template_name <> EMPTY ) THEN
+    exec_line = exec_line : ".Template=" : template_name
+ENDIF
+
+self . send ( exec_line )
+
+ENDROUTINE
+
+ROUTINE std_word_dde_action_file_summary_info ( self ,
+                                                VALUE the_author,
+                                                VALUE the_directory
+                                              )
+DECLARE exec_line
+exec_line = "FileSummaryInfo"
+
+IF ( the_author <> "" ) AND ( the_author <> EMPTY ) THEN
+    exec_line = exec_line : ".Author=" : ASCII(34):the_author:ASCII(34) : ","
+ENDIF
+
+IF ( the_directory <> "" ) AND ( the_directory <> EMPTY ) THEN
+    exec_line = exec_line : ".Directory=" : ASCII(34):the_directory:ASCII(34)
+ENDIF
+
+self . send ( exec_line )
+
+ENDROUTINE
+
+ROUTINE std_word_dde_action_file_save_as     ( self ,
+                                                VALUE the_file_name,
+                                                VALUE read_only
+                                              )
+DECLARE exec_line
+exec_line = "FileSaveAs"
+
+IF ( the_file_name <> "" ) AND ( the_file_name <> EMPTY ) THEN
+
+    exec_line = exec_line : ".Name= " : ASCII(34):the_file_name:ASCII(34):","
+
+{ELSE
+    exec_line = exec_line : ".Name=" : STRIP ( LEFTSTRING ( NOW , 8 )) : ".DOC"
+}
+
+    IF ( read_only <> "" ) AND ( read_only <> EMPTY ) THEN
+        exec_line = exec_line : ".RecommendReadOnly = " : STRIP ( read_only )
+    ENDIF
+ELSE
+    exec_line = "FileSave"  { If Filename not passed, just Save }
+ENDIF
+self . send ( exec_line )
+
+ENDROUTINE
+
+ROUTINE std_word_dde_action_file_close     ( self )
+
+self . send ( "FileClose" )
+
+ENDROUTINE
+
+ROUTINE std_word_dde_action_file_close_all  ( self )
+
+self . send ( "FileCloseAll" )
+
+ENDROUTINE
+
+ROUTINE std_word_dde_action_file_open     ( self , VALUE the_file_name )
+
+DECLARE exec_line, status { status - JMW, 16/04/96 }
+exec_line = "FileOpen"
+the_one = 1
+
+IF ( the_file_name <> "" ) AND ( the_file_name <> EMPTY ) THEN
+    exec_line = exec_line : ".Name= " : ASCII(34):the_file_name:ASCII(34):","
+    exec_line = exec_line : ".ReadOnly = " : the_one
+
+ENDIF
+
+status = self . send ( exec_line )
+RETURN ( status )
+ENDROUTINE
+
+ROUTINE std_word_dde_action_app_minimize ( self )
+    self . send ( "AppMinimize" )
+ENDROUTINE
+
+ROUTINE std_word_dde_action_app_restore ( self )
+    self . send ( "AppRestore" )
+ENDROUTINE
+
+ROUTINE std_word_dde_action_end_of_document ( self )
+    self . send ( "EndOfDocument" )
+ENDROUTINE
+
+ROUTINE std_word_dde_action_view_page ( self )
+    self . send ( "ToggleFull" )
+ENDROUTINE
+
+ROUTINE std_word_dde_action_send ( self, VALUE exec_line )
+DECLARE status
+IF self . is_connected () THEN
+    exec_line = "[" : exec_line : "]"
+    dde_execute ( self . ddeid,
+                  exec_line,
+                  status )
+
+    IF status <> EMPTY THEN
+        flash_message ( "Word Write Line - " : exec_line : ". Error = " : status, TRUE )
+    ENDIF
+ELSE
+    status = ERROR
+ENDIF
+RETURN ( status )
+ENDROUTINE
+
+{ New Routine for Elan SAR QA                             }
+
+ROUTINE std_word_dde_action_insert_qa_array ( self,
+                                               details,
+                                               VALUE rows,
+                                               VALUE columns,
+                                               VALUE style,
+                                               VALUE is_bold )
+DECLARE exec_line, row_count, col_count, move_next
+
+SET FORMAT "9999"
+
+exec_line = "TableInsertTable "
+
+exec_line = exec_line : " .NumColumns = " : columns : ","
+exec_line = exec_line : " .NumRows = "    : rows : ","
+exec_line = exec_line : " .Format = " : style : ","
+exec_line = exec_line : " .Apply = " : ( 1 + 2 + 4 + 32 + 128 )
+
+self . send ( exec_line )
+
+move_next = FALSE
+row_count = 1
+
+
+WHILE row_count <= rows DO
+    col_count = 1
+    WHILE col_count <= columns DO
+
+        IF move_next THEN
+           self . send ( "Nextcell" )
+        ELSE
+           move_next = TRUE
+        ENDIF
+
+        IF ( is_bold ) THEN
+           self . send ( "Bold 1" )
+
+        ELSE
+           self . send ( "Bold 0" )
+
+        ENDIF
+
+        self . insert_text ( details [ row_count, col_count ] )
+        col_count = col_count + 1
+    ENDWHILE
+    row_count = row_count + 1
+ENDWHILE
+
+self . send ( "LineDown 1")
+
+ENDROUTINE
+
+
+ROUTINE std_word_dde_action_dmpk_insert_array ( self,
+                                           details,
+                                           VALUE rows,
+                                           VALUE columns,
+                                           VALUE style,
+                                           VALUE is_bold,
+                                           col_wid_array )
+
+DECLARE exec_line, row_count, col_count, move_next, i
+
+SET FORMAT "9999"
+
+exec_line = "TableInsertTable "
+
+exec_line = exec_line : " .NumColumns = " : columns : ","
+exec_line = exec_line : " .NumRows = "    : rows : ","
+exec_line = exec_line : " .Format = " : style : ","
+exec_line = exec_line : " .Apply = " : ( 1 + 2 + 4 + 32 + 128 )
+
+self . send ( exec_line )
+
+exec_line = "TableSelectColumn"
+self . send ( exec_line )
+
+i = 1
+WHILE i <= columns
+    exec_line = "TableColumnWidth .ColumnWidth = ":ASCII(34):
+                col_wid_array [ i ] :ASCII(34): ", .SpaceBetweenCols = " :
+                ASCII(34): "0.38 cm":ASCII(34): ", .NextColumn, .RulerStyle = "
+                : ASCII(34) : "0" : ASCII(34)
+
+    self . send ( exec_line )
+    i = i + 1
+
+ENDWHILE
+
+move_next = FALSE
+row_count = 1
+last_subject = ""
+last_leg = ""
+page_nua = FALSE
+
+WHILE row_count <= rows DO
+
+    IF ( ( details [ row_count, 1 ] <> last_subject ) OR
+         ( details [ row_count, 2 ] <> last_leg ) ) AND ( row_count <> 1 ) THEN
+        page_nua = TRUE
+
+    ENDIF
+
+    col_count = 1
+    WHILE col_count <= columns DO
+
+        IF move_next THEN
+           self . send ( "Nextcell" )
+        ELSE
+           move_next = TRUE
+        ENDIF
+
+        IF page_nua THEN
+            self . send ( "InsertBreak .Type = 0" )
+            page_nua = FALSE
+            self . send ( "LineDown 1" )
+
+        ENDIF
+
+{        IF ( is_bold ) OR
+           (( columns = 3 ) AND ( row_count = 1 )) THEN
+           self . send ( "Bold 1" )
+        ELSE
+           self . send ( "Bold 0" )
+        ENDIF
+}
+        self . insert_text ( STRIP ( details [ row_count, col_count ] ) )
+        IF col_count = 1 THEN
+            last_subject = details [ row_count, col_count ]
+
+        ELSEIF col_count = 2 THEN
+            last_leg = details [ row_count, col_count ]
+
+        ENDIF
+
+        col_count = col_count + 1
+    ENDWHILE
+    row_count = row_count + 1
+ENDWHILE
+
+self . send ( "LineDown 1")
+
+ENDROUTINE
+
+
+

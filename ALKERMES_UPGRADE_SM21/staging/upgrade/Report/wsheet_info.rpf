@@ -1,0 +1,1992 @@
+{******************************************************************************
+*
+* Module Name          : WSHEET_CHECKS
+*
+* Purpose              : Writes the Worksheet Info Records to the WSHEET_INFO
+*                        table.
+*
+* Portability          : Not Checked
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By             Description
+* -------   -----------  ----------     ---------------------------------------
+* 1.0       18-Jul-2005  Vincent Molloy Release Version 
+* 1.1       07-Apr-2006  Vincent Molloy Replaced form prompts with grid to enable
+*                                       scrolling on large numbers of prompts
+*
+* 1.2       08-AUG-2012  Ken Jacobs     Add criteria for prompts
+*
+* 1.3       04-OCT-2012  Ken Jacobs     Allow All button even if previously
+*                                       entered data. Warn user before overwriting
+*
+* 1.4       10-OCT-2012 Ken Jacobs      All All button in tabular result entry
+*                                       that will update all tests for same analysis
+*
+* 1.5       29-OCT-2012 Ken Jacobs      Scale left column of grid as necessary
+*
+* 1.6		30-AUG-2013	Maria Allen	    Add reviewed column to worksheet header 
+*						    and mouse click option to display stock batch or instrument
+*
+*******************************************************************************}
+
+SET NOTPROTECTED
+SET NAME "DEFER/"
+SET COMPILEOPTION DECLARE
+ENABLE WINDOWS
+
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN STANDARD_LIBRARY STD_STRUCTURE    { Structure Modifications.             }
+JOIN STANDARD_LIBRARY STD_MESSAGE      { Message Support                      }
+JOIN STANDARD_LIBRARY STD_UTILS        { Standard Utilities.                  }
+JOIN STANDARD_LIBRARY STD_VGL          { VGL Find Routines...                 }
+JOIN STANDARD_LIBRARY STD_LOGIN
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN STANDARD_LIBRARY STD_CLIENT
+
+JOIN LIBRARY $criteria_saved                                            {1.2}
+JOIN LIBRARY $LABTABLIB                { Lab Table Functionality              }
+JOIN LIBRARY $LIST_EDITOR              { The List Editor.                     }
+JOIN LIBRARY $LIB_UTILS                { flash_messages                       }
+JOIN LIBRARY $LIB_GRID                 { Grid Functionality.                  }
+JOIN LIBRARY PROMPT_ROUTINES
+JOIN LIBRARY $LAB
+
+GLOBAL CONSTANT NAME_COL                =       1
+GLOBAL CONSTANT DEFL_COL                =       2
+GLOBAL CONSTANT TYPE_COL                =       3
+GLOBAL CONSTANT TBLE_COL                =       4
+GLOBAL CONSTANT FORM_COL                =       4
+GLOBAL CONSTANT PHRS_COL                =       4
+GLOBAL CONSTANT FILD_COL                =       5
+GLOBAL CONSTANT MAND_COL                =       6
+GLOBAL CONSTANT VALU_COL                =       7
+GLOBAL CONSTANT RTAB_COL                =       8
+GLOBAL CONSTANT RFLD_COL                =       9
+GLOBAL CONSTANT ROPR_COL                =       10
+
+{**********************************************************
+If this is set to FALSE it will work as previously.
+The All button is disabled if any test already has data.
+i.e. the All button can only be used to initially enter
+data and not modify existing data.
+If this is set to TRUE then the All button is always enabled
+and can be used to modify existing data.
+***********************************************************}
+GLOBAL CONSTANT AllowUpdateAllToOverwrite   = TRUE                      {1.3}
+
+{**********************************************************
+If this is set to FALSE it will work as previously.
+The All button is disabled in tabular result entry screens
+If this is set to TRUE then the All button is always enabled
+and will update all tests for the same analysis as current
+***********************************************************}
+GLOBAL CONSTANT AllowUpdateAllTabular       = TRUE                      {1.4}
+
+CONSTANT CompareOnlyValidRecords        = 1                             {1.3} 
+CONSTANT CompareOnlyEnteredData         = 2                             {1.3}
+CONSTANT CompareAll                     = 3                             {1.3}
+
+
+
+GLOBAL ROUTINE wsheet_filled_in (VALUE the_test_number)
+
+{
+*
+*   Checks if all the mandatory values on the worksheet form have been filled
+*   in for the selected test
+*
+*******************************************************************************}
+
+    DECLARE the_unfilled_fields,
+            the_return_value
+    
+    the_unfilled_fields = SELECT wsheet_info . description WHERE
+                            test_number  = the_test_number AND
+                            mandatory = TRUE AND
+                            field_type="ENTER" AND
+                            record_value = ""
+                          ORDER ON order_num ASCENDING
+    
+    IF the_unfilled_fields = EMPTY THEN
+    
+        the_return_value = TRUE
+        
+    ELSE
+    
+        the_return_value = FALSE
+        
+    ENDIF
+    
+    RETURN (the_return_value)
+    
+    
+ENDROUTINE { wsheet_filled_in }
+
+
+GLOBAL ROUTINE wsheet_info_records (VALUE test_number,
+                                    VALUE display_only,
+                                          test_array,
+                                    VALUE multi_test,
+                                          analysis_array )
+
+{
+*
+*   Opens form to enable updating of the WSHEET_INFO records for the current
+*   selected test. 
+*
+*******************************************************************************}
+
+    DECLARE wsheet
+
+    define_wsheet_form_class ()
+
+    CREATE OBJECT "WSHEET_FORM", wsheet
+
+    wsheet . test_number  = test_number
+    wsheet . is_display   = display_only
+    wsheet . multi_test   = multi_test
+    wsheet . test_array   = test_array
+    wsheet . analysis_array = analysis_array
+
+    wsheet . get_worksheet_details()
+
+    IF wsheet . has_records THEN
+
+        IF STRIP(wsheet . test_number ) <> "" THEN {JON Added}
+        
+            wsheet . load()
+
+            create_form (wsheet)
+
+            wsheet . visible = true
+
+            wsheet . start_prompt()
+
+            wsheet . grid . set_position (1, 1)
+
+            wsheet . wait_prompt()
+            wsheet . end_prompt()
+
+            IF (wsheet . getlastkey() = "DO") THEN 
+
+               IF (display_only <> TRUE ) THEN
+
+                  update_records(wsheet)
+          
+               ENDIF
+          
+            ENDIF
+
+        ENDIF
+
+    ELSE
+ 
+        flash_message(GET_USER_MESSAGE("WSHEET_NO_FIELDS", 1), true)
+
+    ENDIF
+    
+                     
+    wsheet = EMPTY
+
+
+ENDROUTINE { wsheet_info_records }
+
+
+GLOBAL ROUTINE define_wsheet_form_class
+
+{
+*    Defines the WSHEET Class Properties and Actions.           
+*
+*******************************************************************************}
+
+	DEFINE CLASS "WSHEET_FORM"
+
+	INITIALISATION
+        INHERIT "STD_FORM"
+        PROPERTIES
+
+             "user_library"        ,         { The User VGL Report.             }
+             "valid_routine"       ,         { The Validation Routine.          }
+             "details"             ,         { Prompt Details Array.            } 
+             "values"              ,         { Values Entered in the form       }
+             "test_number"         ,         { Test Number.                     } 
+             "link_number"         ,         { Worksheet Link Number.           } 
+             "worksheet_id"        ,         { Worksheet ID                     }
+             "analysis_id"         ,         { Analysis ID                      }
+             "relative_date"       ,         { Relative date for historical.    }
+             "no_prompts"          ,         { No. of prompts                   }
+             "is_display"          ,         { Display Only                     }
+             "text_array"          ,
+             "has_records"         , 
+             "multi_test"          ,         { Multi-tests (Apply All)          }
+             "test_array"          ,          { Test Array  (Apply All)          }
+             "analysis_array",                { Analysis Array (Apply to All)    }
+             "grid",
+             "maximumPromptLength"                                      {1.5}
+             
+	ACTIONS
+        
+             "write_wsheet_records"  , { Writes worksheet record to database     }
+             "open_user_template"    , { Opens up the grid for user input        }
+             "get_worksheet_details" , { Opens up the grid for user input        }
+             "load"                  ,
+             "get_values",
+             "getCriteria",                                             {1.2}
+             "getWorksheetTemplate"                                     {1.2}
+ 
+	END CLASS
+
+ENDROUTINE { define_wsheet_class }
+
+
+ROUTINE wsheet_form_class_initialisation ( self ) 
+
+{
+*    WSHEET Class initialisation routine.                     
+*
+*******************************************************************************}
+
+        ARRAY self . details
+        ARRAY self . values
+        ARRAY self . text_array
+        ARRAY self . test_array
+        ARRAY self . analysis_array
+           
+        self . relative_date  = NOW
+        self . has_records    = FALSE
+
+        self.maximumPromptLength = 50                                   {1.5}
+        
+ENDROUTINE { wsheet_form_class_initialisation }
+
+
+{******************************************************************************}
+
+GLOBAL ROUTINE wsheet_form_action_get_worksheet_details( self)
+
+{
+*    Get worksheet details
+*
+*******************************************************************************}
+
+
+    self . worksheet_id = SELECT wsheet_info . worksheet_id WHERE
+                                 test_number = self . test_number
+      
+    self . analysis_id  = SELECT test . analysis WHERE
+                                 test_number = self . test_number
+	
+    self . no_prompts   = SELECT COUNT wsheet_info WHERE
+                                 test_number  = self . test_number AND
+                                 field_type = "ENTER"
+
+
+                		
+    get_wsheet_prompt_values (self)
+
+    IF (self . no_prompts > 0) THEN
+
+        self . has_records = TRUE
+
+    ENDIF
+
+ENDROUTINE { wsheet_form_action_get_worksheet_details }
+
+
+{******************************************************************************}
+
+GLOBAL ROUTINE wsheet_form_action_open_user_template ( self, mode)
+
+{
+*    Calls up the grid for entering the worksheet header information
+*
+*******************************************************************************}
+  
+    self . load()
+
+ENDROUTINE { wsheet_form_action_open_user_template }
+
+
+ROUTINE wsheet_form_action_load ( self )
+
+{
+*    
+*   Loads all of the data from the database. This includes all 
+*   of the prompt details as well as the header details.
+*              
+*******************************************************************************}
+
+    DECLARE field, 
+            count, 
+            def, 
+            dat,
+		reviewed
+    
+    count = 0
+
+        field = SELECT wsheet_info . identity
+                WHERE  test_number  = self . test_number AND
+                       field_type = "ENTER"
+                ORDER ON order_num
+
+        WHILE (field <> EMPTY) DO
+
+            count = count + 1
+
+            self . details [ NAME_COL, count ] = SELECT wsheet_info . description
+            self . details [ DEFL_COL, count ] = SELECT wsheet_info . default_value
+            self . details [ TYPE_COL, count ] = SELECT wsheet_info . type
+            self . details [ TBLE_COL, count ] = SELECT wsheet_info . prompt1
+            self . details [ FILD_COL, count ] = SELECT wsheet_info . prompt2
+            self . details [ MAND_COL, count ] = SELECT wsheet_info . mandatory
+
+            self . values  [ count, 1]        = SELECT wsheet_info . identity
+            self . values  [ count, 2]        = SELECT wsheet_info . record_value
+{1.6}
+		reviewed = SELECT stock_batch.reviewed WHERE stock_batch.stock_batch_id = self . values  [ count, 2]
+		
+		IF reviewed = EMPTY then
+
+			reviewed = "N/A"
+
+		ELSE
+
+			reviewed = reviewed
+
+		ENDIF
+
+            self . values  [ count, 3]        = reviewed 
+            self . values  [ count, 4]        = SELECT wsheet_info . flag
+            self . values  [ count, 6]        = SELECT wsheet_info . reason
+
+
+{/1.6}           
+            self.getCriteria( count )                                   {1.2}
+            
+            IF ( STRIP(self . values  [ count, 1]) = "") THEN
+
+                self . values [count, 1 ] = ""
+
+            ELSEIF (STRIP(self . values  [ count, 2 ])) = "" THEN
+
+                self . values [count, 2 ] = ""
+
+            ELSEIF (STRIP(self . values  [ count, 3 ])) = "" THEN
+
+                self . values [count, 3 ] = ""
+
+            ELSEIF (STRIP(self . values  [ count, 4 ])) = "" THEN
+
+                self . values [count, 4 ] = ""
+
+ {1.6}      ELSEIF (STRIP(self . values  [ count, 6 ])) = "" THEN
+
+                self . values [count, 6 ] = ""
+
+            ENDIF
+
+            IF self . details [ MAND_COL, count ] THEN
+
+                self . details [ NAME_COL, count ] = STRIP ( self . details [ NAME_COL, count ] ) 
+
+            ENDIF
+
+            self.maximumPromptLength = find_max_number( self.maximumPromptLength, LENGTH( self . details [ NAME_COL, count ] ) )    {1.5}
+            
+            {*****************************************************************}
+            { Just Parse Date Parameters a little bit.                        }
+            {*****************************************************************}
+
+            IF ( SELECT wsheet_info . type = "FORMAT" ) AND
+               ( ( SELECT wsheet_info . prompt1 = "DATETIME" ) OR
+                 ( SELECT wsheet_info . prompt1 = "DATE"     ) ) THEN
+
+                def = SELECT wsheet_info . default_value
+                dat = self . relative_date             
+
+                IF SELECT wsheet_info . prompt1 = "DATE" THEN
+                  
+                    SET DATE FORMAT "DZMZYY"
+                    dat = STRIP ( dat )
+                    RESTORE DATE FORMAT
+                    dat = DATE ( dat )
+
+                ENDIF   
+
+                IF NUMTEXT ( def ) THEN 
+           
+                    IF def < 0 THEN
+
+                        def = TODAY - INTERVAL ( TRUNC ( 0 - def ) )
+
+                    ELSE
+                        def = TODAY  + INTERVAL ( TRUNC ( def ) )
+                    ENDIF
+
+                ELSEIF def = "EOLM" THEN
+
+                    SET DATE FORMAT "DZMZYY"
+                    dat = STRIP ( self . relative_date )
+
+                    dat = DATE ( dat )
+                    RESTORE DATE FORMAT
+
+                    SET DATE FORMAT "DZMZYY"
+                    def = DATE ( "01" : RIGHTSTRING ( STRIP ( dat ), 4 ) )
+                    def = def - INTERVAL ( "0000 00:00:00.01" )
+                    RESTORE DATE FORMAT
+
+                ELSEIF def = "SOLM" THEN
+
+                    SET DATE FORMAT "DZMZYY"
+                    dat = STRIP ( self . relative_date )
+
+                    dat = DATE ( dat )
+                    RESTORE DATE FORMAT
+
+                    SET DATE FORMAT "DZMZYY"
+                    def = DATE ( "01" : RIGHTSTRING ( STRIP ( dat ), 4 ) )
+                    def = def - INTERVAL ( 1 )
+                    def = DATE ( "01" : RIGHTSTRING ( STRIP ( def ), 4 ) )
+                    RESTORE DATE FORMAT                   
+
+                ENDIF
+
+                self . details [ DEFL_COL, count ] = def
+                
+            ENDIF
+
+            IF ( SELECT wsheet_info . type = "BROWSE" ) THEN
+
+               def = SELECT wsheet_info . default_value
+
+               IF ( def = "OPERATOR" ) THEN  
+
+                   self . details [ DEFL_COL, count ] = OPERATOR
+
+               ENDIF
+
+            ENDIF
+            {*****************************************************************}
+            { Default the Sample Owner Field.                                 }
+            {*****************************************************************}
+
+            IF ( self . details [ RFLD_COL, count ] = "SAMPLE_OWNER" ) AND
+               ( self . details [ MAND_COL, count ] = TRUE           ) AND
+               ( BLANK ( self . details [ DEFL_COL, count ] )        ) THEN
+
+                self . details [ DEFL_COL, count ] = GLOBAL ( "SAMPLE_OWNER" ) 
+
+            ENDIF 
+
+            NEXT wsheet_info
+
+            field = SELECT wsheet_info . identity
+
+        ENDWHILE
+
+    self . no_prompts = count
+
+    self.maximumPromptLength = self.maximumPromptLength * 0.7           {1.5}
+    
+    RETURN ( count <> 0 )
+
+ENDROUTINE { wsheet_form_action_load }
+
+
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE  wsheet_form_action_getCriteria
+    (
+            self,
+    VALUE   fieldCounter                
+    )
+
+    {
+    Description :
+    1.2
+    }
+    
+    DECLARE type
+    DECLARE prompt1
+    DECLARE prompt2
+    DECLARE table
+    DECLARE worksheetHeader
+    DECLARE worksheetEntry
+    DECLARE criteriaName
+    DECLARE status
+    
+    ARRAY self.values[fieldCounter,5]       ARRAY_SIZE(0,3)
+
+    type    = SELECT wsheet_info.type
+    prompt1 = SELECT wsheet_info.prompt1
+    prompt2 = SELECT wsheet_info.prompt2
+    
+    IF ( getTableName( type, prompt1, prompt2, table ) )
+
+        worksheetEntry  = SELECT wsheet_info.identity
+        worksheetHeader = self.getWorksheetTemplate()
+        criteriaName    = getCriteriaName( worksheetHeader, worksheetEntry )
+
+        status = criteria_saved_load_squirrel_check( table, criteriaName, self.values[fieldCounter,5], TRUE )   {??? FALSE}
+
+        IF ( status <> EMPTY )
+        
+            flash_message( status, TRUE )
+            
+        ENDIF
+
+    ENDIF
+    
+    RETURN
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+ROUTINE  wsheet_form_action_getWorksheetTemplate
+    (
+            self
+    )
+
+    {
+    Description :
+    1.2
+    }
+    
+    DECLARE analysis
+    DECLARE analysisVersion
+    DECLARE workwheetHeader
+
+    analysis = SELECT test.analysis
+               WHERE  ( test_number = self.test_number )
+    analysisVersion = SELECT test.analysis_version
+
+    workwheetHeader = SELECT versioned_analysis.wsheet_header
+                      WHERE  ( identity = analysis )
+                      AND    ( analysis_version = analysisVersion )
+                      
+    RETURN( workwheetHeader )
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+GLOBAL ROUTINE getTableName
+    (
+    VALUE   type,
+    VALUE   prompt1,
+    VALUE   prompt2,
+            table
+    )
+    
+    {
+    Description :
+    
+    Where we have a custom prompt routine, look for the specific routine
+    getTableNameForCustomPrompt in the library that will return the name of the table
+    
+    }
+    
+    DECLARE libraryName
+    DECLARE routineName
+    DECLARE getTableNameForCustomPrompt
+
+    IF ( type = "BROWSE" )
+
+        table = prompt1
+
+    ELSEIF ( type = "ROUTINE" )
+
+        libraryName = prompt1
+        routineName = prompt2
+        getTableNameForCustomPrompt = "getTableNameForCustomPrompt"
+        
+        IF ( vgl_validate_routine( libraryName, getTableNameForCustomPrompt ) )
+
+            CALL_ROUTINE getTableNameForCustomPrompt 
+                    IN LIBRARY libraryName
+                    USING routineName
+                    RETURNING table
+                    
+        ELSE
+        
+            table = EMPTY
+            
+        ENDIF
+        
+    ELSE
+    
+        table = EMPTY
+        
+    ENDIF
+    
+    RETURN( table <> EMPTY )
+    
+ENDROUTINE
+
+{ ----------------------------------------------------------------------------------------------- }
+
+GLOBAL ROUTINE getCriteriaName 
+    (
+    VALUE   worksheetHeader,
+    VALUE   worksheetEntry
+    )
+    {
+    Description :
+    1.2
+    }
+    
+    DECLARE criteriaName
+
+    criteriaName    = "WSHEET_" : STRIP( worksheetHeader ) : "_" : STRIP( worksheetEntry )
+    
+    RETURN( criteriaName )
+    
+ENDROUTINE
+
+{******************************************************************************}
+
+
+ROUTINE get_link_field ( VALUE search_table, VALUE link_table )
+
+{
+* Summary    : Using search_table get all the fields of this table and check
+*              the link tables for these fields, when it matches the link_table
+*              pass the field back.
+*              
+* Parameters : search_table     - table to search to find the link field
+*           link_table    - table link to look for
+*
+* Return     : Link field
+*
+*******************************************************************************}
+
+    DECLARE field_array, count, link_field, link
+    
+    link_field = EMPTY
+    count = 0
+
+    get_field_names( search_table, field_array )
+    
+    WHILE count < size_of_array( field_array )
+        
+        count = count + 1
+        
+        GET_FIELD_DETAILS 'search_table'.'field_array[count,1]',
+                    "LINK_TABLE" , link
+                
+        IF STRIP ( link ) = STRIP ( link_table ) THEN
+        
+            GET_FIELD_DETAILS 'search_table'.'field_array[count,1]', 
+                        "LINK_FIELD" , link_field                    
+            
+        
+        ENDIF
+        
+    ENDWHILE
+
+    RETURN ( link_field )
+
+ENDROUTINE { get_link_field }
+
+{******************************************************************************}
+
+
+ROUTINE form_validation_routine ( self  )
+
+{
+*
+* Valdation Routine to ensure that the form is filled in as required.
+*              
+*
+*******************************************************************************}
+
+    DECLARE count,
+            return_val, 
+            message
+
+    return_val = TRUE
+    count      = 1
+
+    IF ( self . valid_routine = EMPTY ) OR BLANK ( self . valid_routine ) OR 
+       ( self . user_library = EMPTY  ) OR BLANK ( self . user_library  ) THEN
+
+        WHILE (( return_val ) AND 
+               ( self . details [ NAME_COL, count ] <> EMPTY )) DO
+
+            IF self . details [ MAND_COL, count ] THEN
+  
+                return_val = NOT BLANK ( self . prompt_objects [ count + 2 ] . text )
+
+            ENDIF
+
+            count = count + 1
+
+        ENDWHILE
+
+    ELSE
+
+        self . get_values ( )
+
+        CALLROUTINE self . valid_routine
+             IN LIBRARY self . user_library
+             USING self 
+             RETURNING return_val
+
+    ENDIF
+
+    IF NOT return_val THEN
+
+        message = GET_USER_MESSAGE ( "WSHEET_REQ_FIELDS", 1 ) 
+
+        flash_message ( message, TRUE )
+
+        self . visible = TRUE
+
+        self . start_prompt()
+
+    ENDIF
+ 
+    RETURN ( return_val )
+
+ENDROUTINE { form_validation_routine }
+
+
+{******************************************************************************}
+
+ROUTINE create_form ( wsheet)
+
+{
+*    Creates Worksheet Header Form
+*
+*******************************************************************************}
+
+    DECLARE ok_button,
+            all_button,
+            close_button,
+            z
+
+    z     = 1
+
+    wsheet . header = GET_USER_MESSAGE("WSHEET_HEADER_DETAILS", 1) : wsheet . analysis_id 
+    wsheet . footer = ""
+
+    wsheet . height = 15
+
+    wsheet . full_height = 50
+    wsheet . width  = wsheet.maximumPromptLength + 80 + 2               {1.5}
+    wsheet . row    = ( GLOBAL ( "SCREEN_HEIGHT") - wsheet . height) / 2
+    wsheet . column = ( GLOBAL ( "SCREEN_WIDTH" ) - wsheet . width ) / 2
+    wsheet . border = TRUE
+    wsheet . active_prompt = 1
+    wsheet . return_behaviour = FORM_RETURN_STAY
+
+    wsheet . button_style = FORM_BUTTON_NONE
+
+
+    PROMPT OBJECT ok_button
+    CLASS "STD_PROMPT_BUTTON"
+    ON LINE wsheet . height - 1
+    FROM 5 to 15
+    WITH ( caption = GET_USER_MESSAGE("WSHEET_BUTTON_OK", 1),
+           send_last_key = "DO",
+           parent_prompt = wsheet)
+
+    PROMPT OBJECT all_button
+    CLASS "STD_PROMPT_BUTTON"
+    ON LINE wsheet . height - 1
+    FROM 20 to 30
+    WITH ( caption =  GET_USER_MESSAGE("WSHEET_BUTTON_APPLY_ALL", 1),
+           mouse_click_routine = "apply_to_all",
+           parent_prompt = wsheet)
+
+    PROMPT OBJECT close_button
+    CLASS "STD_PROMPT_BUTTON"
+    ON LINE wsheet . height - 1
+    FROM 35 to 45
+    WITH ( caption = GET_USER_MESSAGE("WSHEET_BUTTON_CANCEL", 1),
+           send_last_key = "EXIT",
+           parent_prompt = wsheet)
+
+    IF wsheet . multi_test THEN
+
+        { Check other logic for allowing "Apply All" button}
+
+        all_button . enabled = compare_tests (wsheet, CompareOnlyValidRecords)       {1.3}
+
+    ELSE
+
+        all_button . enabled = FALSE
+
+    ENDIF
+
+    {*** Add the grid ***}
+
+
+    CREATE OBJECT PROMPT_CLASS_GRID, wsheet . grid
+
+    wsheet . grid . height = 12
+    wsheet . grid . width  = wsheet . width - 2                         {1.5}
+    wsheet . grid . row = 1
+    wsheet . grid . column = 1                                          {1.5}
+    wsheet . grid . cell_columns = 2						{1.6}
+    wsheet . grid . cell_rows = wsheet . no_prompts 
+
+    wsheet . grid . column_size [1] = 30
+    wsheet . grid . title_size_left = wsheet.maximumPromptLength        {1.5}
+
+    wsheet . grid . display_cell_routine = "grid_display_routine"
+    wsheet . grid . prompt_cell_routine  = "grid_prompt_routine"
+
+    wsheet . grid . mouse_click_routine  = "cell_mouse_click_routine"	{1.6}
+
+    wsheet . grid . leave_cell_routine = "leave_cell"
+
+    wsheet . grid . return_behaviour = GRID_RETURN_DOWN
+
+    wsheet . add_prompt (wsheet . grid)
+
+    WHILE ( z <= wsheet . no_prompts ) DO
+
+        IF wsheet . details [MAND_COL,  z] = TRUE
+
+            wsheet . grid . title_text_left [z, 1] = wsheet . details [1, z] : ">"
+
+        ELSE
+
+            wsheet . grid . title_text_left [z, 1] = wsheet . details [1, z]
+
+        ENDIF
+
+        z = z + 1
+
+    ENDWHILE
+
+
+    { Add Buttons to the Form }
+
+    wsheet . add_prompt (ok_button)
+    wsheet . add_prompt (all_button)
+    wsheet . add_prompt (close_button)
+
+
+ENDROUTINE { create_form }
+
+{******************************************************************************}
+
+ROUTINE apply_to_all (self)
+
+
+    DECLARE i 
+    DECLARE continue                                                    {1.3}
+
+    {1.3/}  
+    
+    IF ( compare_tests (self.parent_prompt, CompareOnlyEnteredData) )   
+    
+        continue = TRUE                                                 
+        
+    ELSE
+    
+        continue = confirm_with_text( "One or more tests already have information entered." : CHR(13) : "Do you still want to update all?" )
+        
+    ENDIF
+    
+    {/1.3}
+    
+    IF ( continue )                                                     {1.3}
+    
+        i = 1
+
+        WHILE (i <= size_of_array( self . parent_prompt .test_array )) DO
+
+            self . parent_prompt . test_number =  self . parent_prompt .test_array [i] . test_number
+
+            update_records ( self . parent_prompt )
+
+            i = i + 1
+
+        ENDWHILE
+
+        IF ( NOT AllowUpdateAllToOverwrite )                            {1.3}  
+        
+            self . set_enabled ( FALSE )
+            
+        ENDIF                                                           {1.3}
+
+    ENDIF                                                               {1.3}
+    
+ENDROUTINE { apply_to_all }
+
+{******************************************************************************}
+
+ROUTINE update_records (wsheet)
+
+{
+*    TBA
+*
+*******************************************************************************}
+
+    DECLARE current_parameter, 
+            p_count,            
+            parameters_array,
+            rec_object, 
+            sel_array,
+            version
+
+    ARRAY parameters_array
+
+
+
+    p_count = 1
+
+    CREATE OBJECT "STD_OBJECT_DATABASE", rec_object
+
+    rec_object . initialise("wsheet_info")
+
+    ARRAY sel_array
+
+    array_select_add(sel_array          ,
+                     ARRAY_SELECT_EQ    ,
+                     "test_number"      ,
+                     wsheet . test_number      )
+
+    array_select_add(sel_array          ,
+                     ARRAY_SELECT_AND   ,
+                     EMPTY              ,
+                     EMPTY      )
+
+    array_select_add(sel_array          ,
+                     ARRAY_SELECT_EQ    ,
+                     "field_type"       ,
+                     "ENTER"      )
+
+    array_select_add ( sel_array         ,
+                       ARRAY_SELECT_ORDER,
+                       "order_num"       ,
+                        ARRAY_SELECT_ASCENDING )  
+
+    rec_object . select_for_update (sel_array)
+      
+    p_count = 1
+
+    WHILE (p_count <= rec_object . size()) DO 
+
+        current_parameter = rec_object . get_by_number (p_count)
+            
+        IF ((wsheet . values [ p_count, 2] <> EMPTY) OR 
+            (STRIP(wsheet . values [ p_count, 2]) <> "")) THEN
+               
+            version = SELECT wsheet_info . record_version IN OBJECT current_parameter
+
+
+
+            ASSIGN wsheet_info . record_value 
+                   IN OBJECT current_parameter = wsheet . values [ p_count, 2]
+
+            ASSIGN wsheet_info . record_version
+                   IN OBJECT current_parameter = version
+
+            ASSIGN wsheet_info . default_value  
+                   IN OBJECT current_parameter = wsheet . values [p_count, 3]
+
+            ASSIGN wsheet_info . flag  
+                   IN OBJECT current_parameter = wsheet . values [p_count, 4]
+
+
+
+
+            ASSIGN wsheet_info . reason  
+                   IN OBJECT current_parameter = wsheet . values [p_count, 6] {1.6}
+
+
+        ENDIF
+   
+        p_count = p_count + 1
+
+    ENDWHILE
+
+
+        IF NOT transaction_is_write() THEN
+
+                START WRITE TRANSACTION "Create New Record"
+
+                rec_object . invoke_all("UPDATE")
+
+                COMMIT
+
+         ELSE
+
+                rec_object . invoke_all("UPDATE")
+
+                COMMIT
+
+         ENDIF
+
+
+ENDROUTINE { update_records }
+
+{******************************************************************************}
+
+
+ROUTINE get_wsheet_prompt_values ( wsheet )
+
+{
+*    Get existing CoA Header prompt Values
+*
+*******************************************************************************}
+
+    
+    DECLARE count, 
+            prompt_count, 
+            the_text, 
+            param_array
+
+    ARRAY param_array
+
+    count = 1
+    prompt_count = 1
+
+    the_text = SELECT   wsheet_info . record_value WHERE
+                        test_number  = wsheet . test_number AND
+						field_type = "ENTER"
+               ORDER ON order_num ASCENDING
+
+    WHILE ( count <= wsheet . no_prompts ) DO
+
+        param_array[count] = the_text
+
+        NEXT wsheet_info
+
+        the_text = SELECT wsheet_info . record_value   
+
+        count = count + 1
+
+    ENDWHILE
+
+    count = 1
+
+    WHILE ( count <= wsheet . no_prompts ) DO
+
+        the_text = param_array[count]
+  
+        IF ( the_text <> EMPTY) AND
+           ( STRIP(the_text) <> "") THEN
+
+            wsheet . text_array[prompt_count] = STRIP(the_text)
+            prompt_count = prompt_count + 1
+
+        ELSE 
+            wsheet . text_array[prompt_count] = ""
+            prompt_count = prompt_count + 1
+        ENDIF
+
+        count = count + 1
+
+    ENDWHILE
+
+
+ENDROUTINE { get_wsheet_prompt_values }
+
+{******************************************************************************}
+
+
+ROUTINE create_worksheet_header_records ( test_array )
+
+{
+*    Writes a wsheet_info records to the database for a test. Determines which 
+*    fields to write from the wsheet_tmpl_entry
+*
+*******************************************************************************}
+
+    DECLARE current_record,
+            record_array,
+            i,
+            j,
+            check_ok,
+            order_number,            
+            record_type,
+            current_template,
+            id_exists_message,
+            the_sample_id,
+            the_test_number,
+            the_analysis,
+            the_analysis_version,
+            the_template_name
+            
+    
+    ARRAY record_array
+    
+    j = 1
+    
+    IF SIZE_OF_ARRAY ( test_array ) > 0 THEN
+                
+        WHILE j <= SIZE_OF_ARRAY ( test_array ) DO
+                   
+            the_sample_id =        test_array[j,1]        
+            the_test_number =      test_array[j,2]
+            the_analysis =         test_array[j,3]
+            the_analysis_version = test_array[j,4]
+            the_template_name =    test_array[j,5]
+            
+            ARRAY record_array
+        
+            j = j + 1
+                        
+            { Get template records }
+            
+            IF strip(the_template_name) = "" THEN
+            
+                current_template = SELECT versioned_analysis . wsheet_header WHERE
+		                          identity         = the_analysis AND
+                                          analysis_version = the_analysis_version            
+            ELSE
+    
+                current_template = the_template_name
+                the_test_number  = PACKED_DECIMAL (0)
+            
+            ENDIF
+                                      
+    
+            current_record = SELECT wsheet_tmpl_entry . wsheet_identity WHERE
+                                    wsheet_identity = current_template
+                           ORDER ON order_number
+
+            i = 1
+    
+            WHILE (current_record <> EMPTY) DO
+
+                record_type = SELECT wsheet_tmpl_entry . type
+
+                IF STRIP(record_type ="") THEN
+
+                    record_type = "TEXT"
+
+                ENDIF
+
+                record_array[i , 1] =  SELECT wsheet_tmpl_entry . prompt1
+                record_array[i , 2] =  record_type
+                record_array[i , 3] =  SELECT wsheet_tmpl_entry . identity
+                record_array[i , 4] =  SELECT wsheet_tmpl_entry . description
+                record_array[i , 5] =  SELECT wsheet_tmpl_entry . default_value
+                record_array[i , 6] =  SELECT wsheet_tmpl_entry . prompt2
+                record_array[i , 7] =  SELECT wsheet_tmpl_entry . mandatory
+                record_array[i , 8] =  SELECT wsheet_tmpl_entry . type2
+                record_array[i , 9] =  SELECT wsheet_tmpl_entry . type_analyst
+                record_array[i , 10] = SELECT wsheet_tmpl_entry . type_checker
+                record_array[i , 11] = SELECT wsheet_tmpl_entry . section
+
+                NEXT wsheet_tmpl_entry
+
+                current_record = SELECT wsheet_tmpl_entry . wsheet_identity
+ 
+                i = i + 1
+
+            ENDWHILE
+
+            { Add Worksheet Header Information Records }
+    
+            i = 1
+
+            WHILE ( i <= size_of_array(record_array)) DO
+
+                order_number = PACKED_DECIMAL(i)
+
+                RESERVE ENTRY wsheet_info, PAD(the_sample_id, " ", 20) : record_array[i,   3]:
+                                                                     the_test_number: 
+                                                                     "          " , check_ok
+
+                IF check_ok = EMPTY THEN
+
+                    ASSIGN wsheet_info . prompt1             = record_array[i, 1]
+                    ASSIGN wsheet_info . type                = record_array[i, 2]
+                    ASSIGN wsheet_info . record_value        = ""
+                    ASSIGN wsheet_info . order_num           = order_number
+                    ASSIGN wsheet_info . description         = record_array[i , 4]
+                    ASSIGN wsheet_info . default_value       = record_array[i , 5]
+                    ASSIGN wsheet_info . prompt2             = record_array[i , 6]  
+                    ASSIGN wsheet_info . mandatory           = record_array[i , 7]
+                    ASSIGN wsheet_info . field_type          = record_array[i , 8]
+                    ASSIGN wsheet_info . type_analyst        = record_array[i , 9]
+                    ASSIGN wsheet_info . type_checker        = record_array[i , 10]
+                    ASSIGN wsheet_info . section             = record_array[i , 11]
+        
+                    IF NOT transaction_is_write() THEN
+
+                        START WRITE TRANSACTION "Write Worksheet Info Records"
+ 
+                        UPDATE wsheet_info
+
+                        COMMIT
+
+                    ELSE
+
+                        UPDATE wsheet_info
+
+                    ENDIF
+
+                ELSE
+            
+                    id_exists_message = GET_USER_MESSAGE ( "DB_ID_EXISTS", 1 )
+            
+                    IF check_ok = id_exists_message THEN
+            
+                        {do nothing, this ignores duplicates on update}
+                
+                    ELSE
+            
+                        flash_message("Error:" :check_ok, true)
+                
+                    ENDIF
+
+                ENDIF
+
+                i = i + 1
+
+            ENDWHILE
+    
+        ENDWHILE
+                 
+    ENDIF
+
+ENDROUTINE { create_worksheet_header_records }
+
+{******************************************************************************}
+
+
+GLOBAL ROUTINE create_wsheet_record_from_sample (VALUE sample_id)
+
+{
+* Summary    : Creates WSINFO record independant of worksheet, called from
+*              $samp_user (sample_login_post_test_assignment)
+*              
+* Parameters : Sample ID
+*
+* Return     : None
+*
+*******************************************************************************}
+
+   
+    DECLARE current_test,
+            i,
+            test_array
+            
+    ARRAY test_array
+
+    current_test = SELECT test . test_number WHERE 
+                          sample = sample_id
+		         ORDER ON test_number
+
+    i = 0
+    
+    WHILE (current_test <> EMPTY) DO
+    
+        i = i + 1
+        
+        test_array[i, 1] = sample_id
+        test_array[i, 2] = current_test
+        test_array[i, 3] = SELECT test . analysis
+        test_array[i, 4] = SELECT test . analysis_version
+        test_array[i, 5] = ""
+
+	NEXT test
+	
+	current_test = SELECT test . test_number	  
+
+    ENDWHILE
+    
+    create_worksheet_header_records ( test_array )
+
+ENDROUTINE { create_wsheet_record_from_sample }
+
+
+{******************************************************************************}
+
+GLOBAL ROUTINE create_wsheet_records_from_list ( test_list )
+
+
+{
+*    Called from $samp_user and passes the test_list
+*
+*******************************************************************************}
+
+
+    DECLARE i,
+            test_array          
+
+    ARRAY test_array
+
+    i = 1
+
+    WHILE ( i <= test_editor_get_size ( test_list )) DO
+
+        test_editor_make_current ( i , test_list )
+        
+        test_array[i, 1] = SELECT test . sample
+	test_array[i, 2] = SELECT test . test_number
+	test_array[i, 3] = SELECT test . analysis
+        test_array[i, 4] = SELECT test . analysis_version
+        test_array[i, 5] = ""
+        
+        i = i + 1
+
+    ENDWHILE    
+    
+    create_worksheet_header_records ( test_array )
+
+
+ENDROUTINE { create_wsheet_records_from_list }
+
+{******************************************************************************}
+
+
+GLOBAL ROUTINE create_wsheet_record ( VALUE the_sample_id, 
+                                      VALUE the_test_number, 
+                                      VALUE the_analysis, 
+                                      VALUE the_analysis_version )
+
+{
+*    Called from $spl_callback_user
+*
+*******************************************************************************}   
+
+    DECLARE test_array          
+
+    ARRAY test_array
+            
+    test_array[1, 1] = the_sample_id
+    test_array[1, 2] = the_test_number
+    test_array[1, 3] = the_analysis
+    test_array[1, 4] = the_analysis_version
+    test_array[1, 5] = ""
+    
+    create_worksheet_header_records ( test_array )
+
+
+ENDROUTINE { create_wsheet_record }
+
+{******************************************************************************}
+
+
+GLOBAL ROUTINE create_wsheet_sample_records ( sample_id, 
+                                              field_controls )
+
+{
+*    Called from $samp_user (sample_login_post_test_assignment)
+*
+*******************************************************************************}      
+    
+    DECLARE field_name,
+            field_value,
+            template_name,
+            test_array,
+            i
+            
+    ARRAY test_array
+    
+    { Get the name of the worksheet template from the field_control array }
+
+    IF (SIZE_OF_ARRAY ( field_controls ) > 0) THEN
+    
+        i = 1
+        
+        template_name = ""
+        
+        WHILE (i <= SIZE_OF_ARRAY ( field_controls )) DO
+                       
+            field_name  = field_controls[i,1]        
+            field_value = field_controls[i,7]
+            
+            IF (STRIP(field_name) = "WSHEET_TMPL") THEN
+             
+                template_name = field_value
+
+                i = SIZE_OF_ARRAY ( field_controls ) + 1
+                
+            ENDIF
+                
+            i = i + 1
+            
+        ENDWHILE
+        
+    ENDIF
+    
+    { If there is no template specified do nothing }
+
+    IF strip(template_name) <> "" THEN
+    
+        test_array[1, 1] = sample_id
+        test_array[1, 2] = ""
+        test_array[1, 3] = ""
+        test_array[1, 4] = ""
+        test_array[1, 5] = template_name
+    
+        create_worksheet_header_records ( test_array )
+    
+    ENDIF
+    
+    
+ENDROUTINE { create_wsheet_sample_records }
+
+
+
+ROUTINE compare_tests (wsheet, VALUE checks)                            {1.3}
+
+{
+*
+*  Checks the following conditions are met and returns true if they are:
+*
+*    - All Analysis IDs are the same
+*    - Worksheet Fields associated with each test are the same (number of fields and 
+*      definition of those fields
+*    - No value has been entered in any field already
+*
+***************************************************************************************}
+
+
+
+    DECLARE test_array,
+            select_array,
+            i,
+            j,
+            no_analyses,
+            ok
+
+    ok = TRUE 
+
+    ARRAY test_array
+    ARRAY select_array
+
+    i = 1
+    j = 1
+
+    no_analyses = 0
+
+    IF (wsheet . analysis_array <> EMPTY) THEN
+
+        WHILE ((j <= size_of_array(wsheet . analysis_array)) AND (wsheet . analysis_array <> EMPTY)) DO
+
+            IF (wsheet . analysis_array[j, 1] <> EMPTY) THEN
+
+                no_analyses = no_analyses + 1
+
+            ENDIF
+
+            j = j + 1
+
+        ENDWHILE
+
+    ENDIF
+    WHILE (i <= size_of_array(wsheet . test_array)) DO
+    
+        test_array [i, 1] = wsheet . test_array[i] . test_number
+
+        test_array [i, 2] = SELECT test . analysis WHERE test_number = wsheet . test_array[i] . test_number
+
+        test_array [i, 3] = SELECT COUNT wsheet_info WHERE test_number = wsheet . test_array[i] . test_number
+
+        test_array [i, 4] = SELECT COUNT wsheet_info WHERE record_value <> " " AND
+                                                           test_number = wsheet . test_array[i] . test_number
+
+        CREATE OBJECT "STD_OBJECT_DATABASE", test_array [i, 5]
+
+        test_array [i, 5] . initialise ("WSHEET_INFO")
+
+        ARRAY select_array
+
+        array_select_add ( select_array             ,
+                           ARRAY_SELECT_EQ     ,
+                           "test_number"      ,
+                           wsheet . test_array[i] . test_number   )
+
+        array_select_add ( select_array              ,
+                           ARRAY_SELECT_ORDER   ,
+                           "identity"          ,
+                           ARRAY_SELECT_ASCENDING )  
+
+        test_array [i, 5] . select (select_array)
+
+		
+        IF (ok = TRUE) THEN
+
+            IF (i > 1) THEN  { Only check previous row from second row onwards}
+
+                { Check that All Analysis IDs are the Same - Always do this check}
+
+                IF ( no_analyses > 1) THEN
+
+                    ok = FALSE
+
+                ENDIF
+
+                IF ( checks = CompareAll )                              {1.3}
+                OR ( checks = CompareOnlyValidRecords )
+
+                    { Check that the number of WSHEET_INFO records match }
+
+                    IF ( test_array [i, 3] <> test_array [i - 1, 3]) THEN
+
+                        ok = FALSE
+
+                    ENDIF
+
+                    IF (ok = TRUE) THEN
+
+                        { 
+                          If After all other checks pass, check if the wsheet_info 
+                          records associated  with each test are the same
+                        } 
+
+                        ok = compare_wsheet_records (test_array[1, 5], test_array[i, 5])
+
+                    ENDIF
+
+                ENDIF
+                
+            ENDIF
+
+            { Check that no information has already been entered }
+
+            IF ( checks = CompareAll )                              {1.3}
+            OR ( checks = CompareOnlyEnteredData )
+            OR ( AllowUpdateAllToOverwrite = FALSE )
+            
+                IF ( test_array [i, 4] <> 0 ) THEN
+
+                    ok = FALSE
+
+                ENDIF
+
+            ENDIF
+            
+        ENDIF
+ 
+        i = i + 1
+
+    ENDWHILE
+
+    RETURN (ok)
+
+ENDROUTINE { compare_tests }
+
+
+ROUTINE wsheet_records_class_initialisation ( self )
+
+	ARRAY self . records
+	
+ENDROUTINE { wsheet_records_class_initialisation }
+
+
+ROUTINE compare_wsheet_records (first, current)
+
+    DECLARE same,
+            first_identity,
+            first_type,
+            first_prompt1,
+            first_prompt2,
+            current_identity,
+            current_type,
+            current_prompt1,
+            current_prompt2,
+            size,
+            i
+
+    same = TRUE
+
+    i = 1
+    
+    first . set_first()
+    current . set_first()
+
+    size = first . size()
+    
+    WHILE ( i <= size ) DO
+
+        IF (same = TRUE) THEN
+
+            first_identity   = SELECT wsheet_info . identity IN OBJECT first . current
+            current_identity = SELECT wsheet_info . identity IN OBJECT current . current
+
+            first_type       = SELECT wsheet_info . type     IN OBJECT first . current
+            current_type     = SELECT wsheet_info . type     IN OBJECT current . current
+
+            first_prompt1    = SELECT wsheet_info . prompt1  IN OBJECT first . current
+            current_prompt1  = SELECT wsheet_info . prompt1  IN OBJECT current . current
+
+            first_prompt2    = SELECT wsheet_info . prompt2  IN OBJECT first . current
+            current_prompt2  = SELECT wsheet_info . prompt2  IN OBJECT current . current
+
+            IF ((first_identity <> current_identity) OR
+                (first_type     <> current_type    ) OR
+                (first_prompt1  <> current_prompt1 ) OR
+                (first_prompt2  <> current_prompt2 )) THEN 
+
+                same = FALSE
+
+            ENDIF
+
+        ENDIF
+
+        i = i + 1
+        
+        first . set_next()
+        current . set_next()
+
+    ENDWHILE
+
+    RETURN (same)
+
+ENDROUTINE { compare_wsheet_records }
+
+
+ROUTINE grid_display_routine ( self ,
+                               VALUE cell_column ,
+                               VALUE cell_row ,
+                               window ,
+                               VALUE column ,
+                               VALUE row ,
+                               VALUE cell_width ,
+                               VALUE cell_height )
+
+    DECLARE is_display
+
+    is_display = TRUE
+ 
+    display_grid_prompt (self, cell_column, cell_row, column, row, window, is_display )
+          
+
+
+
+ENDROUTINE
+
+ROUTINE grid_prompt_routine ( self ,
+                               VALUE cell_column ,
+                               VALUE cell_row ,
+                               window ,
+                               VALUE column ,
+                               VALUE row ,
+                               VALUE cell_width ,
+                               VALUE cell_height )
+
+    DECLARE is_display
+
+    is_display = FALSE
+
+    prompt_grid_prompt (self, cell_column, cell_row, column, row, window, is_display )
+
+
+
+ENDROUTINE
+
+
+ROUTINE prompt_grid_prompt (self, 
+                            VALUE cell_column, 
+                            VALUE cell_row, 
+                            VALUE column, 
+                            VALUE row,
+                            window,
+                            is_display)
+
+    DECLARE defl,
+            table,
+            field,
+            phrase,
+            form
+
+    IF (self . parent_prompt . is_display <> TRUE) THEN
+
+            defl = self . parent_prompt . details [ DEFL_COL, cell_row]
+        
+            IF self . parent_prompt . details [ TYPE_COL, cell_row] = "BROWSE" THEN 
+        
+                table = self . parent_prompt . details [ TBLE_COL, cell_row]
+                field = self . parent_prompt . details [ FILD_COL, cell_row] 
+
+        
+                IF ( valid_table ( table ) ) 
+                   AND ( valid_field ( table , field ) ) THEN
+        
+                    PROMPT FOR self . parent_prompt . values [cell_row, 2]
+                    AT column , row
+                    IN WINDOW window
+                    BROWSE ON 'table' . 'field'
+                    WITH ( lowered = TRUE,
+                           value   = defl,
+                           width   = 23, 
+                           mandatory_array = self.parent_prompt.values[cell_row,5],  {1.2}
+                           vgl_library = GLOBAL ( "CURRENT_LIBRARY" ),
+                           parent_prompt = self )
+
+                ELSE
+                            
+                    PROMPT FOR self . parent_prompt . values [cell_row, 2]
+                    AT column , row
+                    IN WINDOW window
+                    FORMAT TEXT
+                    WITH ( lowered = TRUE,
+                           value   = defl,
+                           width   = 23 ,
+                           vgl_library = GLOBAL ( "CURRENT_LIBRARY" ) ,
+                           parent_prompt = self )
+        
+                ENDIF
+
+
+            ELSEIF self . parent_prompt . details [ TYPE_COL, cell_row ] = "ROUTINE" THEN
+
+                CALLROUTINE self . parent_prompt . details [ FILD_COL, cell_row]
+                 IN LIBRARY self . parent_prompt . details [ TBLE_COL, cell_row]
+                 USING self, 
+                       cell_column, 
+                       cell_row, 
+                       column, 
+                       row,
+                       window,
+                       is_display
+
+            ELSEIF self . parent_prompt . details [ TYPE_COL, cell_row] = "PHRASE" THEN 
+        
+                phrase = self . parent_prompt . details [ PHRS_COL, cell_row]
+
+                PROMPT FOR self . parent_prompt . values [cell_row, 2]
+                AT column , row
+                IN WINDOW window
+                BROWSE ON PHRASE . 'phrase'
+                WITH ( lowered = TRUE,
+                       value   = defl,
+                       width   = 23 ,
+                       vgl_library = GLOBAL ( "CURRENT_LIBRARY" ),
+                       parent_prompt = self  )
+
+            ELSEIF self . parent_prompt . details [ TYPE_COL, cell_row ] = "FORMAT" THEN
+
+                form = self . parent_prompt . details [ FORM_COL, cell_row ]
+
+                IF ((cell_row = 1) AND 
+                    (self . parent_prompt . values [1,1] = GET_USER_MESSAGE("WSHEET_CHECKS_DATE", 1))) THEN
+
+                    PROMPT FOR self . parent_prompt . values [cell_row, 2]
+                    AT column , row
+                    IN WINDOW window
+                    FORMAT 'form'
+                    WITH ( lowered = TRUE,
+                           value   = defl,
+                           width   = 23 , 
+                           vgl_library = GLOBAL ( "CURRENT_LIBRARY" ),
+                           validation_routine = "param_val_prompt_routine",
+                           always_validate = TRUE,
+                           parent_prompt = self )
+
+                ELSE
+
+                    PROMPT FOR self . parent_prompt . values [cell_row, 2]
+                    AT column , row
+                    IN WINDOW window
+                    FORMAT 'form'
+                    WITH ( lowered = TRUE,
+                           value   = defl,
+                           width   = 23 , 
+                           vgl_library = GLOBAL ( "CURRENT_LIBRARY" ),
+                           parent_prompt = self )
+
+
+                ENDIF
+
+
+            ELSE
+
+                DISPLAY self . parent_prompt . values [cell_row, 2]
+                AT column , row
+                IN WINDOW window
+                FORMAT TEXT
+                {WITH ( parent_prompt = self )}
+
+
+
+        ENDIF
+
+    ELSE
+
+                PROMPT FOR self . parent_prompt . values [cell_row, 2]
+                AT column , row
+                IN WINDOW window
+                FORMAT TEXT
+                WITH (display_only = TRUE)
+
+
+    ENDIF
+
+
+ENDROUTINE
+
+
+ROUTINE display_grid_prompt (self, 
+                            VALUE cell_column, 
+                            VALUE cell_row, 
+                            VALUE column, 
+                            VALUE row,
+                            window,
+                            is_display)
+
+
+                DISPLAY self . parent_prompt . values [cell_row, cell_column + 1] {1.6}
+                AT column , row
+                IN WINDOW window
+                {WITH (display_only = TRUE)}
+
+
+
+ENDROUTINE
+
+
+
+
+ROUTINE leave_cell(self, VALUE cell_column, VALUE cell_row)
+
+       self . redisplay_row (cell_row)
+
+ENDROUTINE
+
+
+
+ROUTINE param_val_prompt_routine ( self )
+{
+* Summary    : Will clear entered values on the worksheet form if the DATE
+*              prompt field is changed.
+*                            
+* Parameters : Self - Prompt Object.
+*
+* Return     : None
+*
+*******************************************************************************}
+
+    DECLARE count, 
+            certain, 
+            answer
+
+
+	{ If the ID is equal to WSHEET_CHECKS_DATE (DATE) }
+
+	IF (STRIP(self . parent_prompt . parent_prompt . values [1,1]) = GET_USER_MESSAGE("WSHEET_CHECKS_DATE", 1)) THEN
+		
+		{ If prompt is blank it is not valid }		
+
+		IF ( STRIP(self.text) = "" ) THEN
+
+                    RETURN (FALSE)
+
+		ENDIF
+		
+		{ If no value was entered already, do nothing }
+
+		IF ( STRIP(self.original_text) = "" ) THEN
+		
+		{ If the value has changed clear all values from the form }
+		
+		ELSEIF ( STRIP(self.original_text) <> STRIP(self.text) ) THEN		       
+		   				
+			{ Display warning message before clearing form }
+
+			REPEAT
+
+				answer = client_message_box (
+                                         get_user_message ( "WSHEET_CHECKS_CLEAR_ENTRIES", 1 ),
+			                 get_user_message ( "WSHEET_CHECKS_CLEAR_ENTRIES_HEADER", 1 ),
+			                 MB_YESNO + MB_ICONQUESTION                    )
+
+				IF answer = IDYES THEN
+
+					certain = TRUE
+					
+					count = 2
+
+					WHILE ( count <= self . parent_prompt . parent_prompt . no_prompts) DO
+		
+						self . parent_prompt . parent_prompt . values [ count, 2 ] = ""
+						self . parent_prompt . parent_prompt . values [ count, 3 ] = ""
+						self . parent_prompt . parent_prompt . values [ count, 4 ] = ""
+						self . parent_prompt . parent_prompt . values [ count, 5 ] = ""
+
+						count = count + 1
+
+
+                                        ENDWHILE
+
+                                        self . parent_prompt . re_build()
+
+				ELSEIF answer = IDNO THEN
+
+					certain = TRUE
+					self.settext(self.original_text)
+					RETURN (FALSE)
+
+				ELSE
+
+					certain = TRUE
+
+				ENDIF
+
+			UNTIL certain
+		
+		ENDIF				
+		
+	ENDIF		
+	
+	RETURN (TRUE)
+
+ENDROUTINE { param_val_prompt_routine }
+
+{1.6}
+ROUTINE cell_mouse_click_routine (self, VALUE cell_column, VALUE cell_row)
+
+DECLARE val, stock_b, stock, batch, inst
+
+		val = STRIP(self . parent_prompt . values [cell_row, 2])	
+
+		val = STRIP (val)
+
+		stock_b = SELECT stock_batch.stock_batch_id WHERE stock_batch.stock_batch_id = val	
+			
+		inst = SELECT instrument.identity WHERE instrument.identity	= val
+
+       	IF   (cell_row <> EMPTY ) AND (stock_b = val) THEN
+
+			stock = SELECT stock_batch.stock WHERE stock_batch.stock_batch_id = val
+
+			stock = STRIP(stock)
+
+			batch = SELECT stock_batch.stock_batch WHERE stock_batch.stock_batch_id = val
+
+			batch = STRIP (batch)
+
+
+			MENUPROC 35013 USING stock, batch
+
+
+
+
+		ELSEIF   (cell_row <> EMPTY ) AND (inst = val) THEN
+
+		
+			inst = STRIP(inst)
+
+			prompt_labtable ("INSTRUMENT", inst, FALSE)
+
+		ELSE
+
+			{do nothing}
+
+		ENDIF
+	 
+
+ENDROUTINE {cell_mouse_click_routine}
+{1.6}
+
+

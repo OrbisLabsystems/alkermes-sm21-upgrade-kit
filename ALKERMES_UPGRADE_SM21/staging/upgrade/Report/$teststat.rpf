@@ -1,0 +1,456 @@
+ {------------------------------------------------------------------------------}
+ {                                                                              }
+ { Module Name   : $TESTSTAT                                                    }
+ {                                                                              }
+ { Purpose       : Full Audit Trail is required for Cancelling Tests            }
+ {                                                                              }
+ { Document Ref. : P97684 Action Item 3 ( AI3 )                                 }
+ {                                                                              }
+ { Description   : set_status_x routine has been modified.                      }
+ {                                                                              }
+ {==============================================================================}
+ {                                                                              }
+ {  Modification History                                                        }
+ {                                                                              }
+ {  Ver.     Date        By               Description                           }
+ {  ----     ----        --               -----------                           }
+ { 1.00      25/09/97    JOD              Release Version                       }
+ { 1.1       06/10/16    F. Piccirillo    Changes made to get the reviewed_audit}
+ {                                        set FALSE when reactivated            }
+ { =============================================================================}
+
+{******************************************************************************
+*
+* Module Name   : $TESTSTAT
+*
+* Purpose       : SMP report for user defined routines which are called when a
+*                 test changes status
+*
+* Document Ref. : SE/T/TVGL-WORK-REPORTS/1/3
+*
+* Specification : 
+*
+* Portability   : Not Checked
+*
+* Re-entrant    : 
+*
+*******************************************************************************}
+
+ENABLE WINDOWS
+SET NOTPROTECTED
+SET COMPILE_OPTION DECLARE
+SET NAME "DEFER/"
+
+JOIN LIBRARY $LIB_UTILS
+JOIN STANDARD_LIBRARY STD_UTILS             { 1.00 }
+JOIN LIBRARY RLT_LIB                        { Elan Custom }
+
+CONSTANT UPLOAD_LIB         = "$SMIDI_LIB_UPLOAD"
+CONSTANT UPLOAD_ROUTINE     = "smidi_upload_test"
+CONSTANT STATUS_LIB         = "$SMIDI_USER"
+CONSTANT STATUS_ROUTINE     = "update_status_table"
+
+ROUTINE set_status_a
+
+ENDROUTINE
+
+
+ROUTINE set_status_i
+
+ENDROUTINE
+
+{ ============================================================================== }
+ROUTINE set_status_c
+
+{1.1}
+    IF (SELECT test.old_status = "A") OR (SELECT test.old_status = "X") THEN
+        ASSIGN test.audits_reviewed = FALSE
+        UPDATE TEST
+    ENDIF
+{/1.1}
+
+ENDROUTINE
+
+{ ============================================================================== }
+ROUTINE set_status_p
+
+{1.1}
+    IF (SELECT test.old_status = "A") OR (SELECT test.old_status = "X") THEN
+        ASSIGN test.audits_reviewed = FALSE
+        UPDATE TEST
+    ENDIF
+{/1.1}
+
+ENDROUTINE
+
+{ ============================================================================== }
+ROUTINE set_status_r
+
+ENDROUTINE
+
+
+ROUTINE set_status_u
+
+ENDROUTINE
+
+
+{ ============================================================================== }
+{ =========================================================================== }
+ { ROUTINE set_status_v                                                        }
+ {                                                                             }
+ { Description  : Enters Reduced Lot Testing result for samples that are       }
+ {                received.                                                    }
+ {                routine                                                      }
+ { Author       : Martin Kavanagh, Orbis Information Systems                   }
+ { Date Created : 13/05/2003                                                   }
+ { =========================================================================== }
+ 
+ROUTINE set_status_v  
+
+     DECLARE old_status, unique_id, samp_id, anal, result_array
+     DECLARE sap_result, check_ok {, new_status}
+ 
+     ARRAY result_array
+     ARRAY check_ok 
+ 
+     old_status = SELECT test . old_status
+     unique_id  = SELECT test . test_number
+     samp_id    = SELECT test . sample
+     anal       = SELECT test . analysis
+ {    new_status = SELECT test . status }
+ 
+     IF old_status = "U" THEN
+ 
+         IF anal = SAP_ANALYSIS THEN
+ 
+ 	    sap_result = STRIP(SELECT sample . rlt_result
+ 				WHERE id_numeric = samp_id)
+ 
+ 	    IF sap_result <> EMPTY THEN
+       
+                 result_array[1,1] = "component_name"
+         	result_array[1,2] = "text"
+         	result_array[2,1] = SAP_COMPONENT
+         	result_array[2,2] = sap_result    
+ 
+     	    	PUT_TEST_RESULTS unique_id, result_array, check_ok
+ 
+     		IF (check_ok[1] <> EMPTY) THEN
+ 
+         	    DISPLAY check_ok[1] ON LINE (7) FROM 2
+ 
+     		ENDIF
+     	    ENDIF 
+ 	ENDIF
+     ENDIF
+ 
+ { =========================================================================== }
+ { End of Modifications                                                        }
+ { =========================================================================== }
+
+{1.1}
+    IF (SELECT test.old_status = "A") OR (SELECT test.old_status = "X") THEN
+        ASSIGN test.audits_reviewed = FALSE
+        UPDATE TEST
+    ENDIF
+{/1.1}
+
+ENDROUTINE
+{ ============================================================================== }
+ROUTINE set_status_w
+ENDROUTINE
+
+{ ============================================================================== }
+ { =========================================================================== }
+ { ROUTINE set_status_x                                                        }
+ {                                                                             }
+ { Description  : Does auditing on test cancellation. TEST_TRIGGER_ENABLE      }
+ {                must be set so that CHANGE TEST STATUS "X" triggers this     }
+ {                routine                                                      }
+ { Author       : JOD                                                          }
+ { Date Created : 22/09/1997                                                   }
+ { =========================================================================== }
+ 
+ROUTINE set_status_x
+    
+     DECLARE old_status, new_status, unique_id, table, trans_name, the_header
+     DECLARE the_reason
+ 
+     old_status = SELECT test . old_status
+     unique_id  = SELECT test . test_number
+ 
+     table = "TEST"
+     new_status = "X"
+     trans_name = "Write transaction Cancel Test"
+     the_header = "Audit on Test Cancellation"
+     the_reason = ""
+ 
+     REPEAT
+         get_the_reason ( the_reason, the_header, old_status, new_status )
+ 
+     UNTIL ( the_reason <> "" ) AND NOT ( BLANK ( the_reason ) )
+ 
+ 
+     write_audit ( new_status,
+                   old_status,
+                   the_reason,
+                   table     ,
+                   unique_id ,
+                   trans_name)
+ 
+ENDROUTINE
+
+
+
+{ ============================================================================== }
+ROUTINE set_status_s
+ENDROUTINE
+
+{ ============================================================================== }
+{                                                                                }
+{ OPTION 1-> SEND DATA IMMEDIATE TO SAP_UPLOAD_QUEUE, RECORD MUST EXIST          }
+{                                                                                }
+{ ============================================================================== }
+
+ROUTINE send_to_SAP
+
+	DECLARE test, retval
+
+	test = SELECT TEST.TEST_NUMBER
+
+	CALL_ROUTINE UPLOAD_ROUTINE IN LIBRARY UPLOAD_LIB USING test RETURNING retval
+
+	IF NOT retval THEN
+		FLASH_MESSAGE ( "Error trying to update SAP upload queue ":test, FALSE )
+	ENDIF
+
+ENDROUTINE  { send_to_SAP }
+
+{ ============================================================================== }
+{                                                                                }
+{ OPTION 2-> SEND DATA DEFER TO STATUS_QUEUE, RECORD READ LATER                  }
+{                                                                                }
+{ ============================================================================== }
+
+ROUTINE status_queue_trigger ( VALUE stat_letter )
+
+	DECLARE test, retval, table_type
+
+	table_type = "T"
+	test       = SELECT TEST.TEST_NUMBER
+
+	CALL_ROUTINE STATUS_ROUTINE IN LIBRARY STATUS_LIB 
+		USING test, table_type, stat_letter 
+		RETURNING retval
+
+	IF NOT retval THEN
+		FLASH_MESSAGE ( "Error trying to save the status queue <Test> ":test, FALSE )
+	ENDIF
+
+ENDROUTINE  { status_queue_trigger }
+{ end $teststat }
+
+
+
+
+{====================================================================}
+{ Elan custom routines                                               }
+
+
+
+
+
+ 
+ { =========================================================================== }
+ { ROUTINE get_the_reason                                                      }
+ {                                                                             }
+ { Description  : Screen handling for audit reason                             }
+ { Author       : JOD                                                          }
+ { Date Created : 22/09/1997                                                   }
+ { =========================================================================== }
+ 
+ ROUTINE get_the_reason ( the_reason,
+                          VALUE the_header,
+                          VALUE old_status,
+                          VALUE new_status )
+ 
+     DECLARE reason, form
+ 
+     CREATE OBJECT PROMPT_CLASS_FORM , form
+ 
+     form . height = 3
+     form . width  = 70
+     form . border = TRUE
+     form . header = the_header
+     form . footer = " "
+     form . proportional = TRUE
+     form . return_behaviour = FORM_RETURN_LEAVE
+ 
+     IF ( GLOBAL ( "TERMTYPE" ) = "GUI" ) THEN
+         form . row    = 11
+         form . column = ROUND ( ( GLOBAL ( "SCREEN_WIDTH" ) - 20  ) / 2 )
+     ELSE
+         form . row    = 8
+         form . column = ROUND ( ( GLOBAL ( "SCREEN_WIDTH" ) - 70  ) / 2 )
+     ENDIF
+ 
+     form . add_display ( PAD ( "Old Value", "", 10 ), 3, 1,
+                 PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+ 
+     form . add_display ( PAD ( old_status, "", 3) , 14, 1,
+                          PROMPT_RENDITION_NORMAL )
+ 
+     form . add_display ( PAD ( "New Value", "", 10 ), 3, 2,
+                 PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+ 
+     form . add_display ( PAD ( new_status, "", 3 ), 14, 2,
+                          PROMPT_RENDITION_NORMAL )
+ 
+     PROMPT OBJECT reason
+         AT 14 , 3
+         WITH (  zap_on_first         = TRUE,
+                 always_validate      = TRUE,
+                 validation_routine   = "validate_reason" )
+ 
+     form . add_prompt( reason )
+     form . add_display ( PAD ( "Reason", "", 10 ), 3, 3,
+                 PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+ 
+     form . start_prompt ( )
+     form . wait_prompt ( )
+     form . end_prompt ( )
+ 
+     the_reason = form . prompt_objects [ 1 ] . text
+ 
+ ENDROUTINE
+ 
+ 
+ {===========================================================================}
+ { ROUTINE validate_reason                                                   }
+ {                                                                           }
+ { Description  : Callback validation routine which forces the user to input }
+ {                a reason                                                   }
+ { Author       : JOD                                                        }
+ { Date Created : 22/09/1997                                                 }
+ {                                                                           }
+ {===========================================================================}
+ { Parameters    Passed by       Description                                 }
+ { ----------    ---------       -----------                                 }
+ { self          REFERENCE       Prompt Object                               }
+ {===========================================================================}
+ 
+ ROUTINE validate_reason ( self )
+ 
+     DECLARE status
+ 
+     IF ( BLANK ( self . text )) OR ( self . text = EMPTY ) THEN
+ 
+         flash_message ( "A reason must be entered", TRUE )
+         self . repaste ()
+         status = FALSE
+ 
+     ELSE
+ 
+        status = TRUE
+ 
+     ENDIF
+ 
+     RETURN ( status )
+ 
+ ENDROUTINE
+ 
+ 
+ { =========================================================================== }
+ { ROUTINE write_audit                                                         }
+ {                                                                             }
+ { Description  : Writes audit information to the tables                       }
+ { Author       : JOD                                                          }
+ { Date Created : 22/09/1997                                                   }
+ {                                                                             }
+ { =========================================================================== }
+ { Parameters    Passed by       Description                                   }
+ { ----------    ---------       -----------                                   }
+ { new_status    value           New Status                                    }
+ { old_status    value           Old Status                                    }
+ { the_reason    value           Audit reason from the form                    }
+ { table         value           The table name (SAMPLE or TEST)               }
+ { unique_id     value           ID_NUMERIC or TEST_NUMBER                     }
+ { trans_name    value           Transaction name                              }
+ { =========================================================================== }
+ 
+ ROUTINE write_audit ( VALUE new_status,
+                       VALUE old_status,
+                       VALUE the_reason,
+                       VALUE table     ,
+                       VALUE unique_id ,
+                       VALUE trans_name)
+ 
+     DECLARE check_empty, aud_data_inc, aud_evnt_inc, aud_tran_inc
+ 
+ {Commented out MC 09/04/03
+     aud_data_inc = get_increment("AUDITOR", "DATA")  + 1
+     aud_evnt_inc = get_increment("AUDITOR", "EVENT") + 1
+     aud_tran_inc = get_increment("AUDITOR", "TRANSACTION") + 1 }
+ 
+ {End commenting out}
+ 
+ {MC MOD 09/04/03}
+     aud_data_inc = increment("AUDITOR", "DATA")  
+     aud_evnt_inc = increment("AUDITOR", "EVENT") 
+     aud_tran_inc = increment("AUDITOR", "TRANSACTION") 
+ 
+ {End MOD}
+ 
+ 
+ 
+     RESERVE ENTRY AUDIT_TRANSACTION, aud_tran_inc, check_empty
+ 
+     IF check_empty = EMPTY THEN
+ 
+         ASSIGN audit_transaction . system_pid = GLOBAL ( "PROCESS_ID" )
+         ASSIGN audit_transaction . user_id = GLOBAL ( "OPERATOR" )
+         ASSIGN audit_transaction . transaction_name = trans_name
+         ASSIGN audit_transaction . transaction_date = NOW
+ 
+     ENDIF
+ 
+     RESERVE ENTRY AUDIT_EVENT, aud_evnt_inc, check_empty
+ 
+     IF check_empty = EMPTY THEN
+ 
+         ASSIGN audit_event . transaction = aud_tran_inc
+         ASSIGN audit_event . table_name = table
+         ASSIGN audit_event . record_key0 = unique_id
+         ASSIGN audit_event . event_action = "MODIFY"
+         ASSIGN audit_event . event_reason = ""
+ 
+     ENDIF
+ 
+     RESERVE ENTRY AUDIT_DATA, aud_data_inc, check_empty
+ 
+     IF check_empty = EMPTY THEN
+ 
+         ASSIGN audit_data . event = aud_evnt_inc
+         ASSIGN audit_data . data_reason = the_reason
+         ASSIGN audit_data . field = "STATUS"
+         ASSIGN audit_data . value_before = old_status
+         ASSIGN audit_data . value_after = new_status
+ 
+     ENDIF
+ {Commented out MC 09/04/03}
+ {  Remember to re-set increments on table before finishing ***** }
+ {
+     set_increment ("AUDITOR", "TRANSACTION", aud_tran_inc )
+     set_increment ("AUDITOR", "EVENT", aud_evnt_inc )
+     set_increment ("AUDITOR", "DATA", aud_data_inc )}
+ 
+ {End commenting out MC}
+ 
+     UPDATE AUDIT_TRANSACTION
+     UPDATE AUDIT_EVENT
+     UPDATE AUDIT_DATA
+ 
+ 
+ ENDROUTINE
+ 
+ 

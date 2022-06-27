@@ -1,0 +1,3398 @@
+{==============================================================================}
+{                                                                              }
+{  ORBIS INFORMATION SYSTEMS                                                   }
+{                                                                              }
+{  Filename         : $SMMILL_TRANSFER.RPF                                     }
+{  Version          :                                                          }
+{  Document Ref.    :                                                          }
+{  Author           : D. Kelly                                                 }
+{  Date Created     : 14-Nov-2001                                              }
+{  Description      : Library of routines for creating run sequences in        }
+{                     Millennium based on standard and custom worklists.       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{                                                                              }
+{  Ver.     Date        By          Description                                }
+{  ----     ----        --          -----------                                }
+{  1.0      14-Nov-2001 DK          Release version                            }
+{                                                                              }
+{==============================================================================}
+
+SET NAME "DEFER/"
+ENABLE WINDOWS
+
+SET NOTPROTECTED
+
+SET COMPILE_OPTION DECLARE
+
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_WINDOW
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_CLIENT
+JOIN STANDARD_LIBRARY STD_MESSAGE
+JOIN STANDARD_LIBRARY STD_GENERAL
+
+JOIN LIBRARY $CRITERIA_EDIT
+JOIN LIBRARY $CRITERIA_SAVED
+JOIN LIBRARY $CRITERIA_CACHE
+JOIN LIBRARY $CRITERIA_LIB
+JOIN LIBRARY $LIB_STAN
+JOIN LIBRARY $WKSBROWSE
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $INSTALL_WINDOW
+JOIN LIBRARY $SMMILL_DYNAMIC_SQL
+
+JOIN LIBRARY $SMMILL_CONST
+
+
+{ SAMPLESET ARRAY CONSTANTS }
+
+CONSTANT SS_TRANS_ID      = 1
+CONSTANT SS_WORKSHEET_ID  = 2
+CONSTANT SS_PROJECT_ID    = 3
+CONSTANT SS_SAMPLESET_ID  = 4
+CONSTANT SS_SAMPLE_ID     = 5
+CONSTANT SS_SAMPLE_TYPE   = 6
+CONSTANT SS_NO_INJECTS    = 7
+CONSTANT SS_VIAL_NO       = 8
+CONSTANT SS_STATUS        = 9
+CONSTANT SS_MILL_USER     = 10
+CONSTANT SS_MILL_PASS     = 11
+CONSTANT THE_METHOD       = 12
+CONSTANT THE_FUNCTION     = 13
+CONSTANT THE_INJ_VOL      = 14
+CONSTANT THE_RUN_TIME     = 15
+CONSTANT THE_INJ_DELAY    = 16
+CONSTANT THE_SAMP_WEIGHT  = 17
+CONSTANT THE_DILUTION     = 18
+CONSTANT SS_ID_TEXT       = 19
+CONSTANT SS_TYPE          = 20
+
+
+{ RESULTSET ARRAY CONSTANTS }
+
+CONSTANT RS_TRANS_ID      = 1                    
+CONSTANT RS_PROJECT       = 2
+CONSTANT RS_SAMPLESET     = 3
+CONSTANT RS_MILL_COMP     = 4
+CONSTANT RS_MILL_TYPE     = 5
+CONSTANT RS_SMP_TYPE      = 6
+CONSTANT RS_MILL_USER     = 7
+CONSTANT RS_MILL_TIME     = 8
+CONSTANT RS_INST_NO       = 9
+CONSTANT RS_MILL_RES      = 10
+CONSTANT RS_RES_PRES      = 11
+CONSTANT RS_INJECT_NO     = 12
+CONSTANT RS_INJECT_ORDER  = 13
+CONSTANT RS_LIST_TYP      = 14
+CONSTANT RS_STATUS        = 15
+CONSTANT RS_WORKSHEET_ID  = 16
+CONSTANT RS_ORDER_NUM     = 17
+CONSTANT RS_VIAL_NO       = 18
+CONSTANT RS_ANALYSIS      = 19
+
+CONSTANT RAW_TYPE         = "RAW"
+CONSTANT MEAN_TYPE        = "MEAN"
+CONSTANT BLANK_CELL       = ""
+
+manual_custom_transfer(1)
+manual_stdsamp_transfer(1)
+manual_stdanal_transfer(1)
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE manual_custom_transfer                                              }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  05-Dec-2001  DK              Manual Transfer of Custom Sample Lists.        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE manual_custom_transfer ( VALUE option )
+
+    DECLARE the_table, the_field, the_display, the_border, the_header,
+            the_routine
+
+    the_table   = "MILL_INT_SSET"
+    the_field   = "sm_worksheet_id"
+    the_display = "Select Custom Worklist"
+    the_border = "Select Stored Custom Worklist"
+    the_header = "Manual Custom Worklist Transfer"
+    the_routine = "browse_cus_worklists"
+
+    transfer_stored (the_table,
+                     the_field,
+                     the_display,
+                     the_border,
+                     the_header,
+                     the_routine )
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE manual_stdsamp_transfer                                             }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  05-Dec-2001  DK              Manual Transfer of Std. Sample Lists.          }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE manual_stdsamp_transfer  ( VALUE option )
+
+    DECLARE the_table, the_field, the_display, the_border, the_header,
+            the_routine
+
+    the_table   = "MILL_INT_SSET"
+    the_field   = "sm_worksheet_id"
+    the_display = "Select Std. Sample Worklist"
+    the_border = "Select Stored Sample Worklist"
+    the_header = "Manual Std. Sample Transfer"
+    the_routine = "browse_samp_worklists"
+
+    transfer_stored (the_table,
+                     the_field,
+                     the_display,
+                     the_border,
+                     the_header,
+                     the_routine )
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE manual_stdanal_transfer                                             }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  05-Dec-2001  DK              Manual Transfer of Std. Sample Lists.          }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE manual_stdanal_transfer  ( VALUE option )
+
+    DECLARE the_table, the_field, the_display, the_border, the_header,
+            the_routine
+
+    the_table   = "MILL_INT_SSET"
+    the_field   = "sm_worksheet_id"
+    the_display = "Select Std. Anal. Worklist"
+    the_border = "Select Stored Analysis Worklist"
+    the_header = "Manual Std. Analysis Transfer"
+    the_routine = "browse_anal_worklists"
+
+    transfer_stored (the_table,
+                     the_field,
+                     the_display,
+                     the_border,
+                     the_header,
+                     the_routine )
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE transfer_stored                                                     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  05-Dec-2001  DK              Manual Transfer of Stored Sample Lists.        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE transfer_stored (VALUE the_table,
+                         VALUE the_field,
+                         VALUE the_display,
+                         VALUE the_border,
+                         VALUE the_header,
+                         VALUE the_routine )
+
+    DECLARE form, the_array, status, count, the_worklist, do_commit,
+            the_id, the_status
+
+    ARRAY the_array
+
+    count = 1
+    status = 0
+
+    do_commit = FALSE
+
+    one_prompt_form ( form,
+                      the_table,
+                      the_field,
+                      the_display,
+                      the_border,
+                      the_header,
+                      the_routine)
+
+    form . start_prompt()
+    form . wait_prompt()
+    form . end_prompt()
+
+    the_worklist = form . prompt_objects [1] . text
+
+    IF form . get_lastkey() = "DO" THEN
+
+        the_id = SELECT MILL_INT_SSET . transaction_id
+                  WHERE sm_worksheet_id = the_worklist
+
+        WHILE the_id <> EMPTY DO
+
+            the_array[count] = the_id
+            count = count + 1
+
+            NEXT MILL_INT_SSET
+            the_id = SELECT MILL_INT_SSET . transaction_id
+
+        ENDWHILE
+
+        count = 1
+
+        WHILE count <= SIZE_OF_ARRAY ( the_array) DO
+
+            the_status = SELECT MILL_INT_SSET . status FOR UPDATE
+                          WHERE status = -1 AND
+                                transaction_id = the_array[count]
+
+            IF the_status <> EMPTY THEN
+
+                ASSIGN MILL_INT_SSET . status = status
+
+                check_write_transaction()
+
+                UPDATE MILL_INT_SSET
+                do_commit = TRUE
+
+            ENDIF
+
+            count = count + 1
+
+        ENDWHILE
+
+        IF do_commit THEN
+ 
+            COMMIT 
+
+            FLASHMESSAGE("Worksheet Queued for Transfer to Millennium!", TRUE)
+
+        ENDIF
+
+    ENDIF
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE transfer_sequence                                                   }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  14-Nov-2001  DK              Main Routine controlling transfer to Mill.     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+GLOBAL ROUTINE transfer_sequence (       seq_array,
+                                   VALUE the_proj,
+                                   VALUE the_temp,
+                                   VALUE worklist_id,
+                                   VALUE status     ,
+                                   VALUE is_anal    ,
+                                   VALUE list_type  ,
+                                   VALUE mill_user  ,
+                                   VALUE mill_password,
+                                         continue    )
+
+    DECLARE rset_array, sset_array
+
+    ARRAY sset_array
+    ARRAY rset_array
+ 
+    get_components ( seq_array,
+                     rset_array,
+                     sset_array,
+                     the_proj,
+                     the_temp,
+                     worklist_id,
+                     status ,
+                     is_anal,
+                     list_type,
+                     mill_user,
+                     mill_password,
+                     continue ) 
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE get_components                                                      }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  14-Nov-2001  DK              Get all components for each sample.            }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE get_components ( seq_array,
+                         rset_array,
+                         sset_array,
+                         the_proj,
+                         the_temp,
+                         worklist_id,
+                         status,
+                         is_anal,
+                         list_type,
+                         mill_user,
+                         mill_password,
+                         continue ) 
+
+    DECLARE comp, count, anal, anal_ver, seq_comp, the_mill_comp, the_mill_type,
+            comp_count, test, id_num, cus_array_count, cus_array, do_commit,
+            no_of_injections, key, seq_inject_order, test_count,
+            seq_act_res, injection_specific_mill_type, the_grid
+
+    DECLARE bar_counter, action, the_mess
+
+    ARRAY cus_array
+
+    do_commit = TRUE
+    cus_array_count = 1
+    count = 1
+    comp_count = 1
+
+
+    action = "START"
+    the_mess = "Selecting Data, Please Wait....................."
+
+    output_data ( SIZE_OF_ARRAY ( rset_array ),
+	          bar_counter,
+                  action,
+                  the_mess     ) 
+
+    WHILE count <= SIZE_OF_ARRAY ( seq_array ) DO
+
+        get_unique_key ( key )
+
+        IF TOUPPER(GLOBAL("MILL_SAMPLE_IDENTIFIER")) = "ID_NUMERIC" THEN
+
+            id_num = seq_array [ count , SAMP_NAME ]
+
+        
+        ELSEIF TOUPPER(GLOBAL("MILL_SAMPLE_IDENTIFIER")) = "ID_TEXT" THEN
+
+            id_num = SELECT SAMPLE . id_numeric
+                      WHERE id_text = seq_array [ count , SAMP_NAME ]
+
+        ENDIF
+
+
+        no_of_injections = seq_array [ count , NO_INJECT]
+
+        IF   {( seq_array[count, THE_TYPE] = "SAMPLE"   )  AND}
+           ( ( seq_array[count, THE_TYPE] <> ""  )  AND
+             ( seq_array[count, THE_TYPE] <> EMPTY )) THEN
+
+            IF  ( seq_array[count, THE_TYPE] = "SAMPLE"   )  THEN
+
+                get_custom_data ( cus_array,
+                                  cus_array_count,
+                                  id_num,
+                                  the_proj,
+                                  the_temp,
+                                  bar_counter )
+
+            ENDIF
+
+            { Populate SampleSet Array }
+
+            sset_array[ count, SS_TRANS_ID     ] = key
+            sset_array[ count, SS_WORKSHEET_ID ] = worklist_id
+            sset_array[ count, SS_PROJECT_ID   ] = the_proj
+            sset_array[ count, SS_SAMPLESET_ID ] = the_temp
+
+
+            IF  ( seq_array[count, THE_TYPE] = "SAMPLE"   )  THEN
+                sset_array[ count, SS_SAMPLE_ID    ] = id_num
+            ELSE
+                sset_array[ count, SS_SAMPLE_ID    ] = seq_array [ count , SAMP_NAME]
+            ENDIF
+            sset_array[ count, SS_SAMPLE_TYPE  ] = seq_array [ count , SAMP_TYPE]
+            sset_array[ count, SS_NO_INJECTS   ] = no_of_injections
+            sset_array[ count, SS_VIAL_NO      ] = seq_array [ count , VIAL_NO]
+            sset_array[ count, SS_STATUS       ] = status
+            sset_array[ count, SS_MILL_USER    ] = STRIP(mill_user)
+            sset_array[ count, SS_MILL_PASS    ] = STRIP(mill_password)
+            sset_array[ count, THE_METHOD      ] = seq_array [ count , SS_METHOD      ]
+            sset_array[ count, THE_FUNCTION    ] = seq_array [ count , SS_FUNCTION    ]
+            sset_array[ count, THE_INJ_VOL     ] = seq_array [ count , SS_INJ_VOL     ]
+            sset_array[ count, THE_RUN_TIME    ] = seq_array [ count , SS_RUN_TIME    ]
+            sset_array[ count, THE_INJ_DELAY   ] = seq_array [ count , SS_INJ_DELAY   ]
+            sset_array[ count, THE_SAMP_WEIGHT ] = seq_array [ count , SS_SAMP_WEIGHT ]
+            sset_array[ count, THE_DILUTION    ] = seq_array [ count , SS_DILUTION    ]
+            sset_array[ count, SS_ID_TEXT      ] = seq_array [ count , SAMP_NAME      ]
+            sset_array[ count, SS_TYPE         ] = list_type
+
+            IF  ( seq_array[count, THE_TYPE] = "STANDARD"   )  THEN
+
+                key = JUSTIFY(PAD(key   , " ", 10), "RIGHT"):
+                              PAD(seq_array [ count , SAMP_NAME], " ", 30)                  
+
+
+                rset_array[ comp_count, RS_TRANS_ID     ] = key                    
+                rset_array[ comp_count, RS_PROJECT      ] = the_proj
+                rset_array[ comp_count, RS_SAMPLESET    ] = the_temp
+                rset_array[ comp_count, RS_MILL_COMP    ] = ""
+                rset_array[ comp_count, RS_MILL_TYPE    ] = GLOBAL("MILL_PEAK_VALUE_DEFAULT")
+                rset_array[ comp_count, RS_SMP_TYPE     ] = ""
+                rset_array[ comp_count, RS_MILL_USER    ] = ""
+                rset_array[ comp_count, RS_MILL_TIME    ] = ""
+                rset_array[ comp_count, RS_INST_NO      ] = ""
+                rset_array[ comp_count, RS_MILL_RES     ] = ""
+                rset_array[ comp_count, RS_RES_PRES     ] = 0
+                rset_array[ comp_count, RS_INJECT_ORDER ] = 1
+                rset_array[ comp_count, RS_INJECT_NO    ] = no_of_injections
+                rset_array[ comp_count, RS_LIST_TYP     ] = list_type
+                rset_array[ comp_count, RS_STATUS       ] = 0
+                rset_array[ comp_count, RS_WORKSHEET_ID ] = worklist_id
+                rset_array[ comp_count, RS_ORDER_NUM    ] = comp_count
+                rset_array[ comp_count, RS_VIAL_NO      ] = seq_array [ count , VIAL_NO]
+                rset_array[ comp_count, RS_ANALYSIS     ] = ""
+
+                comp_count = comp_count + 1
+
+            ELSE
+
+
+                {=================================================================}
+                { If no analysis passed in then not for a standard analysis       }
+                { worksheet therefore select all analyses per sample.             }
+                {=================================================================}
+
+                IF is_anal = "" THEN
+
+                    anal = SELECT TEST . analysis
+                            WHERE sample = id_num
+                             ORDER ON order_num
+
+                ELSE
+
+                    anal = SELECT TEST . analysis
+                            WHERE sample = id_num AND
+                                  analysis = is_anal
+                             ORDER ON order_num
+
+                ENDIF
+
+                WHILE anal <> EMPTY DO
+
+                    test = SELECT TEST . test_number
+                    test_count = SELECT TEST . test_count
+
+
+                    {====================================================================}
+                    { If test_count = 1, then read injection order from the component    }
+                    { mapping table. If test count > 1, then assign test count as the    }
+                    { injection order (Replicate Tests).                                 }
+                    {====================================================================}
+
+                    anal_ver = SELECT MAX VERSIONED_ANALYSIS . analysis_version
+                                WHERE identity = anal
+
+                    comp = SELECT VERSIONED_COMPONENT . name
+                            WHERE analysis = anal AND
+                                  analysis_version = anal_ver
+                            ORDER ON order_number
+
+                    WHILE comp <> EMPTY DO
+
+
+                        { Check for project specific components }
+
+                       seq_comp = SELECT MILL_COMPONENT_MAP . component
+                                    WHERE analysis = anal AND
+                                          analysis_version = anal_ver AND
+                                          component = comp AND
+                                          enable = TRUE AND
+                                          mill_project = the_proj
+
+                        { If no project specific components found }
+                        { then select for All Projects            }
+
+                        IF seq_comp = EMPTY THEN
+
+                            seq_comp = SELECT MILL_COMPONENT_MAP . component
+                                        WHERE analysis = anal AND
+                                              analysis_version = anal_ver AND
+                                              component = comp AND
+                                              enable = TRUE AND
+                                              mill_project = GLOBAL_PROJECT
+
+                        ENDIF
+
+
+                        IF ( seq_comp <> EMPTY ) AND
+                           ( STRIP(seq_comp) <> "" ) THEN
+
+                            the_mill_comp    = SELECT MILL_COMPONENT_MAP . mill_analyte
+
+                            IF ( the_mill_comp <> EMPTY ) AND
+                               ( STRIP(the_mill_comp) <> "" ) THEN
+
+                                the_mill_type    = SELECT MILL_COMPONENT_MAP . mill_type { Res Required From Mill }
+                                seq_act_res      = SELECT MILL_COMPONENT_MAP . res_type { Raw or Mean Value }
+                        
+
+                                IF test_count = 1 THEN { Only one test, so take injection order assigned }
+
+                                    seq_inject_order = SELECT MILL_COMPONENT_MAP . injection
+                                                   
+                                ELSEIF test_count > 1 THEN { Replicate component so use test count }
+
+                                    seq_inject_order = test_count
+
+                                ENDIF
+
+                                { Select the Required Peak Result type per injection order }
+
+
+                                injection_specific_mill_type = SELECT MILL_COMPONENT_MAP . mill_type 
+                                                                WHERE analysis = anal AND
+                                                                      analysis_version = anal_ver AND
+                                                                      component = seq_comp AND
+                                                                      enable = TRUE AND
+                                                                      injection = seq_inject_order AND
+                                                                      mill_project = the_proj
+
+
+                                { If no injection specific res type is found, take original selection }
+
+                                IF injection_specific_mill_type = EMPTY THEN
+
+                                   the_mill_type = the_mill_type
+
+                                ELSE
+
+                               { If injection specific res type is found, take that value }
+
+                                   the_mill_type = injection_specific_mill_type
+                       
+                                ENDIF
+
+                                key = JUSTIFY(PAD(key   , " ", 10), "RIGHT"):
+                                      PAD(id_num, " ", 30)                  :
+                                      JUSTIFY(PAD(test  , " ", 10), "RIGHT"):
+                                      PAD(seq_comp, " ", 40)
+
+
+                                rset_array[ comp_count, RS_TRANS_ID     ] = key                    
+                                rset_array[ comp_count, RS_PROJECT      ] = the_proj
+                                rset_array[ comp_count, RS_SAMPLESET    ] = the_temp
+                                rset_array[ comp_count, RS_MILL_COMP    ] = the_mill_comp
+                                rset_array[ comp_count, RS_MILL_TYPE    ] = the_mill_type
+                                rset_array[ comp_count, RS_SMP_TYPE     ] = seq_act_res
+                                rset_array[ comp_count, RS_MILL_USER    ] = ""
+                                rset_array[ comp_count, RS_MILL_TIME    ] = ""
+                                rset_array[ comp_count, RS_INST_NO      ] = ""
+                                rset_array[ comp_count, RS_MILL_RES     ] = ""
+                                rset_array[ comp_count, RS_RES_PRES     ] = 0
+                                rset_array[ comp_count, RS_INJECT_ORDER ] = seq_inject_order
+                                rset_array[ comp_count, RS_INJECT_NO    ] = no_of_injections
+                                rset_array[ comp_count, RS_LIST_TYP     ] = list_type
+                                rset_array[ comp_count, RS_STATUS       ] = 0
+                                rset_array[ comp_count, RS_WORKSHEET_ID ] = worklist_id
+                                rset_array[ comp_count, RS_ORDER_NUM    ] = comp_count
+                                rset_array[ comp_count, RS_VIAL_NO      ] = seq_array [ count , VIAL_NO]
+                                rset_array[ comp_count, RS_ANALYSIS     ] = anal
+
+                                comp_count = comp_count + 1
+
+                            ENDIF
+
+                        ENDIF
+
+                        NEXT VERSIONED_COMPONENT
+                        comp = SELECT VERSIONED_COMPONENT . name
+
+                    ENDWHILE
+ 
+                    NEXT TEST
+                    anal = SELECT TEST . analysis
+
+                ENDWHILE
+            ENDIF
+
+        ENDIF
+
+        count = count + 1
+
+    ENDWHILE   
+
+    IF SIZE_OF_ARRAY ( rset_array ) > 0 THEN
+
+        action = "START"
+        the_mess = "Ready to Queue Millennium Run Sequence......"
+
+        IF SIZE_OF_ARRAY ( cus_array ) > 0 THEN
+
+            do_commit = FALSE
+
+        ENDIF
+
+        create_transaction_grid ( the_grid,
+                                  sset_array,
+                                  rset_array,
+                                  continue )
+
+
+        IF continue THEN
+
+            { Get Sample Set Array } 
+  
+            reconfigure_sset_array(the_grid,
+                                   sset_array)    
+
+            { Get Result Set Array } 
+  
+            reconfigure_rset_array(the_grid,
+                                   rset_array)   
+ 
+
+            action = "START"
+            the_mess = "Ready to Queue SampleSet Data......"
+
+            output_data ( SIZE_OF_ARRAY ( sset_array ),
+	                  bar_counter,
+                          action,
+                          the_mess     ) 
+
+            create_sset_transaction ( sset_array,
+                                      seq_array,
+                                      do_commit,
+                                      bar_counter,
+                                      the_grid,
+                                      continue,
+                                      rset_array )
+
+            action = "START"
+            the_mess = "Ready to Queue Result Set Data......"
+
+            output_data ( SIZE_OF_ARRAY ( rset_array ),
+	                  bar_counter,
+                          action,
+                          the_mess     ) 
+
+
+            create_rset_transaction ( rset_array,
+                                      seq_array,
+                                      status,
+                                      do_commit,
+                                      bar_counter )
+
+
+
+            IF SIZE_OF_ARRAY ( cus_array ) > 0 THEN
+
+                action = "START"
+                the_mess = "Ready to Queue Custom Field Data......"
+
+                output_data ( SIZE_OF_ARRAY ( cus_array ),
+	                      bar_counter,
+                              action,
+                              the_mess     ) 
+
+                create_custom_records ( cus_array, 
+                                        bar_counter )
+
+            ENDIF
+
+        ENDIF
+
+    ELSE
+
+        flashmessage("No mapped Millennium Components found for selected samples for this project!", TRUE)
+
+    ENDIF
+              
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE get_unique_key                                                      }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  14-Nov-2001  DK              Creates Transaction Record Unique Key.         }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE get_unique_key ( key )
+
+    DECLARE new_trans_id, new_trans_ident, inc_id, id_exists
+
+    SET DATE FORMAT "YYYZMZ"  { Reset Increment on Mothly Basis }
+
+    new_trans_ident = STRIP (TODAY)
+
+    RESTORE DATE FORMAT
+
+    SET FORMAT "999999999" 
+
+    new_transid= INCREMENT("MILL_INT_SSET", new_trans_ident)
+    inc_id = GLOBAL ("PROCESS_ID")
+    new_transid = STRIP(new_transid):STRIP(inc_id)
+
+    id_exists = SELECT MILL_INT_SSET . transaction_id 
+                 WHERE transaction_id = new_transid
+
+    WHILE ( id_exists <> EMPTY ) DO
+
+         new_transid = INCREMENT("MILL_INT_SSET", new_trans_ident)
+         new_transid = STRIP(new_transid):STRIP(inc_id)
+
+         id_exists = SELECT MILL_INT_SSET . transaction_id 
+                      WHERE transaction_id = new_transid
+
+    ENDWHILE
+
+    FORMAT new_transid FROM new_transid 
+       USING MILL_INT_SSET . transaction_id
+
+    key = new_transid
+
+    RETURN ( key )
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE create_sset_transaction                                             }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  14-Nov-2001  DK              Creates Transaction Record Unique Key.         }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE create_sset_transaction ( sset_array,
+                                  seq_array,
+                                  do_commit,
+                                  bar_counter,
+                                  the_grid,
+                                  continue,
+                                  rset_array )
+
+    DECLARE check_ok, key, count
+
+    DECLARE action, the_mess
+
+    count = 1
+
+    WHILE count <= SIZE_OF_ARRAY( sset_array) DO
+
+        key = sset_array[count, SS_TRANS_ID]
+
+        RESERVE ENTRY MILL_INT_SSET, key, check_ok
+
+        IF (check_ok = EMPTY) THEN
+
+            check_write_transaction()
+
+            ASSIGN MILL_INT_SSET . sm_worksheet_id     = sset_array [ count, SS_WORKSHEET_ID  ]
+            ASSIGN MILL_INT_SSET . mill_project_id     = sset_array [ count, SS_PROJECT_ID    ]
+            ASSIGN MILL_INT_SSET . mill_sampleset_id   = sset_array [ count, SS_SAMPLESET_ID  ]
+            ASSIGN MILL_INT_SSET . sm_sample_id        = sset_array [ count, SS_SAMPLE_ID     ]
+            ASSIGN MILL_INT_SSET . sm_sample_type      = sset_array [ count, SS_SAMPLE_TYPE   ]
+            ASSIGN MILL_INT_SSET . no_of_injections    = sset_array [ count, SS_NO_INJECTS    ]
+            {ASSIGN MILL_INT_SSET . vial_no             = sset_array [ count, SS_VIAL_NO       ]}
+            ASSIGN MILL_INT_SSET . mill_user           = sset_array [ count, SS_MILL_USER     ]
+            ASSIGN MILL_INT_SSET . mill_password       = sset_array [ count, SS_MILL_PASS     ]
+            ASSIGN MILL_INT_SSET . status              = sset_array [ count, SS_STATUS        ]
+            ASSIGN MILL_INT_SSET . method_set          = sset_array [ count, THE_METHOD       ]
+            ASSIGN MILL_INT_SSET . function            = sset_array [ count, THE_FUNCTION     ]
+            ASSIGN MILL_INT_SSET . run_time            = sset_array [ count, THE_RUN_TIME     ]
+            ASSIGN MILL_INT_SSET . next_inj_delay      = sset_array [ count, THE_INJ_DELAY    ]
+            ASSIGN MILL_INT_SSET . sample_weight       = sset_array [ count, THE_SAMP_WEIGHT  ]
+            ASSIGN MILL_INT_SSET . dilution            = sset_array [ count, THE_DILUTION     ]
+            ASSIGN MILL_INT_SSET . injection_vol       = sset_array [ count, THE_INJ_VOL      ]
+            ASSIGN MILL_INT_SSET . mill_samplename     = sset_array [ count, SS_ID_TEXT       ]
+            ASSIGN MILL_INT_SSET . type                = sset_array [ count, SS_TYPE          ]
+
+            UPDATE MILL_INT_SSET
+
+            action =  "ACTIVE"
+            the_mess = "Queuing Millennium Run Sequence Records........"
+
+            output_data ( SIZE_OF_ARRAY ( sset_array ),
+	                  bar_counter,
+                          action,
+                          the_mess      )
+  
+        ENDIF
+
+    count = count + 1
+
+    ENDWHILE
+
+    IF (check_ok = EMPTY) THEN
+
+        do_commit = TRUE
+
+        action = "END"
+        the_mess = "Completed..."
+
+        output_data ( SIZE_OF_ARRAY ( sset_array ),
+	              bar_counter,
+                      action,
+                     the_mess      )
+
+    ENDIF
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE create_rset_transaction                                             }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  14-Nov-2001  DK              Creates Transaction Record Unique Key.         }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE create_rset_transaction ( rset_array,
+                                  seq_array,
+                                  status,
+                                  VALUE do_commit,
+                                  bar_counter )
+
+    DECLARE check_ok, key, count
+
+    DECLARE action, the_mess
+
+    check_ok = EMPTY
+    count = 1
+
+    WHILE count <= SIZE_OF_ARRAY( rset_array) DO
+
+        key = rset_array[count, RS_TRANS_ID]
+
+        {Screen out results with Blank Data Cells }
+ 
+        IF ( STRIP(rset_array [ count, RS_MILL_COMP     ]) <> "" ) AND
+                (LENGTH(STRIP(key)) > 40               ) THEN
+
+            RESERVE ENTRY MILL_INT_RSET, key, check_ok
+
+            IF (check_ok = EMPTY) THEN
+
+                check_write_transaction()
+
+                ASSIGN MILL_INT_RSET . mill_project_id     = rset_array [ count, RS_PROJECT       ]
+                ASSIGN MILL_INT_RSET . mill_sampleset_id   = rset_array [ count, RS_SAMPLESET     ]
+                ASSIGN MILL_INT_RSET . mill_component      = rset_array [ count, RS_MILL_COMP     ]
+                ASSIGN MILL_INT_RSET . mill_res_type       = rset_array [ count, RS_MILL_TYPE     ]
+                ASSIGN MILL_INT_RSET . sm_res_type         = rset_array [ count, RS_SMP_TYPE      ]
+                ASSIGN MILL_INT_RSET . mill_user_id        = rset_array [ count, RS_MILL_USER     ]
+                ASSIGN MILL_INT_RSET . mill_timestamp      = rset_array [ count, RS_MILL_TIME     ]
+                ASSIGN MILL_INT_RSET . mill_instrument_no  = rset_array [ count, RS_INST_NO       ]
+                ASSIGN MILL_INT_RSET . mill_result         = rset_array [ count, RS_MILL_RES      ]
+                ASSIGN MILL_INT_RSET . mill_result_present = rset_array [ count, RS_RES_PRES      ]
+                ASSIGN MILL_INT_RSET . no_of_injections    = rset_array [ count, RS_INJECT_NO     ]
+                ASSIGN MILL_INT_RSET . injection_order     = rset_array [ count, RS_INJECT_ORDER  ]
+                ASSIGN MILL_INT_RSET . worklist_type       = rset_array [ count, RS_LIST_TYP      ]
+                ASSIGN MILL_INT_RSET . status              = rset_array [ count, RS_STATUS        ]
+                ASSIGN MILL_INT_RSET . sm_worksheet_id     = rset_array [ count, RS_WORKSHEET_ID  ]
+                ASSIGN MILL_INT_RSET . order_number        = rset_array [ count, RS_ORDER_NUM     ]
+                ASSIGN MILL_INT_RSET . vial_no             = rset_array [ count, RS_VIAL_NO       ]
+                ASSIGN MILL_INT_RSET . analysis            = rset_array [ count, RS_ANALYSIS      ]
+                ASSIGN MILL_INT_RSET . date_created        = NOW
+
+                UPDATE MILL_INT_RSET
+
+                action =  "ACTIVE"
+                the_mess = "Queuing Millennium Run Sequence Records........"
+
+                output_data ( SIZE_OF_ARRAY ( rset_array ),
+	                      bar_counter,
+                              action,
+                              the_mess      )
+
+            ENDIF
+
+        ENDIF
+
+        count = count + 1
+
+    ENDWHILE
+
+    IF (check_ok = EMPTY) THEN
+
+        IF do_commit THEN
+
+            COMMIT
+
+            action = "END"
+            the_mess = "Completed..."
+
+            output_data ( SIZE_OF_ARRAY ( rset_array ),
+	                  bar_counter,
+                          action,
+                          the_mess      )
+
+            IF status = 0 THEN
+
+                flashmessage("Worksheet Successfully Queued for Transfer!", TRUE )
+
+            ELSE
+
+                flashmessage("Worksheet Successfully Stored for Transfer at a Later Date!", TRUE )
+
+            ENDIF
+
+        ELSE
+
+            action = "END"
+            the_mess = ""
+
+            output_data ( SIZE_OF_ARRAY ( rset_array ),
+	                  bar_counter,
+                          action,
+                          the_mess      )
+
+        ENDIF    
+
+    ELSE
+
+        ROLLBACK
+
+        flashmessage(check_ok:", Run Creation Sequence Aborted, Error creating result set records", TRUE )
+        EXIT
+
+
+    ENDIF
+
+ENDROUTINE
+
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE create_custom_records                                               }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  14-Nov-2001  DK              Creates Custom Field Records.                  }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE create_custom_records ( cus_array, 
+                                bar_counter )
+
+    DECLARE check_ok, count
+
+    DECLARE action, the_mess
+
+    count = 1
+
+    WHILE count <= SIZE_OF_ARRAY( cus_array ) DO
+
+        RESERVE ENTRY MILL_INT_TRANS_C, cus_array[count , 1], check_ok
+
+        IF (check_ok = EMPTY) THEN
+
+            check_write_transaction()
+
+            ASSIGN MILL_INT_TRANS_C . sm_data           = cus_array [ count, 2 ]
+            ASSIGN MILL_INT_TRANS_C . mill_custom_field = cus_array [ count, 3 ]
+
+            UPDATE MILL_INT_TRANS_C
+
+            action =  "ACTIVE"
+            the_mess = "Queuing Custom Field Data Record Records........"
+
+            output_data ( SIZE_OF_ARRAY ( cus_array ),
+	                  bar_counter,
+                          action,
+                          the_mess      )
+  
+        ENDIF
+
+    count = count + 1
+
+    ENDWHILE
+
+    IF (check_ok = EMPTY) OR
+       (check_ok = "The ID already exists") THEN
+
+        COMMIT
+
+        action = "END"
+        the_mess = "Completed..."
+
+        output_data ( SIZE_OF_ARRAY ( cus_array ),
+	              bar_counter,
+                      action,
+                      the_mess      )
+{
+        flashmessage("Worksheet Successfully Queued for Transfer!", TRUE )
+}
+    ELSE
+
+        ROLLBACK
+        flashmessage(check_ok:", Run Creation Sequence Aborted", TRUE )
+
+    ENDIF
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE get_custom_data                                                     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  15-Nov-2001  DK              Selects Custom Field Data for each sample      }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE get_custom_data (       cus_array,
+                                cus_array_count,      
+                          VALUE id_num,
+                          VALUE the_proj,
+                          VALUE the_temp,
+                                bar_counter )
+
+    DECLARE the_field, cust_field, the_table, the_data, rec_count
+
+    rec_count = 1
+
+    the_table = SELECT MILL_CUSTOM_DATA_OUT . table_name
+                 WHERE project = the_proj 
+
+    WHILE the_table <> EMPTY DO
+
+        the_field = SELECT MILL_CUSTOM_DATA_OUT . field_name
+        cust_field = SELECT MILL_CUSTOM_DATA_OUT . mill_custom_field
+
+        the_data = SELECT 'the_table' . 'the_field'
+                    WHERE id_numeric = id_num
+
+
+        IF the_data = EMPTY THEN 
+
+            the_data = ""
+
+        ENDIF
+
+        cus_array[cus_array_count, 1 ] = PAD(id_num, " ", 10):PAD(rec_count, " ", 10):STRIP(the_temp)
+        cus_array[cus_array_count, 2 ] = the_data
+        cus_array[cus_array_count, 3 ] = cust_field
+
+
+        cus_array_count = cus_array_count + 1
+        rec_count = rec_count + 1
+
+        NEXT MILL_CUSTOM_DATA_OUT
+        the_table = SELECT MILL_CUSTOM_DATA_OUT . table_name
+
+    ENDWHILE
+        
+    RETURN ( cus_array_count ) 
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE check_write_transaction                                             }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  17-DEC-1997  ER              This checks if the process is already in a     }
+{                               write_transaction, and if not, starts one.     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE check_write_transaction
+
+    IF NOT transaction_is_write() THEN
+
+       START WRITE TRANSACTION "update record"
+
+    ENDIF
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE output_data                                                         }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  15-Nov-2001  DK              Displays Run Sequence Creation Progress        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE output_data ( VALUE no_of_records,
+	                    bar_counter,
+                      VALUE action     ,
+                      VALUE the_mess    )
+
+    IF action = "START" THEN
+
+        set_up_install_window_class ( )
+
+	CREATE OBJECT INSTALL_WINDOW_CLASS , bar_counter
+
+        bar_counter . header = the_mess
+	bar_counter . footer = ""
+	bar_counter . row         = 15
+	bar_counter . start_value = 0
+	bar_counter . end_value   = no_of_records
+
+	bar_counter . start_install ( )
+
+    ENDIF
+
+    IF action = "ACTIVE" THEN
+
+        bar_counter . header = the_mess
+        bar_counter . increase_one ( )
+
+    ENDIF
+
+
+    IF  action = "END" THEN
+
+        bar_counter . header = the_mess
+	bar_counter . end_install ( )
+
+    ENDIF
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE one_prompt_form                                                     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  28/11/01     DK              Prompt for One Prompt.                         }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE one_prompt_form ( form,
+                          the_table,
+                          the_field,
+                          the_display,
+                          the_border,
+                          the_header,
+                          the_routine )
+
+    DECLARE display_prompt, prompt_obj
+
+    CREATE OBJECT PROMPT_CLASS_FORM, form
+
+    form . header = the_header
+    form . footer = ""
+    form . height = 1
+    form . width  = 48
+    form . row    = ( GLOBAL ( "SCREEN_HEIGHT") - form . height) / 2
+    form . column = ( GLOBAL ( "SCREEN_WIDTH" ) - form . width ) / 2
+    form . border = TRUE
+    form . active_prompt = 1
+    form . return_behaviour = FORM_RETURN_STAY
+    form . add_frame ( the_border  ,   1, 1, 1, 47 )
+
+    PROMPT OBJECT display_prompt
+            CLASS "STD_PROMPT_TEXT"
+            ON LINE 1 FROM 2 TO 20
+            WITH ( VALUE      =  the_display,
+                   BOLD       =  TRUE       ,
+                   RAISED     =  TRUE )
+
+    form . add_display ( display_prompt )
+
+
+    PROMPT OBJECT prompt_obj
+            BROWSE ON 'the_table' . 'the_field'
+            ON LINE 1 FROM 23 to 43
+            WITH ( BROWSE_ROUTINE = the_routine,
+                   ALWAYS_VALIDATE = TRUE,
+                   LOWERED = TRUE,
+                   VGL_LIBRARY = GLOBAL("CURRENT_LIBRARY" ))
+
+    form . add_prompt ( prompt_obj )
+
+ENDROUTINE
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE get_stored_custom                                                   }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  28/11/01     DK              Selects Stored Custom Worklist ID's.           }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE get_stored_custom ( std_work_prompt ) 
+
+    DECLARE sel_array
+
+    ARRAY sel_array
+
+    array_select_add ( sel_array,
+                       ARRAY_SELECT_EQ,
+                       "STATUS",
+                       "-1" )
+
+    array_select_add ( sel_array,
+                       ARRAY_SELECT_AND,
+                       "",
+                       "" )
+
+    array_select_add ( sel_array,
+                       ARRAY_SELECT_EQ,
+                       "TYPE",
+                       "CUSTOM" )
+
+    std_work_prompt . parent_prompt . prompt_objects[1] . user_info = sel_array
+    std_work_prompt . select_array = std_work_prompt . user_info
+
+    RETURN ( TRUE )
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE get_stored_standard                                                 }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  28/11/01     DK              Selects Stored Standard Worklist ID's.         }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE get_stored_standard ( worksheet_prompt ) 
+
+    DECLARE sel_array
+
+    ARRAY sel_array
+
+    array_select_add ( sel_array,
+                       ARRAY_SELECT_EQ,
+                       "STATUS",
+                       "-1" )
+
+    array_select_add ( sel_array,
+                       ARRAY_SELECT_AND,
+                       "",
+                       "" )
+
+    array_select_add ( sel_array,
+                       ARRAY_SELECT_EQ,
+                       "TYPE",
+                       "SAMPLE" )
+
+    worksheet_prompt . parent_prompt . prompt_objects[1] . user_info = sel_array
+    worksheet_prompt . select_array = worksheet_prompt . user_info
+
+    RETURN ( TRUE )
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE browse_cus_worklists                                                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  05-Dec-2001  DK              Restricted Browse on Worklists.                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE browse_cus_worklists ( self )
+
+    DECLARE worklist_array, id, counter, the_proj, the_sset, old_id
+
+    ARRAY worklist_array
+    counter = 1
+    old_id = ""
+
+    id = SELECT MILL_INT_SSET . sm_worksheet_id
+          WHERE status = -1 AND
+                type = "CUSTOM"
+          ORDER ON sm_worksheet_id
+                
+    WHILE id <> EMPTY DO
+
+        the_proj = SELECT MILL_INT_SSET . mill_project_id
+        the_sset = SELECT MILL_INT_SSET . mill_sampleset_id
+
+        IF ( id <> old_id) AND
+           ( id <> EMPTY ) THEN
+
+	    worklist_array [ counter, 1 ] = id
+	    worklist_array [ counter, 2 ] = the_proj
+	    worklist_array [ counter, 3 ] = the_sset
+
+            counter = counter + 1
+
+            old_id = id
+
+        ENDIF
+
+	NEXT MILL_INT_SSET
+	id = SELECT MILL_INT_SSET . sm_worksheet_id
+
+    ENDWHILE
+
+    browse_on_array ( 20 , self . text , worklist_array )
+    self . repaste ( )
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE browse_samp_worklists                                               }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  05-Dec-2001  DK              Restricted Browse on Worklists.                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE browse_samp_worklists ( self )
+
+    DECLARE worklist_array, id, counter, the_proj, the_sset, old_id
+
+    ARRAY worklist_array
+    counter = 1
+    old_id = ""
+
+    id = SELECT MILL_INT_SSET . sm_worksheet_id
+          WHERE status = -1 AND
+                type = "SAMPLE"
+          ORDER ON sm_worksheet_id
+                
+    WHILE id <> EMPTY DO
+
+        the_proj = SELECT MILL_INT_SSET . mill_project_id
+        the_sset = SELECT MILL_INT_SSET . mill_sampleset_id
+
+        IF ( id <> old_id) AND
+           ( id <> EMPTY ) THEN
+
+	    worklist_array [ counter, 1 ] = id
+	    worklist_array [ counter, 2 ] = the_proj
+	    worklist_array [ counter, 3 ] = the_sset
+
+            counter = counter + 1
+
+            old_id = id
+
+        ENDIF
+
+	NEXT MILL_INT_SSET
+	id = SELECT MILL_INT_SSET . sm_worksheet_id
+
+    ENDWHILE
+
+    browse_on_array ( 20 , self . text , worklist_array )
+    self . repaste ( )
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE browse_anal_worklists                                               }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  05-Dec-2001  DK              Restricted Browse on Worklists.                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE browse_anal_worklists ( self )
+
+    DECLARE worklist_array, id, counter, the_proj, the_sset, old_id
+
+    ARRAY worklist_array
+    counter = 1
+    old_id = ""
+
+    id = SELECT MILL_INT_SSET . sm_worksheet_id
+          WHERE status = -1 AND
+                type = "ANALYSIS"
+          ORDER ON sm_worksheet_id
+                
+    WHILE id <> EMPTY DO
+
+        the_proj = SELECT MILL_INT_SSET . mill_project_id
+        the_sset = SELECT MILL_INT_SSET . mill_sampleset_id
+
+        IF ( id <> old_id) AND
+           ( id <> EMPTY ) THEN
+
+	    worklist_array [ counter, 1 ] = id
+	    worklist_array [ counter, 2 ] = the_proj
+	    worklist_array [ counter, 3 ] = the_sset
+
+            counter = counter + 1
+
+            old_id = id
+
+        ENDIF
+
+	NEXT MILL_INT_SSET
+	id = SELECT MILL_INT_SSET . sm_worksheet_id
+
+    ENDWHILE
+
+    browse_on_array ( 20 , self . text , worklist_array )
+    self . repaste ( )
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE create_transaction_grid                                             }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  05-Dec-2001  DK              Restricted Browse on Worklists.                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE create_transaction_grid ( the_grid,
+                                  sset_array,
+                                  rset_array,
+                                  continue)
+
+    DECLARE grid_form
+
+        setup_form ( grid_form,
+                     the_grid )
+
+        populate_the_grid ( the_grid,
+                            sset_array
+                            rset_array )
+
+        grid_form . start_prompt()
+        grid_form . wait_prompt()
+        grid_form . end_prompt()
+
+        IF grid_form . get_lastkey() = "DO" THEN
+
+            continue = TRUE
+
+        ENDIF
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE setup_form                                                          }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  05-Dec-2001  DK              Restricted Browse on Worklists.                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE setup_form ( form,
+                     grid_display )
+
+    DECLARE col_sizes, insert_button, delete_button, vial_button, prop_button
+
+    ARRAY col_sizes
+
+    CREATE OBJECT PROMPT_CLASS_FORM,form
+
+    form . height  = 18
+    form . width   = 110
+    form . row     = 6
+    form . column  = 5
+    form . border  = TRUE
+    form . header  = "Millennium SampleSet and Result Mapping Configuration"
+    form . footer  = "Press <Exit> to quit"
+    form . confirm_required = FALSE
+
+    form . add_frame ("", 1,  1,  1, 26  )
+    form . add_frame ("", 28, 1,  1, 27  )
+    form . add_frame ("", 56, 1,  1, 27  )
+    form . add_frame ("", 84, 1,  1, 27  )
+    form . add_frame ("", 1, 3, 16, 110  )
+    form . add_frame ("", 1, 20, 1, 110  )
+
+
+    PROMPT OBJECT vial_button
+            CLASS "STD_PROMPT_BUTTON"
+            WITH ( row                 = 1                           ,
+                   width               = 22                          ,
+                   column              = 3                           ,
+                   caption             = "Increment Vial Numbers"    ,
+                   mouse_click_routine = "propogate_vials"           ,
+                   vgl_library         = GLOBAL( "CURRENT_LIBRARY" ) ,
+                   enabled             = TRUE                        )
+
+
+    PROMPT OBJECT insert_button
+            CLASS "STD_PROMPT_BUTTON"
+            WITH ( row                 = 1                           ,
+                   width               = 22                          ,
+                   column              = 30                          ,
+                   caption             = "Insert Result"             ,
+                   mouse_click_routine = "do_insert"                 ,
+                   vgl_library         = GLOBAL( "CURRENT_LIBRARY" ) ,
+                   enabled             = TRUE                        )
+
+
+
+    PROMPT OBJECT delete_button
+            CLASS "STD_PROMPT_BUTTON"
+            WITH ( row                 = 1                           ,
+                   width               = 22                          ,
+                   column              = 59                          ,
+                   caption             = "Delete Result"             ,
+                   mouse_click_routine = "do_delete"                 ,
+                   vgl_library         = GLOBAL( "CURRENT_LIBRARY" ) ,
+                   enabled             = TRUE                        )
+
+    PROMPT OBJECT prop_button
+            CLASS "STD_PROMPT_BUTTON"
+            WITH ( row                 = 1                           ,
+                   width               = 22                          ,
+                   column              = 87                          ,
+                   caption             = "Propogate Millennium Data" ,
+                   mouse_click_routine = "propogate_data"            ,
+                   vgl_library         = GLOBAL( "CURRENT_LIBRARY" ) ,
+                   enabled             = TRUE                        )
+
+
+    CREATE OBJECT PROMPT_CLASS_GRID, grid_display
+
+    col_sizes [1  ] = 4
+    col_sizes [2  ] = 10
+    col_sizes [3  ] = 5
+    col_sizes [4  ] = 5
+    col_sizes [5  ] = 10
+    col_sizes [6  ] = 11
+    col_sizes [7  ] = 10
+    col_sizes [8  ] = 20
+    col_sizes [9  ] = 15
+    col_sizes [10 ] = 5
+    col_sizes [11 ] = 11
+    col_sizes [12 ] = 15
+    col_sizes [13 ] = 15
+    col_sizes [14 ] = 8
+    col_sizes [15 ] = 8
+    col_sizes [16 ] = 8
+    col_sizes [17 ] = 8
+    col_sizes [18 ] = 10
+    col_sizes [19 ] = 10
+        
+    grid_display . height       = form.height - 2
+    grid_display . width        = form.width - 3
+    grid_display . row          = 3
+    grid_display . column       = 2
+    grid_display . cell_columns = 19
+    grid_display . cell_rows    = 0
+    grid_display . column_size  = col_sizes               
+
+    grid_display . display_cell_routine    = "display_tags"
+    grid_display . prompt_cell_routine     = "prompt_tags"
+    grid_display . validation_routine      = "validate_the_grid"    
+
+    grid_display . title_size_top         = 2
+    grid_display . title_text_top [ 1,1 ] = "Vial"
+    grid_display . title_text_top [ 1,2 ] = "#"
+    grid_display . title_text_top [ 2,1 ] = "Millennium"
+    grid_display . title_text_top [ 2,2 ] = "SampleName"
+    grid_display . title_text_top [ 3,1 ] = "Inj"
+    grid_display . title_text_top [ 3,2 ] = "Vol"
+    grid_display . title_text_top [ 4,1 ] = "# of"
+    grid_display . title_text_top [ 4,2 ] = "Injs."
+    grid_display . title_text_top [ 5,1 ] = "LIMS"
+    grid_display . title_text_top [ 5,2 ] = "Sample ID"
+    grid_display . title_text_top [ 6,1 ] = "Analysis"
+    grid_display . title_text_top [ 7,1 ] = "Test No."
+    grid_display . title_text_top [ 8,1 ] = "SampleManager"
+    grid_display . title_text_top [ 8,2 ] = "Component"
+    grid_display . title_text_top [ 9,1 ] = "Millennium"
+    grid_display . title_text_top [ 9,2 ] = "Peak"
+    grid_display . title_text_top [ 10,1 ] = "Inj."
+    grid_display . title_text_top [ 10,2 ] = "Order"
+    grid_display . title_text_top [ 11,1 ] = "Required"
+    grid_display . title_text_top [ 11,2 ] = "Result"
+    grid_display . title_text_top [ 12,1 ] = "Function"
+    grid_display . title_text_top [ 13,1 ] = "Method Set"
+    grid_display . title_text_top [ 14,1 ] = "Run Time"
+    grid_display . title_text_top [ 15,1 ] = "Next Inj"
+    grid_display . title_text_top [ 15,2 ] = "Delay"
+    grid_display . title_text_top [ 16,1 ] = "Sample"
+    grid_display . title_text_top [ 16,2 ] = "Weight"
+    grid_display . title_text_top [ 17,1 ] = "Dilution"
+    grid_display . title_text_top [ 18,1 ] = "Trans. ID"
+    grid_display . title_text_top [ 19,1 ] = "Project"
+
+    form . add_prompt(grid_display)
+
+    form . add_prompt(vial_button)
+    form . add_prompt(prop_button)
+    form . add_prompt(insert_button)
+    form . add_prompt(delete_button)
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE populate_the_grid                                                   }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  05-Dec-2001  DK              Restricted Browse on Worklists.                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE populate_the_grid ( grid_display,
+                            sset_array,
+                            rset_array )
+
+    DECLARE count, the_samp, the_comp, the_test, trans_id, inj_vol, ss_count,
+            can_leave, meth, func, run_time, inj_delay, smp_weight, dilution,
+            the_samp_type, status, user, pass, id_text, the_ss_type,
+            the_worklist, sset_id, sset_trans
+        
+    ARRAY grid_display . user_info
+
+    count = 1
+    ss_count = 1
+    can_leave = FALSE
+
+    WHILE count <= SIZE_OF_ARRAY ( rset_array) DO
+ 
+        trans_id = STRIP(SUBSTRING(rset_array [ count, RS_TRANS_ID], 1 , 10))
+        the_samp = STRIP(SUBSTRING(rset_array [ count, RS_TRANS_ID], 11, 30))
+        the_test = STRIP(SUBSTRING(rset_array [ count, RS_TRANS_ID], 41, 10))
+        the_comp = STRIP(SUBSTRING(rset_array [ count, RS_TRANS_ID], 51, 40))
+
+        REPEAT
+
+            sset_trans = STRIP(LEFTSTRING(sset_array[ ss_count, SS_TRANS_ID  ], 10))
+
+            IF trans_id = sset_trans THEN
+
+                sset_id       = sset_array[ ss_count, SS_SAMPLESET_ID ]
+                the_worklist  = sset_array[ ss_count, SS_WORKSHEET_ID ]
+                the_samp_type = sset_array[ ss_count, SS_SAMPLE_TYPE  ]
+                status        = sset_array[ ss_count, SS_STATUS       ]
+                user          = sset_array[ ss_count, SS_MILL_USER    ]
+                pass          = sset_array[ ss_count, SS_MILL_PASS    ]
+                id_text       = sset_array[ ss_count, SS_ID_TEXT      ]
+                the_ss_type   = sset_array[ ss_count, SS_TYPE         ]
+
+                inj_vol       = sset_array[ ss_count, THE_INJ_VOL     ]
+                meth          = sset_array[ ss_count, THE_METHOD      ]
+                func          = sset_array[ ss_count, THE_FUNCTION    ]
+                run_time      = sset_array[ ss_count, THE_RUN_TIME    ]
+                inj_delay     = sset_array[ ss_count, THE_INJ_DELAY   ]
+                smp_weight    = sset_array[ ss_count, THE_SAMP_WEIGHT ]
+                dilution      = sset_array[ ss_count, THE_DILUTION    ]
+                
+                can_leave = TRUE
+            
+            ENDIF       
+
+            ss_count = ss_count + 1
+
+        UNTIL can_leave 
+
+        grid_display . user_info[count, 1  ] = rset_array [ count, RS_VIAL_NO       ]
+        grid_display . user_info[count, 2  ] = id_text
+        grid_display . user_info[count, 3  ] = inj_vol
+        grid_display . user_info[count, 4  ] = rset_array [ count, RS_INJECT_NO     ]
+
+        IF STRIP(the_test) <> "" THEN
+
+            grid_display . user_info[count, 5  ] = the_samp
+
+        ELSE
+
+            grid_display . user_info[count, 5  ] = ""
+
+        ENDIF
+
+        grid_display . user_info[count, 6  ] = rset_array [ count, RS_ANALYSIS      ]
+        grid_display . user_info[count, 7  ] = the_test
+        grid_display . user_info[count, 8  ] = the_comp
+        grid_display . user_info[count, 9  ] = rset_array [ count, RS_MILL_COMP     ]
+        grid_display . user_info[count, 10 ] = rset_array [ count, RS_INJECT_ORDER  ]
+        grid_display . user_info[count, 11 ] = rset_array [ count, RS_MILL_TYPE     ]
+        grid_display . user_info[count, 12 ] = func
+        grid_display . user_info[count, 13 ] = meth
+        grid_display . user_info[count, 14 ] = run_time
+        grid_display . user_info[count, 15 ] = inj_delay
+        grid_display . user_info[count, 16 ] = smp_weight
+        grid_display . user_info[count, 17 ] = dilution
+        grid_display . user_info[count, 18 ] = trans_id
+        grid_display . user_info[count, 19 ] = rset_array [ count, RS_PROJECT       ]
+        grid_display . user_info[count, 20 ] = the_samp_type
+        grid_display . user_info[count, 21 ] = status
+        grid_display . user_info[count, 22 ] = user
+        grid_display . user_info[count, 23 ] = pass
+        grid_display . user_info[count, 24 ] = id_text
+        grid_display . user_info[count, 25 ] = the_ss_type
+        grid_display . user_info[count, 26 ] = sset_id
+        grid_display . user_info[count, 27 ] = the_worklist
+        
+        ss_count = 1
+        count = count + 1
+        can_leave = FALSE
+
+    ENDWHILE
+
+    grid_display . cell_rows = SIZE_OF_ARRAY(grid_display . user_info)
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE prompt_tags                                                         }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  05-Dec-2001  DK              Restricted Browse on Worklists.                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE prompt_tags (   self    ,
+                        VALUE cell_column,
+                        VALUE cell_row  ,
+                        window          ,
+                        VALUE column    ,
+                        VALUE row       ,
+                        VALUE cell_width,
+                        VALUE cell_height       )
+
+
+    DECLARE anal_array, test_array, comp_array, meth_array, the_colour
+
+    ARRAY anal_array
+    ARRAY test_array
+    ARRAY comp_array
+    ARRAY meth_array
+
+    IF STRIP(self . user_info [ cell_row, 12]) = "Inject Standards" THEN
+
+        the_colour = PROMPT_COLOUR_RED
+
+    ELSE
+
+        IF (cell_column = 1) THEN
+
+            the_colour = PROMPT_COLOUR_RED
+
+        ELSEIF (cell_column = 3) OR
+               (cell_column = 4) OR
+               (cell_column = 10) THEN
+
+            the_colour = PROMPT_COLOUR_MAGENTA
+
+        ELSEIF (cell_column = 2) OR 
+               (cell_column = 5) THEN
+
+            the_colour = PROMPT_COLOUR_BLUE
+
+        ELSE
+
+            the_colour = PROMPT_COLOUR_BLACK
+
+        ENDIF
+
+    ENDIF
+
+    IF cell_column = 1 THEN
+
+        PROMPT FOR self.user_info[cell_row,cell_column]
+            AT column,row
+            IN WINDOW window
+            FORMAT MILL_INT_SSET . vial_no
+            WITH( foreground_colour = the_colour)
+
+    ELSEIF cell_column = 2 THEN
+
+        PROMPT FOR self.user_info[cell_row,cell_column]
+            AT column,row
+            IN WINDOW window
+            BROWSE ON TEXT
+            WITH( foreground_colour = the_colour,
+                  justification = PROMPT_JUSTIFY_LEFT)
+
+    ELSEIF cell_column = 3 THEN
+
+
+        PROMPT FOR self . user_info [ cell_row, cell_column]
+             AT column, row
+             IN WINDOW window
+             TO column + cell_width - 1
+             BROWSE ON REAL
+             WITH ( places = 1,
+                    foreground_colour = the_colour )
+
+    ELSEIF cell_column = 4 THEN
+
+        PROMPT FOR self . user_info [ cell_row, cell_column]
+             AT column, row
+             IN WINDOW window
+             TO column + cell_width - 1
+             FORMAT MILL_INT_SSET . no_of_injections
+             WITH( foreground_colour = the_colour)
+
+    ELSEIF cell_column = 5 THEN
+
+        IF (STRIP(self . user_info [ cell_row, 12]) = "Inject Standards") OR
+           (STRIP(self . user_info [ cell_row, 12]) = ""                )THEN
+
+            PROMPT FOR self . user_info [ cell_row, cell_column]
+                 AT column, row
+                 IN WINDOW window
+                 TO column + cell_width - 1
+                 BROWSE ON SAMPLE
+                 WITH( foreground_colour = the_colour)
+
+            self . user_info [ cell_row, cell_column] = STRIP(self . user_info [ cell_row, cell_column])
+
+        ELSE
+
+            PROMPT FOR self . user_info [ cell_row, cell_column]
+                 AT column, row
+                 IN WINDOW window
+                 TO column + cell_width - 1
+                 WITH (DISPLAY_ONLY = TRUE,
+                       foreground_colour = the_colour)
+
+        ENDIF
+
+    ELSEIF cell_column = 6 THEN
+
+        IF STRIP(self . user_info [ cell_row, cell_column-1]) = "" THEN
+
+            flashmessage("No Sample Selected!", TRUE)
+
+            PROMPT FOR self . user_info [ cell_row, cell_column]
+                 AT column, row
+                 IN WINDOW window
+                 TO column + cell_width - 1
+                 WITH (DISPLAY_ONLY = TRUE,
+                       foreground_colour = the_colour)
+
+
+        ELSE
+
+            get_the_anals (anal_array, 
+                           self . user_info,
+                           cell_row,
+                           cell_column )
+
+            PROMPT FOR self . user_info [ cell_row, cell_column]
+                 AT column, row
+                 IN WINDOW window
+                 TO column + cell_width - 1
+                 CHOOSE OUTOF anal_array
+                 WITH( foreground_colour = the_colour,
+                       justification = PROMPT_JUSTIFY_LEFT)
+
+        ENDIF
+
+
+    ELSEIF cell_column = 7 THEN
+
+        IF STRIP(self . user_info [ cell_row, cell_column-1]) = "" THEN
+
+            flashmessage("No Analysis Selected!", TRUE)
+
+            PROMPT FOR self . user_info [ cell_row, cell_column]
+                 AT column, row
+                 IN WINDOW window
+                 TO column + cell_width - 1
+                 WITH (DISPLAY_ONLY = TRUE,
+                       foreground_colour = the_colour)
+
+
+        ELSE
+
+            get_the_tests (test_array, 
+                           self . user_info,
+                           cell_row,
+                           cell_column )
+
+            PROMPT FOR self . user_info [ cell_row, cell_column]
+                 AT column, row
+                 IN WINDOW window
+                 TO column + cell_width - 1
+                 CHOOSE OUTOF test_array
+                 WITH( foreground_colour = the_colour,
+                       justification = PROMPT_JUSTIFY_LEFT)
+
+        ENDIF
+
+    ELSEIF cell_column = 8 THEN
+
+        IF STRIP(self . user_info [ cell_row, cell_column-1]) = "" THEN
+
+            flashmessage("No Test Selected!", TRUE)
+
+            PROMPT FOR self . user_info [ cell_row, cell_column]
+                 AT column, row
+                 IN WINDOW window
+                 TO column + cell_width - 1
+                 WITH (DISPLAY_ONLY = TRUE,
+                       foreground_colour = the_colour)
+
+
+        ELSE
+
+            get_the_comps (comp_array, 
+                           self . user_info,
+                           cell_row,
+                           cell_column )
+
+            PROMPT FOR self . user_info [ cell_row, cell_column]
+                 AT column, row
+                 IN WINDOW window
+                 TO column + cell_width - 1
+                 CHOOSE OUTOF comp_array
+                 WITH( foreground_colour = the_colour)
+
+        ENDIF
+
+    ELSEIF cell_column = 9 THEN
+
+        IF STRIP(self . user_info [ cell_row, cell_column-1]) = "" THEN  
+
+            flashmessage("No Component Selected!", TRUE)
+
+            PROMPT FOR self . user_info [ cell_row, cell_column]
+                 AT column, row
+                 IN WINDOW window
+                 TO column + cell_width - 1
+                 WITH (DISPLAY_ONLY = TRUE,
+                       foreground_colour = the_colour)
+
+        ELSE
+
+            PROMPT FOR self . user_info [ cell_row, cell_column]
+                BROWSE ON TEXT
+                AT column, row
+                IN WINDOW window
+                TO column + cell_width - 1
+                WITH (browse_routine = "select_component_names",
+                      PARENT_PROMPT = self,
+                      foreground_colour = the_colour)
+
+        ENDIF
+
+    ELSEIF cell_column = 10 THEN
+
+        PROMPT FOR self.user_info[cell_row,cell_column]
+            AT column,row
+            IN WINDOW window
+            FORMAT MILL_INT_RSET . injection_order
+            WITH( foreground_colour = the_colour)
+
+    ELSEIF cell_column = 11 THEN
+
+        PROMPT FOR self . user_info [ cell_row, cell_column]
+            AT column, row
+            IN WINDOW window
+            TO column + cell_width - 1
+            BROWSE ON PHRASE . MILL_PEAK
+            WITH ( VALID_ONLY = TRUE,
+                   foreground_colour = the_colour)
+
+    ELSEIF cell_column = 12 THEN
+
+        PROMPT FOR self . user_info [ cell_row, cell_column]
+             AT column, row
+             IN WINDOW window
+             TO column + cell_width - 1
+             BROWSE ON PHRASE . MILL_FUNC
+             WITH( foreground_colour = the_colour)
+
+
+    ELSEIF cell_column = 13 THEN
+
+        select_method_data(self
+                           meth_array)
+
+	PROMPT FOR self . user_info [ cell_row, cell_column]
+		CHOOSE OUTOF meth_array
+                AT column, row
+                IN WINDOW window
+                TO column + cell_width + 254
+                WITH ( parent_prompt = self,
+                       foreground_colour = the_colour)
+
+    ELSEIF cell_column = 14 THEN
+
+
+        PROMPT FOR self . user_info [ cell_row, cell_column]
+            AT column, row
+            IN WINDOW window
+            TO column + cell_width - 1
+            BROWSE ON REAL
+            WITH ( places = 2,
+                   foreground_colour = the_colour,
+                   justification = PROMPT_JUSTIFY_LEFT)
+
+    ELSEIF cell_column = 15 THEN
+
+
+        PROMPT FOR self . user_info [ cell_row, cell_column]
+            AT column, row
+            IN WINDOW window
+            TO column + cell_width - 1
+            BROWSE ON REAL
+            WITH ( places = 2,
+                   foreground_colour = the_colour,
+                   justification = PROMPT_JUSTIFY_LEFT)
+
+    ELSEIF cell_column = 16 THEN
+
+        PROMPT FOR self . user_info [ cell_row, cell_column]
+            AT column, row
+            IN WINDOW window
+            TO column + cell_width - 1
+            BROWSE ON REAL
+            WITH ( places = 5,
+                   foreground_colour = the_colour,
+                   justification = PROMPT_JUSTIFY_LEFT)
+
+
+    ELSEIF cell_column = 17 THEN
+
+        PROMPT FOR self . user_info [ cell_row, cell_column]
+            AT column, row
+            IN WINDOW window
+            TO column + cell_width - 1
+            BROWSE ON REAL
+            WITH ( places = 5,
+                   foreground_colour = the_colour,
+                   justification = PROMPT_JUSTIFY_LEFT)
+
+    ELSE  
+
+        PROMPT FOR self.user_info[cell_row,cell_column]
+            AT column,row
+            IN WINDOW window
+            WITH ( display_only = TRUE,
+                   foreground_colour = the_colour)   
+
+    ENDIF       
+        
+    self . redisplay_row ( self . current_row )                        
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE display_tags                                                        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  05-Dec-2001  DK              Manual Transfer of Stored Sample Lists.        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE display_tags (  self    ,
+                        VALUE cell_column,
+                        VALUE cell_row  ,
+                        window          ,
+                        VALUE column    ,
+                        VALUE row       ,
+                        VALUE cell_width,
+                        VALUE cell_height       )
+
+    DECLARE the_colour
+
+
+
+    IF (cell_column = 1) THEN
+
+        the_colour = PROMPT_COLOUR_RED
+
+        DISPLAY self.user_info[cell_row,cell_column]
+            AT column,row
+            IN WINDOW window
+            FORMAT MILL_INT_SSET . vial_no
+            WITH ( FOREGROUND_COLOUR = the_colour,
+                   justification = PROMPT_JUSTIFY_LEFT )
+
+    ELSEIF (cell_column = 2) THEN
+
+        IF STRIP(self .  user_info [ cell_row, 12 ]) = "Inject Standards" THEN
+
+            the_colour = PROMPT_COLOUR_RED
+
+        ELSE
+
+            the_colour = PROMPT_COLOUR_BLUE
+
+        ENDIF
+
+        DISPLAY self.user_info[cell_row,cell_column]
+            AT column,row
+            IN WINDOW window
+            WITH ( FOREGROUND_COLOUR = the_colour,
+                   justification = PROMPT_JUSTIFY_LEFT)
+
+    ELSEIF (cell_column = 3) THEN
+
+        IF STRIP(self .  user_info [ cell_row, 12 ]) = "Inject Standards" THEN
+
+            the_colour = PROMPT_COLOUR_RED
+
+        ELSE
+
+            the_colour = PROMPT_COLOUR_MAGENTA
+
+        ENDIF
+
+        DISPLAY self.user_info[cell_row,cell_column]
+            FORMAT REAL
+            AT column,row
+            IN WINDOW window
+            WITH ( FOREGROUND_COLOUR = the_colour,
+                   places = 1,
+                   justification = PROMPT_JUSTIFY_LEFT)
+
+
+    ELSEIF (cell_column = 4) THEN
+
+        IF STRIP(self .  user_info [ cell_row, 12 ]) = "Inject Standards" THEN
+
+            the_colour = PROMPT_COLOUR_RED
+
+        ELSE
+
+            the_colour = PROMPT_COLOUR_MAGENTA
+
+        ENDIF
+
+        DISPLAY self.user_info[cell_row,cell_column]
+            FORMAT INTEGER
+            AT column,row
+            IN WINDOW window
+            WITH ( FOREGROUND_COLOUR = the_colour,
+                   justification = PROMPT_JUSTIFY_LEFT )
+
+    ELSEIF (cell_column = 5) THEN
+
+        IF STRIP(self .  user_info [ cell_row, 12 ]) = "Inject Standards" THEN
+
+            the_colour = PROMPT_COLOUR_RED
+
+        ELSE
+
+            the_colour = PROMPT_COLOUR_BLUE
+
+        ENDIF
+
+        DISPLAY self.user_info[cell_row,cell_column]
+            AT column,row
+            IN WINDOW window
+            WITH ( FOREGROUND_COLOUR = the_colour )
+
+    ELSEIF (cell_column = 6) OR
+           (cell_column = 7) OR
+           (cell_column = 8) OR
+           (cell_column = 9) OR
+           (cell_column = 11) OR
+           (cell_column = 12) OR
+           (cell_column = 13) THEN
+
+        IF STRIP(self .  user_info [ cell_row, 12 ]) = "Inject Standards" THEN
+
+            the_colour = PROMPT_COLOUR_RED
+
+        ELSE
+
+            the_colour = PROMPT_COLOUR_BLACK
+
+        ENDIF
+
+        DISPLAY self.user_info[cell_row,cell_column]
+                AT column,row
+                IN WINDOW window
+                WITH ( FOREGROUND_COLOUR = the_colour,
+                       justification = PROMPT_JUSTIFY_LEFT)
+
+
+    ELSEIF (cell_column = 10) THEN
+
+        IF STRIP(self .  user_info [ cell_row, 12 ]) = "Inject Standards" THEN
+
+            the_colour = PROMPT_COLOUR_RED
+
+        ELSE
+
+            the_colour = PROMPT_COLOUR_MAGENTA
+
+        ENDIF
+
+        DISPLAY self.user_info[cell_row,cell_column]
+            AT column,row
+            IN WINDOW window
+            FORMAT INTEGER
+            WITH ( FOREGROUND_COLOUR = the_colour,
+                   justification = PROMPT_JUSTIFY_LEFT )
+
+    ELSEIF (cell_column = 14) THEN
+
+        IF STRIP(self .  user_info [ cell_row, 12 ]) = "Inject Standards" THEN
+
+            the_colour = PROMPT_COLOUR_RED
+
+        ELSE
+
+            the_colour = PROMPT_COLOUR_BLACK
+
+        ENDIF
+
+        DISPLAY self.user_info[cell_row,cell_column]
+            AT column,row
+            IN WINDOW window
+            FORMAT REAL
+            WITH ( FOREGROUND_COLOUR = the_colour,
+                   places = 2,
+                   justification = PROMPT_JUSTIFY_LEFT )
+
+    ELSEIF (cell_column = 15) THEN
+
+        IF STRIP(self .  user_info [ cell_row, 12 ]) = "Inject Standards" THEN
+
+            the_colour = PROMPT_COLOUR_RED
+
+        ELSE
+
+            the_colour = PROMPT_COLOUR_BLACK
+
+        ENDIF
+
+        DISPLAY self.user_info[cell_row,cell_column]
+            AT column,row
+            IN WINDOW window
+            FORMAT REAL
+            WITH ( FOREGROUND_COLOUR = the_colour,
+                   places = 2,
+                   justification = PROMPT_JUSTIFY_LEFT )
+
+    ELSEIF (cell_column = 16) THEN
+
+        IF STRIP(self .  user_info [ cell_row, 12 ]) = "Inject Standards" THEN
+
+            the_colour = PROMPT_COLOUR_RED
+
+        ELSE
+
+            the_colour = PROMPT_COLOUR_BLACK
+
+        ENDIF
+
+        DISPLAY self.user_info[cell_row,cell_column]
+            AT column,row
+            IN WINDOW window
+            FORMAT REAL
+            WITH ( FOREGROUND_COLOUR = the_colour,
+                   places = 5,
+                   justification = PROMPT_JUSTIFY_LEFT )
+
+    ELSEIF (cell_column = 17) THEN
+
+        IF STRIP(self .  user_info [ cell_row, 12 ]) = "Inject Standards" THEN
+
+            the_colour = PROMPT_COLOUR_RED
+
+        ELSE
+
+            the_colour = PROMPT_COLOUR_BLACK
+
+        ENDIF
+
+        DISPLAY self.user_info[cell_row,cell_column]
+            AT column,row
+            IN WINDOW window
+            FORMAT REAL
+            WITH ( FOREGROUND_COLOUR = the_colour,
+                   places = 5,
+                   justification = PROMPT_JUSTIFY_LEFT )
+
+    ELSEIF (cell_column = 18) OR
+           (cell_column = 19) THEN
+
+        IF STRIP(self .  user_info [ cell_row, 12 ]) = "Inject Standards" THEN
+
+            the_colour = PROMPT_COLOUR_RED
+
+        ELSE
+
+            the_colour = PROMPT_COLOUR_BLACK
+
+        ENDIF
+
+        DISPLAY self.user_info[cell_row,cell_column]
+            AT column,row
+            IN WINDOW window
+            WITH ( DISPLAY_ONLY = TRUE)
+
+
+    ENDIF
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE get_the_anals                                                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  05-Dec-2001  DK              Restricted Browse on Worklists.                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE get_the_anals (anal_array, 
+                       grid_array,
+                       cell_row,
+                       cell_column )
+
+    DECLARE the_samp, count, the_anal
+
+    count = 1
+
+    the_samp = grid_array[cell_row, cell_column - 1]
+
+    the_anal = SELECT TEST . analysis
+                WHERE sample = the_samp
+
+    WHILE the_anal <> EMPTY DO
+
+        anal_array[count, 1] = the_anal  
+        anal_array[count, 2] = the_anal    
+
+        count = count + 1
+
+        NEXT TEST
+        the_anal = SELECT TEST . analysis
+
+    ENDWHILE
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE get_the_tests                                                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  05-Dec-2001  DK              Restricted Browse on Worklists.                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE get_the_tests (test_array, 
+                       grid_array,
+                       cell_row,
+                       cell_column )
+
+    DECLARE the_samp, count, the_anal, the_test
+
+    count = 1
+
+
+    the_anal = grid_array[cell_row, cell_column - 1]
+    the_samp = grid_array[cell_row, cell_column - 2]
+
+    the_test = SELECT TEST . test_number
+                WHERE sample = the_samp AND
+                      analysis = the_anal
+
+    WHILE the_test <> EMPTY DO
+
+        test_array[count, 1] = the_test  
+        test_array[count, 2] = the_test   
+
+        count = count + 1
+
+        NEXT TEST
+        the_test = SELECT TEST . test_number
+
+    ENDWHILE
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE get_the_comps                                                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  05-Dec-2001  DK              Restricted Browse on Worklists.                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE get_the_comps (comp_array, 
+                       grid_array,
+                       cell_row,
+                       cell_column )
+
+    DECLARE count, the_anal, the_comp, max_ver
+
+    count = 1
+    the_anal = grid_array[cell_row, cell_column - 2]
+
+    max_ver = SELECT MAX VERSIONED_ANALYSIS . analysis_version
+               WHERE identity = the_anal
+
+    the_comp = SELECT VERSIONED_COMPONENT . name
+                WHERE analysis = the_anal AND
+                      analysis_version = max_ver 
+
+    WHILE the_comp <> EMPTY DO
+
+        comp_array[count, 1] = the_comp  
+        comp_array[count, 2] = the_comp   
+
+        count = count + 1
+
+        NEXT VERSIONED_COMPONENT
+        the_comp = SELECT VERSIONED_COMPONENT . name
+
+    ENDWHILE
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE select_component_names                                              }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  05-Dec-2001  DK              Restricted Browse on Worklists.                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE select_component_names ( self )
+
+    DECLARE the_schema, the_field, the_table, the_proj, the_grid
+
+    the_grid = self . parent_prompt
+
+    the_proj = STRIP(the_grid.user_info[the_grid.current_row, 19])
+
+    IF STRIP(the_proj) <> "" THEN
+
+        the_proj = STRIP(the_proj)
+        the_schema = TOUPPER(STRIP(the_proj)):"_1"
+        the_field  = "name"
+        the_table = the_schema:".CALCURVE"
+
+        select_millennium_data ( self,
+                                 the_schema,
+                                 the_field,
+                                 the_table )
+
+    ENDIF
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE select_method_data                                                  }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  05-Dec-2001  DK              Restricted Browse on Worklists.                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE select_method_data(self,
+                           meth_array)
+
+    DECLARE the_schema, the_field, the_table, the_proj
+
+
+    the_proj = STRIP(self.user_info[self.current_row, 19])
+    the_schema = TOUPPER(STRIP(the_proj)):"_1"
+    the_field  = "name"
+    the_table = the_schema:".METHOD"
+
+    select_millennium_meth_data ( meth_array,
+                                  the_schema,
+                                  the_field,
+                                  the_table )
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE do_insert                                                           }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  05-Dec-2001  DK              Restricted Browse on Worklists.                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE do_insert(self)
+
+    DECLARE the_row, i, the_grid, the_vial, the_proj, the_trans_id, the_samp_type,
+            the_status, the_user, the_pass, the_id_text, the_ss_type, the_sset_id,
+            the_worklist
+
+    the_grid = self . parent_prompt . prompt_objects [1]
+    the_row  = the_grid . current_row
+
+    IF the_row > 1 THEN
+
+         the_vial      = the_grid . user_info [ the_row - 1, 1  ]
+         the_proj      = the_grid . user_info [ the_row - 1, 19 ]
+         the_samp_type = the_grid . user_info [ the_row - 1, 20 ]
+         the_status    = the_grid . user_info [ the_row - 1, 21 ]
+         the_user      = the_grid . user_info [ the_row - 1, 22 ]
+         the_pass      = the_grid . user_info [ the_row - 1, 23 ]
+         the_id_text   = the_grid . user_info [ the_row - 1, 24 ]
+         the_ss_type   = the_grid . user_info [ the_row - 1, 25 ]
+         the_sset_id   = the_grid . user_info [ the_row - 1, 26 ]
+         the_worklist  = the_grid . user_info [ the_row - 1, 27 ]
+
+    ELSE
+
+         the_vial      = 1
+         the_proj      = the_grid . user_info [ the_row, 19 ]
+         the_samp_type = the_grid . user_info [ the_row, 20 ]
+         the_status    = the_grid . user_info [ the_row, 21 ]
+         the_user      = the_grid . user_info [ the_row, 22 ]
+         the_pass      = the_grid . user_info [ the_row, 23 ]
+         the_id_text   = the_grid . user_info [ the_row, 24 ]
+         the_ss_type   = the_grid . user_info [ the_row, 25 ]
+         the_sset_id   = the_grid . user_info [ the_row, 26 ]
+         the_worklist  = the_grid . user_info [ the_row, 27 ]
+
+    ENDIF
+
+    get_unique_key(the_trans_id)
+
+    array_insert_slice ( the_grid . user_info, 1, the_row )
+
+    the_grid . user_info [ the_row,  1 ] = ""
+    the_grid . user_info [ the_row,  2 ] = ""
+    the_grid . user_info [ the_row,  3 ] = ""
+    the_grid . user_info [ the_row,  4 ] = ""
+    the_grid . user_info [ the_row,  5 ] = ""
+    the_grid . user_info [ the_row,  6 ] = ""
+    the_grid . user_info [ the_row,  7 ] = ""
+    the_grid . user_info [ the_row,  8 ] = ""
+    the_grid . user_info [ the_row,  9 ] = ""
+    the_grid . user_info [ the_row, 10 ] = ""
+    the_grid . user_info [ the_row, 11 ] = ""
+    the_grid . user_info [ the_row, 12 ] = ""
+    the_grid . user_info [ the_row, 13 ] = ""
+    the_grid . user_info [ the_row, 14 ] = ""
+    the_grid . user_info [ the_row, 15 ] = ""
+    the_grid . user_info [ the_row, 16 ] = ""
+    the_grid . user_info [ the_row, 17 ] = ""
+    the_grid . user_info [ the_row, 18 ] = ""
+    the_grid . user_info [ the_row, 19 ] = ""
+    the_grid . user_info [ the_row, 20 ] = the_samp_type
+    the_grid . user_info [ the_row, 21 ] = the_status
+    the_grid . user_info [ the_row, 22 ] = the_user
+    the_grid . user_info [ the_row, 23 ] = the_pass
+    the_grid . user_info [ the_row, 24 ] = the_id_text
+    the_grid . user_info [ the_row, 25 ] = the_ss_type
+    the_grid . user_info [ the_row, 26 ] = the_sset_id
+    the_grid . user_info [ the_row, 27 ] = the_worklist
+
+
+    the_grid . insert_row ( the_row, 1, GRID_SEPARATOR_NONE )
+
+    IF the_row = 0 THEN
+
+        the_row = 1
+        the_grid . set_position ( 1, the_row  )
+
+    ELSE
+
+        the_grid . set_position ( 1, the_row  )        
+
+    ENDIF
+
+    i = 1
+
+    WHILE ( i <= the_grid . cell_columns ) DO
+
+        IF i = 1 THEN
+
+            the_grid . user_info[the_row, i] = the_vial
+
+        ELSEIF (i = 3) THEN
+
+            the_grid . user_info[the_row, i] = "1.0"
+
+        ELSEIF (i = 4) THEN
+
+            the_grid . user_info[the_row, i] = GLOBAL("MILL_NO_INJECTIONS_DEFAULT")
+
+        ELSEIF (i = 10) THEN
+
+            the_grid . user_info[the_row, i] = "1"
+
+
+        ELSEIF (i = 11) THEN
+
+            the_grid . user_info[the_row, i] = GLOBAL("MILL_PEAK_VALUE_DEFAULT")
+
+        ELSEIF (i = 14) OR
+               (i = 15) THEN
+
+            the_grid . user_info[the_row, i] = "1.00"
+
+        ELSEIF (i = 16) OR
+               (i = 17) THEN
+
+            the_grid . user_info[the_row, i] = "1.00000"
+
+        ELSEIF i = 18 THEN
+
+            the_grid . user_info[the_row, i] = the_trans_id
+
+        ELSEIF i = 19 THEN
+
+            the_grid . user_info[the_row, i] = the_proj
+
+        ELSE
+
+            the_grid . user_info[the_row, i] = BLANK_CELL
+
+        ENDIF
+
+        i = i + 1
+
+    ENDWHILE
+
+    the_grid . redisplay_row ( the_grid . current_row )
+    the_grid . rebuild()
+
+   
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE do_delete                                                           }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  05-Dec-2001  DK              Restricted Browse on Worklists.                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE do_delete ( self )
+
+    DECLARE the_row, the_grid
+
+    the_grid = self . parent_prompt . prompt_objects [1]
+    the_row = the_grid . current_row
+
+    the_grid . remove_row ( the_row )
+
+    array_remove_slice ( the_grid . user_info, 1, the_row )
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE reconfigure_sset_array                                              }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  05-Dec-2001  DK              Restricted Browse on Worklists.                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE reconfigure_sset_array(grid_display,
+                               sset_array) 
+
+    DECLARE count, rec_count, the_vial, old_vial, key, trans_id,
+            check_count, does_exist, the_samp, old_samp
+
+    ARRAY sset_array
+
+    rec_count = 1
+    count = 1
+    check_count = 1
+    old_vial = ""
+    old_samp = ""
+    does_exist = FALSE
+
+    WHILE rec_count <= SIZE_OF_ARRAY( grid_display . user_info) DO
+
+        the_vial = grid_display . user_info[ rec_count , 1]
+        the_samp = grid_display . user_info[ rec_count , 2]
+
+        IF ( the_vial <> old_vial) OR
+           ( the_samp <> old_samp) THEN
+
+            trans_id = STRIP(grid_display . user_info[rec_count, 18 ])
+
+            key = JUSTIFY(PAD(trans_id, " ", 10), "RIGHT"):
+                  STRIP(the_vial)
+
+            WHILE check_count <= SIZE_OF_ARRAY(sset_array) DO
+
+                IF key = sset_array [ check_count, SS_TRANS_ID      ]
+
+                    does_exist = TRUE
+
+                ENDIF
+
+                check_count = check_count + 1
+
+            ENDWHILE
+
+            IF does_exist = FALSE
+
+                sset_array [ count, SS_TRANS_ID      ] = key
+                sset_array [ count, SS_WORKSHEET_ID  ] = grid_display . user_info[rec_count, 27 ]
+                sset_array [ count, SS_PROJECT_ID    ] = grid_display . user_info[rec_count, 19 ]
+                sset_array [ count, SS_SAMPLESET_ID  ] = grid_display . user_info[rec_count, 26 ]
+                sset_array [ count, SS_SAMPLE_ID     ] = grid_display . user_info[rec_count, 5  ]
+                sset_array [ count, SS_SAMPLE_TYPE   ] = grid_display . user_info[rec_count, 20 ]
+                sset_array [ count, SS_NO_INJECTS    ] = grid_display . user_info[rec_count, 4  ]
+                sset_array [ count, SS_VIAL_NO       ] = grid_display . user_info[rec_count, 1  ]
+                sset_array [ count, SS_MILL_USER     ] = grid_display . user_info[rec_count, 22 ]
+                sset_array [ count, SS_MILL_PASS     ] = grid_display . user_info[rec_count, 23 ]
+                sset_array [ count, SS_STATUS        ] = grid_display . user_info[rec_count, 21 ]
+                sset_array [ count, THE_METHOD       ] = grid_display . user_info[rec_count, 13 ]
+                sset_array [ count, THE_FUNCTION     ] = grid_display . user_info[rec_count, 12 ]
+                sset_array [ count, THE_RUN_TIME     ] = grid_display . user_info[rec_count, 14 ]
+                sset_array [ count, THE_INJ_DELAY    ] = grid_display . user_info[rec_count, 15 ]
+                sset_array [ count, THE_SAMP_WEIGHT  ] = grid_display . user_info[rec_count, 16 ]
+                sset_array [ count, THE_DILUTION     ] = grid_display . user_info[rec_count, 17 ]
+                sset_array [ count, THE_INJ_VOL      ] = grid_display . user_info[rec_count, 3  ]
+                sset_array [ count, SS_ID_TEXT       ] = grid_display . user_info[rec_count, 2  ] { SampleName }
+                sset_array [ count, SS_TYPE          ] = grid_display . user_info[rec_count, 25 ]
+
+            ENDIF
+
+            check_count = 1
+            does_exist = FALSE
+            old_vial = the_vial
+            old_samp = the_samp
+            count = count + 1
+
+         ENDIF
+
+         rec_count = rec_count + 1
+
+    ENDWHILE
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE reconfigure_rset_array                                              }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  05-Dec-2001  DK              Restricted Browse on Worklists.                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE reconfigure_rset_array(grid_display,
+                               rset_array) 
+
+    DECLARE count, trans_id, id_num, test, seq_comp, key
+
+    count = 1
+
+    WHILE count <= SIZE_OF_ARRAY(grid_display . user_info) DO
+
+        trans_id = STRIP(grid_display . user_info[count, 18 ])
+        id_num   = STRIP(grid_display . user_info[count, 5  ])
+        test     = STRIP(grid_display . user_info[count, 7  ])
+        seq_comp = STRIP(grid_display . user_info[count, 8  ])
+
+        key = JUSTIFY(PAD(trans_id, " ", 10), "RIGHT"):
+                      PAD(id_num, " ", 30)                  :
+                      JUSTIFY(PAD(test  , " ", 10), "RIGHT"):
+                      PAD(seq_comp, " ", 40)
+
+
+        rset_array[ count, RS_TRANS_ID     ] = key                    
+        rset_array[ count, RS_PROJECT      ] = grid_display . user_info[count, 19 ]
+        rset_array[ count, RS_SAMPLESET    ] = grid_display . user_info[count, 26 ]
+        rset_array[ count, RS_MILL_COMP    ] = grid_display . user_info[count, 9  ]
+        rset_array[ count, RS_MILL_TYPE    ] = grid_display . user_info[count, 11 ]
+        rset_array[ count, RS_SMP_TYPE     ] = ""
+        rset_array[ count, RS_MILL_USER    ] = ""
+        rset_array[ count, RS_MILL_TIME    ] = ""
+        rset_array[ count, RS_INST_NO      ] = ""
+        rset_array[ count, RS_MILL_RES     ] = ""
+        rset_array[ count, RS_RES_PRES     ] = 0
+        rset_array[ count, RS_INJECT_ORDER ] = grid_display . user_info[count, 10 ]
+        rset_array[ count, RS_INJECT_NO    ] = grid_display . user_info[count, 4  ]
+        rset_array[ count, RS_LIST_TYP     ] = grid_display . user_info[count, 25 ]
+        rset_array[ count, RS_STATUS       ] = 0
+        rset_array[ count, RS_WORKSHEET_ID ] = grid_display . user_info[count, 27 ]
+        rset_array[ count, RS_ORDER_NUM    ] = count
+        rset_array[ count, RS_VIAL_NO      ] = grid_display . user_info[count, 1  ]
+        rset_array[ count, RS_ANALYSIS     ] = grid_display . user_info[count, 6  ]
+
+
+        count = count + 1
+
+    ENDWHILE
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE validate_the_grid                                                   }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  05-Dec-2001  DK              Restricted Browse on Worklists.                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE validate_the_grid ( grid_display )
+
+    DECLARE count, can_leave
+
+    count = 1
+    can_leave = TRUE
+    
+    WHILE count <= SIZE_OF_ARRAY( grid_display. user_info) DO
+ 
+        IF ( STRIP(grid_display . user_info[count, 1  ]) = "") OR
+           ( STRIP(grid_display . user_info[count, 2  ]) = "") OR
+           ( STRIP(grid_display . user_info[count, 3  ]) = "") OR
+           ( STRIP(grid_display . user_info[count, 4  ]) = "") OR
+           ( STRIP(grid_display . user_info[count, 5  ]) = "") OR
+           ( STRIP(grid_display . user_info[count, 6  ]) = "") OR
+           ( STRIP(grid_display . user_info[count, 7  ]) = "") OR
+           ( STRIP(grid_display . user_info[count, 8  ]) = "") OR
+           ( STRIP(grid_display . user_info[count, 9  ]) = "") OR
+           ( STRIP(grid_display . user_info[count, 10 ]) = "") OR
+           ( STRIP(grid_display . user_info[count, 11 ]) = "") OR
+           ( STRIP(grid_display . user_info[count, 12 ]) = "") OR
+           ( STRIP(grid_display . user_info[count, 13 ]) = "") OR
+           ( STRIP(grid_display . user_info[count, 14 ]) = "") OR
+           ( STRIP(grid_display . user_info[count, 15 ]) = "") OR
+           ( STRIP(grid_display . user_info[count, 16 ]) = "") OR
+           ( STRIP(grid_display . user_info[count, 17 ]) = "") OR
+           ( STRIP(grid_display . user_info[count, 18 ]) = "") OR
+           ( STRIP(grid_display . user_info[count, 19 ]) = "") THEN
+
+           can_leave = confirm_with_text("Data entry is incomplete!, Continue Anyway?")
+           count = 10000000
+
+        ENDIF
+ 
+        count = count + 1
+
+    ENDWHILE
+
+    RETURN(can_leave)
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE update_vials                                                        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  17-DEC-1997  ER              This checks if the process is already in a     }
+{                               write_transaction, and if not, starts one.     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE propogate_vials ( self )
+
+    DECLARE work_grid, count, vial_pos, the_vial , row_count
+
+    count = 1
+    row_count = 1
+
+    work_grid = self . parent_prompt . prompt_objects [1]
+    vial_pos  = work_grid . user_info[work_grid.current_row, VIAL_NO] 
+
+    count = work_grid.current_row
+
+    WHILE count <= (SIZE_OF_ARRAY ( work_grid . user_info )) DO
+
+       SET FORMAT "9999"
+       the_vial =  (vial_pos - 1) + row_count 
+
+       work_grid . user_info [ count, VIAL_NO ] = the_vial
+
+  
+       row_count = row_count + 1
+       count = count + 1
+
+    ENDWHILE
+
+    work_grid . redisplay_contents ( )
+
+ENDROUTINE
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE propogate_data                                                      }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  09-Nov-2001  DK              Remove Single Standard from Worklist           }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  main_form              reference            the main form                   }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE propogate_data (self)
+
+    DECLARE the_grid, the_col, the_row, count, the_data
+
+    the_grid = self . parent_prompt . prompt_objects [1]
+    the_col  = the_grid . current_column
+    the_row  = the_grid . current_row
+
+    IF ( the_col = 3  ) OR
+       ( the_col = 4  ) OR
+       ( the_col = 9  ) OR
+       ( the_col = 10 ) OR
+       ( the_col = 11 ) OR
+       ( the_col = 12 ) OR
+       ( the_col = 13 ) OR
+       ( the_col = 14 ) OR
+       ( the_col = 15 ) OR
+       ( the_col = 16 ) OR
+       ( the_col = 17 ) THEN
+
+        IF SIZE_OF_ARRAY(the_grid. user_info) > 1 THEN
+
+            the_data = the_grid . user_info [ the_row, the_col]
+
+            IF STRIP(the_data) <> "" THEN
+
+                count = the_row + 1
+
+                WHILE count <= (SIZE_OF_ARRAY ( the_grid . user_info )) DO
+
+                    the_grid . user_info [ count, the_col ] = the_data
+
+                    count = count + 1
+
+                ENDWHILE
+
+                the_grid . redisplay_contents ( )
+
+            ENDIF
+
+
+        ELSE
+
+            flashmessage("No Samples Selected!", TRUE)
+
+        ENDIF
+
+    ELSE
+
+        flashmessage("Not Valid for this column!", TRUE)
+
+    ENDIF
+
+ENDROUTINE
+
+
+    
+
+
+
+
+

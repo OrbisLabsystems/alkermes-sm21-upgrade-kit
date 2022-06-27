@@ -1,0 +1,570 @@
+{-----------------------------------------------------------------------------}
+{                                                                             }
+{ Module Name   : LS_RECEIPT.RPF ( based on $RECEIPT Report )                 }
+{                                                                             }
+{ Purpose       : For both Raw Materials and Laboratory Services, the sample  }
+{                 receipt headings should be the same as the template. The    }
+{                 date results required field to be calculated from the date  }
+{                 sample was received into the lab not the login date.        }
+{                                                                             }
+{ Document Ref. : P97684 Action Item 7 ( AI7 )                                }
+{                                                                             }
+{ Description   :                                                             }
+{                                                                             }
+{=============================================================================}
+{                                                                             }
+{  Modification History                                                       }
+{                                                                             }
+{  Ver.     Date        By          Description                               }
+{  ----     ----        --          -----------                               }
+{ 1.00      25/09/97    JOD         Release Version                           }
+{ ============================================================================}
+
+{******************************************************************************
+*
+* Module Name   : $RECEIPT.RPF
+*
+* Purpose       : Output receipts
+*
+* Document Ref. : SE/T/TVGL-WORK-REPORTS/1/3
+*
+* Specification :
+*
+* Portability   : Not Checked
+*
+* Re-entrant    :
+*
+*******************************************************************************}
+
+SET PRINTERCODES TRUE
+
+JOIN STANDARD_LIBRARY std_utils
+JOIN LIBRARY $lib_utils
+
+ENABLE WINDOWS
+
+SET FORMAT "9999999999"
+
+SET COMPILE_OPTION DECLARE
+
+{ Notes on paramaters passed in.
+  =============================
+Check to see if any parameters have been passed to the routine.
+
+Parameter 1 - Sample id, either numeric or text.
+Parameter 2 - Printer id, since when called from sample login there will
+	      always be two parameters.
+
+If there is one parameter the assumption made is that the reports output is to
+be directed to the default receipt printer.
+
+No parameters and the destination box is called.
+}
+
+{ Start of processing }
+
+DECLARE passed_wks_name, wks_name, printer_id
+
+{ See if a sample parameter has been passed in }
+
+IF GLOBAL ("PARAM_ACTIVE") THEN
+
+  	PROMPT FOR passed_wks_name
+  	wks_name = passed_wks_name
+
+  	IF NUMTEXT ( wks_name ) THEN
+
+    		wks_name = RIGHTSTRING (PAD (" ", " ", 10) : STRIP (wks_name), 10)
+    		wks_name = SELECT sample.id_numeric
+               			WHERE id_numeric = wks_name
+
+  	ELSE
+
+    		wks_name = SELECT sample.id_numeric
+               			WHERE id_text = wks_name
+  	ENDIF
+
+  	IF GLOBAL ("PARAM_ACTIVE") THEN
+
+    		PROMPT FOR printer_id
+    		IF printer_id = " " THEN
+
+      			SET NAME "DEFAULT_TEXT/"
+			printer_id = GLOBAL ( "TEXT_ID" )
+
+    		ELSE
+
+		      	SET NAME "PRINTER/" : STRIP ( printer_id )
+    		ENDIF
+  	ELSE
+
+    		IF ( wks_name = EMPTY ) THEN
+      			wks_name = " "
+    		ENDIF
+
+    		SET NAME "DEFAULT_TEXT/"
+		printer_id = GLOBAL ( "TEXT_ID" )
+  	ENDIF
+
+ELSE
+
+	printer_id = " "
+	wks_name = " "
+	passed_wks_name = ""
+
+ENDIF
+
+{ If the printer is blank then after all that stuff, just prompt for it }
+
+IF ( printer_id = "" ) THEN
+	SET NAME "DEFER/"
+ENDIF
+
+sample_receipt ( passed_wks_name, wks_name, printer_id )
+
+EXIT
+
+{------------------------------------------------------------------------------}
+
+ROUTINE sample_receipt ( VALUE passed_wks_name,
+		         VALUE wks_name,
+		         VALUE printer_id )
+
+	{ Analyse the sample name given.  If none provided prompt the user.
+	If it could not be found tell the user and teminate,
+	otherwise print the receipt as requested. }
+
+	DECLARE form
+
+	initialise_screen ( form, wks_name, printer_id )
+
+	IF ( wks_name = " " ) THEN
+
+  		IF get_sample_id ( wks_name, form ) THEN
+
+    			print_receipt ( wks_name )
+
+  		ENDIF
+
+	ELSEIF ( wks_name <> EMPTY ) THEN
+
+    		print_receipt ( wks_name )
+
+	ELSE
+  		flash_message ( GET_USER_MESSAGE ( "RECEIPT_DISPLAY_1", 1 ) :
+			 	STRIP ( passed_wks_name ) :
+       				GET_USER_MESSAGE ( "RECEIPT_DISPLAY_2", 1 ),
+				TRUE )
+	ENDIF
+
+	{ Send the label to the printer }
+
+	FLUSH_LITERAL
+
+	form . end_prompt ()
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE initialise_screen ( form,
+			    VALUE wks_name,
+			    VALUE printer_id )
+
+	{ Routine to set up windows }
+
+	DECLARE id_prompt, prompt_col, prompt_1, prompt_2, prompt_3,
+		separator, prompt_len, form_height
+
+	IF ( printer_id = "" ) THEN
+		form_height = 3
+	ELSE
+		form_height = 4
+	ENDIF
+
+	PROMPT OBJECT form
+		CLASS PROMPT_CLASS_FORM
+		WITH  ( column       = 21,
+			row          = 10,
+			height       = form_height,
+			width        = 40,
+			border       = TRUE,
+			proportional = TRUE,
+                	help_context = "$RECEIPT_SCREEN",
+			button_style = FORM_BUTTON_NONE,
+			header 	     = GET_USER_MESSAGE ("RECEIPT_DISPLAY_3"
+							 ,1 ) )
+
+	prompt_1 = GET_USER_MESSAGE ( "RECEIPT_DISPLAY_4", 1 )
+	prompt_2 = GET_USER_MESSAGE ( "RECEIPT_DISPLAY_5", 1 )
+	prompt_3 = GET_USER_MESSAGE ( "RECEIPT_DISPLAY_6", 1 )
+
+	{ Get the max length of all the prompts }
+
+	prompt_len = find_max_number ( LENGTH ( prompt_1 ),
+				       find_max_number( LENGTH ( prompt_2 ),
+							LENGTH ( prompt_3 ) ) )
+	separator = ""
+
+	{ Put colon separators on the character cell to make the prompts
+	  look nice. }
+
+	IF ( GLOBAL ( "TERMTYPE" ) <> "GUI" ) THEN
+		separator = " :"
+	ENDIF
+
+	prompt_1 = PAD ( prompt_1, " ", prompt_len ) : separator
+	prompt_2 = PAD ( prompt_2, " ", prompt_len ) : separator
+	prompt_3 = PAD ( prompt_3, " ", prompt_len ) : separator
+
+	prompt_col = prompt_len + STRINGLENGTH ( separator ) + 1
+
+	form . add_display ( prompt_1,
+			     1, 1,
+			     PROMPT_RENDITION_RAISED + PROMPT_RENDITION_BOLD )
+
+	form . add_display ( prompt_2,
+			     1, 2,
+			     PROMPT_RENDITION_RAISED + PROMPT_RENDITION_BOLD )
+
+	prompt_col = prompt_col + 1
+
+	IF ( wks_name = " " ) THEN
+
+		PROMPT OBJECT id_prompt
+ 			ON LINE 1 FROM prompt_col TO prompt_col + 30
+			BROWSE ON sample
+
+		form . add_prompt ( id_prompt )
+
+	ELSE
+		form . add_display ( PAD( wks_name, " ", 30 ),
+			     	     prompt_col, 1,
+			     	     PROMPT_RENDITION_LOWERED )
+	ENDIF
+
+	form . add_display ( PAD ( GLOBAL ( "CURRENT_LIBRARY" ), " ", 20 ),
+			     prompt_col, 2,
+			     PROMPT_RENDITION_LOWERED )
+
+	{ If a printer has been specified then display it on the form }
+
+	IF ( printer_id <> "" ) THEN
+
+		form . add_display ( PAD( printer_id, " ", 10 ),
+			     	     prompt_col, 3,
+			     	     PROMPT_RENDITION_LOWERED )
+
+		form . add_display ( prompt_3,
+				     1, 3,
+				     PROMPT_RENDITION_RAISED +
+							PROMPT_RENDITION_BOLD )
+	ENDIF
+
+	form . start_prompt ()
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE get_sample_id ( wks_name, form )
+
+	{ Get the sample to print a receipt for }
+
+	REPEAT
+
+		form . wait_prompt ()
+
+		wks_name = form . prompt_objects [ 1 ] . value
+
+	UNTIL ( ( wks_name <> " " ) OR
+		( form . get_lastkey () = "EXIT" ) )
+
+	RETURN ( form . get_lastkey () <> "EXIT" )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE print_receipt ( VALUE wks_name )
+
+  	{ Get the sample and test information to put on the receipt }
+
+	DECLARE anal_name, test_schedule
+
+	print_sample_info ( wks_name )
+
+	test_schedule = SELECT sample . test_schedule
+
+  	anal_name = SELECT test . analysis_id
+               		WHERE sample_id = wks_name
+               		ORDER ON analysis_id
+
+  	IF ( anal_name = EMPTY ) THEN
+
+    		output_notests ()
+
+	ELSE
+
+    		output_test_schedule_header ( test_schedule )
+
+    		REPEAT
+
+      			output_test_details ()
+
+	      		NEXT test
+      			anal_name = SELECT test.analysis_id
+
+    		UNTIL ( anal_name = EMPTY )
+  	ENDIF
+
+  	output_last_line ()
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE print_sample_info ( VALUE wks_name )
+
+	{ Print the sample information.
+	  This may be customised for individual use. }
+
+	DECLARE sampleid, sampletxt, todays_dat, time_now, logindate,
+		samplogin
+{, jobid, projectid, productid, customerid, samplename,
+		samplingpt, sampletype, sampledesc, chitname, hazdid, prepid,
+		locnid,
+}
+        DECLARE receivetime, sampreceived, startdate,
+		startsamptest, resdate, sampresreq
+{ , prio}
+
+	DECLARE tab_1, tab_2, t, tab_3, tab_4
+{, tab_5, tab_6, tab_7, tab_8,
+		tab_9, tab_10, tab_11, tab_12, tab_13, tab_14, tab_15, tab_16,
+		tab_17
+}
+        DECLARE samp_tmpl, next_entry, first_time, field_value, prompt_field
+
+	sampleid      = SELECT sample.id_numeric
+	                  WHERE id_numeric = wks_name
+
+	sampletxt     = SELECT sample.id_text
+	todays_dat    = SUBSTRING (DATE (NOW),1,11)
+	time_now      = substring(date(now),13,5)
+	logindate     = SELECT sample.login_date
+	samplogin     = DATE (logindate)
+
+{	jobid         = SELECT sample.job_name
+	projectid     = SELECT sample.project_id
+	productid     = SELECT sample.product_name
+	customerid    = SELECT sample.customer_id
+	samplename    = SELECT sample.sample_name
+	samplingpt    = SELECT sample.sampling_point
+	sampletype    = SELECT sample.sample_type
+	sampledesc    = SELECT sample.description
+	chitname      = SELECT sample.invoice_number
+	hazdid        = SELECT sample.hazard
+	prepid        = SELECT sample.preparation_id
+	locnid        = SELECT sample.location
+}
+	receivetime   = SELECT sample.recd_date
+	sampreceived  = DATE (receivetime)
+	startdate     = SELECT sample.datestarttest
+	startsamptest = DATE (startdate)
+	resdate       = SELECT sample.dateresreq
+	sampresreq    = DATE (resdate)
+
+{	prio          = SELECT sample.priority
+}
+
+      	tab_1 =  GET_USER_MESSAGE ( "RECEIPT_TAB_1", 1 )
+      	tab_2 =  GET_USER_MESSAGE ( "RECEIPT_TAB_2", 1 )
+      	t     =  GET_USER_MESSAGE ( "RECEIPT_T", 1 )
+      	tab_3 =  GET_USER_MESSAGE ( "RECEIPT_TAB_3", 1 )
+      	tab_4 =  GET_USER_MESSAGE ( "RECEIPT_TAB_4", 1 )
+
+{      	tab_5 =  GET_USER_MESSAGE ( "RECEIPT_TAB_5", 1 )
+      	tab_6 =  GET_USER_MESSAGE ( "RECEIPT_TAB_6", 1 )
+      	tab_7 =  GET_USER_MESSAGE ( "RECEIPT_TAB_7", 1 )
+      	tab_8 =  GET_USER_MESSAGE ( "RECEIPT_TAB_8", 1 )
+      	tab_9 =  GET_USER_MESSAGE ( "RECEIPT_TAB_9", 1 )
+      	tab_10 = GET_USER_MESSAGE ( "RECEIPT_TAB_10", 1 )
+      	tab_11 = GET_USER_MESSAGE ( "RECEIPT_TAB_11", 1 )
+      	tab_12 = GET_USER_MESSAGE ( "RECEIPT_TAB_12", 1 )
+      	tab_13 = GET_USER_MESSAGE ( "RECEIPT_TAB_13", 1 )
+      	tab_14 = GET_USER_MESSAGE ( "RECEIPT_TAB_14", 1 )
+      	tab_15 = GET_USER_MESSAGE ( "RECEIPT_TAB_15", 1 )
+	tab_16 = GET_USER_MESSAGE ( "RECEIPT_TAB_16", 1 )
+      	tab_17 = GET_USER_MESSAGE ( "RECEIPT_TAB_17", 1 )
+}
+                                      { ===================================== }
+                                      { JOD, 24-sep-1997                      }
+                                      { Elan Phase II                         }
+                                      { Start of modifications                }
+                                      { ===================================== }
+
+LITERAL
+
+$tab_1_____________________$sampleid_  $tab_2____ $todays_dat $t_$time_now
+            $tab_3_________$sampletxt____________________
+
+ $tab_4___________________________________________________________________________
+
+ $samplogin_______ $sampreceived____ $startsamptest___ $sampresreq______
+
+$ENDLITERAL
+
+
+	samp_tmpl  = SELECT sample . template_id
+
+        next_entry = SELECT template_fields . field_name
+                      WHERE (table_name = "SAMPLE")
+                        AND (template_id = samp_tmpl)
+                   ORDER ON order_number
+
+                                      { ===================================== }
+                                      { Display all sample template fields    }
+                                      { ===================================== }
+
+        samp_tmpl = STRIP ( samp_tmpl )
+        first_time = TRUE
+
+        WHILE ( next_entry <> EMPTY ) AND NOT ( BLANK ( next_entry ) )
+
+            IF first_time THEN
+LITERAL
+                Fields assigned from Sample Template $samp_tmpl
+
+ Prompt Text                      Value
+--------------------------------------------------------------------------------
+$ENDLITERAL
+                first_time = FALSE
+
+            ENDIF
+
+            prompt_field = ""
+            field_value = ""
+            field_value = STRIP ( SELECT sample . 'next_entry' )
+            prompt_field = SELECT template_fields . text_prompt
+
+LITERAL
+ $prompt_field_________________   $field_value__________________________________
+$ENDLITERAL
+            NEXT TEMPLATE_FIELDS
+            next_entry = SELECT template_fields . field_name
+
+        ENDWHILE
+
+
+LITERAL
+
+________________________________________________________________________________
+
+$ENDLITERAL
+
+{ LITERAL
+
+$tab_1_____________________$sampleid_  $tab_2____ $todays_dat $t_$time_now
+            $tab_3_________$sampletxt____________________
+
+ $tab_4___________________________________________________________________________
+
+ $samplogin_______ $sampreceived____ $startsamptest___ $sampresreq______
+
+  $tab_5____________________$jobid________________________
+  $tab_6____________________$projectid
+  $tab_7____________________$customerid
+  $tab_8____________________$chitname_
+  $tab_9____________________$productid
+  $tab_10___________________$samplingpt
+  $tab_11___________________$sampletype
+  $tab_12___________________$sampledesc_________________________________________
+  $tab_13___________________$samplename_________________________________________
+  $tab_14___________________$hazdid___
+  $tab_15___________________$locnid___
+  $tab_16___________________$prio_____
+  $tab_17___________________$prepid___
+
+________________________________________________________________________________
+
+$ENDLITERAL
+}
+                                      { ===================================== }
+                                      { JOD, 24-sep-1997                      }
+                                      { Elan Phase II                         }
+                                      { End of modifications                  }
+                                      { ===================================== }
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE output_notests
+
+	DECLARE tab_18
+
+      	tab_18=GET_USER_MESSAGE ( "RECEIPT_TAB_18", 1 )
+
+LITERAL
+      $tab_18____________________________________________________________
+
+$ENDLITERAL
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE output_test_schedule_header ( VALUE tsch )
+
+	DECLARE tab_19, tab_20, tab_21
+
+      	tab_19=GET_USER_MESSAGE ( "RECEIPT_TAB_19", 1 )
+      	tab_20=GET_USER_MESSAGE ( "RECEIPT_TAB_20", 1 )
+      	tab_21=GET_USER_MESSAGE ( "RECEIPT_TAB_21", 1 )
+
+LITERAL
+          $tab_19__________________________________________
+
+$tab_20_______________________$tsch_____
+
+ $tab_21________________________________________________________
+
+$ENDLITERAL
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE output_test_details
+
+	{ Output test info.  The test record is already selected }
+
+	DECLARE anal_number, anal_inst, anal_anal, anal_desc
+
+      	anal_number = SELECT test . test_number
+      	anal_inst   = SELECT test . instrument_id
+      	anal_anal   = SELECT test . analysis_id
+
+      	anal_desc   = SELECT analysis . description
+                       WHERE identity=anal_anal
+LITERAL
+ $anal_number  $anal_inst    $anal_anal     $anal_desc______________________
+$ENDLITERAL
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE output_last_line
+
+	{ Put a line at the end }
+
+LITERAL
+--------------------------------------------------------------------------------
+
+$ENDLITERAL
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}

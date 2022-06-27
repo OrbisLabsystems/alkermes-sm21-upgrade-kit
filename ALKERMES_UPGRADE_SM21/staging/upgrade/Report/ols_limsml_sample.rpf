@@ -1,0 +1,1701 @@
+{*******************************************************************************
+*
+* Module Name   : OLS_LIMSML_SAMPLE
+*
+* Purpose       : Sample LIMSML Entity Handling
+*
+* Document Ref  : N/a 
+*
+* Version 1.3
+*******************************************************************************} 
+
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_STRUCTURE
+JOIN STANDARD_LIBRARY STD_VGL
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN STANDARD_LIBRARY STD_MESSAGE
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN LIBRARY $LIMSML_LIB
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $BL
+JOIN LIBRARY $BL_IDS_BUILDER
+JOIN LIBRARY $BL_ITEM_DATATABLE
+JOIN LIBRARY $LIMSML_HELPER
+JOIN LIBRARY $LIMSML_PROCESS
+JOIN LIBRARY $BL_ITEM_DATACOLUMN
+JOIN LIBRARY $BL_COLUMN
+JOIN LIBRARY $BL_IDT_FORMATTED
+JOIN LIBRARY $LIMSML_COLUMN_DT
+JOIN LIBRARY $BL_PROMPT_INFO
+JOIN LIBRARY OLS_LIMSML_DOC
+
+SET NOTPROTECTED
+SET NAME "DEFER/"
+SET COMPILE_OPTION DECLARE
+ENABLE WINDOWS
+
+CONSTANT OLS_ERRORS_CLASS        = "OLS_ERRORS"
+CONSTANT CON_ROUTINE_TYPE_SAMP   = "R_SAMP"
+CONSTANT CON_ROUTINE_TYPE_TEST   = "R_TEST"
+CONSTANT CON_ROUTINE_TYPE_RES    = "R_WRITE"
+CONSTANT CON_ROUTINE_TYPE_STATUS = "R_STATUS"
+CONSTANT CON_ROUTINE_TYPE_USER   = "R_USER"
+
+
+{ 
+Enter results for 1 or more sample
+}
+GLOBAL ROUTINE ols_sample_result_entry ( processor, entity, action, response )
+
+	DECLARE ols_doc, actions_array, limsml_error_handler, has_errors
+
+	has_errors = FALSE
+
+	ols_limsml_doc_define ()
+
+	read_limsml_doc ("OLS_ENTER_RESULTS", entity, action, 
+					ols_doc, actions_array)
+
+	limsml_error_handler = processor . get_root_error() 
+	processing_main (ols_doc, actions_array, limsml_error_handler, FALSE,
+				 has_errors, "N/A")
+
+ENDROUTINE
+
+GLOBAL ROUTINE processing_main (ols_doc, actions_array, limsml_error_handler, 
+					VALUE is_retry, has_errors, 
+					VALUE retry_record_id )
+
+	DECLARE samp_ok, samp_count,  status, or_error_status,
+	ols_parameter_array, ols_sm_groups_array , error_handler , ols_doc_child
+
+	has_errors = FALSE
+
+	ols_errors_define_class ()
+	CREATE OBJECT OLS_ERRORS_CLASS, error_handler
+
+	samp_ok = TRUE
+
+	{ Command parameters }
+
+	status = read_parameters ( actions_array, ols_parameter_array, ols_sm_groups_array )  
+
+	IF (status <> EMPTY) THEN
+
+		samp_ok = FALSE
+		ols_add_error (error_handler, status)
+
+	ENDIF
+
+	IF (status = EMPTY) THEN
+
+		{ Change transaction name here, so that SM details can be updated }
+	    	set_transaction (ols_parameter_array) 
+
+	ENDIF
+
+	{ Loop through samples and process }
+	or_error_status = ""   { will be set later to an error message, or EMPTY }
+	samp_count = 0
+
+	WHILE (samp_ok ) AND (samp_count < ols_doc.col_children.size()) DO
+
+		samp_count = samp_count + 1
+		ols_doc_child = ols_doc.col_children. get_by_number (samp_count)	
+
+		samp_ok =  one_sample_result_entry 
+				( ols_doc_child,  ols_parameter_array, 
+					ols_sm_groups_array, error_handler, or_error_status )	
+
+	ENDWHILE
+
+
+	{ If or_error_status has an error, store it (unless other errors already, as this is lower priority) }
+
+	IF (NOT error_handler.has_errors) AND
+		(or_error_status <> EMPTY) AND
+		 (or_error_status <> "") THEN
+
+		ols_add_error (error_handler, or_error_status )
+
+	ENDIF
+
+	{ Commit in order to update the audit details }	
+
+	IF (NOT error_handler.has_errors) THEN
+		
+		COMMIT
+		set_audits (ols_parameter_array)
+
+	ELSE
+
+		ROLLBACK 
+
+		has_errors = TRUE
+
+		IF (GLOBAL("OLS_IM_AUTO_RETRY")) AND (NOT is_retry) THEN
+
+			START WRITE TRANSACTION "WriteErrors"
+
+			status = store_limsml_for_retry (ols_doc, 
+						ols_parameter_array, error_handler)
+
+			IF (status = EMPTY) THEN
+
+				{ Clear the errors, report none because SM will handle from now on }
+				error_handler . clear ()
+
+			ELSE
+
+				error_handler.add_error ("Error setting up for retry in SampleManager: ":status)
+
+			ENDIF
+
+			COMMIT
+
+		ELSEIF (GLOBAL("OLS_IM_AUTO_RETRY")) AND (is_retry) THEN
+
+			status = update_error_log (retry_record_id, error_handler, TRUE)
+
+		ENDIF
+
+	ENDIF
+
+	IF (NOT is_retry) THEN
+
+		{ output limsml errors }	
+		error_handler . set_limsml_errors ( limsml_error_handler )
+
+	ENDIF
+
+ENDROUTINE
+
+ROUTINE store_limsml_for_retry (ols_doc, params_array, error_handler)
+
+	DECLARE status, check_ok, dir, unique_id, yr, grp, op
+
+	status = EMPTY
+
+	{ 1 row in database and 1 file with data and 1 file with error messages }
+	
+	{ db }
+
+	IF (status=EMPTY) THEN
+
+		SET DATE FORMAT "YZ"
+		yr = STRIP (NOW)
+		RESTORE DATE FORMAT
+		unique_id = NUMBER_TO_TEXT (INCREMENT ("OLS_IM_ID",yr), "99999"):yr
+		unique_id = STRIP (unique_id)
+		WHILE (STRINGLENGTH(unique_id)<20) DO
+			unique_id = "0":unique_id
+		ENDWHILE
+
+		RESERVE ENTRY ols_im_data, unique_id, check_ok
+
+		IF (check_ok <> EMPTY) THEN
+
+			status = "Error writing to ols_im_data: ":check_ok
+
+		ELSE
+
+			grp = ""
+			op = read_2d_lookup (params_array,  "OLS_USER_ID")
+			IF (op <> EMPTY) THEN
+				grp = SELECT personnel . default_group WHERE identity = op
+				IF (grp=EMPTY) THEN
+					grp = ""
+				ENDIF
+			ENDIF
+
+			ASSIGN ols_im_data.status = 2
+			ASSIGN ols_im_data.sm_user = op
+			ASSIGN ols_im_data.group_id = grp
+			ASSIGN ols_im_data.created_on = NOW
+			ASSIGN ols_im_data.im_ip = read_2d_lookup (params_array,  "OLS_IM_IP")
+			ASSIGN ols_im_data.im_ipo = read_2d_lookup (params_array,  "OLS_IM_IPO")
+			ASSIGN ols_im_data.data_id = read_2d_lookup (params_array,  "OLS_DATA_ID")
+			ASSIGN ols_im_data.last_attempt_date = NOW
+			UPDATE ols_im_data 
+
+		ENDIF
+
+	ENDIF
+
+	{ LIMSML to file }
+
+	IF (status=EMPTY) THEN
+
+		{ Need set original sm user id, not mapped one }
+		params_array [1,2] = params_array [1,3]
+
+		dir = GLOBAL ("OLS_IM_DATA_LOCN")
+		status = write_limsml_doc (ols_doc, params_array, 
+					dir:STRIP(unique_id):".d")
+
+	ENDIF
+
+	{ Errors to file }
+
+	IF (status=EMPTY) THEN
+
+		status = update_error_log (unique_id, error_handler, FALSE)
+
+	ENDIF
+
+
+	RETURN (status)
+
+ENDROUTINE
+
+
+ROUTINE update_error_log (VALUE unique_id, error_handler, VALUE is_update)
+
+	DECLARE dir, filename, check_ok, status, file_opened, i
+
+	status = EMPTY
+	file_opened = FALSE
+
+	dir = GLOBAL ("OLS_IM_ERROR_LOCN")
+	filename = dir:STRIP(unique_id):".e"
+
+	IF (is_update) THEN
+
+		FILE EXTEND filename, check_ok
+	ELSE
+
+		FILE CREATE filename, check_ok
+	ENDIF
+
+	IF (check_ok = EMPTY) THEN
+
+		file_opened = TRUE
+
+	ELSE
+
+		status = check_ok
+
+	ENDIF
+
+	IF (status = EMPTY) THEN
+
+		FILE WRITE filename, "", check_ok
+
+		SET DATE FORMAT "DZ-MON-YYYZ H24:MI"
+		FILE WRITE filename, STRIP(NOW), check_ok
+		RESTORE DATE FORMAT
+
+	ENDIF
+
+	i = 0
+
+	WHILE (status = EMPTY) AND
+		( i < size_of_array(error_handler.error_array)) DO
+
+		i = i + 1
+		FILE WRITE filename, error_handler.error_array[i], check_ok
+
+	ENDWHILE
+
+	IF (file_opened) THEN
+
+		FILE WRITE filename, "=======================================================================", check_ok
+		FILE CLOSE filename, check_ok
+
+	ENDIF
+
+	RETURN (status)
+
+ENDROUTINE
+
+
+{
+Enters results for a sample. Not called directly from limsml processor but very close to SAMPLE RESULT_ENTRY handler
+}
+ROUTINE one_sample_result_entry ( ols_doc,  ols_parameter_array, 
+							ols_sm_groups_array, error_handler, or_error_status )
+
+
+	DECLARE   test_entity, id_numeric, test_number, job,
+	test_count, test_ok, err_mess,  samp_ok , grp_field
+
+	samp_ok = TRUE 
+	id_numeric = get_sample_id_numeric( ols_doc, error_handler, ols_parameter_array ,
+									samp_ok )
+
+     { The -99 thing is workaround for when when dont need sample ID }
+
+	IF (samp_ok) AND ( id_numeric <> 0 ) AND
+		(id_numeric <> -99) THEN
+
+		{ group security check }
+		grp_field = "GROUP_ID"
+		IF (valid_field ("SAMPLE",grp_field)) THEN
+			IF (NOT group_security_check (SELECT sample.'grp_field' WHERE id_numeric=id_numeric,
+					ols_sm_groups_array)) THEN
+
+				samp_ok = FALSE
+				err_mess = get_msg ("GROUP_S1"):id_numeric
+				ols_add_error (error_handler, err_mess)
+
+			ENDIF
+		ENDIF
+
+		job = SELECT sample.job_name WHERE id_numeric=id_numeric
+
+		IF (STRIP(job) <> "") THEN
+			IF (NOT group_security_check (SELECT job_header.group_id WHERE job_name=job,
+                                                 ols_sm_groups_array)) THEN
+
+				samp_ok = FALSE
+				err_mess = get_msg ("GROUP_S2"):id_numeric
+				ols_add_error (error_handler, err_mess)
+
+			ENDIF
+		ENDIF
+
+	   ELSE
+
+		{ error message set already }
+
+	   ENDIF
+
+
+        IF (samp_ok) AND ( id_numeric <> 0 ) THEN
+
+        	test_count = 1
+        	test_ok = TRUE
+
+        	WHILE ( test_ok )  AND (test_count <= ols_doc.col_children.size()) DO
+
+			test_entity = ols_doc.col_children. get_by_number (test_count)	
+
+        		IF ( TRUE ) THEN
+
+      			test_number = get_test_number( id_numeric,  test_entity, error_handler, 
+						ols_parameter_array  )
+
+        			IF ( test_number > 0 ) THEN
+
+					{ group security check }
+					DECLARE anal
+					anal = SELECT test.analysis WHERE test_number = test_number
+
+					IF (NOT group_security_check (SELECT versioned_analysis.group_id WHERE 						identity=anal,
+                 				ols_sm_groups_array)) THEN
+
+						test_number = 0
+						samp_ok = FALSE
+
+						err_mess = get_msg ("GROUPTEST_S1"):anal
+						ols_add_error (error_handler, err_mess)
+
+					ENDIF
+
+			ENDIF
+
+        			IF ( test_number > 0 ) THEN
+
+					DECLARE appr
+
+					appr = operator_approval_check (
+								read_2d_lookup (ols_parameter_array,  "OLS_USER_ID"), 
+						          SELECT test.analysis , 
+						          SELECT test.instrument , 
+								read_2d_lookup (ols_parameter_array,  "OLS_ANALYSIS_DATE")
+								err_mess)
+
+					IF (NOT appr) THEN
+
+						test_number = 0
+						samp_ok = FALSE
+
+						err_mess = get_msg ("OA"):err_mess
+						ols_add_error (error_handler, err_mess)
+
+					ENDIF
+
+           		 ENDIF
+
+				{ workaround , to allow continue }
+
+				IF (id_numeric <> -99) THEN
+
+					test_number = 1
+	
+				ENDIF
+
+        			IF ( test_number = 0 ) THEN
+
+        				test_ok = FALSE
+					samp_ok = FALSE
+
+        			ELSE
+
+        				test_ok = process_test_results ( id_numeric, test_number,test_entity, 
+							error_handler, ols_parameter_array , or_error_status )
+
+        				IF ( test_ok ) THEN
+
+        					test_count = test_count + 1
+
+        				ENDIF
+
+        			ENDIF
+
+
+        		ENDIF
+
+
+        	ENDWHILE
+
+        ENDIF
+
+	RETURN (samp_ok)
+
+ENDROUTINE
+
+{
+Read the LIMSML parameters
+Also sets the Sm Groups array for the specified user
+}
+ROUTINE read_parameters ( actions_array, ols_parameter_array, ols_sm_groups_array )
+
+     DECLARE param_val, i, j, generic_default_val, rec, sm_user, status
+
+	status = EMPTY
+
+	generic_default_val = EMPTY
+     ARRAY ols_parameter_array   ARRAYSIZE (0,3)
+     ARRAY ols_sm_groups_array    ARRAYSIZE (0)
+
+	i = 1
+     ols_parameter_array [i,1] = "OLS_USER_ID"
+	i = i + 1
+     ols_parameter_array [i,1] = "OLS_COMMENT"
+	i = i + 1
+     ols_parameter_array [i,1] = "OLS_DATATYPE"
+	i = i + 1
+     ols_parameter_array [i,1] = "OLS_FORCE_CALC_COUNT"
+	i = i + 1
+     ols_parameter_array [i,1] = "OLS_DOCUMENT_ID"
+	i = i + 1
+     ols_parameter_array [i,1] = "OLS_IM_IP"
+	i = i + 1
+     ols_parameter_array [i,1] = "OLS_IM_IPO"
+	i = i + 1
+     ols_parameter_array [i,1] = "OLS_DATA_ID"
+	i = i + 1
+     ols_parameter_array [i,1] = "OLS_ANALYSIS_DATE"
+
+	i = 0
+
+	WHILE (i < size_of_array(ols_parameter_array)) DO
+
+		i = i + 1
+
+		j = 0
+		param_val  = generic_default_val 
+
+		WHILE (param_val  = generic_default_val ) AND
+			(j < size_of_array(actions_array)) DO
+
+			j = j + 1
+			IF ( actions_array[j,1] = ols_parameter_array [i,1]) THEN
+				param_val = actions_array [j,2]
+			ENDIF
+									
+		ENDWHILE
+
+		ols_parameter_array [i,2] = param_val 
+
+	ENDWHILE
+
+	sm_user = read_2d_lookup(ols_parameter_array,"OLS_USER_ID")
+	status = check_user (ols_parameter_array, sm_user)
+	ols_parameter_array [1,3] = ols_parameter_array [1,2]   {  Need original user for if backup for retry }
+	ols_parameter_array [1,2] = sm_user   {  IMPORTANT to set the correct user ID in array }
+
+	i = i + 1
+	ols_parameter_array [i,1] = "OLS_TRANSACTION"
+	ols_parameter_array [i,2] = "OLS__":STRIP(sm_user)
+
+
+    { check SM user }
+
+    IF (status = EMPTY) THEN
+
+        rec = SELECT password.identity WHERE identity = sm_user
+				AND frozen=FALSE
+
+        IF (rec = EMPTY) THEN
+
+	        status = get_msg ("LIMSUSER1"):sm_user
+
+        ENDIF
+
+    ENDIF
+
+    { Get SM groups }
+
+    IF (status = EMPTY) THEN
+
+       rec = SELECT personnel . default_group
+                 WHERE identity = sm_user
+	   	        AND  removeflag = FALSE
+
+        IF (rec <> EMPTY) THEN
+
+             ols_sm_groups_array [size_of_array(ols_sm_groups_array)+1] = STRIP(rec)
+
+        ELSE
+
+	    	    status = get_msg ("LIMSOP1"):sm_user
+
+        ENDIF
+
+    ENDIF
+
+    rec = SELECT grouplink . group_id
+             WHERE operator_id = sm_user
+
+    WHILE (status=EMPTY) AND (rec <> EMPTY) DO
+
+        ols_sm_groups_array [size_of_array(ols_sm_groups_array)+1] = rec
+
+        rec = SELECT grouplink . group_id
+        NEXT grouplink  
+
+    ENDWHILE
+
+	RETURN (status)
+
+ENDROUTINE
+
+ROUTINE read_2d_lookup (array_lookup,  VALUE key)
+
+	DECLARE i, ret
+
+	ret = EMPTY
+
+	i = 0
+
+	WHILE (i < size_of_array (array_lookup)) DO
+
+		i = i + 1
+
+		IF (STRIP(TOUPPER( array_lookup [i, 1] )) = STRIP(TOUPPER(key)) ) THEN
+
+			ret = array_lookup [i, 2]
+
+		ENDIF
+
+	ENDWHILE
+
+	RETURN ( ret )
+
+ENDROUTINE
+
+
+{
+Returns the id_numeric
+}
+ROUTINE get_sample_id_numeric ( ols_doc, error_handler, ols_parameter_array, samp_ok  )
+
+
+	DECLARE num_field, num_val,  return_id, err_mess, i,
+				 vrout, vlib, error_status, is_present
+
+	samp_ok = FALSE
+
+	num_field = EMPTY
+	i = 0
+	WHILE (num_field = EMPTY) AND
+		(i < size_of_array (ols_doc.fields_array) ) DO
+
+		i = i + 1
+		IF (ols_doc.fields_array[i,1]="_OLS_SAMPLE_ID") THEN
+			num_field = ols_doc.fields_array[i,2]
+		ENDIF
+
+	ENDWHILE
+
+	IF( num_field <> EMPTY ) THEN
+
+		num_val = num_field  
+		
+		is_present = FALSE
+		error_status = select_data_type (ols_parameter_array, CON_ROUTINE_TYPE_SAMP,
+									 FALSE, is_present)
+
+		IF (error_status=EMPTY) THEN
+
+			vlib = STRIP(SELECT ols_im_data_type_lst . vgl_report)
+			vrout = STRIP(SELECT ols_im_data_type_lst . vgl_routine)
+
+			CALL_ROUTINE vrout IN LIBRARY vlib
+				USING num_val , return_id
+				RETURNING error_status
+
+		ENDIF
+
+		IF ( error_status = EMPTY ) THEN
+
+			samp_ok = TRUE
+
+		ELSE
+
+			ols_add_error (error_handler, error_status)
+			return_id = 0
+
+		ENDIF
+
+	ELSE
+
+		return_id = 0
+
+		err_mess = get_msg ("INVAL_SAMP")
+		ols_add_error (error_handler, err_mess)
+
+	ENDIF
+
+
+	RETURN( return_id )
+
+ENDROUTINE
+
+{
+ Returns the test number for the given sample_id and test_entity.
+}
+ROUTINE get_test_number ( sample_id, test_entity, error_handler,  ols_parameter_array  )
+
+
+	DECLARE ent, anal_id, err_mess, return_num, i,
+				 vrout, vlib, error_status, is_present
+
+	return_num = EMPTY
+	anal_id=""
+	ent = EMPTY
+	i = 0
+	WHILE (ent = EMPTY) AND (i < size_of_array(test_entity.fields_array)) DO
+		i = i + 1
+		IF (test_entity.fields_array[i,1] = "_OLS_TEST_ID") THEN
+			ent = test_entity.fields_array[i,1]
+			anal_id = STRIP(test_entity.fields_array[i,2])
+		ENDIF
+	ENDWHILE
+
+	is_present = FALSE
+	error_status = select_data_type (ols_parameter_array, 
+						CON_ROUTINE_TYPE_TEST, FALSE, is_present)
+
+	IF (error_status=EMPTY) THEN
+
+		vlib = STRIP(SELECT ols_im_data_type_lst . vgl_report)
+		vrout = STRIP(SELECT ols_im_data_type_lst . vgl_routine)
+
+		debug_log (vrout)
+		debug_log (sample_id)
+		debug_log (anal_id)
+
+		CALL_ROUTINE vrout IN LIBRARY vlib
+			USING sample_id, anal_id , return_num
+			RETURNING error_status
+
+	ENDIF
+
+	IF ( error_status <> EMPTY ) THEN
+
+		ols_add_error (error_handler, error_status)
+		return_num = 0
+
+	ENDIF
+
+	IF ( error_status = EMPTY ) AND ( return_num = EMPTY ) THEN
+
+		return_num = 0
+		err_mess = get_msg ("INVAL_AN")
+		ols_add_error (error_handler, err_mess)
+
+	ENDIF
+
+	RETURN( return_num )
+
+ENDROUTINE
+
+{ 
+  Processes all the results within the test_entity.
+}
+ROUTINE process_test_results ( sample_id, test_number,test_entity, error_handler, 
+								ols_parameter_array , or_error_status )
+
+DECLARE continue, result_ok, result_count, result_entity, err_mess, 
+            array_results, vrout, vlib, error_status, user_id, error_array, 
+         is_first_call , number_of_force_recalcs, i, is_present, 
+		entered_results_array, nor_error_status
+
+	ARRAY array_results   
+
+	nor_error_status = EMPTY
+	error_status = EMPTY
+	continue = TRUE
+	result_ok = TRUE
+
+	result_count = 0
+
+	WHILE( continue ) AND (result_ok)  AND 
+			(result_count < test_entity.col_children.size()) DO
+
+		result_count = result_count + 1
+		result_entity = test_entity.col_children. get_by_number (result_count)		
+
+		IF ( result_entity = EMPTY ) THEN
+
+			continue = false
+
+			IF ( result_count = 1 ) THEN
+
+				result_ok = FALSE
+
+				err_mess = get_msg ("NO_RES")
+				ols_add_error (error_handler, err_mess)
+
+			ENDIF
+
+		ELSE
+
+			result_ok = process_one_result ( test_number, result_entity, error_handler, array_results )
+
+			IF ( NOT result_ok )
+
+				continue = FALSE
+
+			ENDIF
+
+		ENDIF
+
+
+	ENDWHILE
+
+	IF (result_ok) THEN
+
+		is_first_call  = TRUE
+		user_id = read_2d_lookup(ols_parameter_array,"OLS_USER_ID")
+		is_present = FALSE
+		error_status = select_data_type (ols_parameter_array, 
+						CON_ROUTINE_TYPE_RES, FALSE, is_present)
+
+		IF (error_status=EMPTY) THEN
+
+			vlib = SELECT ols_im_data_type_lst . vgl_report
+			vrout = SELECT ols_im_data_type_lst . vgl_routine
+
+			CALL_ROUTINE vrout IN LIBRARY vlib
+				USING sample_id, test_number, array_results, user_id, 
+					is_first_call,
+					error_array, entered_results_array, nor_error_status
+				RETURNING error_status
+
+			IF (nor_error_status = EMPTY) THEN
+
+				{ Got 1 EMPTY, set this }
+				or_error_status = EMPTY
+
+			ELSEIF (or_error_status="") THEN
+	
+				{ store the message, if no EMPTY found yet }
+				or_error_status = nor_error_status
+
+			ENDIF
+
+			{ May have configured to force a recalculate }
+			number_of_force_recalcs = read_2d_lookup(ols_parameter_array,"OLS_FORCE_CALC_COUNT")
+
+			IF (NUMTEXT (number_of_force_recalcs)) THEN
+
+				is_first_call = FALSE
+				number_of_force_recalcs = NUMERIC (number_of_force_recalcs)
+				i = 0
+
+				WHILE (error_status=EMPTY) AND
+ 					 (i < number_of_force_recalcs) DO
+
+					i = i + 1
+
+					{ The is_first_call is different when called to force a recalculate }
+
+					CALL_ROUTINE vrout IN LIBRARY vlib
+						USING sample_id, test_number, array_results, user_id, is_first_call, 
+							error_array, entered_results_array, nor_error_status
+						RETURNING error_status
+
+				ENDWHILE
+
+			ENDIF
+
+			IF (error_status=EMPTY) THEN
+
+				error_status = update_entered_result 
+							(entered_results_array, ols_parameter_array)
+
+			ENDIF
+
+		ENDIF
+
+	ENDIF
+
+	IF ( error_status = EMPTY ) THEN
+
+		error_status = check_test_status (test_number, ols_parameter_array)
+
+	ELSE 
+
+		ols_add_error (error_handler, error_status)
+		result_ok = FALSE
+
+	ENDIF
+
+
+	RETURN( result_ok )
+
+ENDROUTINE
+
+ROUTINE update_entered_result (entered_results_array, ols_parameter_array)
+
+	DECLARE sm_user, i, comp, rec, status, test_id
+
+	status = EMPTY
+
+	sm_user = read_2d_lookup(ols_parameter_array,"OLS_USER_ID")
+
+	i = 0
+
+	WHILE (i < size_of_array (entered_results_array)) DO
+
+		i = i + 1
+		test_id = entered_results_array [i,1]
+		comp = entered_results_array [i,2]
+
+		rec = SELECT result . test_number FOR UPDATE
+				WHERE test_number = test_id
+				AND  name = comp
+				AND entered_by = GLOBAL ("operator")
+
+		IF (rec <> EMPTY) THEN 
+
+			IF (rec = LOCKED) THEN
+
+				status = "Result record locked: ":test_id
+
+			ELSE
+
+				ASSIGN result . entered_by = sm_user
+				UPDATE result
+
+			ENDIF
+
+		ENDIF
+
+	ENDWHILE
+
+	RETURN (status)
+
+ENDROUTINE
+
+{
+ Process the result within result_entity.
+}
+ROUTINE process_one_result ( test_number,result_entity, error_handler , array_results)
+
+DECLARE result_is_ok,  field_count,
+          result_row, fn, fv, fld_cnt2, calc_status
+
+	field_count = 0
+	result_is_ok = true
+	result_row = size_of_array (array_results) + 1
+
+	array_results [result_row,1] = STRIP (TOUPPER (result_entity.type ))
+
+	WHILE (result_is_ok) AND ( field_count < size_of_array (result_entity.fields_array) ) DO
+
+		IF  (TRUE) THEN
+
+			field_count = field_count + 1
+
+			fn = result_entity . fields_array [field_count ,1]
+			fv = result_entity . fields_array [field_count ,2]
+
+			{ component name and value must be 1st 2,   value is TEXT or _OLS_CALC_TEXT  }
+
+			IF (field_count =1) THEN
+
+				array_results [result_row, 2] = fv
+
+			ELSEIF (field_count =2) THEN
+
+				{ Run calculation, if required }
+				IF (STRIP(TOUPPER(fn)) = "_OLS_CALC_TEXT") THEN
+
+					calc_status = run_ols_calculation (fv, fv)
+
+					IF (calc_status <> EMPTY) THEN
+
+						result_is_ok = FALSE
+						ols_add_error (error_handler, "Calculation: ":calc_status)
+
+					ENDIF
+
+				ENDIF
+
+				array_results [result_row, 3] = fv
+
+				fld_cnt2 = 3
+
+			ELSE
+				fld_cnt2 = fld_cnt2 + 1
+				array_results [result_row, fld_cnt2] = fn
+				fld_cnt2 = fld_cnt2 + 1
+				array_results [result_row, fld_cnt2] = fv
+			ENDIF
+
+		ENDIF
+
+	ENDWHILE
+
+
+	result_is_ok = TRUE
+
+	RETURN( result_is_ok )
+
+ENDROUTINE
+
+{
+  To control audit IDs, the audit transaction must have unique name per user
+}
+ROUTINE set_transaction (ols_params_array)
+
+	DECLARE trans_name
+
+	trans_name = read_2d_lookup (ols_params_array,  "OLS_TRANSACTION")
+
+     { end any current transaction }
+
+	IF (transaction_is_write ()) THEN
+
+		COMMIT
+
+	ENDIF
+
+	debug_log ("Start trans ":trans_name)
+
+	START WRITE TRANSACTION trans_name
+
+ENDROUTINE
+
+
+{
+  If using 1 user ID set in IM, then audit data is incorrect without this. 
+  Also sets the comment.
+}
+ROUTINE set_audits (ols_params_array)
+
+	DECLARE aud, trans_name, audit_comment
+
+	{ should have ended the transaction by now, thats important,  }
+	{ deliberatly assume so will crash if not ended               }
+
+	START WRITE TRANSACTION "OLS Interface"
+
+	trans_name = read_2d_lookup (ols_params_array,  "OLS_TRANSACTION")
+	audit_comment = read_2d_lookup (ols_params_array,  "OLS_COMMENT")
+ 
+	aud = SELECT MAX audit_transaction . transaction
+			WHERE system_pid=STRIP(NUMBER_TO_TEXT(GLOBAL("PROCESS_ID") ,"99999"))
+			AND transaction_date >= TODAY   
+			AND user_id=STRIP(GLOBAL("operator") )
+			AND transaction_name = trans_name
+
+{    not reliable:  AND session_id = STRIP(NUMBER_TO_TEXT(GLOBAL ("SESSION_ID"),"99999")) }
+
+	IF (aud <> EMPTY) THEN
+    
+		aud = SELECT audit_transaction . transaction FOR UPDATE
+          	 	  WHERE transaction=aud 
+	ENDIF
+
+	IF (aud <> LOCKED) AND (aud <> EMPTY) THEN
+
+		ASSIGN audit_transaction . user_id = STRIP(read_2d_lookup (ols_params_array,  "OLS_USER_ID"))
+		UPDATE audit_transaction 
+
+		{ set the reason }
+
+		audit_comment = STRIP (audit_comment)
+
+		IF (audit_comment <> "") THEN
+
+			aud = SELECT audit_event . transaction FOR UPDATE
+					WHERE transaction = aud
+
+			WHILE (aud <> EMPTY) DO
+
+				ASSIGN audit_event . event_reason = audit_comment
+				UPDATE audit_event 
+
+				NEXT audit_event 
+				aud = SELECT audit_event . transaction
+
+			ENDWHILE
+
+		ENDIF
+
+	ENDIF
+
+	COMMIT
+
+ENDROUTINE
+
+{
+  Selects the record on the OLS_IM_DATA_TYPE_LST LTE.
+  Return EMPTY if success, otherwise error message.
+  If allow_blank=TRUE, no error flagged if row doesnt exist.
+  If row exists, is_present is outputted =TRUE, else FALSE.
+}
+ROUTINE select_data_type (ols_params_array, VALUE routine_type, VALUE allow_blank, is_present)
+
+	DECLARE rec, status, passed_type
+
+	status = EMPTY
+	is_present = FALSE
+
+	passed_type = read_2d_lookup (ols_params_array,  "OLS_DATATYPE")
+	
+	IF (STRIP(passed_type)="") OR (passed_type=EMPTY) THEN
+
+		status = "No OLS_DATATYPE set"
+
+	ELSE
+
+		rec = SELECT  ols_im_data_type . identity 
+				WHERE identity = passed_type
+
+		IF (rec = EMPTY) THEN
+
+			status = "Invalid OLS_DATATYPE: ":passed_type
+
+		ELSEIF (SELECT ols_im_data_type . removeflag) THEN
+
+			status = "Invalid OLS_DATATYPE (removed): ":passed_type
+
+		ELSE
+
+			rec = SELECT  ols_im_data_type_lst . identity 
+					WHERE identity = passed_type
+					AND   routine_type = routine_type
+
+			IF (rec <> EMPTY) THEN
+
+				is_present = TRUE
+
+			ELSEIF (NOT allow_blank) THEN
+			
+				status = "Invalid OLS_DATATYPE type: ":routine_type
+
+			ENDIF
+
+		ENDIF
+
+	ENDIF
+		
+	RETURN (status)
+
+ENDROUTINE
+
+{
+  debugging only
+}
+ROUTINE debug_log ( VALUE file_error_status )
+
+    DECLARE mapped_drive, the_date, file_name, check_ok, check_exist
+    
+{
+   comment out to debug
+}
+RETURN
+
+     mapped_drive = "SMP$LOGFILES:"
+
+    the_date = TODAY
+    the_date = LEFTSTRING(the_date, 11)
+    the_date = STRIP(the_date)
+    file_name = mapped_drive:the_date:"_OLS_LIMSML.LOG"
+
+    the_date = NOW
+    file_error_status = the_date:"... ":STRIP(file_error_status)
+
+    check_exist = FILE EXISTS(file_name)
+
+    IF check_exist = TRUE THEN
+
+        FILE EXTEND file_name, check_ok
+        FILE WRITE file_name, file_error_status, check_ok
+        FILE CLOSE file_name, check_ok
+
+    ELSE
+
+        FILE CREATE file_name, check_ok
+
+        IF (check_ok = EMPTY) THEN
+
+        FILE OPEN file_name, check_ok
+        FILE WRITE file_name, file_error_status, check_ok
+        FILE CLOSE file_name, check_ok
+
+        ENDIF
+
+    ENDIF
+
+
+ENDROUTINE
+
+{
+  Runs interface calculations.
+  The calculation VGL is specified in the stana=dard calc functions LTE.
+  It parses out the calc_functions record from calc_string (and also the parameters)
+  final_result is outputted result.
+}
+ROUTINE run_ols_calculation (VALUE calc_string, final_result)
+
+	DECLARE status, delim, calc_delim, ndx, calc_id, params_array,
+		 param, stop, rec
+
+	status = EMPTY
+	final_result = EMPTY
+
+	delim = ","
+	calc_delim = " "
+	calc_string = STRIP (calc_string)
+	ARRAY params_array    ARRAYSIZE(0)
+
+	ndx = INDEX (calc_string, calc_delim)
+	IF (ndx > 0) THEN
+
+		calc_id = STRIP(LEFTSTRING (calc_string, ndx-1))
+		calc_string = STRIP(RIGHTSTRING (calc_string, 
+			(STRINGLENGTH(calc_string)-ndx)-(STRINGLENGTH(calc_delim)-1)))
+
+	ELSE
+
+		{ assume no parameters }
+		calc_id = STRIP(calc_string)
+
+	ENDIF
+
+	IF (calc_id ="") THEN
+
+		status = get_msg ("NO_CALC1")
+
+	ENDIF
+
+	stop = FALSE
+
+	WHILE (status=EMPTY) AND (NOT stop) DO
+
+		ndx = INDEX (calc_string, delim)
+
+		IF (ndx > 0) THEN
+
+			param = STRIP(LEFTSTRING (calc_string, ndx-1))
+			calc_string = STRIP(RIGHTSTRING (calc_string, 
+				(STRINGLENGTH(calc_string)-ndx)-(STRINGLENGTH(delim)-1)))
+			params_array [size_of_array(params_array) + 1] = param
+
+		ELSE
+
+			stop = TRUE
+
+			params_array [size_of_array(params_array) + 1] = calc_string
+
+		ENDIF
+
+	ENDWHILE
+
+	IF (status=EMPTY) THEN
+
+		rec = SELECT calc_function . identity
+				WHERE identity = calc_id
+				AND removeflag = FALSE
+
+		IF (rec <> EMPTY) THEN
+
+			DECLARE lib, rout
+			lib  = SELECT calc_function . library
+			rout = SELECT calc_function . routine
+			CALL_ROUTINE rout IN LIBRARY lib
+			USING params_array, final_result
+			RETURNING status
+
+			IF (status <> EMPTY) THEN
+
+				status = get_msg ("ERR_CALC"):status
+
+			ENDIF
+
+		ELSE
+	
+			status = get_msg ("NO_CALC2"):calc_id
+		ENDIF
+
+	ENDIF
+
+	RETURN (status)
+
+ENDROUTINE
+
+{
+   Checks if the passed group is in ols_sm_groups_array
+   The 1st group in the list must be the operator default group  (which may be "")
+   This assumes that RES_GROUP_ENT is set system-wide
+}
+ROUTINE group_security_check (VALUE group, ols_sm_groups_array)
+
+    DECLARE i, ok, rge
+
+    ok = FALSE
+
+    { If RES_GROUP_ENT=Z or blank, ignore the check, If A, any group, 
+      If O, then the operator default group only
+    }
+    rge = STRIP(TOUPPER(GLOBAL ("RES_GROUP_ENT")))
+
+    IF (STRIP(group)="") THEN
+
+        { no group security set }
+
+        ok = TRUE
+
+    ELSEIF (rge="") OR (rge="Z")
+
+        ok = TRUE
+
+    ELSEIF (rge="O")
+
+        IF (STRIP(ols_sm_groups_array [1])=STRIP(group)) THEN
+
+            ok = TRUE
+
+        ENDIF
+
+    ELSE
+
+        i = 0
+
+        WHILE (NOT ok) AND
+              (i < size_of_array (ols_sm_groups_array)) DO
+
+            i = i + 1
+
+            IF (STRIP(ols_sm_groups_array [i])=STRIP(group)) THEN
+
+                ok = TRUE
+
+            ENDIF
+
+        ENDWHILE
+
+    ENDIF
+
+    RETURN (ok)
+
+ENDROUTINE
+
+{
+  Allows the user ID be aliased
+}
+ROUTINE check_user (ols_parameter_array, user_id)
+
+	DECLARE error_status, is_present, vlib, vrout, datatype
+
+	error_status = EMPTY
+
+	datatype = read_2d_lookup (ols_parameter_array,  "OLS_DATATYPE")
+
+	is_present = FALSE
+	error_status = select_data_type (ols_parameter_array, CON_ROUTINE_TYPE_USER,
+								TRUE, is_present)
+
+	IF (error_status=EMPTY) AND (is_present) THEN
+
+		vlib = STRIP(SELECT ols_im_data_type_lst . vgl_report)
+		vrout = STRIP(SELECT ols_im_data_type_lst . vgl_routine)
+
+		CALL_ROUTINE vrout IN LIBRARY vlib
+			USING user_id, datatype
+			RETURNING error_status
+
+	ELSE
+
+		{ not error }
+		error_status = EMPTY
+
+     ENDIF
+
+	RETURN (	error_status )
+
+ENDROUTINE
+
+{ 
+   The old SM Operator Approval check.
+   Returns FALSE if not approved 
+}
+ROUTINE  operator_approval_check (VALUE lims_user, 
+                         VALUE analysis, 
+                         VALUE instrument, VALUE date_string, err_msg)
+
+    DECLARE approv_reqd, id, date_approv, date_expire, no_access , oa_on, start_date,
+          the_date
+             
+     err_msg = ""
+
+    { if a date passed, use that }
+    the_date = NOW
+
+    IF (STRIP(date_string) <> "") AND (date_string <> EMPTY) THEN
+
+        SET DATE FORMAT "YYYZ-MZ-DZ H24:MI"
+        the_date = DATE(date_string)
+        RESTORE DATE FORMAT
+
+    ENDIF
+
+    { check system wide as the executing account may have the setting off }
+    oa_on = SELECT config_header . identity
+			WHERE identity = "APPROVAL_CHECK_ENABLED"
+			AND  value = TRUE
+
+    IF (oa_on=EMPTY) THEN
+
+        RETURN (TRUE)
+
+    ENDIF
+
+  
+    IF (analysis = EMPTY) THEN
+
+       analysis = ""
+
+    ENDIF
+
+    IF (instrument = EMPTY) THEN
+
+       instrument = ""
+
+    ENDIF
+
+    IF (analysis = "") THEN
+
+        RETURN (TRUE)
+
+    ENDIF 
+
+    no_access = FALSE
+    
+
+    { If here, oparator approval is ON
+      The operator must have approval for the analysis and instrument associated
+      with the test
+     }
+
+    id = SELECT versioned_analysis.identity 
+            WHERE identity = analysis
+            AND approval_reqd = TRUE
+            AND removeflag = FALSE
+
+    IF (id = EMPTY) THEN
+
+        approv_reqd = FALSE
+
+    ELSE
+
+        approv_reqd = TRUE
+
+    ENDIF
+
+
+    IF (approv_reqd) THEN
+
+        date_approv = SELECT approval.date_approved
+                          WHERE entry_id = analysis
+                           AND operator_id = lims_user
+                           AND entry_type = "ANALYSIS"
+
+
+        { If no record, or date wrong, then operator has no access }
+        IF (date_approv <> EMPTY) THEN
+
+            date_expire = SELECT approval.expiry_date
+            start_date = SELECT approval.date_approved
+
+            IF (( start_date <= the_date ) AND 
+                ( date_expire >= the_date )) THEN
+
+                { ok }
+
+            ELSEIF ((start_date <= the_date ) AND  (STRIP(date_expire) = "" ))
+
+                { ok }
+
+            ELSE
+
+                err_msg = get_msg ("OA_NOT_APR"):analysis
+                no_access = TRUE
+
+            ENDIF
+
+
+        ELSE
+       
+            err_msg = get_msg ("OA_NOT_APR"):analysis
+            no_access = TRUE
+
+        ENDIF
+
+    ENDIF   { (approv_reqd) }
+
+ 
+    { Instrument check }
+
+    IF (no_access = FALSE) AND (instrument <> "") AND (instrument <> EMPTY) THEN
+
+        { Check if approval needed for the instrument }
+         id = SELECT instrument.identity 
+               WHERE identity = instrument
+               AND approval_reqd = TRUE
+               AND removeflag = FALSE
+
+        IF (id = EMPTY) THEN
+
+            approv_reqd = FALSE
+
+        ELSE
+
+            approv_reqd = TRUE
+
+        ENDIF
+
+
+    ENDIF
+
+
+    IF (no_access = FALSE) AND (instrument <> "") AND (instrument <> EMPTY)
+         AND (approv_reqd = TRUE) THEN
+
+
+        date_approv = SELECT approval.date_approved
+                           WHERE entry_id = instrument
+                           AND operator_id = lims_user
+                           AND entry_type = "INSTRUMENT"
+
+        { If no record, or date wrong, then operator has no access }
+        IF (date_approv <> EMPTY) THEN
+
+            date_expire = SELECT approval.expiry_date
+            start_date = SELECT approval.date_approved
+
+            IF (( start_date <= the_date ) AND 
+                ( date_expire >= the_date )) THEN
+
+                { ok }
+
+            ELSEIF ((start_date <= the_date ) AND  (STRIP(date_expire) = "" ))
+
+                { ok }
+
+            ELSE
+
+                err_msg = get_msg ("OA_NOT_APR"):instrument
+                no_access = TRUE
+
+            ENDIF
+           
+        ELSE
+       
+            err_msg = get_msg ("OA_NOT_APR"):instrument
+            no_access = TRUE
+
+        ENDIF
+
+
+    ENDIF
+   
+
+    RETURN (NOT no_access)
+
+
+ENDROUTINE   {  operator_approval_check  }
+
+
+
+{
+  Adds another LIMSML error message to the output
+}
+ROUTINE ols_add_error (error_handler, VALUE error_message)
+
+	error_handler . add_error( STRIP(error_message) )
+
+ENDROUTINE
+
+
+{
+Check if OOS tests and may notify external program
+}
+ROUTINE check_test_status (VALUE test_id, ols_parameter_array)
+
+	DECLARE doc_id, error_status, message_array, key, counter, sql,
+		 check_ok, vlib, vrout, is_present
+
+	ARRAY message_array
+
+	doc_id = read_2d_lookup(ols_parameter_array,"OLS_DOCUMENT_ID")
+	is_present = FALSE
+	vlib = ""
+	vrout = ""
+	error_status = select_data_type (ols_parameter_array, 
+							CON_ROUTINE_TYPE_STATUS, TRUE, is_present)
+
+	{ this is optional }
+
+	IF (error_status=EMPTY) AND (is_present) THEN
+
+		vlib = STRIP(SELECT ols_im_data_type_lst . vgl_report)
+		vrout = STRIP(SELECT ols_im_data_type_lst . vgl_routine)
+
+		IF (vrout <> "") THEN
+
+			CALL_ROUTINE vrout IN LIBRARY vlib
+					USING test_id , message_array
+					RETURNING error_status
+
+		ENDIF
+
+	ENDIF
+
+	IF ( error_status = EMPTY ) AND (vrout <> "") THEN
+
+		{ Write the message to database table }
+		{ Already a transaction here, so dont worry about }
+		{ Delete any old entries for this test }
+
+		sql = "delete from ols_im_message where file_id='":
+				STRIP(doc_id):"' AND test_id=":STRIP(test_id)
+		EXECUTE_SQL (sql)
+
+		counter = 0
+
+		WHILE (error_status = EMPTY) AND
+			 (counter < size_of_array(message_array)) DO
+
+			counter = counter + 1
+			key = JUSTIFY(  PAD(  STRIP(doc_id)   , " ", 20),  "LEFT"):
+				JUSTIFY( PAD(  STRIP(test_id)   , " ", 10), "LEFT"):
+					NUMBER_TO_TEXT(counter,"99999")
+
+			RESERVE ENTRY ols_im_message, key, check_ok
+
+			IF (check_ok=EMPTY) THEN
+
+				ASSIGN ols_im_message . message_type = "IM"
+				ASSIGN ols_im_message . message_text = message_array [counter]
+				UPDATE ols_im_message 
+
+			ELSE
+				error_status = check_ok :" key=":key:"."
+			ENDIF
+
+		ENDWHILE
+
+	ENDIF
+
+	RETURN (error_status)
+
+ENDROUTINE
+
+ROUTINE get_msg (VALUE msg)
+
+	DECLARE ret
+
+	ret = get_user_message ("OLS_LHSM_":STRIP(msg), 1)
+
+	RETURN ( ret )
+
+ENDROUTINE
+
+{  ===   start  OLS_ERRORS class  ==== }
+ROUTINE ols_errors_define_class
+	
+
+	DEFINE CLASS OLS_ERRORS_CLASS
+
+		INITIALISATION
+
+		PROPERTIES
+
+			"error_array"   ,
+               "has_errors"   
+
+		ACTIONS
+
+			"add_error"   ,
+			"set_limsml_errors" ,
+			"clear"
+
+	END CLASS
+
+ENDROUTINE
+
+ROUTINE ols_errors_class_initialisation (self)
+
+	ARRAY self.error_array
+	self.has_errors = FALSE
+
+ENDROUTINE
+
+ROUTINE ols_errors_action_add_error (self, VALUE error_message)
+
+	DECLARE i
+
+	i = size_of_array (self.error_array) + 1
+	self.error_array [i] = error_message
+
+	self.has_errors = TRUE
+
+ENDROUTINE
+
+ROUTINE ols_errors_action_set_limsml_errors (self, limsml_error_handler)
+
+	DECLARE i, error_message
+
+	i = 0
+
+	WHILE (i < size_of_array (self.error_array) ) DO
+
+		i = i + 1
+		error_message = self.error_array [i] 
+
+		limsml_error_handler . adderrorall( "Error", STRIP(error_message) ,
+					         "1"  , "1" , "LIMSML VGL")
+
+	ENDWHILE
+
+
+ENDROUTINE
+
+ROUTINE ols_errors_action_clear (self)
+
+	ARRAY self.error_array
+	self.has_errors = FALSE
+
+ENDROUTINE
+
+{  ===   end  OLS_ERRORS class  ==== }

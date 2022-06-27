@@ -1,0 +1,644 @@
+{==============================================================================}
+{                                                                              }
+{  ORBIS INFORMATION SYSTEMS                                                   }
+{                                                                              }
+{  Filename         : $SMMILL_DYNAMIC_SQL.RPF                                  }
+{  Version          :                                                          }
+{  Document Ref.    :                                                          }
+{  Author           : D. Kelly                                                 }
+{  Date Created     : 21-Feb-2002                                              }
+{  Description      : Report to Selecting realtime Millennium Data.            }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{                                                                              }
+{  Ver.     Date        By          Description                                }
+{  ----     ----        --          -----------                                }
+{  1.0      06-Nov-2001 DK          Release version                            }
+{                                                                              }
+{==============================================================================}
+
+SET NAME "DEFER/"
+ENABLE WINDOWS
+
+SET NOTPROTECTED
+
+SET COMPILE_OPTION DECLARE
+
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_WINDOW
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_CLIENT
+
+
+JOIN LIBRARY $lib_utils
+JOIN LIBRARY $LIB_DYNAMIC_SQL
+JOIN LIBRARY $SMMILL_CONST
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE select_millennium_proj_data                                         }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  12-Nov-2001  DK              Selects Millennium Data.                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+GLOBAL ROUTINE select_millennium_proj_data (       self{proj_array},
+                                             VALUE the_schema,
+                                             VALUE the_field,
+                                             VALUE the_table,
+                                                   group_array,
+                                             VALUE mill_user  )
+
+    DECLARE dynamic_sql, sql_string, proj_name, proj_owner, group_count,
+            proj_access, record_count_name, record_count_owner, exit_now,
+            record_count_access, all_proj_array, count, group_proj_count,
+            the_group_proj, group_proj_array, proj_browse_array, master_count,
+            mill_group_count, mill_group 
+
+
+    ARRAY proj_browse_array
+    ARRAY all_proj_array
+    ARRAY group_proj_array
+
+    count = 1
+    group_count = 1
+    master_count = 1
+    group_proj_count = 1
+    mill_group_count = 1
+
+    exit_now = FALSE
+
+    {===========================}
+    { Get ALL projects in array }
+    {===========================}
+
+    sql_string = "SELECT s.":the_field:",owner,allowedaccess FROM ":the_table:"@":GLOBAL("MILL_DATABASE_LINK_NAME"):" s":
+                 " ORDER BY name ASC"
+
+    CREATE OBJECT "STD_DYNAMIC_SQL" , dynamic_sql
+
+    dynamic_sql . add_to_sql_statement ( sql_string )
+
+    record_count_name   = dynamic_sql . add_select_string ( 50 )
+    record_count_owner  = dynamic_sql . add_select_string ( 50 )
+    record_count_access = dynamic_sql . add_select_string ( 1  )
+
+    dynamic_sql . execute ()
+
+    proj_name   = dynamic_sql . select (record_count_name  )
+    proj_owner  = dynamic_sql . select (record_count_owner )
+    proj_access = dynamic_sql . select (record_count_access)
+
+    WHILE proj_name <> EMPTY DO
+
+        all_proj_array[count,1] = proj_name
+        all_proj_array[count,2] = proj_owner
+        all_proj_array[count,3] = proj_access
+
+        dynamic_sql . next ()
+
+        proj_name   = dynamic_sql . select (record_count_name  )
+        proj_owner  = dynamic_sql . select (record_count_owner )
+        proj_access = dynamic_sql . select (record_count_access)
+
+        count = count + 1
+
+    ENDWHILE
+
+    count = 1
+
+    WHILE count <= SIZE_OF_ARRAY(all_proj_array) DO
+
+        proj_name   = STRIP(all_proj_array[count, 1])
+        proj_owner  = STRIP(all_proj_array[count, 2])
+        proj_access = all_proj_array[count, 3]
+
+        IF proj_access = OWNER_ONLY THEN
+
+            {=======================================================}
+            { Specifies that only the owner of the project and all  }
+            { users with administrator privileges can access the    }
+            { selected project.                                     }
+            {=======================================================}
+
+            { If mapped mill_user = owner then add project to array }
+
+            IF mill_user = proj_owner THEN
+
+                proj_browse_array[master_count,1] = proj_name
+                master_count = master_count + 1
+
+            ELSE
+
+                REPEAT
+
+                    IF group_array[group_count] = ADMINISTRATOR_GROUP THEN
+
+                        proj_browse_array[master_count,1] = proj_name
+                        master_count = master_count + 1
+                    
+                    ENDIF
+
+                    group_count = group_count + 1
+
+                UNTIL group_array[group_count] = EMPTY
+
+                group_count = 1
+
+             ENDIF
+
+        ELSEIF proj_access = OWNER_AND_GROUP THEN
+
+            {=======================================================}
+            { Specifies that only the owner of the project and all  }
+            { members of the groups (if any) specified in the Allow }
+            { Access to Groups list can access the selected project.}
+            {=======================================================}
+
+            { If mapped mill_user = owner then add project to array }
+
+            IF mill_user = proj_owner THEN
+
+                proj_browse_array[master_count,1] = proj_name
+                master_count = master_count + 1
+
+            ELSE
+
+                { Check all groups assign to the project }
+
+                sql_string = "SELECT GROUPNAME FROM PROJECTGROUP@":GLOBAL("MILL_DATABASE_LINK_NAME"): 
+                             " WHERE PROJECTNAME = '":proj_name:"'"
+
+                CREATE OBJECT "STD_DYNAMIC_SQL" , dynamic_sql
+                dynamic_sql . add_to_sql_statement ( sql_string )
+                record_count_name   = dynamic_sql . add_select_string ( 50 )
+
+                dynamic_sql . execute ()
+
+                the_group_proj = dynamic_sql . select (record_count_name)
+
+                WHILE the_group_proj <> EMPTY DO
+
+                    group_proj_array[group_proj_count] = STRIP(the_group_proj)
+                    dynamic_sql . next ()
+                    the_group_proj = dynamic_sql . select (record_count_name)
+
+                    group_proj_count = group_proj_count + 1
+
+                ENDWHILE
+ 
+                group_proj_count = 1
+                mill_group_count = 1
+
+                IF SIZE_OF_ARRAY(group_proj_array) > 0 THEN
+                
+                    WHILE mill_group_count <= SIZE_OF_ARRAY(group_array) DO
+
+                        mill_group = group_array[mill_group_count]
+
+                        REPEAT 
+
+                            the_group_proj = group_proj_array[group_proj_count]
+
+                            IF (the_group_proj = mill_group) AND
+                               (the_group_proj <> EMPTY    ) OR
+                               (mill_group = ADMINISTRATOR_GROUP) THEN
+
+                                proj_browse_array[master_count,1] = proj_name
+                                master_count = master_count + 1
+
+                                EXIT_NOW = TRUE
+
+                            ENDIF
+
+                            group_proj_count = group_proj_count + 1
+
+                        UNTIL ( group_proj_array[group_proj_count] = EMPTY ) OR
+                              ( EXIT_NOW )
+
+                        IF EXIT_NOW THEN
+
+                            { Stop Loop as we have found a match }
+
+                            mill_group_count = SIZE_OF_ARRAY(group_array) + 1                
+
+                        ELSE
+
+                            mill_group_count = mill_group_count + 1
+                       
+                        ENDIF
+
+                    ENDWHILE
+
+                 ELSE
+
+                    {No Groups assigned to this project }
+
+                 ENDIF
+ 
+                 { Reset Group array and counters }
+
+                 group_proj_count = 1
+                 mill_group_count = 1
+                 ARRAY group_proj_array
+
+             ENDIF
+
+        ELSEIF proj_access = OWNER_GROUP_WORLD THEN
+
+            {=======================================================}
+            { Specifies that all users in the Millennium³² database }
+            { can access the selected project.                      }
+            {=======================================================}
+
+            proj_browse_array[master_count,1] = proj_name
+            master_count = master_count + 1
+
+        ENDIF
+
+        count = count + 1
+
+    ENDWHILE
+
+    browse_on_array ( 80 , self . text , proj_browse_array )
+
+    self . user_info = proj_browse_array
+
+    self . repaste ( )
+
+{
+    ARRAY_COPY (proj_array, proj_browse_array)
+}
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE select_millennium_data                                              }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  12-Nov-2001  DK              Selects Millennium Data.                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+GLOBAL ROUTINE select_millennium_data (       self,
+                                        VALUE the_schema,
+                                        VALUE the_field,
+                                        VALUE the_table )
+
+    DECLARE dynamic_sql, sql_string, ss_name,ss_array, record_count, count
+
+    ARRAY ss_array
+    count = 1
+
+
+    sql_string = "SELECT s.":the_field:" FROM ":the_table:"@":GLOBAL("MILL_DATABASE_LINK_NAME"):" s":
+                 " ORDER BY ":the_field:" ASC"
+
+    CREATE OBJECT "STD_DYNAMIC_SQL" , dynamic_sql
+
+    dynamic_sql . add_to_sql_statement ( sql_string )
+    record_count = dynamic_sql . add_select_string ( 40 )
+    dynamic_sql . execute ()
+
+    ss_name = dynamic_sql . select (record_count)
+
+    WHILE ss_name <> EMPTY DO
+
+        ss_array[count,1] = ss_name
+
+        dynamic_sql . next ()
+        ss_name = dynamic_sql . select (record_count)
+
+        count = count + 1
+
+    ENDWHILE
+
+    browse_on_array ( 80 , self . text , ss_array )
+
+    self . repaste ( )
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE select_ss_millennium_data                                           }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  12-Nov-2001  DK              Selects Millennium Data.                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+GLOBAL ROUTINE select_millennium_ss_data (       self,
+                                           VALUE the_schema,
+                                           VALUE the_field,
+                                           VALUE the_table )
+
+    DECLARE dynamic_sql, sql_string, ss_name,ss_array, record_count, count
+
+    ARRAY ss_array
+    count = 1
+
+
+    sql_string = "SELECT DISTINCT s.":the_field:" FROM ":the_table:"@":GLOBAL("MILL_DATABASE_LINK_NAME"):" s WHERE TYPE = 5":
+                 " ORDER BY ":the_field:" ASC"
+
+    CREATE OBJECT "STD_DYNAMIC_SQL" , dynamic_sql
+
+    dynamic_sql . add_to_sql_statement ( sql_string )
+    record_count = dynamic_sql . add_select_string ( 40 )
+    dynamic_sql . execute ()
+
+    ss_name = dynamic_sql . select (record_count)
+
+    WHILE ss_name <> EMPTY DO
+
+        ss_array[count] = ss_name
+
+        dynamic_sql . next ()
+        ss_name = dynamic_sql . select (record_count)
+        count = count + 1
+
+    ENDWHILE
+
+    browse_on_array ( 80 , self . text , ss_array )
+
+    self . repaste ( )
+
+
+ENDROUTINE
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE select_millennium_user_data                                         }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  12-Nov-2001  DK              Selects Millennium Data.                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+GLOBAL ROUTINE select_millennium_user_data (       self,
+                                             VALUE the_schema,
+                                             VALUE the_field,
+                                             VALUE the_table )
+
+    DECLARE dynamic_sql, sql_string, ss_name1,ss_array, record_count1, count,
+            ss_name2, record_count2
+
+    ARRAY ss_array
+    count = 1
+
+
+    sql_string = "SELECT s.":the_field:" FROM ":the_table:"@":GLOBAL("MILL_DATABASE_LINK_NAME"):" s":
+                 " ORDER BY ":the_field:" ASC"
+
+    CREATE OBJECT "STD_DYNAMIC_SQL" , dynamic_sql
+
+    dynamic_sql . add_to_sql_statement ( sql_string )
+    record_count1 = dynamic_sql . add_select_string ( 50 )
+    record_count2 = dynamic_sql . add_select_string ( 250 )
+    dynamic_sql . execute ()
+
+    ss_name1 = dynamic_sql . select (record_count1)
+    ss_name2 = dynamic_sql . select (record_count2)
+
+    WHILE ss_name1 <> EMPTY DO
+
+        ss_array[count,1] = ss_name1
+        ss_array[count,2] = ss_name2
+
+        dynamic_sql . next ()
+        ss_name1 = dynamic_sql . select (record_count1)
+        ss_name2 = dynamic_sql . select (record_count2)
+        count = count + 1
+
+    ENDWHILE
+
+    browse_on_array ( 20 , self . text , ss_array )
+
+    self . repaste ( )
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE select_millennium_fieldcustom_data                                  }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  12-Nov-2001  DK              Selects Millennium Data.                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+GLOBAL ROUTINE select_millennium_fieldcustom_data ( browse_array,
+                                                    the_schema,
+                                                    the_field,
+                                                    the_table )
+
+    DECLARE dynamic_sql, sql_string, ss_name, record_count, count
+
+    count = 1
+
+    sql_string = "SELECT s.":the_field:" FROM ":the_table:"@":GLOBAL("MILL_DATABASE_LINK_NAME"):" s":
+                 " WHERE (sqltable = 'Vial') AND (name NOT LIKE '":STRIP(CUSTOM_FIELD_1):"') AND ":
+                 " (name NOT LIKE '":STRIP(CUSTOM_FIELD_2):"') AND ":
+                 " (name NOT LIKE '":STRIP(CUSTOM_FIELD_3):"') ORDER BY ":the_field:" ASC"
+
+    CREATE OBJECT "STD_DYNAMIC_SQL" , dynamic_sql
+
+    dynamic_sql . add_to_sql_statement ( sql_string )
+    record_count = dynamic_sql . add_select_string ( 40 )
+    dynamic_sql . execute ()
+
+    ss_name = dynamic_sql . select (record_count)
+
+    WHILE ss_name <> EMPTY DO
+
+        browse_array[count,1] = ss_name
+
+        dynamic_sql . next ()
+        ss_name = dynamic_sql . select (record_count)
+
+        count = count + 1
+
+    ENDWHILE
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE select_millennium_meth_data                                         }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  12-Nov-2001  DK              Selects Millennium Data.                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+
+GLOBAL ROUTINE select_millennium_meth_data ( meth_array,
+                                             the_schema,
+                                             the_field,
+                                             the_table )
+
+
+    DECLARE dynamic_sql, sql_string, ss_name, record_count, count
+
+    count = 1
+
+    sql_string = "SELECT DISTINCT s.":the_field:" FROM ":the_table:"@":GLOBAL("MILL_DATABASE_LINK_NAME"):" s WHERE TYPE = 4":
+                 " ORDER BY ":the_field:" ASC"
+
+    CREATE OBJECT "STD_DYNAMIC_SQL" , dynamic_sql
+
+    dynamic_sql . add_to_sql_statement ( sql_string )
+    record_count = dynamic_sql . add_select_string ( 40 )
+    dynamic_sql . execute ()
+
+    ss_name = dynamic_sql . select (record_count)
+
+    WHILE ss_name <> EMPTY DO
+
+        meth_array[count,1] = ss_name
+        meth_array[count,2] = ss_name
+
+        dynamic_sql . next ()
+        ss_name = dynamic_sql . select (record_count)
+        count = count + 1
+
+    ENDWHILE
+
+ENDROUTINE
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE get_millennium_database_version                                     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  24-Sep-2002  DK              Selects Millennium Database Version.           }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+GLOBAL ROUTINE get_millennium_database_version (mill_version)
+
+    DECLARE ss_name, record_count, the_field, the_table, sql_string, dynamic_sql
+
+    the_field = "version"
+    the_table = "MILLDATABASEVERSION"
+
+    sql_string = "SELECT s.":the_field:" FROM ":the_table:"@":GLOBAL("MILL_DATABASE_LINK_NAME"):" s"
+
+
+    CREATE OBJECT "STD_DYNAMIC_SQL" , dynamic_sql
+
+    dynamic_sql . add_to_sql_statement ( sql_string )
+    record_count = dynamic_sql . add_select_string ( 50 )
+    dynamic_sql . execute ()
+
+    ss_name = dynamic_sql . select (record_count)
+
+    IF ss_name <> EMPTY THEN
+
+        mill_version = STRIP(ss_name)
+
+    ELSE
+
+        flashmessage("Cannot Determine Millennium Database Version! Exiting...", TRUE)
+        EXIT
+
+    ENDIF
+
+    RETURN ( mill_version )
+
+ENDROUTINE
+
+
+
+
+
+
+

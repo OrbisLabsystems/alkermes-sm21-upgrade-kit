@@ -1,0 +1,307 @@
+{==============================================================================}
+{                                                                              }
+{  TENSOR TECHNOLOGIES                                                         }
+{                                                                              }
+{  Filename         : R_RET1.RPF ( Created from FISONS' $AUXSETUP.)            }
+{  Version          : 1.0                                                      }
+{  Document Ref.    : P96378 - 4.2.10                                          }
+{  Author           : Caitriona Ni Mhaille                                     }
+{  Date Created     : 29-Mar-1996                                              }
+{  Responsible      : TENSOR TECHNOLOGIES                                      }
+{  Description      : Monitors the removal and replacement of a sample         }
+{                     from the retain area . This is addressed by adding the   }
+{                     retain location as an additional attribute of a sample   }
+{                     and providing functionality to move the sample from one  }
+{                     retain location to another.                              }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Passed Parameters            Value           Description                    }
+{  -----------------            -----           -----------                    }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{                                                                              }
+{  Ver.     Date        By          Description                                }
+{  ----     ----        ---         -----------                                }
+{  1.0      29/03/96    CNM         Release Version                            }
+{  1.1      14/04/05    MC          Modifications made to ensure that the      }
+{				    retain date is not updated if no changes   }
+{				    are made to the record. Call HA002263.     }
+{==============================================================================}
+
+SET NOTPROTECTED
+
+JOIN STANDARD_LIBRARY STD_DATABASE   {MC, added in this library for Call HA002263}
+JOIN LIBRARY $AUX_LIB
+JOIN LIBRARY $LIB_UTILS
+
+SET NAME "DISPLAY/"
+ENABLE WINDOWS
+
+Array prompt_text
+Array table_names
+Array change_stat ARRAY_SIZE (3) = " "
+
+Array display_details ARRAY_SIZE ( 0 , 6 )
+Array prompt_details ARRAY_SIZE ( 0 , 6 )
+
+
+{***********************************************************************}
+{                   USER INPUT BEGINS HERE                              }
+{***********************************************************************}
+
+{SECTION A - SCREEN SETUP}
+{specify the header text for the command window}
+
+    header_txt = "Retain Sample"
+
+{specify footer text for the command window }
+
+    footer_txt = "<SELECT> Display Results,<DO> Set Retain,<EXIT> Quit"
+
+{specify the text string to be displayed upon        }
+{successful completion of the command                }
+
+  success_txt  = "Sample retain location set."
+
+{specify the text string to be displayed upon        }
+{abortion from the command                           }
+
+  abort_txt    = "Setting Sample retain location aborted"
+
+{specify the sample statuses allowable within the    }
+{browse list for this command if sample identity     }
+{is prompted for.                                    }
+
+  samp_stat_allowed  = "VCA"
+  job_stat_allowed   = "AVCX"
+  test_stat_allowed  =  ""
+
+
+
+{SECTION B - INITIAL PROMPTS }
+
+
+{Specify the tables that the initial prompts browse  }
+{upon .                                              }
+
+   table_names [ 1 ]    = "SAMPLE"
+
+
+{  table_names [ 2 ]    = "TEST"}
+
+
+{Specify the initial prompt fields and the associated}
+{prompt text strings                                 }
+
+  prompt_text [ 1 ]    = GET_USER_MESSAGE("AUX_ASP_PROMPT_TXT" ,1)
+
+ {prompt_text [ 2 ]    = "Enter Test Name"}
+
+
+{SECTION C - DISPLAY INFORMATION}
+
+{The user may require a header for the display area }
+{Any descriptive text may be used here              }
+
+    mess_area_one = ""
+
+
+{Specify the fields which require displaying with the}
+{appropriate descriptive text string                 }
+
+{Display fields from prompt_table[1] : }
+
+  display_details [ 1, MESSAGE_POSITION    ]   = GET_USER_MESSAGE("AUX_ASP_DISPLAY_1" ,1)
+  display_details [ 1, TYPE_POSITION       ]   = "DISPLAY"
+  display_details [ 1, TABLE_NAME_POSITION ]   = "SAMPLE"
+  display_details [ 1, FIELD_NAME_POSITION ]   = "ID_TEXT"
+
+  display_details [ 2, MESSAGE_POSITION    ]   = GET_USER_MESSAGE("AUX_ASP_DISPLAY_2" ,1)
+  display_details [ 2, TYPE_POSITION       ]   = "DISPLAY"
+  display_details [ 2, TABLE_NAME_POSITION ]   = "SAMPLE"
+  display_details [ 2, FIELD_NAME_POSITION ]   = "STATUS"
+
+  display_details [ 3, MESSAGE_POSITION    ]   = "Retain Date"
+  display_details [ 3, TYPE_POSITION       ]   = "DISPLAY"
+  display_details [ 3, TABLE_NAME_POSITION ]   = "SAMPLE"
+  display_details [ 3, FIELD_NAME_POSITION ]   = "RETAIN_DATE"
+
+{Display fields from prompt_table[2] : }
+
+ {display_details [ 1, MESSAGE_POSITION    ]   = ""
+  display_details [ 1, TYPE_POSITION       ]   = ""
+  display_details [ 1, TABLE_NAME_POSITION ]   = ""
+  display_details [ 1, FIELD_NAME_POSITION ]   = ""
+
+  display_details [ 2, MESSAGE_POSITION    ]   = ""
+  display_details [ 2, TYPE_POSITION       ]   = ""
+  display_details [ 2, TABLE_NAME_POSITION ]   = ""
+  display_details [ 2, FIELD_NAME_POSITION ]   = ""
+
+  display_details [ 3, MESSAGE_POSITION    ]   = ""
+  display_details [ 3, TYPE_POSITION       ]   = ""
+  display_details [ 3, TABLE_NAME_POSITION ]   = ""
+  display_details [ 3, FIELD_NAME_POSITION ]   = ""}
+
+
+  {SECTION D - FIELD ASSIGNMENT                }
+
+{  This section is divided into three areas; }
+{                                            }
+{         (1) Interactive Update             }
+{         (2) Non-interactive Update         }
+{         (3) Status Change Update           }
+
+{----------------------------------------------------}
+{  1.   I N T E R A C T I V E   U P D A T E          }
+{----------------------------------------------------}
+
+{Specify the fields which require Updating and also  }
+{require a user input.Define the text string         }
+{associated with the input along with the browse type}
+
+
+  {Update fields associated with prompt_table[1]}
+  {Interactive_browse may be filled with either }
+  {the browse table_name.field or a number to   }
+  {define the size of the prompted field ie "10"}
+  {or if no browse required " ".                }
+
+{The user may require a header for the prompt area. }
+{ Any descriptive text may be used here.            }
+
+  mess_area_two = ""
+
+{  prompt_details [ 1 , MESSAGE_POSITION    ]  = GET_USER_MESSAGE (
+                                                    "AUX_ASP_DISPLAY_3", 1 )
+  prompt_details [ 1 , TYPE_POSITION       ]  = "FORMAT"
+  prompt_details [ 1 , TABLE_NAME_POSITION ]  = "SAMPLE"
+  prompt_details [ 1 , FIELD_NAME_POSITION ]  = "AUTHORISATION_NOTES"
+
+}
+
+  prompt_details [ 1 , MESSAGE_POSITION    ]  = "Retain Location"
+  prompt_details [ 1 , TYPE_POSITION       ]  = "FORMAT"
+  prompt_details [ 1 , TABLE_NAME_POSITION ]  = "SAMPLE"
+  prompt_details [ 1 , FIELD_NAME_POSITION ]  = "RETAIN_LOCATION"
+
+  prompt_details [ 2 , MESSAGE_POSITION    ]  = "Expiry Date"
+  prompt_details [ 2 , TYPE_POSITION       ]  = "FORMAT"
+  prompt_details [ 2 , TABLE_NAME_POSITION ]  = "SAMPLE"
+  prompt_details [ 2 , FIELD_NAME_POSITION ]  = "RETAIN_EXPIRE"
+
+{-----------------------------------------------------}
+{   2.   S T A T U S    C H A N G E   U P D A T E     }
+{-----------------------------------------------------}
+
+
+{  Non interactive update of the status field        }
+{  is defined within the array change_stat[n]        }
+{  where n = the array element that defines the      }
+{  table associated with the status in the array     }
+{  prompt_table[n].                                  }
+{  To update sample.status to "V" the user would     }
+{  define change_stat[1] = "V" where prompt_table[1] }
+{   = "SAMPLE"                                       }
+{  If the status change should be back to the old    }
+{  status change_stat[n] = "OLD_STATUS".             }
+
+{   change_stat[1] = "A"                             }
+
+{*************************************************}
+{             END  OF  USER  INPUT                }
+{*************************************************}
+
+aux_generator (  header_txt ,
+                 footer_txt ,
+                 mess_area_one ,
+                 mess_area_two  ,
+                 samp_stat_allowed ,
+                 job_stat_allowed ,
+                 test_stat_allowed ,
+                 prompt_text       ,
+                 table_names       ,
+                 change_stat                  ,
+                 global ( "current_library" ) ,
+                 Success_txt ,
+                 Abort_txt   ,
+                 TRUE      ,
+                 display_details ,
+                 prompt_details  ,
+                 "Read Transaction"  ,
+                 "Write Transaction" )
+
+
+{*************************************************}
+{             Action Routine                      }
+{*************************************************}
+
+ROUTINE action ( VALUE first_id, 
+                 VALUE second_id )
+
+{=================================================}
+{MC. Modification for call HA002263. Add in the if}
+{statement to check if the record has been updated}
+{=================================================}
+
+IF row_has_updates("sample")
+
+    retain_date = SELECT sample . retain_date FOR UPDATE
+
+    IF ( SELECT sample . retain_location = EMPTY ) THEN
+        ASSIGN sample . retain_expire = 0
+    ENDIF
+                                    { ====================== }
+                                    { if no retain location  }
+                                    { blank expire date      }
+                                    { ====================== }
+ 
+    ASSIGN sample . retain_date = NOW        
+    UPDATE sample
+                                    { ====================== }
+                                    { set retain date to now }    
+                                    { CNM TTL 29/4/96        }
+                                    { ====================== }
+
+ENDIF
+
+{MC End Modification for call HA002263}
+  
+
+
+    RETURN ( TRUE )
+
+ENDROUTINE {action}
+
+{*************************************************}
+{            Select Routine                       }
+{*************************************************}
+
+ROUTINE select_key  ( VALUE line     , 
+                            display_id      ,
+                      VALUE first_id , 
+                      VALUE second_id )
+
+
+set format "999"
+menu_num   = MENUNUMBER ( "DSR")
+
+MENUPROC menu_num USING first_id , "$EXIT"
+
+ENDROUTINE
+
+{*************************************************}
+{            Validation Routine                   }
+{*************************************************}
+
+ROUTINE validation ( display_id )
+
+RETURN ( TRUE )
+
+ENDROUTINE
+
+
+

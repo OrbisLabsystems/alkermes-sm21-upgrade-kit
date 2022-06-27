@@ -1,0 +1,198 @@
+{==============================================================================}
+{                                                                              }
+{  ORBIS INFORMATION SYSTEMS                                                   }
+{                                                                              }
+{  Filename         : $SMMILL_ABOUT.RPF                                        }
+{  Version          : 1.0                                                      }
+{  Document Ref.    :                                                          }
+{  Author           : D. Kelly                                                 }
+{  Date Created     : 04-Mar-2002                                              }
+{  Description      : SM-Millennium Information and Version                    }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{                                                                              }
+{  Ver.     Date        By          Description                                }
+{  ----     ----        --          -----------                                }
+{  1.0      12-Jan-2000 DK          Release version                            }
+{                                                                              }
+{==============================================================================}
+
+ENABLE WINDOWS
+SET NAME "DISPLAY/"
+SET NOTPROTECTED
+
+SET COMPILE_OPTION DECLARE
+
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN LIBRARY $lib_utils
+
+
+main()
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE main                                                                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  09-Nov-2001  DK              Main Routine                                   }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE main
+
+    DECLARE form, text1, text2, cont
+
+    get_info(text1, text2, cont)
+
+    IF cont THEN
+
+        create_form(form, text1, text2)
+
+        form . start_prompt()
+        form . wait_prompt()
+        form . end_prompt()
+
+    ENDIF
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE create_form                                                         }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  09-Nov-2001  DK              Main Routine                                   }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE create_form(form, text1, text2)
+
+    DECLARE display_prompt, the_header, the_border
+
+    the_header = "About SM-Millennium"
+    the_border = "Instance Information"
+
+
+    CREATE OBJECT PROMPT_CLASS_FORM, form
+
+    form . header = the_header
+    form . footer = ""
+    form . height = 5
+    form . width  = 37
+    form . row    = ( GLOBAL ( "SCREEN_HEIGHT") - form . height) / 2
+    form . column = ( GLOBAL ( "SCREEN_WIDTH" ) - form . width ) / 2
+    form . border = TRUE
+    form . active_prompt = 1
+    form . return_behaviour = FORM_RETURN_STAY
+    form . add_frame ( the_border  ,   1, 5, 1, 36 )
+
+    PROMPT OBJECT display_prompt
+            CLASS "STD_PROMPT_TEXT"
+            ON LINE 1 FROM 10 TO 30
+            WITH ( VALUE      =  text1,
+                   BOLD       =  TRUE     )
+
+    form . add_display ( display_prompt )
+
+    PROMPT OBJECT display_prompt
+            CLASS "STD_PROMPT_TEXT"
+            ON LINE 2 FROM 8 TO 30
+            WITH ( VALUE      =  text2,
+                   BOLD       =  TRUE     )
+
+    form . add_display ( display_prompt )
+
+    PROMPT OBJECT display_prompt
+            CLASS "STD_PROMPT_TEXT"
+            ON LINE 3 FROM 13 TO 30
+            WITH ( VALUE      =  "www.orb-is.com",
+                   BOLD       =  TRUE     ,
+                   FOREGROUND_COLOUR = PROMPT_COLOUR_BLUE)
+
+    form . add_display ( display_prompt )
+
+    PROMPT OBJECT display_prompt
+            CLASS "STD_PROMPT_TEXT"
+            ON LINE 5 FROM 2 TO 20
+            WITH ( VALUE      =  "Connected to Instance:",
+                   BOLD       =  TRUE     )
+
+    form . add_display ( display_prompt )
+
+
+    PROMPT OBJECT display_prompt
+            CLASS "STD_PROMPT_TEXT"
+            ON LINE 5 FROM 22 TO 35
+            WITH ( VALUE      =  GLOBAL("INSTANCE"),
+                   BOLD       =  TRUE     ,
+                   LOWERED    =  TRUE)
+
+    form . add_display ( display_prompt )
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE get_info                                                            }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  09-Nov-2001  DK              Main Routine                                   }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE get_info(text1, text2, cont)
+
+    DECLARE file_name, check_exist, check_ok
+
+    file_name = "SMP$REPORTS:about_smmillennium.rpf"
+
+    check_exist = FILE EXISTS(file_name)
+
+    IF check_exist = TRUE THEN
+
+        FILE OPEN file_name, check_ok
+
+        IF (check_ok <> EMPTY) THEN
+
+            flashmessage(check_ok, TRUE)
+
+        ELSE
+
+            FILE READ file_name, text1,check_ok
+            FILE READ file_name, text2,check_ok
+
+            cont = TRUE
+
+        ENDIF
+
+    ELSE
+
+        cont = FALSE
+        flashmessage("Cannot find about_smmillennium.txt in smp$reports", TRUE)
+
+    ENDIF
+
+ENDROUTINE
+
+

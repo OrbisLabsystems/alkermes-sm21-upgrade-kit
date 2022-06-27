@@ -1,0 +1,158 @@
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN LIBRARY $LIB_UTILS
+
+SET COMPILE_OPTION DECLARE
+SET NOTPROTECTED
+
+{*****************************************************************************}
+
+ROUTINE base( batch_login )
+{
+*
+******************************************************************************}
+
+      RETURN ( TRUE )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE default( batch_login )
+{
+*
+******************************************************************************}
+
+      RETURN ( TRUE )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE mondays( batch_login )
+{
+*
+******************************************************************************}
+
+      RETURN ( DAYNUMBER ( batch_login . login_time ) = 1 )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE tuesdays( batch_login )
+{
+*
+******************************************************************************}
+
+      RETURN ( DAYNUMBER ( batch_login . login_time ) = 2 )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE wednesdays( batch_login )
+{
+*
+******************************************************************************}
+
+      RETURN ( DAYNUMBER ( batch_login . login_time ) = 3 )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE thursdays( batch_login )
+{
+*
+******************************************************************************}
+
+      RETURN ( DAYNUMBER ( batch_login . login_time ) = 4 )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE fridays( batch_login )
+{
+*
+******************************************************************************}
+
+      RETURN ( DAYNUMBER ( batch_login . login_time ) = 5 )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE week_day( batch_login )
+{
+*
+******************************************************************************}
+
+      DECLARE success
+
+      success = ( DAYNUMBER ( batch_login . login_time ) >= 1 ) AND
+                ( DAYNUMBER ( batch_login . login_time ) <= 5 )
+
+      RETURN ( success )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE afternoons( batch_login )
+{
+*
+******************************************************************************}
+
+      DECLARE meridian
+
+      SET DATE FORMAT "AM"
+      meridian = STRING( batch_login . login_time )
+      RESTORE DATE FORMAT
+
+      RETURN ( meridian = "PM" )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE mornings( batch_login )
+{
+*
+******************************************************************************}
+
+      DECLARE meridian
+
+      SET DATE FORMAT "AM"
+      meridian = STRING( batch_login . login_time )
+      RESTORE DATE FORMAT
+
+      RETURN ( meridian = "AM" )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE first_mon_in_month( batch_login )
+{
+*
+******************************************************************************}
+
+      DECLARE is_first_monday, day_of_month
+
+      is_first_monday = FALSE
+
+      IF DAYNUMBER ( batch_login . login_time ) = 1 THEN
+
+            SET DATE FORMAT "DD"
+            day_of_month = batch_login . login_time
+            RESTORE DATE FORMAT
+
+            IF day_of_month <= 7 THEN
+                  is_first_monday = TRUE
+            ENDIF
+      ENDIF
+
+      RETURN ( is_first_monday )
+
+ENDROUTINE

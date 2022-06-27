@@ -1,0 +1,898 @@
+{******************************************************************************
+*
+* Module Name   : $STABILLITY_UPGRADE
+*
+* Purpose       : Upgrades the Stability and Inventory module data structure
+*                 from SM2002R1 to SM2003R1
+*
+*******************************************************************************}
+
+SET NOTPROTECTED
+SET COMPILE_OPTION DECLARE
+SET NAME "DEFER/"
+
+ENABLE WINDOWS
+
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN STANDARD_LIBRARY STD_MESSAGE
+JOIN STANDARD_LIBRARY STD_STRUCTURE
+
+JOIN LIBRARY $LIB_UNIT
+JOIN LIBRARY $LIB_UTILS
+
+execute_sql( "delete from inventory_header" )
+execute_sql( "delete from inventory_item" )
+execute_sql( "delete from inventory_allocation" )
+execute_sql( "delete from inventory_alloc_item" )
+
+IF go( ) THEN
+	flash_message( "Success! See log for more information", TRUE )
+ELSE
+	flash_message( "Errors occured.  See log for more information", TRUE )
+ENDIF
+
+{******************************************************************************}
+
+ROUTINE go
+{
+*
+*
+*******************************************************************************}
+
+	DECLARE errors
+
+	errors = EMPTY
+
+	START WRITE TRANSACTION "Stability Upgrade"
+
+	add_to_log( "Starting upgrade" )
+	
+	add_to_log( "" )
+	add_to_log( "Checking structure" )
+
+	errors = check_structure( )
+	
+	IF errors = EMPTY THEN
+		errors = import_inventory_header( )
+	ENDIF
+	
+	IF errors = EMPTY THEN
+		errors = import_inventory_item( )
+	ENDIF
+	
+	IF errors = EMPTY THEN
+		errors = import_inventory_allocation( )
+	ENDIF
+
+	IF errors = EMPTY THEN
+		errors = import_inventory_alloc_item( )
+	ENDIF
+	
+	IF errors = EMPTY THEN
+		errors = pds_proto_pull_data_transform( )
+	ENDIF
+	
+	IF errors = EMPTY THEN
+		errors = pds_study_pull_data_transform( )
+	ENDIF
+	
+	IF errors = EMPTY THEN
+		errors = condition_entry_data_transform( )
+	ENDIF
+	
+	IF errors = EMPTY THEN
+
+		COMMIT
+
+		add_to_log( "" )
+		add_to_log( "Note" )
+		add_to_log( "----" )
+		add_to_log( "The data transfer stage for the pds_proto_pull and pds_study_pull tables involved the conversion of the" )
+		add_to_log( "pull amount into inventory_header units. The post-upgrade use of the pull_unit field is for formatting purposes only.")
+		add_to_log( "(i.e the pull amount will be converted into pull_unit units for rendering).")
+		add_to_log( "The post-upgrade pull_amount field will always contain a velue expressed in inventory_header units." )
+		add_to_log( "" )
+
+		add_to_log( "" )
+		add_to_log( "Upgrade complete. No errors" )
+	
+	ELSE
+		
+		ROLLBACK
+		add_to_log( "" )
+		add_to_log( "An error occured. Upgrade terminated:" )
+		add_to_log( "  " : errors )
+		
+	ENDIF
+	
+	RETURN( errors = EMPTY )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE check_table( VALUE table, list )
+{
+*
+*
+*******************************************************************************}
+
+	IF NOT valid_table ( table ) THEN
+		list = list : table
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE check_structure
+{
+*
+*
+*******************************************************************************}
+
+	DECLARE errors, missing_table_list
+	
+	errors = EMPTY
+	
+	missing_table_list = ""
+	
+	check_table( "INVENTORY_HEADER_OLD"  , missing_table_list )
+	check_table( "INVENTORY_BATCHES_OLD" , missing_table_list )
+	check_table( "ALLOCATE_STOCK_OLD"    , missing_table_list )
+	check_table( "INVENTORY_HEADER"      , missing_table_list )
+	check_table( "INVENTORY_ITEM"        , missing_table_list )
+	check_table( "INVENTORY_ALLOCATION"  , missing_table_list )
+	check_table( "INVENTORY_ALLOC_ITEM"  , missing_table_list )
+	
+	IF NOT BLANK( missing_table_list ) THEN
+		
+		errors = "The following tables do not exist: " : missing_table_list
+		
+	ENDIF
+
+	RETURN( errors )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE import_inventory_header
+{
+* 
+*
+*******************************************************************************}
+
+	DECLARE errors, src_obdb, dest_obdb, criteria, inventory_id, new_record, new_id
+
+	errors = EMPTY
+
+	add_to_log( "" )
+	add_to_log( "Exporting INVENTORY_HEADER_OLD->INVENTORY_HEADER" )
+
+	ARRAY criteria
+
+	CREATE OBJECT "STD_OBJECT_DATABASE", src_obdb
+	src_obdb . initialise( "inventory_header_old" )
+	src_obdb . select( criteria )
+	
+	CREATE OBJECT "STD_OBJECT_DATABASE", dest_obdb
+	dest_obdb . initialise( "inventory_header" )
+	
+	src_obdb . set_first( )	
+	WHILE ( src_obdb . current <> EMPTY ) AND ( errors = EMPTY ) DO
+	
+		inventory_id = SELECT inventory_header_old . inventory_id
+		                   IN OBJECT src_obdb . current
+	
+		new_id = PAD( STRIP( inventory_id ), " ", 20 )
+	
+		add_to_log( "" )
+		add_to_log( "  Exporting '" : inventory_id : "' to '" : new_id : "'" )
+	
+		errors = reserve_entry_in_obdb( dest_obdb, new_id, new_record )
+			
+		IF errors = EMPTY THEN
+			
+			add_to_log( "  Copying like fields" )
+			errors = copy_identical_field_values( src_obdb . current, new_record )
+
+		ENDIF
+		
+		IF errors = EMPTY THEN
+		
+			add_to_log( "  Transforming" )
+			errors = inventory_header_data_transform( src_obdb . current, new_record )
+		
+		ENDIF
+		
+		IF errors = EMPTY THEN
+			
+			add_to_log( "  Successful" )
+			new_record . update( )
+			
+		ENDIF
+		
+		src_obdb . set_next( )
+		
+	ENDWHILE
+	
+	RETURN( errors )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE inventory_header_data_transform( src_obj, dest_obj )
+{
+* Exports the INVENTORY_HEADER_OLD table to the INVENTORY_HEADER table
+* performing a data transformation
+*
+*******************************************************************************}
+
+	DECLARE errors
+
+	errors = EMPTY
+
+	simple_field_copy( src_obj, dest_obj, "LOW_SUPPLY_LEVEL", "LOW_UNALLOCATED_LEVEL" )
+	simple_field_copy( src_obj, dest_obj, "INVENTORY_UNIT"  , "BASE_UNIT"             )
+	simple_field_copy( src_obj, dest_obj, "ITEM_ID"         , "PRODUCT_ID"            )
+
+	ASSIGN inventory_header . callback_library        IN OBJECT dest_obj = "$INV_USER"
+	ASSIGN inventory_header . low_unallocated_routine IN OBJECT dest_obj = "INV_USER_GET_MORE_SUPPLY"
+
+	RETURN( errors )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE import_inventory_item
+{
+* Exports the INVENTORY_BATCHES_OLD table to the INVENTORY_ITEM table
+* performing a data transformation
+*
+*******************************************************************************}
+
+	DECLARE errors, src_obdb, dest_obdb, criteria, inventory_id, new_record, new_id, batch_number, item_id
+
+	errors = EMPTY
+
+	add_to_log( "" )
+	add_to_log( "Exporting INVENTORY_BATCHES_OLD->INVENTORY_ITEM" )
+
+	ARRAY criteria
+
+	CREATE OBJECT "STD_OBJECT_DATABASE", src_obdb
+	src_obdb . initialise( "inventory_batches_old" )
+	src_obdb . select( criteria )
+	
+	CREATE OBJECT "STD_OBJECT_DATABASE", dest_obdb
+	dest_obdb . initialise( "inventory_item" )
+	
+	src_obdb . set_first( )	
+	WHILE ( src_obdb . current <> EMPTY ) AND ( errors = EMPTY ) DO
+	
+		inventory_id = SELECT inventory_batches_old . inventory_id
+		                   IN OBJECT src_obdb . current
+		                   
+		batch_number = SELECT inventory_batches_old . internal_batch_number
+		                   IN OBJECT src_obdb . current
+	
+		item_id = "BATCH_" : STRIP( batch_number # "Batch " )
+		new_id = PAD( STRIP( inventory_id ), " ", 20 ) : item_id
+
+		add_to_log( "  Exporting '" : inventory_id : batch_number : "' to '" : new_id : "'" )
+
+		errors = reserve_entry_in_obdb( dest_obdb, new_id, new_record )
+			
+		IF errors = EMPTY THEN
+			
+			add_to_log( "  Copying like fields" )
+			errors = copy_identical_field_values( src_obdb . current, new_record )
+
+		ENDIF
+		
+		IF errors = EMPTY THEN
+		
+			add_to_log( "  Transforming" )
+			errors = inventory_item_data_transform( src_obdb . current, new_record )
+		
+		ENDIF
+		
+		IF errors = EMPTY THEN
+		
+			add_to_log( "  Successful" )
+			new_record . update( )
+			
+		ENDIF
+		
+		src_obdb . set_next( )
+		
+	ENDWHILE
+	
+	RETURN( errors )
+	
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE inventory_item_data_transform( src_obj, dest_obj )
+{
+*
+*
+*******************************************************************************}
+
+	DECLARE errors, inventory_id, header_unit, error_message, converted_qty,
+	        quantity, unit, quantity_unallocated, quantity_allocated
+
+	errors = EMPTY
+
+	simple_field_copy( src_obj, dest_obj, "EXTERNAL_BATCH_NUMBER", "ITEM_CODE"      )
+	simple_field_copy( src_obj, dest_obj, "DATE_RECEIVED"        , "ENTERED_ON"     )
+	simple_field_copy( src_obj, dest_obj, "RECEIVED_BY"          , "ENTERED_BY"     )
+	simple_field_copy( src_obj, dest_obj, "LAST_TESTED"          , "LAST_TESTED_ON" )
+	simple_field_copy( src_obj, dest_obj, "UNITS"                , "BASE_UNIT"      )
+
+	inventory_id = SELECT inventory_batches_old . inventory_id IN OBJECT src_obj
+
+	header_unit = SELECT inventory_header_old . inventory_unit
+	                  WHERE inventory_id = inventory_id
+
+	quantity_unallocated = SELECT inventory_batches_old . stock_quantity  IN OBJECT src_obj
+	quantity_allocated   = SELECT inventory_batches_old . stock_allocated IN OBJECT src_obj
+	
+	quantity = quantity_unallocated + quantity_allocated
+	
+	unit = SELECT inventory_batches_old . units          IN OBJECT src_obj
+
+	converted_qty = unit_convert ( quantity       ,
+	                               unit           ,
+	                               header_unit    ,
+	                               error_message  )
+	
+	IF error_message <> EMPTY THEN
+
+		errors = message_get_text( error_message, 1 )
+
+	ELSE
+	
+		ASSIGN inventory_item . quantity IN OBJECT dest_obj = converted_qty
+		
+	ENDIF
+
+	RETURN( errors )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE import_inventory_allocation
+{
+* Exports the ALLOCATE_STOCK_OLD table to the INVENTORY_ALLOCATION table
+* performing a data transformation
+*
+*******************************************************************************}
+
+	DECLARE errors, src_obdb, dest_obdb, criteria, inventory_id, new_record,
+	        new_id, batch_number, entry_code
+
+	errors = EMPTY
+
+	add_to_log( "" )
+	add_to_log( "Exporting ALLOCATE_STOCK_OLD->INVENTORY_ALLOCATION" )
+
+	ARRAY criteria
+
+	CREATE OBJECT "STD_OBJECT_DATABASE", src_obdb
+	src_obdb . initialise( "allocate_stock_old" )
+	src_obdb . select( criteria )
+	
+	CREATE OBJECT "STD_OBJECT_DATABASE", dest_obdb
+	dest_obdb . initialise( "inventory_allocation" )
+	
+	src_obdb . set_first( )	
+	WHILE ( src_obdb . current <> EMPTY ) AND ( errors = EMPTY ) DO
+	
+		inventory_id = SELECT allocate_stock_old . inventory_id
+		                   IN OBJECT src_obdb . current
+		                   
+		batch_number = SELECT allocate_stock_old . internal_batch_number
+		                   IN OBJECT src_obdb . current
+
+		entry_code = SELECT allocate_stock_old . entry_code
+		                   IN OBJECT src_obdb . current
+
+		new_id = PAD( STRIP( inventory_id ), " ", 20 ) : entry_code
+
+		add_to_log( "  Exporting '" : inventory_id : batch_number : entry_code: "' to '" : new_id : "'" )
+
+		errors = reserve_entry_in_obdb( dest_obdb, new_id, new_record )
+			
+		IF errors = EMPTY THEN
+			
+			add_to_log( "  Copying like fields" )
+			errors = copy_identical_field_values( src_obdb . current, new_record )
+
+		ENDIF
+		
+		IF errors = EMPTY THEN
+		
+			add_to_log( "  Transforming" )
+			errors = inventory_allocation_data_transform( src_obdb . current, new_record )
+		
+		ENDIF
+		
+		IF errors = EMPTY THEN
+		
+			add_to_log( "  Successful" )
+			new_record . update( )
+			
+		ENDIF
+		
+		src_obdb . set_next( )
+		
+	ENDWHILE
+	
+	RETURN( errors )
+	
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE inventory_allocation_data_transform( src_obj, dest_obj )
+{
+*
+*
+*******************************************************************************}
+
+	DECLARE errors
+
+	errors = EMPTY
+
+	simple_field_copy( src_obj, dest_obj, "ALLOCATED_DATE" , "ALLOCATED_ON" )
+	simple_field_copy( src_obj, dest_obj, "USAGE"          , "PURPOSE"      )
+
+	RETURN( errors )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE import_inventory_alloc_item
+{
+* Exports the ALLOCATE_STOCK_OLD table to the INVENTORY_ALLOC_ITEM table
+* performing a data transformation
+*
+*******************************************************************************}
+
+	DECLARE errors, src_obdb, dest_obdb, criteria, inventory_id, new_record,
+	        new_id, batch_number, item_id, entry_code
+
+	errors = EMPTY
+
+	add_to_log( "" )
+	add_to_log( "Exporting ALLOCATE_STOCK_OLD->INVENTORY_ALLOC_ITEM" )
+
+	ARRAY criteria
+
+	CREATE OBJECT "STD_OBJECT_DATABASE", src_obdb
+	src_obdb . initialise( "allocate_stock_old" )
+	src_obdb . select( criteria )
+	
+	CREATE OBJECT "STD_OBJECT_DATABASE", dest_obdb
+	dest_obdb . initialise( "inventory_alloc_item" )
+	
+	src_obdb . set_first( )	
+	WHILE ( src_obdb . current <> EMPTY ) AND ( errors = EMPTY ) DO
+	
+		inventory_id = SELECT allocate_stock_old . inventory_id
+		                   IN OBJECT src_obdb . current
+		                   
+		batch_number = SELECT allocate_stock_old . internal_batch_number
+		                   IN OBJECT src_obdb . current
+
+		entry_code = SELECT allocate_stock_old . entry_code
+		                   IN OBJECT src_obdb . current
+
+		item_id = "BATCH_" : STRIP( batch_number # "Batch " )
+		new_id = PAD( STRIP( inventory_id ), " ", 20 ) : entry_code : item_id
+
+		add_to_log( "  Exporting '" : inventory_id : batch_number : entry_code: "' to '" : new_id : "'" )
+
+		errors = reserve_entry_in_obdb( dest_obdb, new_id, new_record )
+			
+		IF errors = EMPTY THEN
+			
+			add_to_log( "  Copying like fields" )
+			errors = copy_identical_field_values( src_obdb . current, new_record )
+
+		ENDIF
+		
+		IF errors = EMPTY THEN
+		
+			add_to_log( "  Transforming" )
+			errors = inventory_alloc_item_data_transform( src_obdb . current, new_record )
+		
+		ENDIF
+		
+		IF errors = EMPTY THEN
+		
+			add_to_log( "  Successful" )
+			new_record . update( )
+			
+		ENDIF
+		
+		src_obdb . set_next( )
+		
+	ENDWHILE
+	
+	RETURN( errors )
+	
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE inventory_alloc_item_data_transform( src_obj, dest_obj )
+{
+*
+*
+*******************************************************************************}
+
+	DECLARE errors, inventory_id, header_unit, error_message, converted_qty,
+	        quantity, batches_unit, batch_number
+
+	errors = EMPTY
+
+	inventory_id = SELECT allocate_stock_old . inventory_id IN OBJECT src_obj
+	batch_number = SELECT allocate_stock_old . internal_batch_number IN OBJECT src_obj
+
+	header_unit = SELECT inventory_header_old . inventory_unit
+	                  WHERE inventory_id = inventory_id
+
+	batches_unit = SELECT inventory_batches_old . units
+	                  WHERE inventory_id = inventory_id
+	                  AND internal_batch_number = batch_number
+
+	quantity = SELECT allocate_stock_old . quantity IN OBJECT src_obj
+
+	converted_qty = unit_convert ( quantity       ,
+	                               batches_unit   ,
+	                               header_unit    ,
+	                               error_message  )
+	
+	IF error_message <> EMPTY THEN
+
+		errors = message_get_text( error_message, 1 ) : " (" : STRIP( quantity ) : " " : STRIP( batches_unit ) : " to " : STRIP( header_unit ) : ")"
+
+	ELSE
+	
+		ASSIGN inventory_alloc_item . quantity  IN OBJECT dest_obj = converted_qty
+		ASSIGN inventory_alloc_item . base_unit IN OBJECT dest_obj = batches_unit
+		
+	ENDIF
+
+	RETURN( errors )
+
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE pds_proto_pull_data_transform
+{
+*
+*
+*******************************************************************************}
+
+	DECLARE errors, obdb, criteria, inventory_id, protocol_id, protocol_ver,
+	        header_unit, error_message, pull_amount, pull_unit, converted_qty
+
+	errors = EMPTY
+
+	add_to_log( "" )
+	add_to_log( "Transforming PDS_PROTO_PULL..." )
+
+	ARRAY criteria
+
+	CREATE OBJECT "STD_OBJECT_DATABASE", obdb
+	obdb . initialise( "pds_proto_pull" )
+	obdb . select_for_update( criteria )
+	
+	obdb . set_first( )	
+	WHILE ( obdb . current <> EMPTY ) AND ( errors = EMPTY ) DO
+	
+		protocol_id = SELECT pds_proto_pull . header
+		                   IN OBJECT obdb . current
+		
+		protocol_ver = SELECT pds_proto_pull . protocol_version
+		                   IN OBJECT obdb . current
+		
+		inventory_id = SELECT pds_proto . product_id
+		                   WHERE identity         = protocol_id
+		                   AND   protocol_version = protocol_ver
+		
+		header_unit = SELECT inventory_header_old . inventory_unit
+		                   WHERE inventory_id = inventory_id
+
+		
+		pull_amount = SELECT pds_proto_pull . pull_amount
+		                  IN OBJECT obdb . current
+		
+		pull_unit = SELECT pds_proto_pull . pull_unit
+		                  IN OBJECT obdb . current
+		
+		converted_qty = unit_convert ( pull_amount    ,
+		                               pull_unit      ,
+		                               header_unit    ,
+		                               error_message  )
+		
+		IF error_message <> EMPTY THEN
+
+			errors = message_get_text( error_message, 1 )
+
+		ELSE
+
+			ASSIGN pds_proto_pull . pull_amount IN OBJECT obdb . current = converted_qty
+			ASSIGN pds_proto_pull . pull_unit   IN OBJECT obdb . current = header_unit
+
+		ENDIF
+		
+		IF errors = EMPTY THEN
+		
+			obdb . current . update( )
+			
+		ENDIF
+		
+		obdb . set_next( )
+		
+	ENDWHILE
+	
+	RETURN( errors )
+	
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE pds_study_pull_data_transform
+{
+*
+*
+*******************************************************************************}
+
+	DECLARE errors, obdb, criteria, inventory_id, protocol_id, 
+	        header_unit, error_message, pull_amount, pull_unit, converted_qty
+
+	errors = EMPTY
+
+	add_to_log( "" )
+	add_to_log( "Transforming PDS_STUDY_PULL..." )
+
+	ARRAY criteria
+
+	CREATE OBJECT "STD_OBJECT_DATABASE", obdb
+	obdb . initialise( "pds_study_pull" )
+	obdb . select_for_update( criteria )
+	
+	obdb . set_first( )	
+	WHILE ( obdb . current <> EMPTY ) AND ( errors = EMPTY ) DO
+	
+		protocol_id = SELECT pds_study_pull . header
+		                   IN OBJECT obdb . current
+		
+		inventory_id = SELECT pds_study . product_id
+		                   WHERE identity = protocol_id
+		
+		header_unit = SELECT inventory_header_old . inventory_unit
+		                   WHERE inventory_id = inventory_id
+
+		
+		pull_amount = SELECT pds_study_pull . pull_amount
+		                  IN OBJECT obdb . current
+		
+		pull_unit = SELECT pds_study_pull . pull_unit
+		                  IN OBJECT obdb . current
+		
+		converted_qty = unit_convert ( pull_amount    ,
+		                               pull_unit      ,
+		                               header_unit    ,
+		                               error_message  )
+		
+		IF error_message <> EMPTY THEN
+
+			errors = message_get_text( error_message, 1 )
+
+		ELSE
+
+			ASSIGN pds_study_pull . pull_amount IN OBJECT obdb . current = converted_qty
+			ASSIGN pds_study_pull . pull_unit   IN OBJECT obdb . current = header_unit
+
+		ENDIF
+		
+		IF errors = EMPTY THEN
+		
+			obdb . current . update( )
+			
+		ENDIF
+		
+		obdb . set_next( )
+		
+	ENDWHILE
+	
+	RETURN( errors )
+	
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE condition_entry_data_transform
+{
+*
+*
+*******************************************************************************}
+
+	DECLARE errors, src_obdb, dest_obdb, src_criteria, dest_criteria, src_obj, dest_obj, 
+	        header_id, header_ver, layer_factor, matrix_type
+
+	errors = EMPTY
+
+	add_to_log( "" )
+	add_to_log( "Copying from LAYER_ENTRY->CONDITION_ENTRY" )
+
+	ARRAY src_criteria
+
+	CREATE OBJECT "STD_OBJECT_DATABASE", src_obdb
+	src_obdb . initialise( "layer_entry" )
+	src_obdb . select( src_criteria )
+	
+	src_obdb . set_first( )	
+	WHILE ( src_obdb . current <> EMPTY ) AND ( errors = EMPTY ) DO
+	
+		src_obj = src_obdb . current
+
+		header_id    = SELECT layer_entry . header       IN OBJECT src_obj
+		header_ver   = SELECT layer_entry . version      IN OBJECT src_obj
+		layer_factor = SELECT layer_entry . layer_factor IN OBJECT src_obj
+		matrix_type  = SELECT layer_entry . matrix_type  IN OBJECT src_obj
+
+		add_to_log( header_id : header_ver : layer_factor : matrix_type )
+
+		ARRAY dest_criteria
+		ARRAY_SELECT_ADD( dest_criteria, ARRAY_SELECT_EQ, "header"      , header_id    )
+		ARRAY_SELECT_ADD( dest_criteria, ARRAY_SELECT_EQ, "version"     , header_ver   )
+		ARRAY_SELECT_ADD( dest_criteria, ARRAY_SELECT_EQ, "layer_factor", layer_factor )
+		ARRAY_SELECT_ADD( dest_criteria, ARRAY_SELECT_EQ, "matrix_type" , matrix_type  )
+
+		CREATE OBJECT "STD_OBJECT_DATABASE", dest_obdb
+		dest_obdb . initialise( "condition_entry" )
+		dest_obdb . select_for_update( dest_criteria )
+
+		dest_obdb . set_first( )
+		WHILE ( dest_obdb . current <> EMPTY ) AND ( errors = EMPTY ) DO
+
+			dest_obj = dest_obdb . current
+
+			add_to_log( "  " : SELECT condition_entry . c_factor  IN OBJECT dest_obj )
+	
+			simple_field_copy( src_obj, dest_obj, "ALLOCATION_NUM", "ALLOCATION_ID" )
+			simple_field_copy( src_obj, dest_obj, "DATE_RESERVED" , "RESERVED_ON"   )
+
+			IF errors = EMPTY THEN
+
+				dest_obj . update( )
+
+			ENDIF
+			
+			dest_obdb . set_next( )
+			
+		ENDWHILE
+		
+		src_obdb . set_next( )
+		
+	ENDWHILE
+	
+	RETURN( errors )
+
+ENDROUTINE
+
+{******************************************************************************}
+{******************************************************************************}
+
+ROUTINE add_to_log( VALUE text )
+{
+* Adds the passed string to the log file
+*
+*******************************************************************************}
+
+LITERAL
+$text________________________________________________________________________________________________________________________________________________________________________________________________________________________________
+$ENDLITERAL
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE copy_identical_field_values( src_obj, dest_obj )
+{
+* Copies across all values from identically named fields in the src_obj and
+* dest_obj. key0 fields are ignored
+*
+*******************************************************************************}
+
+	DECLARE src_table, dest_table, src_fields, dest_fields, src_pos, dest_pos, val,
+	        src_field, dest_field, dest_field_is_key0
+
+	src_table = src_obj . table
+	dest_table = dest_obj . table
+
+	get_unordered_field_names( src_table, src_fields )
+	get_unordered_field_names( dest_table, dest_fields )
+
+	src_pos = 1
+	WHILE src_pos <= size_of_array( src_fields ) DO
+		
+		dest_pos = 1
+		WHILE dest_pos <= size_of_array( dest_fields ) DO
+
+			src_field  = src_fields[ src_pos , 1 ]
+			dest_field = dest_fields[ dest_pos , 1 ]
+
+			GET_FIELD_DETAILS 'dest_table' . 'dest_field', "KEY0_FIELD", dest_field_is_key0
+
+			IF ( src_field = dest_field ) AND NOT dest_field_is_key0 THEN
+				
+				val = SELECT 'src_table' . 'src_field'
+				          IN OBJECT src_obj
+				
+				ASSIGN 'dest_table' . 'dest_field'
+				    IN OBJECT dest_obj = val
+				
+			ENDIF
+
+			dest_pos = dest_pos + 1
+		ENDWHILE
+		
+		src_pos = src_pos + 1
+	ENDWHILE
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE reserve_entry_in_obdb( obdb, VALUE key0, new_record )
+{
+* Reserves an entry in the passed object database
+*
+*******************************************************************************}
+
+	DECLARE errors
+
+	CREATE OBJECT obdb . class_to_use, new_record
+	new_record . new   = TRUE
+	new_record . table = obdb . table
+	object_add_table ( new_record, new_record . table )
+
+	RESERVE ENTRY 'new_record . table' IN OBJECT new_record, key0, errors
+
+	RETURN( errors )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE simple_field_copy( src_obj, dest_obj, VALUE src_field, VALUE dest_field )
+{
+*
+*
+*******************************************************************************}
+
+	DECLARE src_value
+
+	src_value = SELECT 'src_obj . table'. 'src_field' IN OBJECT src_obj
+
+	ASSIGN 'dest_obj . table' . 'dest_field' IN OBJECT dest_obj = src_value
+
+ENDROUTINE

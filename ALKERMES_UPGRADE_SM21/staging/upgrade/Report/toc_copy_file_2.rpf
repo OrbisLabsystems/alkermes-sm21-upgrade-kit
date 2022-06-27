@@ -1,0 +1,327 @@
+{==============================================================================}
+{                                                                              }
+{  ORBIS INFORMATION SYSTEMS                                                   }
+{                                                                              }
+{  Filename         : TOC_COPY_FILE_2.RPF                                      }
+{  Version          : 1.2                                                      }
+{  Document Ref.    : OR01019-1                                                }
+{  Author           : Damian Kelly                                             }
+{  Date Created     : 13/03/01                                                 }
+{  Responsible      :                                                          }
+{  Description      : This program copies the previous days TOC file to the    }
+{                     SampleManager Server.                                    }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Libraries Used           Routine             Description                    }
+{  --------------           -------             -----------                    }
+{                                                                              }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{                                                                              }
+{  Ver.     Date        By          Description                                }
+{  ----     ----        --          -----------                                }
+{  1.0      13/03/01    DK          Release Version                            }
+{  1.1      11/12/02    MK          Bug Fix - Added check to ensure that file  }
+{                                   has been successfully copyied to the LIMS  }
+{                                   server before deleting the TOC file on the }
+{                                   instrument laptop.                         }
+{ 1.2       04/09/03    MK          Remove command that deletes instrument file}
+{                                   from laptop after it is copied.            }
+{==============================================================================}
+
+SET COMPILE_OPTION DECLARE
+ENABLE WINDOWS
+
+SET NAME "DEFER\"
+SET NOTPROTECTED
+
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN LIBRARY $LIB_UTILS
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_TRANSFER
+
+{==============================================================================}
+{                                                                              }
+{ TOC PROGRAM CONSTANTS.........ANY CHANGES TO BE MADE HERE................... }
+{                                                                              }
+{==============================================================================}
+
+{ FTP Specific Constants }
+
+CONSTANT IP_ADDRESS           = "10.1.1.154"
+CONSTANT THE_USERNAME         = "administrator"
+CONSTANT THE_PASSWORD         = "administrator"
+
+CONSTANT VMS_SERVER_PATH      = "SMP$ROOT:[USERFILES]"
+
+{MK 3 December 2001 - Constants added to hold file paths of where FTP transfers
+ and file path where the file is copied to. [VGSM_DB.SERVER] handles 
+ all background reports therefore specifed full VMS location to allow
+ transfer of files to smp$userfiles  }
+
+CONSTANT VMS_FTP_PATH         = "DISK$PRDSMP:[VGSM_DB.SERVER]"
+CONSTANT VMS_USERFILES_PATH   = "DISK$PRDSMP:[VGSM_DB.USERFILES]"
+
+{ TOC File Details }
+
+GLOBAL CONSTANT TOC_FILE_EXTENSION   = ".TOC"
+GLOBAL CONSTANT ARC_TOC_FILE_EXT     = ".TOC"
+
+CONSTANT VMS_CLIENT_PATH      = "C:\TOC Files"
+CONSTANT VMS_CLIENT_ARC_PATH  = "C:\TOC Files\Archive"
+
+
+main()
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE main                                                                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  25/04/01     DK              Main Routine for Report.                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE main
+
+    DECLARE file_name, lims_dir, the_date, instrument_file_name, toc_file,
+            operation, node, username, password, input_filename, status,
+            check_exists
+
+    IF GLOBAL("PLATFORM") = "NT" THEN
+
+        lims_dir = LOGICAL("SMP$TOCDATA_2")
+
+    ENDIF
+
+    SET DATE FORMAT "MONDZ"
+
+    the_date = TODAY - "0001 00:00:00.00"
+
+    IF GLOBAL("PLATFORM") = "NT" THEN
+
+        toc_file = the_date:TOC_FILE_EXTENSION
+
+        file_name = lims_dir :toc_file
+
+        instrument_file_name = "smp$toc_mapped_drive_2:":the_date:TOC_FILE_EXTENSION
+
+        check_exists = FILE EXISTS(instrument_file_name)
+
+        IF check_exists THEN
+
+            { Copy file from instrument PC to the LIMS Server }
+
+            FILE COPY instrument_file_name, file_name
+
+{ Orbis - MK - 11/12/02 - Start of Modifications }
+{ Orbis - MK - 04/09/03 - Commented out this section }
+{
+            check_exists = FILE EXISTS(file_name)
+
+            IF check_exists THEN					}
+
+               { File exists on the LIMS Server therefore }
+               { Delete file from instrument PC on successful copy }	{
+
+                FILE DELETE instrument_file_name
+
+            ENDIF
+}
+{ Orbis - MK - 04/09/03 - End of Comment out }
+{ Orbis - MK - 11/12/02 - End of Modifications }
+
+        ENDIF
+
+
+    ELSE
+
+        file_name   = VMS_USERFILES_PATH:the_date:TOC_FILE_EXTENSION
+
+        operation = "get"
+        node = IP_ADDRESS
+        username = THE_USERNAME
+        password = THE_PASSWORD
+        input_filename = the_date:TOC_FILE_EXTENSION
+        file_name = VMS_USERFILES_PATH:the_date:TOC_FILE_EXTENSION
+
+        transfer_file ( operation,
+                        node,
+                        username,
+                        password,
+                        input_filename,
+                        file_name,
+                        status)
+
+    ENDIF
+
+    RESTORE DATE FORMAT
+
+ENDROUTINE
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE lib_file_write                                                      }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  25/04/01     DK              Email alert on transfer_to_server failure      }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE lib_file_write ( VALUE filename,
+                               lines,
+                               status   )
+
+    DECLARE i
+
+    FILE CREATE filename, status
+
+    i = 1
+
+    WHILE ( i <= size_of_array( lines ) )
+      AND ( lib_file_write_line( filename, lines[i], status ) )
+
+        i = i + 1
+
+    ENDWHILE
+
+    IF ( status = EMPTY )
+
+        FILE CLOSE filename, status
+
+    ENDIF
+
+    RETURN( status = EMPTY )
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE lib_file_write_line                                                 }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  25/04/01     DK              Email alert on transfer_to_server failure      }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE lib_file_write_line ( VALUE filename,
+                              VALUE line,
+                                    status )
+
+    FILE WRITE filename, line, status
+
+    RETURN( status = EMPTY )
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE transfer_file                                                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  25/04/01     DK              Email alert on transfer_to_server failure      }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE transfer_file ( VALUE operation,
+                        VALUE node,
+                        VALUE username,
+                        VALUE password,
+                        VALUE input_filename,
+                        VALUE local_filename,
+                        status)
+
+    DECLARE ftp
+    DECLARE i
+    DECLARE success
+    DECLARE ftp_com_file
+    DECLARE directory
+
+    ARRAY ftp       	 ARRAY_SIZE(0)
+
+    success = FALSE
+    status = EMPTY
+
+    directory = "smp$textreports:"
+    ftp_com_file = directory : "ftp.com"
+
+    i = 0
+    i = i + 1       ftp[i] = "ftp"
+    i = i + 1       ftp[i] = "open ":node
+    i = i + 1       ftp[i] = "user ":username: " ":password
+    i = i + 1       ftp[i] = operation : " " : input_filename : " " : local_filename 
+    i = i + 1       ftp[i] = "bye"
+
+    IF lib_file_write( ftp_com_file, ftp, status )
+
+        SPAWN "@":ftp_com_file, status quietly
+
+        IF status = EMPTY THEN
+
+            FILE DELETE ftp_com_file
+
+        ENDIF
+
+    ENDIF
+
+    RETURN( success )
+
+ENDROUTINE
+
+
+
+
+
+
+
+
+
+

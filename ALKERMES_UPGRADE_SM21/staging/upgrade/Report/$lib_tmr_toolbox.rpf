@@ -1,0 +1,1360 @@
+{******************************************************************************
+*
+* Module Name   : $LIB_TMR_TOOLBOX
+*
+* Purpose       : Matrix Result Spreadsheet toolbox code for gui
+*
+* Document Ref. :
+*
+* Specification :
+*
+* Portability   : Not Checked
+*
+* Re-entrant    : Yes
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version  Ref    Date         By             Description
+* -------  ---    -----------  ----------     ---------------------------------------
+* 1.0      MOD1   21-Feb-2014  Orbis          Instrument integration button in Matrix screen
+* 2.0      04-AUG-2017 M.Flattery             Removal of Undo button from result entry.Reference Orbis ticket #365
+*                          		          Doc Ref no: 1600007065_04, Issue 1600033786, CC-ATH-2017-2816                                  
+* 
+*******************************************************************************}
+
+SET COMPILE_OPTION DECLARE
+
+SET NAME "DEFER/"
+
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_CLIENT
+JOIN STANDARD_LIBRARY STD_GENERAL
+
+
+JOIN LIBRARY $LIB_RE_GLOBALS
+JOIN LIBRARY $LIB_TWR_USER
+JOIN LIBRARY $TOOLBOX
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $PROMPT_TOOLBAR
+JOIN LIBRARY $ROLE_LIB
+
+JOIN LIBRARY $COMP_MATRIX_GRID
+
+GLOBAL CONSTANT RE_MATRIX_TOOLS_BASE_CLASS = "REMATRIXTOOLSBASE"
+
+GLOBAL CONSTANT RE_MATRIX_TOOLBAR_CLASS    = "REMATRIXTOOLBAR"
+GLOBAL CONSTANT RE_MATRIX_TOOLBOX_CLASS    = "REMATRIXTOOLBOX"
+
+{******************************************************************************}
+
+GLOBAL
+
+ROUTINE lib_tmr_toolbox_initialise
+
+{
+*
+*	Initialise module
+*
+*******************************************************************************}
+
+	IF NOT GLOBAL ( "LIBRARY_INITIALISED" ) THEN
+
+		prompt_toolbar_initialise ( )
+		toolbox_initialise ( )
+
+		DEFINE CLASS RE_MATRIX_TOOLS_BASE_CLASS
+
+			INITIALISATION
+
+			PROPERTIES "COMPLETE_BUTTON"  ,
+			           "AUTHORISE_BUTTON" ,
+			           "REJECT_BUTTON"    ,
+			           "INSERT_BUTTON"    ,
+			           "BUTTON_ROW"       ,
+			           "BUTTON_COLUMN"    ,
+			           "UNDO_BUTTON"      ,
+			           "BUTTONS_ENABLED"
+
+			ACTIONS "SETUP"           ,
+			        "ADD_A_BUTTON"    ,
+			        "DISABLE_BUTTONS" ,
+			        "ENABLE_BUTTONS"
+
+		END CLASS
+
+		DEFINE CLASS RE_MATRIX_TOOLBAR_CLASS
+
+			INHERIT TOOLBAR_CLASS ,
+			        RE_MATRIX_TOOLS_BASE_CLASS
+
+			INITIALISATION
+
+		END CLASS
+
+		DEFINE CLASS RE_MATRIX_TOOLBOX_CLASS
+
+			INHERIT TOOLBOX_CLASS ,
+			        RE_MATRIX_TOOLS_BASE_CLASS
+
+		END CLASS
+
+		SET GLOBAL "LIBRARY_INITIALISED" TO TRUE
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE re_matrix_tools_base_class_initialisation ( self )
+
+{
+*
+*	Initialise the toolbar subclass
+*
+*******************************************************************************}
+
+	self . buttons_enabled = TRUE
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE re_matrix_toolbar_class_initialisation ( self )
+
+{
+*
+*	Initialise the toolbar subclass
+*
+*******************************************************************************}
+
+	self . row = 0.4
+	self . column = 0.4
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE re_matrix_tools_base_action_add_a_button (       self         ,
+                                                   VALUE toolbox_mode ,
+                                                         form         ,
+                                                         grid         ,
+                                                   VALUE icon         ,
+                                                   VALUE message_id   ,
+                                                   VALUE callback     ,
+                                                   VALUE two_state    ,
+                                                   VALUE checked      )
+
+{
+*
+*	Add either a toolbar item or a button
+*
+*******************************************************************************}
+
+        DECLARE button, checked_string
+
+        IF ( toolbox_mode ) THEN
+
+		IF object_get_class_name ( self ) = RE_MATRIX_TOOLBOX_CLASS THEN
+			CREATE OBJECT TOOLBUTTON_CLASS , button
+		ELSE
+			CREATE OBJECT TOOLBAR_BUTTON_CLASS , button
+		ENDIF
+
+                button . bitmap_number          = icon
+                button . status_text            = GET_USER_MESSAGE ( message_id , 1 )
+                button . balloon_text           = GET_USER_MESSAGE ( message_id , 2 )
+                button . mouse_click_callback   = callback
+                button . vgl_library            = GLOBAL ( "CURRENT_LIBRARY" )
+                button . two_state              = two_state
+
+		checked_string = TOUPPER ( STRIP ( checked ))
+		button . checked = ( checked_string = "TRUE" )
+
+                self . add_button ( button )
+
+        ELSE
+
+		CREATE OBJECT "STD_PROMPT_BUTTON" , button
+
+		button . row                 = self . button_row
+		button . column              = self . button_column
+                button . caption             = GET_USER_MESSAGE ( message_id , 3 )
+                button . width               = 10
+                button . mouse_click_routine = callback
+		button . character_sized     = TRUE
+
+                form . add_prompt ( button )
+
+                self . button_row = self . button_row + 1.5
+
+        ENDIF
+
+        object_assign_uncounted ( button . user_info , grid )
+        button . vgl_library = GLOBAL ( "CURRENT_LIBRARY" )
+
+        RETURN ( button )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE re_matrix_tools_base_action_setup (       self            ,
+                                            VALUE title_message   ,
+                                                  tmr_grid_object ,
+                                                  tmr_form_object ,
+                                            VALUE re_mode         )
+
+{
+*
+*	Add either a toolbar item or a button
+*
+*******************************************************************************}
+
+        DECLARE toolbox_mode, need_sep
+
+        toolbox_mode = tmr_grid_object . toolbox_or_buttons
+
+        IF ( toolbox_mode ) THEN
+                self . header = GET_USER_MESSAGE ( title_message , 1 )
+
+                tmr_form_object . add_prompt ( self )
+        ELSE
+                self . button_row = 1
+                self . button_column = tmr_form_object . width - 10 + 2
+        ENDIF
+
+        need_sep = FALSE
+
+        IF ( toolbox_mode ) AND
+           GLOBAL ( "RES_LIMITS_BOX_CONTROL" ) AND
+	   ( NOT GLOBAL ( "RES_SPLITTER" )) THEN
+
+                need_sep = TRUE
+
+                self . add_a_button ( toolbox_mode                            ,
+                                      tmr_form_object                         ,
+                                      tmr_grid_object                         ,
+                                      ICON_MLPS                               ,
+                                      "RESULT_ENTRY_BUTTON_MLPS"              ,
+                                      "lib_tmr_toolbox_limits_button"         ,
+                                      TRUE                                    ,
+                                      tmr_grid_object . limits_box_on         )
+
+        ENDIF
+
+
+        IF ( toolbox_mode ) AND
+           GLOBAL ( "RES_AUDIT_BOX_CONTROL" ) AND
+	   ( NOT GLOBAL ( "RES_SPLITTER" )) THEN
+
+                need_sep = TRUE
+
+                self . add_a_button ( toolbox_mode                           ,
+                                      tmr_form_object                        ,
+                                      tmr_grid_object                        ,
+                                      ICON_AUDITS                            ,
+                                      "RESULT_ENTRY_BUTTON_AUDITS"           ,
+                                      "lib_tmr_toolbox_audit_button"         ,
+                                      TRUE                                   ,
+                                      tmr_grid_object . audit_box_on         )
+
+        ENDIF
+
+        IF ( toolbox_mode ) AND GLOBAL ( "RES_INFO_BOX_CONTROL" ) THEN
+
+                need_sep = TRUE
+
+                self . add_a_button ( toolbox_mode                          ,
+                                      tmr_form_object                       ,
+                                      tmr_grid_object                       ,
+                                      ICON_INFORMATION                      ,
+                                      "RESULT_ENTRY_BUTTON_INFORMATION"     ,
+                                      "lib_tmr_toolbox_info_button"         ,
+                                      TRUE                                  ,
+                                      tmr_grid_object . info_box_on         )
+
+        ENDIF
+
+	IF ( toolbox_mode ) AND
+	   ( NOT GLOBAL ( "RES_SPLITTER" )) THEN
+
+		need_sep = TRUE
+
+		self . add_a_button ( toolbox_mode                          ,
+		                      tmr_form_object                       ,
+		                      tmr_grid_object                       ,
+		                      RE_ICON_INCIDENTS                     ,
+		                      "RESULT_ENTRY_BUTTON_INCIDENT"        ,
+		                      "lib_tmr_toolbox_incident_button"     ,
+		                      TRUE                                  ,
+		                      tmr_grid_object . incidents_on        )
+
+	ENDIF
+
+        IF need_sep AND toolbox_mode THEN
+                self . add_separator ( )
+        ENDIF
+
+        IF NOT ( toolbox_mode ) THEN
+
+                self . add_a_button ( toolbox_mode                  ,
+                                      tmr_form_object               ,
+                                      tmr_grid_object               ,
+                                      ICON_INFORMATION              ,
+                                      "RESULT_ENTRY_BUTTON_OPTIONS" ,
+                                      "lib_tmr_toolbox_options"     ,
+                                      FALSE                         ,
+                                      FALSE                         )
+
+        ENDIF
+
+        IF ( re_mode <> RE_AUTHORISE ) OR toolbox_mode THEN
+
+                self . add_a_button ( toolbox_mode                     ,
+                                      tmr_form_object                  ,
+                                      tmr_grid_object                  ,
+                                      ICON_SAMPLE                      ,
+                                      "RESULT_ENTRY_BUTTON_SAMPLE"     ,
+                                      "lib_tmr_toolbox_display_sample" ,
+                                      FALSE                            ,
+                                      FALSE                            )
+
+        ENDIF
+
+        IF toolbox_mode THEN
+
+                self . add_a_button ( toolbox_mode                         ,
+                                      tmr_form_object                      ,
+                                      tmr_grid_object                      ,
+                                      ICON_WRITING2                        ,
+                                      "RESULT_ENTRY_BUTTON_SAMPLE_RESULTS" ,
+                                      "lib_tmr_toolbox_sample_results"     ,
+                                      FALSE                                ,
+                                      FALSE                                )
+
+                self . add_separator ( )
+
+        ENDIF
+
+        IF ( re_mode = RE_MODIFY ) AND GLOBAL ( "RES_ADHOC" ) THEN
+
+                self . add_a_button (   toolbox_mode                ,
+                                        tmr_form_object             ,
+                                        tmr_grid_object             ,
+                                        ICON_ADHOC                  ,
+                                        "RESULT_ENTRY_BUTTON_ADHOC" ,
+                                        "lib_tmr_toolbox_adhoc"     ,
+                                        FALSE                       ,
+                                        FALSE                       )
+
+                IF ( toolbox_mode ) THEN
+                        self . add_separator ( )
+                ENDIF
+
+
+        ENDIF
+
+        IF  ( re_mode = RE_AUTHORISE ) OR ( re_mode = RE_MODIFY    ) THEN
+
+                need_sep = TRUE
+
+                IF toolbox_mode THEN
+
+			IF ( role_lib_has_privilege( ROLE_LIB_RE_AUTH_RES  )   OR
+			     role_lib_has_privilege( ROLE_LIB_RE_AUTH_TEST ) ) THEN
+
+				self . authorise_button =
+				     self . add_a_button ( toolbox_mode                    ,
+							   tmr_form_object                 ,
+							   tmr_grid_object                 ,
+							   ICON_AUTHORIZE                  ,
+							   "RESULT_ENTRY_BUTTON_AUTHORISE" ,
+							   "lib_tmr_toolbox_authorise"     ,
+							   FALSE                           ,
+							   FALSE                           )
+                                                   
+			ENDIF                                                   
+
+			IF ( role_lib_has_privilege( ROLE_LIB_RE_REJECT_RES  )   OR
+			     role_lib_has_privilege( ROLE_LIB_RE_REJECT_TEST ) ) THEN
+
+				self . reject_button =
+				     self . add_a_button ( toolbox_mode                 ,
+							   tmr_form_object              ,
+							   tmr_grid_object              ,
+							   ICON_REJECT                  ,
+							   "RESULT_ENTRY_BUTTON_REJECT" ,
+							   "lib_tmr_toolbox_reject"     ,
+							   FALSE                        ,
+							   FALSE                        )
+                                                   
+			ENDIF                                                   
+{2.0}
+{
+			IF ( role_lib_has_privilege( ROLE_LIB_RE_AUTH_RES    ) OR
+			     role_lib_has_privilege( ROLE_LIB_RE_REJECT_RES  ) OR
+			     role_lib_has_privilege( ROLE_LIB_RE_AUTH_TEST   ) OR
+			     role_lib_has_privilege( ROLE_LIB_RE_REJECT_TEST ) ) THEN
+			     
+				self . undo_button =
+				self . add_a_button ( toolbox_mode               ,
+						      tmr_form_object            ,
+						      tmr_grid_object            ,
+						      ICON_UNDO                  ,
+						      "RESULT_ENTRY_BUTTON_UNDO" ,
+						      "lib_tmr_toolbox_undo"     ,
+						      FALSE                      ,
+						      FALSE                      )
+						      
+			ENDIF		
+}
+{/2.0}				      
+
+                ELSE
+
+                        self . authorise_button =
+                             self . add_a_button ( toolbox_mode                           ,
+                                                   tmr_form_object                        ,
+                                                   tmr_grid_object                        ,
+                                                   ICON_AUTHORIZE                         ,
+                                                   "RESULT_ENTRY_BUTTON_AUTHORISE"        ,
+                                                   "lib_tmr_toolbox_authorise_or_reject " ,
+                                                   FALSE                                  ,
+                                                   FALSE                                  )
+
+                ENDIF
+
+        ENDIF
+
+        IF need_sep THEN
+
+                IF toolbox_mode THEN
+                        self . add_separator ( )
+                ENDIF
+
+                need_sep = FALSE
+
+        ENDIF
+
+        IF ( re_mode = RE_MODIFY ) OR ( re_mode = RE_AUTHORISE ) THEN
+
+                self . add_a_button ( toolbox_mode                 ,
+                                      tmr_form_object              ,
+                                      tmr_grid_object              ,
+                                      ICON_CALCULATOR              ,
+                                      "RESULT_ENTRY_BUTTON_RECALC" ,
+                                      "lib_tmr_toolbox_recalc"     ,
+                                      FALSE                        ,
+                                      FALSE                        )
+
+        ENDIF
+
+        IF ( toolbox_mode ) THEN
+
+                self . add_separator ( )
+
+                IF ( re_mode = RE_MODIFY  ) AND ( global ( "PQL_ENABLE" )) THEN
+
+                        self . add_a_button ( toolbox_mode                  ,
+                                              tmr_form_object               ,
+                                              tmr_grid_object               ,
+                                              ICON_ABOVE_LIMIT              ,
+                                              "RESULT_ENTRY_GREATER_PQL"    ,
+                                              "lib_tmr_toolbox_greater_pql" ,
+                                              FALSE                         ,
+                                              FALSE                         )
+
+                        self . add_a_button ( toolbox_mode                  ,
+                                              tmr_form_object               ,
+                                              tmr_grid_object               ,
+                                              ICON_BELOW_LIMIT              ,
+                                              "RESULT_ENTRY_LESS_PQL"       ,
+                                              "lib_tmr_toolbox_less_pql"    ,
+                                              FALSE                         ,
+                                              FALSE                         )
+
+                        self . add_separator ( )
+
+                        self . add_a_button ( toolbox_mode                  ,
+                                             tmr_form_object                ,
+                                             tmr_grid_object                ,
+                                             ICON_DILUTION                  ,
+                                             "RESULT_ENTRY_DILUTION_FACTOR" ,
+                                             "lib_tmr_toolbox_dilution"     ,
+                                             FALSE                          ,
+                                             FALSE                          )
+
+                        self . add_separator ( )
+
+                ENDIF
+
+                self . add_a_button ( toolbox_mode                   ,
+                                      tmr_form_object                ,
+                                      tmr_grid_object                ,
+                                      ICON_FORMULA                   ,
+                                      "RESULT_ENTRY_FORMULA"         ,
+                                      "lib_tmr_toolbox_formula"      ,
+                                      FALSE                          ,
+                                      FALSE                          )
+
+                self . add_separator ( )
+
+        ELSE
+
+                self . add_a_button ( toolbox_mode                    ,
+                                      tmr_form_object                 ,
+                                      tmr_grid_object                 ,
+                                      ICON_CALCULATOR                 ,
+                                      "RESULT_ENTRY_BUTTON_IDL"       ,
+                                      "lib_tmr_toolbox_idl"           ,
+                                      FALSE                           ,
+                                      FALSE                           )
+
+        ENDIF
+
+		
+		IF ( toolbox_mode ) THEN
+		
+			need_sep = TRUE
+		
+			IF ( GLOBAL("RES_COMMENTS_SAMP_ENABLED") ) THEN
+		
+				IF need_sep THEN
+					self . add_separator ( )
+					need_sep = FALSE
+				ENDIF
+		
+				self . add_a_button ( toolbox_mode                ,
+		                          tmr_form_object             ,
+		                          tmr_grid_object             ,
+		                          ICON_SAMPLE_RECEIPT         ,
+		                          "RESULT_ENTRY_BUTTON_SAMPLE_COMMENT"  ,
+		                          "lib_tmr_toolbox_sample_comment"      ,
+		                          FALSE                       ,
+		                          FALSE                      )
+			ENDIF
+	
+			IF ( GLOBAL("RES_COMMENTS_TEST_ENABLED") ) THEN
+			
+				IF need_sep THEN
+					self . add_separator ( )
+					need_sep = FALSE
+				ENDIF
+			
+				self . add_a_button ( toolbox_mode                ,
+		                          tmr_form_object             ,
+		                          tmr_grid_object             ,
+		                          client_icon_id_to_number("INT_TEST_COMMENT") ,
+		                          "RESULT_ENTRY_BUTTON_TEST_COMMENT"  ,
+		                          "lib_tmr_toolbox_test_comment"      ,
+		                          FALSE                       ,
+		                          FALSE                       )
+		        ENDIF
+
+			IF ( GLOBAL("RES_COMMENTS_RES_ENABLED") ) THEN
+
+				IF need_sep THEN
+					self . add_separator ( )
+					need_sep = FALSE
+				ENDIF
+				
+				self . add_a_button ( toolbox_mode                ,
+		                          tmr_form_object             ,
+		                          tmr_grid_object             ,
+		                          client_icon_id_to_number("INT_RESULT_COMMENT") ,
+		                          "RESULT_ENTRY_BUTTON_RESULT_COMMENT"  ,
+		                          "lib_tmr_toolbox_result_comment"      ,
+		                          FALSE                       ,
+		                          FALSE                       )						
+			
+			ENDIF				
+			
+			self . add_separator ( )
+	
+		ENDIF
+		
+        self . add_a_button ( toolbox_mode                  ,
+                              tmr_form_object               ,
+                              tmr_grid_object               ,
+                              ICON_HELP                     ,
+                              "RESULT_ENTRY_BUTTON_HELP"    ,
+                              "lib_tmr_toolbox_help_button" ,
+                              FALSE                         ,
+                              FALSE                         )
+
+        IF ( toolbox_mode ) THEN
+                self . add_separator ( )
+        ENDIF
+
+	IF ( NOT tmr_grid_object . single_result_commit ) AND
+	   (( re_mode = RE_MODIFY ) OR ( re_mode = RE_AUTHORISE )) THEN
+
+		self . add_a_button ( toolbox_mode                   ,
+		                      tmr_form_object                ,
+		                      tmr_grid_object                ,
+		                      ICON_COMMIT                    ,
+		                      "RESULT_ENTRY_BUTTON_SAVE"     ,
+		                      "lib_tmr_toolbox_save_button"  ,
+		                      FALSE                          ,
+		                      FALSE                          )
+
+	ENDIF
+
+        self . add_a_button ( toolbox_mode                   ,
+                              tmr_form_object                ,
+                              tmr_grid_object                ,
+                              ICON_CLOSE                     ,
+                              "RESULT_ENTRY_BUTTON_CLOSE"    ,
+                              "lib_tmr_toolbox_close_button" ,
+                              FALSE                          ,
+                              FALSE                          )
+
+
+{ MOD1 }
+	IF ( re_mode = RE_MODIFY ) THEN
+
+		self . add_a_button ( toolbox_mode               ,
+                              tmr_form_object                ,
+                              tmr_grid_object                ,
+		                           client_icon_id_to_number ( "INT_BALANCE" ) ,
+		                           "RESULT_ENTRY_BUTTON_INSTRUMENT"           ,
+		                           "lib_tmr_toolbox_instrument"               ,
+		                           FALSE                                      ,
+		                           FALSE  )
+
+	ENDIF
+{ end MOD1 } 
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_tmr_toolbox_display_sample ( dse_button )
+
+{
+*
+*	Display the current sample
+*
+*******************************************************************************}
+
+        DECLARE old_global      ,
+                cell_row        ,
+                result_item     ,
+                sample_id       ,
+                comp_name       ,
+                anal_name       ,
+                aux_id          ,
+                field_size
+
+        old_global = GLOBAL( "LABTABLE_MODE" )
+        SET GLOBAL "labtable_mode" TO TRUE
+
+        cell_row = dse_button . userinfo . current_row
+
+        comp_name = dse_button . userinfo . title_text_top [ 2 , 1 ]
+        comp_name = comp_matrix_grid_set_name (
+                                dse_button . userinfo . row_list [ cell_row, 1] ,
+				comp_name                                       )
+        comp_name = comp_name : dse_button . userinfo . row_list [ cell_row, 2] 
+
+        GET_FIELD_DETAILS versioned_component . name, "FIELD_SIZE", field_size
+        comp_name = PAD ( comp_name , " " , field_size )
+
+        anal_name = dse_button . userinfo . title_text_top [ 2 , 3 ]
+
+        aux_id = number_to_text ( cell_row, ROW_FORMAT ) : comp_name : anal_name 
+
+
+        result_item = dse_button . userinfo . result_collection . get_by_index ( "ROW_KEY", 
+                                                                                 aux_id )
+
+        IF result_item <> EMPTY THEN
+
+                sample_id = SELECT test . sample_id
+                             IN OBJECT result_item . result_object . test_object
+
+                MENUPROC 47 USING sample_id
+
+        ENDIF
+
+        SET GLOBAL "labtable_mode" TO old_global
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_tmr_toolbox_sample_results ( button )
+
+{
+*
+*	Display all results for the current sample
+*
+*******************************************************************************}
+
+        CALL_ROUTINE "lib_tmr_grid_call_dsr"
+                     IN LIBRARY "$LIB_TMR_GRID"
+                     USING button . user_info
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_tmr_toolbox_recalc ( recalc_button )
+
+{
+*
+*	Recalculate all results
+*
+*******************************************************************************}
+
+        recalc_button . user_info . recalculate ( TRUE, FALSE, FALSE )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_tmr_toolbox_limits_button ( self )
+
+{
+*
+*	Display the limits form
+*
+*******************************************************************************}
+
+	DECLARE checked_state
+
+	checked_state = self . get_check ( )
+
+	self . user_info . limits_box_on = checked_state
+
+	self . user_info . mlp_form . prompt_objects [ 1 ] .
+	                                         set_visible ( checked_state )
+	self . user_info . mlp_form . set_visible ( checked_state )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_tmr_toolbox_audit_button ( self )
+
+{
+*
+*	Display the audits form
+*
+*******************************************************************************}
+
+	DECLARE checked_state
+
+	checked_state = self . get_check ( )
+
+	self . user_info . audit_box_on = checked_state
+
+	self . user_info . audit_form . prompt_objects [ 1 ] .
+	                                         set_visible ( checked_state )
+	self . user_info . audit_form . set_visible ( checked_state )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_tmr_toolbox_info_button ( self )
+
+{
+*
+*	Display the result info form
+*
+*******************************************************************************}
+
+        IF self . user_info . info_box_on THEN
+
+                self . user_info . result_info_exit ( )
+
+                self . user_info . info_box_on = FALSE
+
+        ELSE
+
+                self . user_info . info_box_on = TRUE
+
+                self . user_info . result_info_setup ( )
+
+        ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_tmr_toolbox_incident_button ( self )
+
+{
+*
+*	Display the incidents form
+*
+*******************************************************************************}
+
+	DECLARE checked_state
+
+	checked_state = self . get_check ( )
+
+	self . user_info . incidents_on = checked_state
+
+	self . user_info . incidents_form . prompt_objects [ 1 ] .
+	                                         set_visible ( checked_state )
+	self . user_info . incidents_form . set_visible ( checked_state )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_tmr_toolbox_help_button ( self )
+
+{
+*
+*	Display the relevant help page
+*
+*******************************************************************************}
+
+        self . user_info . parent_prompt . help ( )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_tmr_toolbox_close_button ( self )
+
+{
+*
+*	Close the result entry window
+*
+*******************************************************************************}
+
+	self . parent_prompt . set_lastkey ( "EXIT" )
+	self . parent_prompt . keep_prompting = FALSE
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_tmr_toolbox_save_button ( self )
+
+{
+*
+*	Save results entered to date
+*
+*******************************************************************************}
+
+	self . user_info . store_results ( FALSE )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_tmr_toolbox_options ( self )
+
+{
+*
+*	Call the SELECT options box
+*
+*******************************************************************************}
+
+        CALL_ROUTINE "select_callback_gui"
+                     IN LIBRARY "$LIB_TMR_GRID"
+                     USING self . user_info
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_tmr_toolbox_sample_comment ( self )
+
+{
+*
+*	Call the SELECT options box
+*
+*******************************************************************************}
+	DECLARE comment_table
+	
+	comment_table = "SAMPLE"
+	
+    CALL_ROUTINE "LIB_TMR_GRID_ADD_COMMENT"
+                     IN LIBRARY "$LIB_TMR_GRID"
+                     USING self , comment_table
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_tmr_toolbox_test_comment ( self )
+
+{
+*
+*	Call the SELECT options box
+*
+*******************************************************************************}
+	
+	DECLARE comment_table
+	
+	comment_table = "TEST"
+
+        CALL_ROUTINE "LIB_TMR_GRID_ADD_COMMENT"
+                     IN LIBRARY "$LIB_TMR_GRID"
+                     USING self , comment_table
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_tmr_toolbox_result_comment ( self )
+
+{
+*
+*	Call the SELECT options box
+*
+*******************************************************************************}
+	
+	DECLARE comment_table
+	
+	comment_table = "RESULT"
+
+    CALL_ROUTINE "LIB_TMR_GRID_ADD_COMMENT"
+                     IN LIBRARY "$LIB_TMR_GRID"
+                     USING self , comment_table
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_tmr_toolbox_authorise_or_reject ( self )
+
+{
+*
+*       Display a menu for the user to choose the authorise option
+*
+*******************************************************************************}
+
+DECLARE message_array, auth_array, option_name, row_count, auth_array_count
+
+        ARRAY message_array
+
+	row_count = 0
+	
+	IF ( role_lib_has_privilege( ROLE_LIB_RE_AUTH_RES  )   OR
+	     role_lib_has_privilege( ROLE_LIB_RE_AUTH_TEST ) ) THEN
+	     
+	     row_count = row_count + 1 
+	     message_array [ row_count ] = GET_USER_MESSAGE ( "RESULT_ENTRY_BUTTON_AUTHORISE", 1 )
+	     
+	ENDIF
+	
+	IF ( role_lib_has_privilege( ROLE_LIB_RE_REJECT_RES  )   OR
+	     role_lib_has_privilege( ROLE_LIB_RE_REJECT_TEST ) ) THEN
+	     
+	     row_count = row_count + 1 
+             message_array [ row_count ] = GET_USER_MESSAGE ( "RESULT_ENTRY_BUTTON_REJECT"   , 1 )
+	     
+	ENDIF
+
+{2.0}
+{	
+	IF ( row_count > 0 ) THEN
+	
+		row_count = row_count + 1
+                message_array [ row_count ] = GET_USER_MESSAGE ( "RESULT_ENTRY_BUTTON_UNDO"     , 1 )
+                
+	ENDIF
+}
+{/2.0}       
+
+	IF GLOBAL ( "TERMTYPE" ) = "GUI" THEN
+
+		option_name = client_do_popup_menu ( message_array ,
+		                                     0             ,
+		                                     0             ,
+		                                     0             )
+
+	ELSE
+
+		ARRAY auth_array
+		
+		IF ( row_count > 0 ) THEN
+
+			auth_array [ 1, 1 ] = "*"
+			auth_array [ 2, 1 ] = message_array [ 1 ]
+			
+			auth_array_count = 2
+			
+			row_count = row_count + 1
+			
+			WHILE ( auth_array_count <= row_count ) DO
+
+				auth_array [ auth_array_count, 1 ] = substring ( message_array [ auth_array_count ], 1, 1 )
+				auth_array [ auth_array_count, 2 ] = message_array [ auth_array_count ]
+				auth_array [ auth_array_count, 3 ] = message_array [ auth_array_count ]
+				
+			ENDWHILE				
+
+			CHOOSE option_name OUTOF auth_array AT 10,10
+       	        
+       	        ENDIF
+
+	ENDIF
+
+        IF ( option_name <> EMPTY ) AND ( NOT BLANK ( option_name )) THEN
+
+                IF option_name = GET_USER_MESSAGE ( "RESULT_ENTRY_BUTTON_AUTHORISE", 1 ) THEN
+
+                        CALL_ROUTINE "lib_tmr_grid_authorise_button"
+                                     IN LIBRARY "$LIB_TMR_GRID"
+                                     USING self . user_info
+
+                ELSEIF option_name = GET_USER_MESSAGE ( "RESULT_ENTRY_BUTTON_REJECT"   , 1 ) THEN
+
+                        CALL_ROUTINE "lib_tmr_grid_reject_button"
+                                     IN LIBRARY "$LIB_TMR_GRID"
+                                     USING self . user_info
+
+{2.0}
+{
+                ELSEIF option_name = GET_USER_MESSAGE ( "RESULT_ENTRY_BUTTON_UNDO"     , 1 ) THEN
+
+                        CALL_ROUTINE "lib_tmr_grid_undo_button"
+                                     IN LIBRARY "$LIB_TMR_GRID"
+                                     USING self . user_info
+}
+{/2.0}
+
+                ENDIF
+
+        ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_tmr_toolbox_authorise ( self )
+
+{
+*
+*	Authorise the current sample / test / result
+*
+*******************************************************************************}
+
+        CALL_ROUTINE "lib_tmr_grid_authorise_button"
+                     IN LIBRARY "$LIB_TMR_GRID"
+                     USING self . user_info
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_tmr_toolbox_reject ( self )
+
+{
+*
+*	Reject the current sample / test / result
+*
+*******************************************************************************}
+
+        CALL_ROUTINE "lib_tmr_grid_reject_button"
+                     IN LIBRARY "$LIB_TMR_GRID"
+                     USING self . user_info
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_tmr_toolbox_undo ( self )
+
+{
+*
+*	Undo the last Authorise / Reject
+*
+*******************************************************************************}
+
+        CALL_ROUTINE "lib_tmr_grid_undo_button"
+                     IN LIBRARY "$LIB_TMR_GRID"
+                     USING self . user_info
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_tmr_toolbox_complete ( self )
+
+{
+*
+*	Complete the current test
+*
+*******************************************************************************}
+
+        CALL_ROUTINE "lib_tmr_grid_complete_button"
+                     IN LIBRARY "$LIB_TMR_GRID"
+                     USING self . user_info
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_tmr_toolbox_idl ( self )
+
+{
+*
+*	Set IDL for the current result
+*
+*******************************************************************************}
+
+        CALL_ROUTINE "SELECT_CALLBACK_GUI_IDL"
+                     IN LIBRARY "$LIB_TMR_GRID"
+                     USING self . user_info
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_tmr_toolbox_greater_pql ( self )
+
+{
+*
+*	Set PQL for the current result
+*
+*******************************************************************************}
+
+        self . user_info . set_greater_than_pql ( TRUE )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_tmr_toolbox_less_pql ( self )
+
+{
+*
+*	Set PQL for the current result
+*
+*******************************************************************************}
+
+        self . user_info . set_less_than_pql ( TRUE )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_tmr_toolbox_dilution ( self )
+
+{
+*
+*	Set dilution for the current result
+*
+*******************************************************************************}
+
+        CALL_ROUTINE "LIB_TMR_GRID_DILUTION_BUTTON"
+                     IN LIBRARY "$LIB_TMR_GRID"
+                     USING self
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_tmr_toolbox_formula ( self )
+
+{
+*
+*	Call the formula report for the current result
+*
+*******************************************************************************}
+
+        CALL_ROUTINE "LIB_TMR_GRID_FORMULA_BUTTON"
+                     IN LIBRARY "$LIB_TMR_GRID"
+                     USING self
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_tmr_toolbox_adhoc ( self )
+
+{
+*
+*	Create ad-hoc result
+*
+*******************************************************************************}
+
+        CALL_ROUTINE "LIB_TMR_GRID_ADHOC"
+                     IN LIBRARY "$LIB_TMR_GRID"
+                     USING self
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE lib_twr_toolbox_instrument ( self )
+
+{
+*
+*	Read a result from the instrument connected to the client
+*
+*******************************************************************************}
+
+        CALL_ROUTINE "LIB_TMR_GRID_INSTRUMENT_BUTTON"
+                     IN LIBRARY "$lib_tmr_grid"
+                     USING self
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE re_matrix_tools_base_action_disable_buttons ( self, VALUE toolbox_mode )
+
+{ Disable buttons which are not relevant when an item is selected in the 
+* re tree.
+*
+*
+* Parameters   : self, the toolbar class.
+*
+*
+{******************************************************************************}
+
+	IF self . buttons_enabled THEN
+
+		IF ( toolbox_mode ) THEN
+
+			disable_button( self . authorise_button )
+
+			disable_button( self . reject_button )
+
+			disable_button( self . complete_button )
+
+		ENDIF
+
+		disable_button( self . insert_button )
+
+		self . buttons_enabled = FALSE
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE re_matrix_tools_base_action_enable_buttons ( self, VALUE toolbox_mode )
+
+{ Enable toolbar buttons when leaving re tree.
+*
+*
+* Parameters   : self, the toolbar class.
+*
+*
+{******************************************************************************}
+	
+	IF NOT self . buttons_enabled THEN
+
+		IF ( toolbox_mode ) THEN
+
+			enable_button( self . authorise_button )
+
+			enable_button( self . reject_button )
+
+			enable_button( self . complete_button  )
+
+		ENDIF
+
+		enable_button( self . insert_button )
+
+		self . buttons_enabled = TRUE
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE disable_button ( toolbar_button )
+
+{ Disable the toolbar button.
+*
+*
+* Parameters   : toolbar_button, the button to be disabled.
+*
+*
+{******************************************************************************}
+
+	IF ( variable_is_assigned( toolbar_button ) ) THEN
+	
+		IF toolbar_button . enabled THEN
+			toolbar_button . enabled = FALSE
+			toolbar_button . unpaste()
+		ENDIF
+		
+	ENDIF
+
+ENDROUTINE 
+
+{******************************************************************************}
+
+ROUTINE enable_button ( toolbar_button )
+
+{ Enable the toolbar button.
+*
+*
+* Parameters   : toolbar_button, the button to be enabled.
+*
+*
+{******************************************************************************}
+
+	IF ( variable_is_assigned( toolbar_button ) ) THEN
+	
+		IF NOT toolbar_button . enabled THEN
+			toolbar_button . enabled = TRUE
+			toolbar_button . repaste()
+		ENDIF
+		
+	ENDIF
+
+ENDROUTINE 
+
+{******************************************************************************}
+{******************************************************************************}
+{******************************************************************************}
+
+{ MOD1 }
+ROUTINE lib_tmr_toolbox_instrument ( self )
+
+{
+*
+*	Read a result from the instrument connected to the client
+*
+*******************************************************************************}
+
+DECLARE grid          ,
+	result_item   ,
+	comp_name     ,
+	anal_name     ,
+	field_size
+
+        grid = self . user_info
+
+        comp_name = grid . title_text_top [ grid . current_column, 1 ]
+        comp_name = comp_matrix_grid_set_name (  grid . row_list [ grid . current_row, 1], 
+				comp_name )
+        comp_name = comp_name :  grid . row_list [ grid . current_row, 2]
+
+	GET_FIELD_DETAILS versioned_component . name, "FIELD_SIZE", field_size
+	comp_name = PAD ( comp_name , " " , field_size )
+
+        anal_name = grid . title_text_top [ grid . current_column, 3 ]
+
+        result_item = grid . result_collection .
+                             get_by_index ( "ROW_KEY",
+                              number_to_text ( grid . current_row, ROW_FORMAT) :
+                                        comp_name : anal_name )
+
+        IF result_item <> EMPTY THEN
+
+		result_item . result_object . read_instrument_result ( grid )
+        ENDIF
+
+ENDROUTINE
+
+{ /MOD1 }

@@ -1,0 +1,1750 @@
+{==============================================================================}
+{                                                                              }
+{  ORBIS INFORMATION SYSTEMS                                                   }
+{                                                                              }
+{  Filename         : $SMMILL_ANAL_WORKLIS.RPF                                 }
+{  Version          :                                                          }
+{  Document Ref.    :                                                          }
+{  Author           : D. Kelly                                                 }
+{  Date Created     : 09-Nov-2001                                              }
+{  Description      : Report to for generating and transferring Standard       }
+{                     analysis worklists to Millennium.                        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{                                                                              }
+{  Ver.     Date        By          Description                                }
+{  ----     ----        --          -----------                                }
+{  1.0      06-Nov-2001 DK          Release version                            }
+{                                                                              }
+{==============================================================================}
+
+SET NAME "DEFER/"
+ENABLE WINDOWS
+
+SET NOTPROTECTED
+
+SET COMPILE_OPTION DECLARE
+
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_WINDOW
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_CLIENT
+
+JOIN LIBRARY $CRITERIA_EDIT
+JOIN LIBRARY $CRITERIA_SAVED
+JOIN LIBRARY $CRITERIA_CACHE
+JOIN LIBRARY $CRITERIA_LIB
+JOIN LIBRARY $LIB_STAN
+JOIN LIBRARY $WKSBROWSE
+
+JOIN LIBRARY $lib_utils
+JOIN LIBRARY $SMMILL_DYNAMIC_SQL
+JOIN LIBRARY $SMMILL_TRANSFER
+
+JOIN LIBRARY $SMMILL_CONST
+
+CONSTANT FORM_WIDTH       = 105
+CONSTANT FORM_HEIGHT_GUI  = 22
+CONSTANT FORM_HEIGHT_TERM = 20
+
+CONSTANT BLANK_CELL = ""
+
+CONSTANT BUTTON_WIDTH     = 16
+CONSTANT BUTTON_SPACE     = 10
+
+CONSTANT GRID_WIDTH       = 30
+CONSTANT STANDARD_ID      = 8
+CONSTANT ID_TEXT          = 3
+CONSTANT REPLICATE_NO     = 16
+
+main()
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE main                                                                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  09-Nov-2001  DK              Main Routine                                   }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE main
+
+    DECLARE main_form, smp_user, mill_user, mill_password
+
+    smp_user = GLOBAL("OPERATOR")
+
+    mill_user = SELECT MILL_SECURITY . mill_user
+                 WHERE lims_user = smp_user AND
+                       removeflag = FALSE
+                       
+
+    IF mill_user <> EMPTY THEN
+
+        mill_password = SELECT MILL_SECURITY . mill_password
+
+        IF ( mill_password <> EMPTY ) AND
+           ( STRIP(mill_password <> "") ) AND
+           ( mill_password <> Null) THEN
+
+            setup_form ( main_form )
+
+            main_form . start_prompt ()
+
+            REPEAT 
+
+                main_form . wait_prompt ()
+
+                IF ( main_form . get_lastkey () = "DO" ) THEN
+
+                    transfer_worklist ( main_form,
+                                        mill_user,
+                                        mill_password)
+
+                ENDIF
+
+
+            UNTIL  main_form . get_lastkey () = "EXIT" 
+
+            main_form . end_prompt ()
+
+        ELSE
+
+            flashmessage("No password assigned for Millennium User ":STRIP(mill_user), TRUE)
+
+        ENDIF
+
+    ELSE
+
+        flashmessage("SampleManager User ": STRIP(smp_user):" cannot transfer data to Millennium", TRUE)
+
+    ENDIF
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE setup_form                                                          }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  09-Nov-2001  DK              Sets up properties for the main form           }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  main_form              reference            the main form                   }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE setup_form ( main_form )
+
+    DECLARE the_header, proj, temp, send, criteria, propogate_button,
+            the_sheet, generate_button, help_button, cancel_button,
+            info, vial_pos, no_injections, proj_array, smp_version
+
+    ARRAY proj_array
+
+    proj_array[1,1] = "NONE SELECTED"
+
+    the_header = "SampleManager -> Millennium Worklist Generation and Transfer"
+
+    PROMPT OBJECT main_form
+        CLASS PROMPT_CLASS_FORM
+        WITH ( width  = FORM_WIDTH                          ,
+               row    = 5                                   ,
+               column = 10                                  ,
+               header = the_header                          ,
+               footer = "<DO> to Continue, <EXIT> to Cancel",
+               proportional = TRUE                          ,
+               button_style = FORM_BUTTON_NONE              ,
+               return_behaviour = FORM_RETURN_WRAP          )
+
+    main_form . height = FORM_HEIGHT_GUI
+
+
+                                  {============================================}
+                                  { Form Frames.                               }    
+                                  {============================================}
+
+    main_form . add_frame ("Millennium Specific Options", 1 , 1 , 3 , 37)
+    main_form . add_frame ("Worksheet Selection"        , 40, 1 , 3 , 25)
+    main_form . add_frame ("Millennium Worklist Options", 67, 1 , 3 , 22)
+    main_form . add_frame ("Send Automatically?"        , 90, 1 , 3 , 15)
+    main_form . add_frame (""                           , 94, 2 , 1 , 6 )
+    main_form . add_frame ("Available Samples"          , 1 , 6 , 12, 104)
+    main_form . add_frame (""                           , 1 , 21, 1 , 104)
+
+  
+
+
+                                  {============================================}
+                                  { Millennium Options Prompts.                }    
+                                  {============================================}
+
+
+    PROMPT OBJECT proj
+                BROWSE ON TEXT 
+                ON LINE 1 FROM 15 to 34
+                WITH ( ALWAYS_VALIDATE = TRUE ,
+                       LOWERED = TRUE,
+                       BROWSE_ROUTINE = "select_project_data",
+                       VALIDATION_ROUTINE = "validate_project",
+                       USER_INFO = proj_array)
+
+    main_form . add_display ( "Project    ",
+                              2         ,
+                              1         ,
+                              PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED)
+
+
+    PROMPT OBJECT temp
+                BROWSE ON TEXT
+                ON LINE 2 FROM 15 to 34
+                WITH ( LOWERED = TRUE,
+                       LEAVE_PROMPT_ROUTINE = "enable_buttons",
+                       BROWSE_ROUTINE = "select_sampleset_data",
+                       VALIDATION_ROUTINE = "validate_sset",
+                       ALWAYS_VALIDATE = TRUE )
+
+
+
+    main_form . add_display ( "SampleSet  ",
+                              2         ,
+                              2         ,
+                              PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED)
+
+    PROMPT OBJECT no_injections
+	    FORMAT MILL_INT_SSET . no_of_injections
+	    on line 3 from 32 TO 34
+            WITH (value = GLOBAL("MILL_NO_INJECTIONS_DEFAULT"),
+                  foreground_colour = PROMPT_COLOUR_BLUE)
+
+    smp_version = STRIP(smp_version_number ( ))
+
+    IF LEFTSTRING(smp_version, 4) = "2001" THEN
+
+        main_form . add_display ( "No of Injections Per Sample?", 
+                                   2, 
+                                   3,
+                                   PROMPT_RENDITION_BOLD )
+
+    ELSE
+
+        main_form . add_display ( "No of Injections Per Sample?", 
+                                   2, 
+                                   3,
+                                   PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+
+    ENDIF
+
+
+
+
+                                  {============================================}
+                                  { Send Automtically Check Box.               }    
+                                  {============================================}
+
+    PROMPT OBJECT send
+	    BROWSE ON BOOLEAN
+	    on line 2 from 96
+            WITH ( is_check        = TRUE,
+                   status_text     = "Enabled",
+                   value           = GLOBAL("MILL_INTERFACE_AUTO_SEND"),
+                   vgl_library     = GLOBAL ( "CURRENT_LIBRARY" ) )
+
+                                  {============================================}
+                                  { Sample Criteria Buttons.                   }    
+                                  {============================================}
+
+
+
+    PROMPT OBJECT criteria
+            CLASS "STD_PROMPT_BUTTON"
+            WITH ( row                 = 1                           ,
+                   width               = BUTTON_WIDTH+7              ,
+                   column              = 41                          ,
+                   caption             = "Sample Selection Filter",
+                   mouse_click_routine = "get_criteria"              ,
+                   vgl_library         = GLOBAL( "CURRENT_LIBRARY" ) ,
+                   enabled             = FALSE                      )
+
+
+    PROMPT OBJECT the_sheet
+                BROWSE ON ANALYSIS_WORKSHEET
+                ON LINE 1 FROM 41 to 60
+                WITH ( ALWAYS_VALIDATE = TRUE,
+                       LOWERED = TRUE,
+                       LEAVE_PROMPT_ROUTINE = "populate_work_grid" )
+
+
+    IF LEFTSTRING(smp_version, 4) = "2001" THEN
+
+        main_form . add_display ( "Analysis Worksheet",
+                                  41         ,
+                                  2          ,
+                                  PROMPT_RENDITION_BOLD)
+
+
+    ELSE
+
+        main_form . add_display ( "  Analysis Worksheet",
+                                  41         ,
+                                  2          ,
+                                  PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED)
+
+    ENDIF
+
+
+
+    PROMPT OBJECT vial_pos
+	    BROWSE ON INTEGER
+	    on line 1 from 84 TO 87
+            WITH (value = GLOBAL("MILL_VIAL_POSITION_DEFAULT"),
+                  leave_prompt_routine = "update_vials",
+                  foreground_colour = PROMPT_COLOUR_BLUE)
+
+    main_form . add_display ( "First Vial No.", 
+                               68, 
+                               1,
+                               PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+
+    PROMPT OBJECT propogate_button
+            CLASS "STD_PROMPT_BUTTON"
+            WITH ( row                 = 3                           ,
+                   width               = BUTTON_WIDTH +4             ,
+                   column              = 68                          ,
+                   caption             = "Propogate Column Data"     ,
+                   mouse_click_routine = "propogate_data"            ,
+                   vgl_library         = GLOBAL( "CURRENT_LIBRARY" ) ,
+                   enabled             = TRUE                        )
+
+
+    PROMPT OBJECT info
+                FORMAT TEXT
+                ON LINE 19 FROM 19 to 89
+                WITH ( TEXT =  "",
+                       DISPLAY_ONLY = TRUE )
+
+
+                                  {============================================}
+                                  { Generate, Help and Cancel Prompts.         }    
+                                  {============================================}
+
+    PROMPT OBJECT generate_button
+            CLASS "STD_PROMPT_BUTTON"
+            WITH ( row                 = 21                          ,
+                   width               = BUTTON_WIDTH*2              ,
+                   column              = 3                           ,
+                   caption             = "Generate Millennium Worksheet",
+                   {mouse_click_routine = "transfer_worklist"         ,}
+                   send_lastkey        = "DO"                        ,
+                   vgl_library         = GLOBAL( "CURRENT_LIBRARY" ) ,
+                   enabled             = TRUE                         )
+
+    PROMPT OBJECT help_button
+            CLASS "STD_PROMPT_BUTTON"
+            WITH ( row                 = 21                          ,
+                   width               = BUTTON_WIDTH - 3            ,
+                   column              = 71                          ,
+                   caption             = "Help"                      ,
+                   mouse_click_routine = "execute_help_file"         ,
+                   vgl_library         = "$SMMILL_HELP"              ,
+                   enabled             = TRUE                         )
+
+
+    PROMPT OBJECT cancel_button
+            CLASS "STD_PROMPT_BUTTON"
+            WITH ( row                 = 21                          ,
+                   width               = BUTTON_WIDTH - 3            ,
+                   column              = 88                          ,
+                   caption             = "Cancel"                    ,
+                   send_last_key       = "EXIT"                      ,
+                   vgl_library         = GLOBAL( "CURRENT_LIBRARY" ) ,
+                   enabled             = TRUE                         )
+
+                                  {============================================}
+                                  { Add Millennium Options Prompts.            }    
+                                  {============================================}
+
+    main_form . add_prompt ( proj  )           { PROMPT 1 }
+    main_form . add_prompt ( temp  )           { PROMPT 2 }
+    main_form . add_prompt ( propogate_button ){ PROMPT 3 }
+
+                                  {============================================}
+                                  { Add Sample Criteria Buttons.               }    
+                                  {============================================}
+
+    main_form . add_prompt ( the_sheet )       { PROMPT 4 }
+
+
+                                  {============================================}
+                                  { Create and Add Grids to the form.          }    
+                                  {============================================}
+
+    setup_grid  ( main_form )                  { PROMPT 5 }
+
+
+
+
+                                  {============================================}
+                                  { Add Generate, Help and Cancel Prompts.     }    
+                                  {============================================}
+
+    main_form . add_prompt ( generate_button ) { PROMPT 6}
+    main_form . add_prompt ( help_button )     { PROMPT 7}
+    main_form . add_prompt ( cancel_button )   { PROMPT 8}
+
+
+    main_form . add_prompt ( info )            { PROMPT 9}
+    main_form . add_prompt ( send  )           { PROMPT 10}
+    main_form . add_prompt ( no_injections )   { PROMPT 11}
+    main_form . add_prompt ( vial_pos      )   { PROMPT 12}
+
+ENDROUTINE
+{==============================================================================}
+{                                                                              }
+{  ROUTINE setup_grid                                                          }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  06-Nov-2001  DK              Sets up the grids                              }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  main_form              reference            The main form                   }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE setup_grid ( form )
+
+    DECLARE worklist_grid
+
+
+                                  {============================================}
+                                  { Setup Worklist Grid.                       }    
+                                  {============================================}
+
+    PROMPT OBJECT worklist_grid
+	CLASS "STD_GRID_EDITOR"
+	WITH ( row                  = 6 ,
+	       column               = 2 ,
+	       height               = 12 ,
+	       width                = GRID_WIDTH + 72,
+	       cell_columns         = 11 ,
+	       cell_rows            = 1 ,
+	       current_column       = 1 ,
+	       current_row          = 1 ,
+	       check_move_routine   = "grid_check_move" ,
+	       prompt_cell_routine  = "grid_prompt" ,
+	       display_cell_routine = "grid_display")
+
+    worklist_grid . column_size [ VIAL_NO        ] = 5
+    worklist_grid . column_size [ SAMP_NAME      ] = GRID_WIDTH - 8
+    worklist_grid . column_size [ SAMP_TYPE      ] = GRID_WIDTH - 17
+    worklist_grid . column_size [ NO_INJECT      ] = 8
+    worklist_grid . column_size [ SS_METHOD      ] = GRID_WIDTH - 8
+    worklist_grid . column_size [ SS_FUNCTION    ] = GRID_WIDTH - 12
+    worklist_grid . column_size [ SS_INJ_VOL     ] = 7
+    worklist_grid . column_size [ SS_RUN_TIME    ] = 7
+    worklist_grid . column_size [ SS_INJ_DELAY   ] = 7
+    worklist_grid . column_size [ SS_SAMP_WEIGHT ] = 10
+    worklist_grid . column_size [ SS_DILUTION    ] = 7
+
+    worklist_grid . title_size_top                      = 1
+    worklist_grid . title_text_top [ VIAL_NO        ,1] = "No."
+    worklist_grid . title_text_top [ SAMP_NAME      ,1] = "Sample Name"
+    worklist_grid . title_text_top [ SAMP_TYPE      ,1] = "Sample Type"
+    worklist_grid . title_text_top [ NO_INJECT      ,1] = "No.of Injs"
+    worklist_grid . title_text_top [ SS_METHOD      ,1] = "Method"
+    worklist_grid . title_text_top [ SS_FUNCTION    ,1] = "Function"
+    worklist_grid . title_text_top [ SS_INJ_VOL     ,1] = "Inj. Vol."
+    worklist_grid . title_text_top [ SS_RUN_TIME    ,1] = "Run Time"
+    worklist_grid . title_text_top [ SS_INJ_DELAY   ,1] = "Inj. Delay"
+    worklist_grid . title_text_top [ SS_SAMP_WEIGHT ,1] = "Sample Wght."
+    worklist_grid . title_text_top [ SS_DILUTION    ,1] = "Dilution"
+
+
+
+    ARRAY worklist_grid . user_info ARRAYSIZE(0,2)
+    ARRAY worklist_grid . user_info = ""
+
+    form . add_prompt ( worklist_grid )
+
+
+ENDROUTINE
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE transfer_worklist                                                   }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  09-Nov-2001  DK              Creates Records in the Interface Transaction   }
+{                               Tables.                                        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  main_form              reference            the main form                   }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE transfer_worklist (       self,
+                            VALUE mill_user,
+                            VALUE mill_password )
+
+    DECLARE do_send, is_auto, seq_array, the_proj, the_temp, worklist_id, 
+            status, is_cancel, no_rows, the_anal, list_type, continue, the_mess,
+            rec_count, count, work_grid
+
+    continue = FALSE
+
+    ARRAY seq_array
+    rec_count = 1
+    count = 1
+
+    the_anal = ""
+    list_type = "ANALYSIS"
+    the_mess = ""
+    is_cancel = FALSE
+
+    the_proj    = self . prompt_objects [ 1  ] . text
+    the_temp    = self . prompt_objects [ 2  ] . text
+    is_auto     = self . prompt_objects [ 10 ] . text
+    worklist_id = self . prompt_objects [ 4  ] . text
+
+    IF is_auto = "Yes" THEN
+
+        do_send = confirm_gui("Create Run Sequence in Millennium?",EMPTY)
+
+        IF do_send THEN
+            
+            status = 0
+
+        ELSE
+
+            status = -1
+            is_cancel = TRUE
+
+        ENDIF
+
+    ELSE
+
+        do_send = confirm_gui("Store Run Sequence for Later Transfer?",EMPTY)   
+
+        IF do_send THEN
+            
+            status = -1
+
+        ELSE
+
+            status = 0
+            is_cancel = TRUE
+
+        ENDIF
+
+    ENDIF  
+
+    IF is_cancel = FALSE THEN
+
+        work_grid = self . prompt_objects [5]
+
+        WHILE rec_count <= SIZE_OF_ARRAY(work_grid . user_info) - 1 DO
+
+            IF STRIP(work_grid . user_info[rec_count,  VIAL_NO]) <> "" THEN
+
+                IF STRIP(work_grid . user_info[rec_count,  SS_METHOD]) = "" THEN
+
+                    the_mess = "One of more samples have no Method Set Assigned!"
+
+                ELSEIF STRIP(work_grid . user_info[rec_count,  SS_FUNCTION ]) = "" THEN
+
+                    the_mess = "One of more samples have no Method Set Assigned!"
+   
+                ELSEIF STRIP(work_grid . user_info[rec_count,   SS_INJ_VOL  ]) = "0.0" THEN
+
+                    the_mess = "One of more samples has an invalid Injection Volume Assigned (0.0)!"
+
+                ELSEIF STRIP(work_grid . user_info[rec_count,   SS_RUN_TIME  ]) = "0.00" THEN
+
+                    the_mess = "One of more samples has an invalid Run Time Assigned (0.00)!"
+
+                ELSEIF STRIP(work_grid . user_info[rec_count,   SS_INJ_DELAY   ]) = "0.00" THEN
+
+                    the_mess = "One of more samples has an invalid Injection Delay Assigned (0.00)!"
+
+                ELSEIF STRIP(work_grid . user_info[rec_count,   SS_SAMP_WEIGHT   ]) = "0.00000" THEN
+
+                    the_mess = "One of more samples has an invalid Injection Delay Assigned (0.00000)!"
+
+                ELSEIF STRIP(work_grid . user_info[rec_count,   SS_DILUTION   ]) = "0.00000" THEN
+
+                    the_mess = "One of more samples has an invalid Dilution Assigned (0.00000)!"
+
+                ENDIF
+
+            ENDIF
+
+            rec_count = rec_count + 1
+
+        ENDWHILE
+
+        IF the_mess = "" THEN
+
+            self . prompt_objects [ 9 ] . set_text 
+            ("......Processing Run Sequence, See Left Corner of Screen for Progress.......")
+
+            get_seq_array(seq_array,
+                          self     )
+
+
+            no_rows = SIZE_OF_ARRAY(seq_array)
+
+            IF no_rows = 1 THEN
+
+                flashmessage("Nothing to Transfer!", TRUE)
+
+            ELSE
+ 
+                transfer_sequence ( seq_array,
+                                    the_proj,
+                                    the_temp,
+                                    STRIP(worklist_id),
+                                    status,
+                                    the_anal,
+                                    list_type,
+                                    mill_user,
+                                    mill_password,
+                                    continue )
+
+                IF continue THEN
+
+                    self . prompt_objects [ 9 ] . set_text 
+                    ("......Done.......")
+
+                                  {============================================}
+                                  { Clear Worklist Grid.                       }    
+                                  {============================================}
+
+                    count = 1
+
+                    WHILE count <= SIZE_OF_ARRAY ( work_grid . user_info ) - 1 DO
+
+                        work_grid . user_info [count, VIAL_NO] = ""
+                        work_grid . user_info [count, SAMP_NAME] = ""
+                        work_grid . user_info [count, SAMP_TYPE] = ""
+                        work_grid . user_info [count, NO_INJECT] = ""
+                        work_grid . user_info [count, SS_METHOD] = ""
+                        work_grid . user_info [count, SS_FUNCTION ] = ""
+                        work_grid . user_info [count, SS_INJ_VOL] = ""
+                        work_grid . user_info [count, SS_RUN_TIME] = ""            
+                        work_grid . user_info [count, SS_INJ_DELAY] = ""
+                        work_grid . user_info [count, SS_SAMP_WEIGHT] = ""
+                        work_grid . user_info [count, SS_DILUTION] = ""
+                        work_grid . user_info [count, THE_TYPE] = ""
+
+                        count = count + 1
+
+                   ENDWHILE
+
+                   work_grid . cell_rows = 1
+
+                   work_grid . rebuild ()
+
+                   self . prompt_objects [ 1 ] . set_text ("")
+                   self . prompt_objects [ 2 ] . set_text ("")
+                   self . prompt_objects [ 4 ] . set_text ("")
+
+              ENDIF
+
+           ENDIF
+
+        ELSE
+
+            flashmessage(the_mess, TRUE)
+
+        ENDIF
+
+        the_mess = ""
+
+    ENDIF
+
+ENDROUTINE
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE check_write_transaction                                             }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  17-DEC-1997  ER              This checks if the process is already in a     }
+{                               write_transaction, and if not, starts one.     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE check_write_transaction
+
+    IF NOT transaction_is_write() THEN
+
+       START WRITE TRANSACTION "update record"
+
+    ENDIF
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE enable_buttons                                                      }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  12-Nov-2001  DK              Enable form buttons on leaving prompt          }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE enable_buttons( self )
+
+    DECLARE gen_samps, sel_samps, the_proj, the_temp
+
+    gen_samps  = self . parent_prompt . prompt_objects [ 5  ]
+    sel_samps  = self . parent_prompt . prompt_objects [ 6  ]
+
+
+    the_proj   = self . parent_prompt . prompt_objects [ 2 ] . text
+    the_temp   = self . parent_prompt . prompt_objects [ 3 ] . text
+
+    IF (STRIP(the_proj) <> "") AND
+       (STRIP(the_temp) <> "") THEN
+
+        gen_samps  . set_enabled ( TRUE )
+        sel_samps  . set_enabled ( TRUE )
+
+    ENDIF
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE get_worksheet_array                                                 }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  08-Jan-2002  DK              Opens worklist file to get samples and analysis}
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE get_worksheet_array( seq_array,
+                             worklist_id,
+                             check_ok,
+                             the_anal,
+                             self )
+
+    DECLARE file_name, out_val, line_no, count, the_id_text, id_text_count,
+            the_samp
+
+    line_no = 0
+    count = 1
+    id_text_count = 1
+
+    file_name = "smp$worksheets:":STRIP(worklist_id):".wsa"
+
+    IF FILE EXISTS(file_name) THEN
+
+	FILE OPEN file_name, check_ok
+
+        IF check_ok = EMPTY THEN
+
+  	    FILE READ file_name, out_val, check_ok
+
+            WHILE check_ok = EMPTY DO
+
+                line_no = line_no + 1
+
+                IF line_no = 2 THEN
+
+                    the_anal = STRIP(out_val)
+
+                ELSEIF ( line_no >= 5) AND
+                       ( out_val <> EMPTY ) THEN
+
+                    seq_array[count,1] = STRIP(out_val)
+                    seq_array[count,2] = self . parent_prompt . prompt_objects[11] . value
+                    seq_array[count,3] = "SAMPLE"
+
+                    count = count + 1 
+
+                ENDIF
+
+                FILE READ file_name, out_val, check_ok
+
+            ENDWHILE
+
+        ENDIF
+
+        FILE CLOSE file_name, check_ok
+
+    ENDIF
+
+
+    WHILE id_text_count < count DO
+
+        the_samp = SELECT TEST . sample
+                    WHERE test_number = seq_array[id_text_count,1]
+
+        IF GLOBAL("MILL_SAMPLE_IDENTIFIER") = "ID_TEXT" THEN
+
+            the_id_text = SELECT SAMPLE . id_text
+                           WHERE id_numeric = the_samp
+
+
+        ELSE
+
+            the_id_text = the_samp
+
+        ENDIF
+
+        IF the_id_text <> EMPTY THEN
+
+            seq_array[id_text_count,1] = the_id_text
+
+            id_text_count = id_text_count + 1
+
+        ELSE
+
+            flashmessage("Run sequence creation aborted!, Sample ":
+                              STRIP(seq_array[id_text_count,1]):" does not exist!!", TRUE)
+            EXIT
+
+        ENDIF
+
+    ENDWHILE
+
+    
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE populate_work_grid                                                  }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  08-Jan-2002  DK              Opens worklist file to get samples and analysis}
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE populate_work_grid ( self )
+
+    DECLARE work_grid, count, seq_array, worklist_id, check_ok, the_anal,
+            vial_number, no_injections, vial_pos
+
+    ARRAY seq_array
+    
+    worklist_id   = self . parent_prompt . prompt_objects [ 4  ] . text
+    vial_pos      = self . parent_prompt . prompt_objects [ 12 ] . text
+    no_injections = self . parent_prompt . prompt_objects [ 11 ] . text
+
+    get_worksheet_array( seq_array,
+                         worklist_id,
+                         check_ok,
+                         the_anal,
+                         self )
+
+    count = 1
+    work_grid = self . parent_prompt . prompt_objects [5]
+
+    WHILE count <= SIZE_OF_ARRAY ( work_grid . user_info ) DO
+
+        work_grid . user_info [count, VIAL_NO        ] = ""
+        work_grid . user_info [count, SAMP_NAME      ] = ""
+        work_grid . user_info [count, SAMP_TYPE      ] = ""
+        work_grid . user_info [count, NO_INJECT      ] = ""
+        work_grid . user_info [count, SS_METHOD      ] = ""
+        work_grid . user_info [count, SS_FUNCTION    ] = ""
+        work_grid . user_info [count, SS_INJ_VOL     ] = ""
+        work_grid . user_info [count, SS_RUN_TIME    ] = ""
+        work_grid . user_info [count, SS_INJ_DELAY   ] = ""
+        work_grid . user_info [count, SS_SAMP_WEIGHT ] = ""
+        work_grid . user_info [count, SS_DILUTION    ] = ""
+        work_grid . user_info [count, THE_TYPE       ] = ""
+
+        count = count + 1
+
+    ENDWHILE
+
+    work_grid . cell_rows = 1
+
+    count = 1
+
+    WHILE count <= ( SIZE_OF_ARRAY ( seq_array ) ) DO
+
+        SET FORMAT "9999"
+
+        vial_number = count + ( vial_pos - 1)
+
+        work_grid . user_info [count, VIAL_NO        ] = vial_number
+        work_grid . user_info [count, SAMP_NAME      ] = seq_array[count, 1]
+        work_grid . user_info [count, SAMP_TYPE      ] = "Unknown"
+        work_grid . user_info [count, NO_INJECT      ] = no_injections
+        work_grid . user_info [count, SS_METHOD      ] = ""
+        work_grid . user_info [count, SS_FUNCTION    ] = "Inject Samples"
+        work_grid . user_info [count, SS_INJ_VOL     ] = "1.0"
+        work_grid . user_info [count, SS_RUN_TIME    ] = "1.00"
+        work_grid . user_info [count, SS_INJ_DELAY   ] = "1.00"
+        work_grid . user_info [count, SS_SAMP_WEIGHT ] = "1.00000"
+        work_grid . user_info [count, SS_DILUTION    ] = "1.00000"
+        work_grid . user_info [count, THE_TYPE       ] = "SAMPLE"
+
+        count = count + 1
+
+    ENDWHILE
+
+    work_grid . cell_rows = count
+
+    work_grid . rebuild ()
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE grid_check_move                                                     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  09-Nov-2001  DK              Check Grid Movement.                           }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  main_form              reference            the main form                   }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE grid_check_move (       self        ,
+	  		  VALUE cell_column ,
+	   		  VALUE cell_row    ,
+                                new_column  ,
+                                new_row     )
+
+    IF ( cell_row <> new_row ) THEN
+
+        self . current_row = new_row
+	self . current_column = new_column
+
+	IF ( cell_row > 0 ) AND
+           ( cell_row <= SIZE_OF_ARRAY ( self . user_info )) THEN
+
+            IF ( STRIP(self . user_info [ cell_row, 1]) <> "" ) AND
+               ( self . user_info [ cell_row, 1 ] <> EMPTY ) THEN
+
+	        self . redisplay_row ( cell_row )
+
+            ENDIF
+
+	ENDIF
+
+	self . redisplay_row ( new_row )
+
+    ENDIF
+
+    self . redisplay_row ( new_row )
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE grid_prompt                                                         }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  09-Nov-2001  DK              Grid Prompt Routine.                           }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  main_form              reference            the main form                   }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE grid_prompt (       self        ,
+	              VALUE cell_column ,
+		      VALUE cell_row    ,
+			    window      ,
+		      VALUE column      ,
+		      VALUE row         ,
+		      VALUE cell_height ,
+	              VALUE cell_width  )
+
+    DECLARE meth_array, no_of_rows
+
+    ARRAY meth_array
+
+    no_of_rows = self . cell_rows
+
+    IF cell_row < no_of_rows THEN
+
+        IF ( cell_column = NO_INJECT ) THEN
+
+           PROMPT FOR self . user_info [ cell_row, cell_column]
+                AT column, row
+                IN WINDOW window
+                TO column + cell_width - 1
+                FORMAT MILL_INT_SSET . no_of_injections
+
+        ELSEIF ( cell_column = SS_FUNCTION  ) THEN
+
+           PROMPT FOR self . user_info [ cell_row, cell_column]
+                AT column, row
+                IN WINDOW window
+                TO column + cell_width - 1
+                BROWSE ON PHRASE . MILL_FUNC
+
+        ELSEIF ( cell_column = SS_METHOD  ) THEN
+
+           select_method_data(self,
+                              meth_array)
+
+
+	PROMPT FOR self . user_info [ cell_row, cell_column]
+		CHOOSE OUTOF meth_array
+                AT column, row
+                IN WINDOW window
+                TO column + cell_width + 254
+                WITH ( parent_prompt = self)
+
+
+        ELSEIF ( cell_column = SS_INJ_VOL ) THEN
+
+           PROMPT FOR self . user_info [ cell_row, cell_column]
+                AT column, row
+                IN WINDOW window
+                TO column + cell_width - 1
+                BROWSE ON REAL
+                WITH ( places = 1 )
+
+           SET FORMAT "999.9"
+
+        ELSEIF ( cell_column = SS_RUN_TIME ) THEN
+
+
+            PROMPT FOR self . user_info [ cell_row, cell_column]
+                AT column, row
+                IN WINDOW window
+                TO column + cell_width - 1
+                BROWSE ON REAL
+                WITH ( places = 2 )
+
+            SET FORMAT "999.99"
+
+        ELSEIF ( cell_column = SS_INJ_DELAY ) THEN
+
+
+           PROMPT FOR self . user_info [ cell_row, cell_column]
+                AT column, row
+                IN WINDOW window
+                TO column + cell_width - 1
+                BROWSE ON REAL
+                WITH ( places = 2 )
+
+           SET FORMAT "999.99"
+
+        ELSEIF ( cell_column = SS_SAMP_WEIGHT ) THEN
+
+           PROMPT FOR self . user_info [ cell_row, cell_column]
+                AT column, row
+                IN WINDOW window
+                TO column + cell_width - 1
+                BROWSE ON REAL
+                WITH ( places = 5 )
+
+           SET FORMAT "999.99999"
+
+        ELSEIF ( cell_column = SS_DILUTION ) THEN
+
+           PROMPT FOR self . user_info [ cell_row, cell_column]
+                AT column, row
+                IN WINDOW window
+                TO column + cell_width - 1
+                BROWSE ON REAL
+                WITH ( places = 5 )
+
+
+           SET FORMAT "999.99999"
+
+        ELSE
+
+            PROMPT IN WINDOW window AT column , row
+
+        ENDIF
+
+    ELSE
+
+
+         PROMPT FOR self . user_info [ cell_row, cell_column]
+            AT column, row
+            IN WINDOW window
+            TO column + cell_width - 1
+            WITH( DISPLAY_ONLY = TRUE)
+
+    ENDIF
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE grid_display                                                        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  09-Nov-2001  DK              Grid Display Routine.                          }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  main_form              reference            the main form                   }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE grid_display (       self        ,
+	  	       VALUE cell_column ,
+	   	       VALUE cell_row    ,
+			     window      ,
+		       VALUE column      ,
+		       VALUE row         ,
+		       VALUE cell_height ,
+		       VALUE cell_width  )
+
+    DECLARE inverse_mode , colour_mode , display_val, display_val_1,
+            display_val_2, display_val_3, display_val_4, display_val_5,
+            display_val_6, display_val_7, display_val_8, display_val_9,
+            display_val_10, display_val_11
+
+    inverse_mode = FALSE
+
+    { Format the columns }
+
+    IF cell_column = SS_INJ_VOL THEN
+
+        SET FORMAT "999.9"
+
+    ELSEIF cell_column = SS_RUN_TIME THEN
+
+        SET FORMAT "99.99"
+
+    ELSEIF cell_column = VIAL_NO THEN
+
+        SET FORMAT "9999"
+
+    ELSEIF cell_column = NO_INJECT THEN
+
+        SET FORMAT "9999"
+
+    ELSEIF cell_column = SS_INJ_DELAY THEN
+
+        SET FORMAT "999.99"
+
+    ELSEIF cell_column = SS_SAMP_WEIGHT THEN
+
+        SET FORMAT "99.99999"
+
+    ELSEIF cell_column = SS_DILUTION THEN
+
+        SET FORMAT "99.99999"
+
+    ELSE
+
+
+    ENDIF
+
+    IF self . user_info [cell_row, THE_TYPE] = "SAMPLE" THEN
+
+        colour_mode = PROMPT_COLOUR_BLACK
+
+    ELSE
+
+        colour_mode = PROMPT_COLOUR_RED
+
+    ENDIF
+
+    display_val_1  = strip ( self . user_info [ cell_row , VIAL_NO        ] )
+    display_val_2  = strip ( self . user_info [ cell_row , SAMP_NAME      ] )
+    display_val_3  = strip ( self . user_info [ cell_row , SAMP_TYPE      ] )
+    display_val_4  = strip ( self . user_info [ cell_row , NO_INJECT      ] )
+    display_val_5  = strip ( self . user_info [ cell_row , SS_METHOD      ] )
+    display_val_6  = strip ( self . user_info [ cell_row , SS_FUNCTION    ] )
+    display_val_7  = strip ( self . user_info [ cell_row , SS_INJ_VOL     ] )
+    display_val_8  = strip ( self . user_info [ cell_row , SS_RUN_TIME    ] )
+    display_val_9  = strip ( self . user_info [ cell_row , SS_INJ_DELAY   ] )
+    display_val_10 = strip ( self . user_info [ cell_row , SS_SAMP_WEIGHT ] )
+    display_val_11 = strip ( self . user_info [ cell_row , SS_DILUTION    ] )
+
+
+    IF cell_column = VIAL_NO  THEN
+
+        display_val = display_val_1
+        colour_mode = PROMPT_COLOUR_RED
+
+    ELSEIF cell_column= SAMP_NAME THEN
+
+        display_val = display_val_2
+        colour_mode = PROMPT_COLOUR_BLUE
+
+    ELSEIF cell_column= SAMP_TYPE THEN
+
+        display_val = display_val_3
+        colour_mode = PROMPT_COLOUR_BLACK
+
+    ELSEIF cell_column= NO_INJECT THEN
+
+        display_val = display_val_4
+        colour_mode = PROMPT_COLOUR_MAGENTA
+
+   ELSEIF cell_column= SS_METHOD THEN
+
+        display_val = display_val_5
+        colour_mode = PROMPT_COLOUR_BLACK
+
+    ELSEIF cell_column= SS_FUNCTION THEN
+
+        display_val = display_val_6
+        colour_mode = PROMPT_COLOUR_BLACK
+
+    ELSEIF cell_column= SS_INJ_VOL THEN
+
+        SET FORMAT "999.9"
+
+        display_val = display_val_7
+        colour_mode = PROMPT_COLOUR_BLACK
+
+    ELSEIF cell_column= SS_RUN_TIME THEN
+
+        SET FORMAT "99.99"
+
+        display_val = display_val_8
+        colour_mode = PROMPT_COLOUR_BLACK
+
+    ELSEIF cell_column= SS_INJ_DELAY THEN
+
+        SET FORMAT "999.99"
+
+        display_val = display_val_9
+        colour_mode = PROMPT_COLOUR_BLACK
+
+    ELSEIF cell_column= SS_SAMP_WEIGHT THEN
+
+        SET FORMAT "99.99999"
+
+        display_val = display_val_10
+        colour_mode = PROMPT_COLOUR_BLACK
+
+    ELSEIF cell_column= SS_DILUTION THEN
+
+        SET FORMAT "99.99999"
+
+        display_val = display_val_11
+        colour_mode = PROMPT_COLOUR_BLACK
+
+    ENDIF
+
+    DISPLAY display_val
+	IN WINDOW window
+	ON LINE row FROM column
+	INVERSE = inverse_mode
+	WITH ( foreground_colour = colour_mode )
+
+{
+
+    self . current_row = row
+
+}
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE update_vials                                                        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  17-DEC-1997  ER              This checks if the process is already in a     }
+{                               write_transaction, and if not, starts one.     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE update_vials ( self )
+
+    DECLARE work_grid, count, vial_pos, the_vial
+
+    count = 1
+
+    work_grid = self . parent_prompt . prompt_objects [5]
+    vial_pos  = self . text
+
+    WHILE count <= (SIZE_OF_ARRAY ( work_grid . user_info )-1) DO
+
+       SET FORMAT "9999"
+       the_vial = count + ( vial_pos - 1 )
+
+       work_grid . user_info [ count, VIAL_NO ] = the_vial
+
+       count = count + 1
+
+    ENDWHILE
+
+    work_grid . redisplay_contents ( )
+
+ENDROUTINE
+
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE get_seq_array                                                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  17-DEC-1997  ER              This checks if the process is already in a     }
+{                               write_transaction, and if not, starts one.     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE get_seq_array ( seq_array,
+                        self )
+
+    DECLARE work_grid
+
+
+    work_grid = self . prompt_objects [ 5 ]
+
+    ARRAY_COPY ( seq_array, work_grid . user_info)
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE select_project_data                                                 }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  12-Nov-2001  DK              Selects Millennium Data.                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE select_project_data ( proj_array )
+
+    DECLARE the_schema, the_field, the_table, group_array, count, mill_group,
+            mill_user
+
+    ARRAY group_array
+    count = 1
+
+    mill_user = SELECT MILL_SECURITY . mill_user
+                 WHERE lims_user = GLOBAL("OPERATOR")
+
+    { Get all Millennium Groups for the LIMS User }
+
+    mill_group = SELECT MILL_GROUPLINK . group_id
+                  WHERE operator_id = GLOBAL("OPERATOR")
+
+    WHILE mill_group <> EMPTY DO
+
+        group_array[count] = mill_group
+
+        NEXT MILL_GROUPLINK
+        mill_group = SELECT MILL_GROUPLINK . group_id
+
+        count = count + 1
+
+    ENDWHILE
+
+    the_schema = ""
+    the_field  = "name"
+    the_table = "PROJECTINFO"
+
+    select_millennium_proj_data ( proj_array,
+                                  the_schema,
+                                  the_field,
+                                  the_table,
+                                  group_array,
+                                  mill_user )
+
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE select_sampleset_data                                               }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  12-Nov-2001  DK              Selects Millennium Data.                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE select_sampleset_data ( self )
+
+    DECLARE the_schema, the_field, the_table, the_proj
+
+    the_proj = STRIP(self . parent_prompt . prompt_objects[1] . text)
+    the_schema = TOUPPER(STRIP(the_proj)):"_1"
+    the_field  = "name"
+    the_table = the_schema:".METHOD"
+
+    select_millennium_ss_data ( self,
+                                the_schema,
+                                the_field,
+                                the_table )
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE validate_project                                                    }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  12-Nov-2001  DK              Selects Millennium Data.                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE validate_project ( self )
+
+    DECLARE entered_project, count, can_leave
+    
+    count = 1
+    can_leave = FALSE
+
+    IF self . user_info[count,1] = "NONE SELECTED" THEN
+
+        flashmessage("You Must Select a Project from the Browse List!", TRUE)
+        can_leave = FALSE
+
+    ELSE
+
+        entered_project = self . text
+
+        WHILE count <= SIZE_OF_ARRAY(self . user_info) DO
+
+            IF entered_project = self . user_info[count,1] THEN
+
+                can_leave = TRUE
+
+            ENDIF  
+
+            count = count + 1
+
+        ENDWHILE
+
+        IF can_leave = FALSE THEN
+
+            flashmessage("You do not have access to select the project: ":STRIP(entered_project), TRUE)
+
+        ENDIF
+
+    ENDIF
+
+    RETURN(can_leave)
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE validate_sset                                                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  12-Nov-2001  DK              Selects Millennium Data.                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE validate_sset ( self )
+
+    DECLARE entered_sset, can_leave
+    
+    can_leave = FALSE
+
+    entered_sset = self . text
+
+    IF STRIP(entered_sset) = "" THEN
+
+        flashmessage("You must enter or select a SampleSet!", TRUE)
+
+        can_leave = FALSE
+
+    ELSE
+
+        can_leave = TRUE
+
+    ENDIF
+
+    RETURN(can_leave)
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE select_method_data                                                  }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  12-Nov-2001  DK              Selects Millennium Data.                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE select_method_data(self,
+                           meth_array)
+
+    DECLARE the_schema, the_field, the_table, the_proj
+
+    the_proj = STRIP(self . parent_prompt . prompt_objects[1] . text)
+    the_schema = TOUPPER(STRIP(the_proj)):"_1"
+    the_field  = "name"
+    the_table = the_schema:".METHOD"
+
+    select_millennium_meth_data ( meth_array,
+                                  the_schema,
+                                  the_field,
+                                  the_table )
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE propogate_data                                                      }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  09-Nov-2001  DK              Remove Single Standard from Worklist           }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  main_form              reference            the main form                   }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE propogate_data (self)
+
+    DECLARE the_grid, the_col, the_row, count, the_data
+
+    the_grid = self . parent_prompt . prompt_objects [5]
+    the_col  = the_grid . current_column
+    the_row  = the_grid . current_row
+
+    IF ( the_col <> VIAL_NO ) AND
+       ( the_col <> SAMP_NAME ) AND
+       ( the_col <> SAMP_TYPE ) THEN
+
+        IF SIZE_OF_ARRAY(the_grid. user_info) > 1 THEN
+
+            the_data = the_grid . user_info [ the_row, the_col]
+
+            IF STRIP(the_data) <> "" THEN
+
+                count = the_row + 1
+
+                WHILE count <= (SIZE_OF_ARRAY ( the_grid . user_info )-1) DO
+
+                    IF STRIP(the_grid . user_info [ count, VIAL_NO]) <> "" THEN
+
+                        the_grid . user_info [ count, the_col ] = the_data
+
+                    ENDIF
+
+                    count = count + 1
+
+                ENDWHILE
+
+                the_grid . redisplay_contents ( )
+
+            ENDIF
+
+
+        ELSE
+
+            flashmessage("No Samples Selected!", TRUE)
+
+        ENDIF
+
+    ENDIF
+
+ENDROUTINE
+
+
+
+
+
+
+
+
+

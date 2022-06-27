@@ -1,0 +1,1620 @@
+{******************************************************************************
+*
+* Module Name   : $SMMILL_GROUPLINK.RPF
+*
+* Purpose       :
+*
+* Document Ref. : SE/T/TVGL-WORK-REPORTS/1/3
+*
+* Specification :
+*
+* Portability   : Not Checked
+*
+* Re-entrant    :
+*
+Modification History
+ 
+ updated on 02/08/05  EG   - SM-Millennium standard file modified for Empower
+*******************************************************************************}
+{
+AF 07-SEP-2012 Modified as there is now no browse into Empower
+}
+
+SET COMPILE_OPTION DECLARE
+SET NAME "DISPLAY/"
+SET NOTPROTECTED
+
+JOIN STANDARD_LIBRARY STD_WINDOW
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_MESSAGE
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $LIB_DYNAMIC_SQL
+JOIN LIBRARY $SMMILL_DYNAMIC_SQL
+
+ENABLE WINDOWS
+
+
+{**** Local Constants ********************************************************}
+
+CONSTANT form_width 	= 72
+CONSTANT form_column 	= 5
+CONSTANT form_row 	= 8
+CONSTANT form_height 	= 14
+CONSTANT grid_column	= 3
+CONSTANT grid_row	= 2
+CONSTANT grid_width	= 24
+CONSTANT grid_height	= 12
+
+CONSTANT left_grid = 1
+CONSTANT right_grid = 2
+CONSTANT assign_button = 3
+CONSTANT assign_all_button = 4
+CONSTANT remove_button = 5
+CONSTANT remove_all_button = 6
+
+CONSTANT option_add              = "ADD"
+CONSTANT option_copy             = "COPY"
+CONSTANT option_read_for_modify  = "READ_FOR_MODIFY"
+CONSTANT option_read_for_display = "READ_FOR_DISPLAY"
+CONSTANT option_modify           = "MODIFY"
+CONSTANT option_display          = "DISPLAY"
+CONSTANT option_save             = "SAVE"
+
+
+{******** Global Variables ****************************************************}
+
+DECLARE available_groups , assigned_groups , original_assigned_groups
+
+{******************************************************************************}
+
+GLOBAL ROUTINE called_from_lte_group (	VALUE oper_id		,
+					VALUE old_oper_id	,
+					VALUE option		)
+{
+*
+*	this routine handles all the calls from the lte
+*
+*******************************************************************************}
+
+Return    {  AF 2012  }
+
+	IF option = option_add THEN
+
+		read_group_table ( oper_id , FALSE , TRUE )
+
+	ELSEIF option = option_copy THEN
+
+		read_group_table ( oper_id , FALSE , TRUE )
+		ARRAY original_assigned_groups
+
+	ELSEIF option = option_read_for_modify THEN
+
+		read_group_table ( oper_id , FALSE , TRUE )
+
+	ELSEIF option = option_read_for_display THEN
+
+		read_group_table ( oper_id , FALSE , TRUE )
+
+	ELSEIF option = option_modify THEN
+
+		set_up_window ( oper_id , TRUE , FALSE , FALSE , TRUE )
+
+	ELSEIF option = option_display THEN
+
+		set_up_window ( oper_id , FALSE , FALSE , FALSE , TRUE )
+
+	ELSEIF option = option_save THEN
+                oper_id = LEFTSTRING(oper_id, 10)
+		get_changes_to_assigned_groups ( oper_id , TRUE )
+
+	ENDIF
+
+ENDROUTINE { called_fromlte_group }
+
+
+{******************************************************************************}
+
+ROUTINE read_group_table ( VALUE operator_name , VALUE sgl , VALUE lte )
+
+{
+*
+*	read assigned/available groups from the database and remove any
+*	available groups which appears in the assigned groups
+*
+*******************************************************************************}
+
+DECLARE id , tot_assigned_groups , tot_available_groups  , available_count ,
+	assigned_count , count , list_groups
+
+DECLARE sql_string, record_count, the_mill_group, dynamic_sql
+
+        DECLARE mill_user, mill_version
+
+        mill_user = STRIP(SUBSTRING(operator_name, 11, 30))
+
+	ARRAY assigned_groups
+	ARRAY available_groups
+
+	tot_available_groups = 0
+	tot_assigned_groups  = 0
+
+	{ this mixed WHERE and ORDER ON is necessary }
+
+	IF NOT ( lte ) THEN
+
+		id = SELECT mill_grouplink . operator_id
+			WHERE group_id = operator_name
+			ORDER ON operator_id
+
+		WHILE id <> EMPTY DO
+
+			tot_assigned_groups = tot_assigned_groups + 1
+
+			assigned_groups [ tot_assigned_groups , 1 ] = id
+			assigned_groups [ tot_assigned_groups , 2 ] = FALSE
+
+			NEXT mill_grouplink
+
+			id = SELECT mill_grouplink . operator_id
+
+		ENDWHILE
+
+		id = SELECT personnel . identity
+			WHERE identity > " "
+			AND removeflag = FALSE
+			ORDER ON identity
+
+
+		WHILE id <> EMPTY
+
+			tot_available_groups = tot_available_groups + 1
+
+			available_groups [ tot_available_groups , 1 ] = id
+			available_groups [ tot_available_groups , 2 ] = FALSE
+
+			NEXT personnel
+
+			id = SELECT personnel . identity
+		ENDWHILE
+	ELSE
+		id = SELECT mill_grouplink . group_id
+			WHERE operator_id = operator_name
+			ORDER ON group_id
+
+		WHILE id <> EMPTY DO
+
+			tot_assigned_groups = tot_assigned_groups + 1
+
+			assigned_groups [ tot_assigned_groups , 1 ] = id
+			assigned_groups [ tot_assigned_groups , 2 ] = FALSE
+
+			NEXT mill_grouplink
+
+			id = SELECT mill_grouplink . group_id
+		ENDWHILE
+
+		IF ( sgl ) THEN
+
+			ARRAY_COPY ( available_groups , assigned_groups )
+			tot_available_groups = tot_assigned_groups
+
+			ARRAY list_groups
+			tot_assigned_groups = 0
+
+			GET_GROUP_LIST ( list_groups )
+			tot_assigned_groups = size_of_array ( list_groups )
+
+			count = 1
+			ARRAY assigned_groups
+
+			WHILE ( count <= tot_assigned_groups ) DO
+
+				assigned_groups [ count , 1 ] = list_groups [ count ]
+				assigned_groups [ count , 2 ] = FALSE
+
+				count = count + 1
+
+			ENDWHILE
+		ELSE
+
+                        { DK 18 September 2002. In Millennium v3.2, the table name is groupinfo.    }
+                        {                       In Millennium v3.2, the criteria field is username. }
+                        {                       In Millennium v3.2, the selected field is name.     }
+                        {                       In Millennium v4.0, table name is groupgroup.       }
+                        {                       In Millennium v4.0, the criteria field is username. }
+                        {                       In Millennium v4.0, the selected field is groupname.}
+
+                        get_millennium_database_version (mill_version)
+
+                        IF LEFTSTRING(mill_version, 1)= "3" THEN
+
+                            { Millennium v3.2 Select String }
+
+                            sql_string = "SELECT NAME FROM GROUPINFO@":GLOBAL("MILL_DATABASE_LINK_NAME"):" WHERE USERNAME = ":"'":mill_user:"'"
+
+                        ELSEIF LEFTSTRING(mill_version, 1)= "4" THEN
+
+                            { Millennium v4.0 Select String }
+
+                            sql_string = "SELECT GROUPNAME FROM GROUPGROUP@":GLOBAL("MILL_DATABASE_LINK_NAME"):" WHERE USERNAME = ":"'":mill_user:"'"
+
+                        ELSEIF LEFTSTRING(mill_version, 1)= "5" THEN
+
+                            { AF 30-MAY-2005  Empower Select String }
+
+                            sql_string = "SELECT GROUPNAME FROM GROUPGROUP@":GLOBAL("MILL_DATABASE_LINK_NAME"):" WHERE USERNAME = ":"'":mill_user:"'"                         
+
+                        ELSE
+
+                            {Unknown Database Version, Assume v3.2}
+
+                            { Millennium v3.2 Select String }
+
+                            sql_string = "SELECT NAME FROM GROUPINFO@":GLOBAL("MILL_DATABASE_LINK_NAME"):" WHERE USERNAME = ":"'":mill_user:"'"
+
+                        ENDIF
+
+
+                        CREATE OBJECT "STD_DYNAMIC_SQL" , dynamic_sql
+
+                        dynamic_sql . add_to_sql_statement ( sql_string )
+                        record_count = dynamic_sql . add_select_string ( 40 )
+                        dynamic_sql . execute ()
+
+                        the_mill_group = dynamic_sql . select (record_count)
+
+                        WHILE the_mill_group <> EMPTY DO
+
+                            tot_available_groups = tot_available_groups + 1
+
+                            available_groups [ tot_available_groups , 1 ] = the_mill_group
+                            available_groups [ tot_available_groups , 2 ] = FALSE
+
+                            dynamic_sql . next ()
+                            the_mill_group = dynamic_sql . select (record_count)
+
+                        ENDWHILE
+
+
+		ENDIF
+	ENDIF
+
+	ARRAY_COPY ( original_assigned_groups , assigned_groups )
+
+	IF ( tot_assigned_groups > 0 ) THEN
+
+		available_count = 1
+		assigned_count = 1
+
+		WHILE ( assigned_count  <= tot_assigned_groups  ) AND
+		      ( available_count <= tot_available_groups ) DO
+
+			IF ( available_groups [ available_count ,1 ] =
+				assigned_groups [ assigned_count , 1 ] ) THEN
+
+				tot_available_groups =
+						tot_available_groups - 1
+
+				array_remove_slice ( available_groups , 1 ,
+							  available_count )
+
+				assigned_count = assigned_count + 1
+
+			ELSEIF ( available_groups [ available_count , 1 ] <
+				 assigned_groups  [ assigned_count , 1 ] ) THEN
+
+				available_count = available_count + 1
+
+			ELSE
+				tot_assigned_groups = tot_assigned_groups - 1
+
+				array_remove_slice ( assigned_groups ,
+						     1 ,
+						     assigned_count )
+			ENDIF
+
+		ENDWHILE
+
+		WHILE ( assigned_count  <= tot_assigned_groups  ) DO
+
+			tot_assigned_groups = tot_assigned_groups - 1
+
+			array_remove_slice ( assigned_groups ,
+					     1 ,
+					     assigned_count )
+		ENDWHILE
+	ENDIF
+                 
+ENDROUTINE { read_group_table }
+
+
+{******************************************************************************}
+
+ROUTINE get_changes_to_assigned_groups (	operator_name 	,
+					VALUE	lte		)
+
+{
+*
+*	read the database for the original assigned groups
+*
+*******************************************************************************}
+
+DECLARE old_original
+
+	ARRAY_COPY ( old_original , original_assigned_groups )
+
+	find_changes_to_assigned_groups ( original_assigned_groups	,
+					  assigned_groups 	  	)
+
+	find_changes_to_assigned_groups ( assigned_groups	,
+					  old_original		)
+
+	delete_unassigned_groups ( original_assigned_groups 	,
+				   operator_name 		,
+				   lte				)
+
+	add_new_assigned_groups ( assigned_groups	,
+				  operator_name 	,
+				  lte			)
+
+ENDROUTINE { get_changes_to_assigned_groups }
+
+
+{*****************************************************************************}
+
+ROUTINE add_new_assigned_groups ( groups_to_add ,
+			  	  operator_name ,
+				  lte		)
+
+{
+*
+*	add to the database all the new groups assigned to the choosen
+*	operator
+*
+******************************************************************************}
+
+DECLARE count , group_size , new_id , operator_len , status
+
+	IF ( lte ) THEN
+
+		GET_FIELD_DETAILS personnel . identity 	,
+				  "FIELD_SIZE" 		,
+				  operator_len
+	ELSE
+		GET_FIELD_DETAILS group_header . identity ,
+				  "FIELD_SIZE" 		  ,
+				  operator_len
+	ENDIF
+
+	group_size = size_of_array ( groups_to_add )
+
+	count = 1
+
+	WHILE ( count <= group_size ) DO
+
+		IF ( lte ) THEN
+
+			new_id = PAD ( 	operator_name 	,
+					" " 		,
+					operator_len 	) :
+				       	groups_to_add [ count , 1 ]
+
+		ELSE
+			new_id = PAD ( 	groups_to_add [ count , 1 ] ,
+					" " ,
+					operator_len ) : operator_name
+		ENDIF
+
+		RESERVE ENTRY mill_grouplink , new_id , status
+
+		IF ( status <> EMPTY ) THEN
+
+			flash_message ( GET_USER_MESSAGE
+				        ( "GROUPLINK_DISPLAY_3" , 1 )
+					  : new_id : " , " : status , TRUE )
+		ELSE
+
+			UPDATE mill_grouplink
+				
+		ENDIF
+
+		count = count + 1
+
+	ENDWHILE
+
+ENDROUTINE { add_new_assigned_groups }
+
+
+{******************************************************************************}
+
+ROUTINE delete_unassigned_groups ( 	removed_groups	,
+			 	   	operator_name	,
+				  VALUE lte		)
+{
+*
+*	delete from the database all the groups which has been removed from
+*	the assigned groups
+*
+*******************************************************************************}
+
+DECLARE count , group_size , id
+
+	group_size = size_of_array ( removed_groups )
+
+	count = 1
+
+	WHILE ( count <= group_size ) DO
+
+		REPEAT
+			IF ( lte ) THEN
+
+				id = SELECT mill_grouplink . group_id
+					FOR UPDATE
+					WHERE ( operator_id = operator_name )
+					AND ( group_id = removed_groups
+							      [ count , 1 ] )
+                            
+			ELSE
+				id = SELECT mill_grouplink . operator_id
+					FOR UPDATE
+					WHERE ( operator_id = removed_groups
+								[ count , 1 ] )
+					AND ( group_id = operator_name )
+			ENDIF
+
+			IF ( id	= LOCKED ) THEN
+
+				SLEEP FOR "0 00:00:02.00"
+			ENDIF
+
+		UNTIL ( id <> LOCKED )
+
+		IF ( id <> EMPTY ) THEN
+
+			DELETE mill_grouplink
+		ENDIF
+
+		count = count + 1
+
+	ENDWHILE
+
+ENDROUTINE { delete_unassigned_groups }
+
+
+{******************************************************************************}
+
+ROUTINE find_changes_to_assigned_groups (  source_array  	,
+					   destination_array	)
+
+{
+*
+*	check for all changes made to the assigned groups
+*
+*******************************************************************************}
+
+DECLARE source_array_size , source_count , destination_count , destination_size
+
+	source_count = 1
+	destination_count = 1
+
+	source_array_size = size_of_array ( source_array )
+	destination_size = size_of_array ( destination_array )
+
+	WHILE ( source_count      <= source_array_size ) AND
+	      ( destination_count <= destination_size  ) DO
+
+		IF ( source_array [ source_count, 1 ] =
+			    destination_array [ destination_count, 1 ] ) THEN
+
+			array_remove_slice ( source_array , 1 , source_count )
+
+			source_array_size = source_array_size - 1
+			destination_count = destination_count + 1
+
+		ELSEIF ( destination_count < destination_size ) THEN
+
+			destination_count = destination_count + 1
+		ELSE
+			destination_count = 1
+			source_count = source_count + 1
+		ENDIF
+
+	ENDWHILE
+
+ENDROUTINE { find_changes_to_assigned_groups }
+
+
+{******************************************************************************}
+
+ROUTINE set_up_window ( VALUE  	operator_name	,
+			VALUE 	enable_state	,
+			VALUE 	direct_state	,
+			VALUE 	sgl		,
+			VALUE   lte		)
+
+{
+*
+*	create the user interface form
+*
+*******************************************************************************}
+
+DECLARE available_group_grid , group_form , txt1 , group_list , return_value ,
+	assigned_group_grid , tot_available_groups , tot_assigned_groups ,
+	frame_title , frame_title2 , count 
+
+	tot_available_groups = size_of_array ( available_groups )
+	tot_assigned_groups = size_of_array ( assigned_groups )
+
+	IF ( lte ) THEN
+
+		frame_title = GET_USER_MESSAGE ( "GROUPLINK_LEFT_GRID" , 1 )
+		frame_title2 = GET_USER_MESSAGE ( "GROUPLINK_RIGHT_GRID" , 1 )
+		txt1 = STRIP ( operator_name ) : " " :
+			       GET_USER_MESSAGE ( "GROUPLINK_FORM_TITLE_2" , 1 )
+                                                            
+	ELSE
+		frame_title = GET_USER_MESSAGE ( "GROUPLINK_LEFT_GRID_2" , 1 )
+		frame_title2 = GET_USER_MESSAGE ( "GROUPLINK_RIGHT_GRID_2" , 1 )
+		txt1 = STRIP ( operator_name ) : " " :
+			       GET_USER_MESSAGE ( "GROUPLINK_FORM_TITLE_1" , 1 )
+	ENDIF
+
+	CREATE OBJECT PROMPT_CLASS_FORM , group_form
+
+	group_form . add_frame ( "" , 1 , 1 , 14 , 72 )
+	group_form . add_frame ( frame_title , 2 , 2 , 12 , 26 )
+	group_form . add_frame ( frame_title2 , 46 , 2 , 12 , 26 )
+
+	group_form . column = form_column
+	group_form . width  = form_width
+	group_form . row    = form_row
+	group_form . height = form_height
+	group_form . border = TRUE
+
+	group_form . header = txt1
+	group_form . footer = GET_USER_MESSAGE ( "GROUPLINK_DISPLAY_6" , 1 )
+
+	group_form . help_context = "$GROUPLINK_W_MAIN"
+	group_form . proportional = TRUE
+
+	group_form . user_info = FALSE
+
+	CREATE OBJECT PROMPT_CLASS_GRID , available_group_grid
+
+	available_group_grid . column       = grid_column
+	available_group_grid . row          = grid_row
+	available_group_grid . width        = grid_width
+	available_group_grid . height       = grid_height
+	available_group_grid . cell_columns = 1
+	available_group_grid . cell_rows    = tot_available_groups
+	available_group_grid . border       = TRUE
+
+	available_group_grid . display_cell_routine = "DISPLAY_AVAILABLE_GRID"
+	available_group_grid . prompt_cell_routine  = "PROMPT_AVAILABLE_GRID"
+
+	CREATE OBJECT "STD_GRID_EDITOR" , assigned_group_grid
+
+	assigned_group_grid . column       = grid_column + 44
+	assigned_group_grid . row          = grid_row
+	assigned_group_grid . width        = grid_width
+	assigned_group_grid . height       = grid_height
+	assigned_group_grid . cell_columns = 1
+	assigned_group_grid . cell_rows	   = tot_assigned_groups
+	assigned_group_grid . border       = TRUE
+
+	assigned_group_grid . display_cell_routine = "DISPLAY_ASSIGNED_GRID"
+	assigned_group_grid . prompt_cell_routine  = "PROMPT_ASSIGNED_GRID"
+
+	group_form . add_prompt ( available_group_grid )
+	group_form . add_prompt ( assigned_group_grid )
+
+	available_group_grid . column_size [ 1 ] = 20
+	assigned_group_grid  .  column_size [ 1 ] = 20
+
+	available_group_grid . return_behaviour = GRID_RETURN_RIGHT
+	assigned_group_grid  . return_behaviour = GRID_RETURN_RIGHT
+
+	group_form . return_behaviour = FORM_RETURN_WRAP
+
+	IF ( enable_state ) THEN
+
+		group_form . footer = GET_USER_MESSAGE
+                                          ( "GROUPLINK_DISPLAY_5" , 1 )
+
+		available_group_grid . insert_routine = "REMOVE_CALL"
+		assigned_group_grid  . remove_routine = "REMOVE_CALL"
+
+	       	available_group_grid . mouse_click_routine =
+					"MOUSE_CLICK_ON_AVAILABLE_CELL"
+
+		assigned_group_grid  . mouse_click_routine =
+					"MOUSE_CLICK_ON_ASSIGNED_CELL"
+
+		group_form . user_info = TRUE
+
+	ENDIF
+
+	IF GLOBAL ( "TERMTYPE" ) <> "GUI" THEN
+
+		set_up_character_cell_option (  available_group_grid 	,
+						assigned_group_grid 	,
+						frame_title		,
+						frame_title_2		)
+        ELSE
+		available_group_grid . enter_prompt_routine = "ENTER_GRID"
+		assigned_group_grid  . enter_prompt_routine = "ENTER_GRID"
+	
+		group_form . enter_prompt_routine = "change_button"
+
+		available_group_grid . user_info  = TRUE
+		assigned_group_grid  . user_info = TRUE
+
+		set_up_gui_options ( group_form		,
+				     enable_state	)
+
+		IF ( direct_state )
+
+			group_form . button_style = FORM_BUTTON_OK_CANCEL
+		ELSE
+			group_form . button_style = FORM_BUTTON_CLOSE
+		ENDIF
+
+		available_group_grid . title_size_top = 0
+		assigned_group_grid  . title_size_top = 0
+
+	ENDIF
+
+	group_form . start_prompt ( )
+
+	IF ( size_of_array ( available_groups ) < 1 ) THEN
+
+		group_form . set_position ( right_grid )
+	ENDIF
+
+	group_form . wait_prompt ( )
+
+	IF ( group_form . get_lastkey ( ) = "DO" ) AND ( sgl ) THEN
+                                    
+		ARRAY group_list
+		count = 1
+
+		WHILE ( count <= size_of_array ( assigned_groups ) ) DO
+
+			group_list [ count ] = assigned_groups [ count , 1 ]
+
+			count = count + 1
+		
+		ENDWHILE
+
+		SET_GROUP_LIST ( group_list )
+	ENDIF
+
+	IF ( direct_state ) AND
+	   ( group_form . get_lastkey ( ) = "DO" ) THEN
+
+		return_value = TRUE
+	ELSE
+		return_value = FALSE
+	ENDIF
+
+	group_form . end_prompt ( )
+
+	RETURN ( return_value )
+
+ENDROUTINE { set_up_window }
+
+
+{******************************************************************************}
+
+ROUTINE set_up_character_cell_option (	available_group_grid  	,
+					assigned_group_grid   	,
+					available_title		,
+					assign_title		)
+{
+*
+*	set up character cell characterisitics
+*
+*******************************************************************************}
+
+	available_group_grid . column = grid_column + 5
+	assigned_group_grid  . column = grid_column + 39
+
+	available_group_grid . title_size_top = 1
+	assigned_group_grid  . title_size_top = 1
+
+	available_group_grid . title_text_top [ 1 , 1 ] = available_title
+
+	available_group_grid . title_rendition_top =
+					PROMPT_RENDITION_UNDERLINE +
+					PROMPT_RENDITION_BOLD
+
+	assigned_group_grid  . title_text_top [ 1 , 1 ] = assign_title
+
+	assigned_group_grid  . title_rendition_top =
+					PROMPT_RENDITION_UNDERLINE +
+					PROMPT_RENDITION_BOLD
+
+ENDROUTINE { set_up_character_cell_option }
+
+
+{******************************************************************************}
+
+ROUTINE set_up_gui_options ( 	   the_group_form	,
+			     VALUE enable_state		)
+{
+*
+*	set up gui characteristics
+*
+*******************************************************************************}
+
+DECLARE press_assign , press_assign_all , press_remove , press_remove_all ,
+	assign_cap , assign_all_cap , remove_cap , remove_all_cap
+
+	assign_cap = GET_USER_MESSAGE ( "GROUPLINK_CAPTION_1" , 1 )
+	assign_all_cap = GET_USER_MESSAGE ( "GROUPLINK_CAPTION_2" , 1 )
+
+	remove_cap = GET_USER_MESSAGE ( "GROUPLINK_CAPTION_3" , 1 )
+	remove_all_cap = GET_USER_MESSAGE ( "GROUPLINK_CAPTION_4" , 1 )
+
+	the_group_form . add_frame ( "Assign Group",
+					30 , 3 , 3 , 14 )
+
+	the_group_form . add_frame ( "Remove Group",
+					30 , 9 , 3 , 14 )
+	PROMPT OBJECT press_assign
+	CLASS "STD_PROMPT_BUTTON"
+	ON LINE 3 FROM 31 TO 42
+	WITH ( caption = assign_cap 					,
+		mouse_click_routine  = "MOUSE_CLICK_ON_ADD_1" 		,
+		enabled = enable_state 			      		)
+
+	PROMPT OBJECT press_assign_all
+	CLASS "STD_PROMPT_BUTTON"
+	ON LINE 5 FROM 31 TO 42
+	WITH ( caption = assign_all_cap 				,
+		mouse_click_routine  = "MOUSE_CLICK_ON_ADD_ALL" 	,
+		enabled = enable_state					)
+
+	PROMPT OBJECT press_remove
+	CLASS "STD_PROMPT_BUTTON"
+	ON LINE 9 FROM 31 TO 42
+	WITH ( caption = remove_cap 					,
+		mouse_click_routine  = "MOUSE_CLICK_ON_REMOVE_1" 	,
+		enabled = enable_state 		 			)
+
+	PROMPT OBJECT press_remove_all
+	CLASS "STD_PROMPT_BUTTON"
+	ON LINE 11 FROM 31 TO 42
+	WITH ( caption = remove_all_cap 				,
+		mouse_click_routine  = "MOUSE_CLICK_ON_REMOVE_ALL" 	,
+		enabled = enable_state					)
+
+	the_group_form . add_prompt ( press_assign )
+	the_group_form . add_prompt ( press_assign_all )
+	the_group_form . add_prompt ( press_remove )
+	the_group_form . add_prompt ( press_remove_all )
+
+ENDROUTINE { set_up_gui_options }
+
+
+{******************************************************************************}
+
+ROUTINE remove_call ( self )
+
+{
+*
+*	If the remove/insert key is pressed on the keyboard call the call
+*	the appropriate routine.
+*
+*******************************************************************************}
+
+DECLARE the_form
+
+	the_form = self . parent_prompt
+
+	IF ( the_form . prompt_objects [ left_grid ] = self ) THEN
+
+		mouse_click_on_add_all ( self )
+	
+	ELSEIF ( the_form . prompt_objects [ right_grid ] = self ) THEN
+
+		mouse_click_on_remove_all ( self )
+
+	ENDIF
+
+	self . stop_prompt ( )
+
+ENDROUTINE  { remove_call }
+
+
+{******************************************************************************}
+
+ROUTINE change_button ( self )
+
+{
+*
+* 	Set the selection button in SMW to an intial state
+*
+*******************************************************************************}
+
+	self . prompt_objects [ remove_button ] . set_enabled ( FALSE )
+		
+	IF ( size_of_array ( assigned_groups ) < 1 ) THEN
+
+		self . prompt_objects [ remove_all_button ] .
+					set_enabled ( FALSE )
+	ENDIF
+
+	IF ( size_of_array ( available_groups ) < 1 ) THEN
+
+                self . prompt_objects [ assign_button ] . set_enabled ( FALSE )
+		self . prompt_objects [ assign_all_button ] .
+	      				set_enabled ( FALSE )
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE enter_grid ( self )
+
+{
+*
+* 	Set the selection buttons in SMW to an intial state
+*
+*******************************************************************************}
+
+DECLARE the_form , assign1_option , remove1_option
+
+	the_form = self . parent_prompt
+
+	IF ( the_form . user_info = TRUE ) THEN
+
+		IF ( the_form . prompt_objects [ left_grid ] = self ) THEN
+
+	       		remove1_option = self . parent_prompt .
+					prompt_objects [ remove_button ]
+
+			remove1_option . set_enabled ( FALSE )
+
+		        IF ( size_of_array ( available_groups ) >= 1 ) THEN
+
+				assign1_option = self . parent_prompt .
+						prompt_objects [ assign_button ]
+
+				assign1_option . set_enabled ( TRUE )
+
+			ENDIF
+
+		ELSEIF ( the_form . prompt_objects [ right_grid ] = self ) THEN
+
+			assign1_option = self . parent_prompt .
+					prompt_objects [ assign_button ]
+
+			assign1_option . set_enabled ( FALSE )
+
+			IF ( size_of_array ( assigned_groups ) >= 1 ) THEN
+			
+				remove1_option = self . parent_prompt .
+						prompt_objects [ remove_button ]
+
+				remove1_option . set_enabled ( TRUE )
+
+			ENDIF
+
+		ENDIF
+	ENDIF
+
+ENDROUTINE
+
+
+{******************************************************************************}
+
+ROUTINE display_available_grid (      self        ,
+				VALUE cell_column ,
+				VALUE cell_row    ,
+				      window      ,
+				VALUE column      ,
+				VALUE row         ,
+				VALUE cell_width  ,
+				VALUE cell_height )
+{
+*
+*	display the available groups in one of the grids
+*
+*******************************************************************************}
+
+      	IF ( available_groups [ cell_row , 2 ] ) THEN
+
+		DISPLAY available_groups [ cell_row , 1 ]
+			AT column , row
+			IN WINDOW window
+			BOLD = TRUE
+			WITH ( width = cell_width ,
+				foreground_colour = PROMPT_COLOUR_RED )
+	ELSE
+		DISPLAY available_groups [ cell_row , 1 ]
+			AT column , row
+			IN WINDOW window
+			WITH ( width = cell_width )
+
+       	ENDIF
+
+ENDROUTINE { display_available_grid }
+
+
+{******************************************************************************}
+
+ROUTINE display_assigned_grid (       self        ,
+				VALUE cell_column ,
+				VALUE cell_row    ,
+				      window      ,
+				VALUE column      ,
+				VALUE row         ,
+				VALUE cell_width  ,
+				VALUE cell_height )
+
+{
+*
+*	display the assigned groups in the other grid
+*
+*******************************************************************************}
+
+      	IF ( assigned_groups [ cell_row , 2 ] ) THEN
+
+		DISPLAY assigned_groups [ cell_row ,1 ]
+			AT column , row
+			IN WINDOW window
+			BOLD = TRUE
+			WITH ( width = cell_width ,
+				foreground_colour = PROMPT_COLOUR_RED )
+	ELSE
+		DISPLAY assigned_groups [ cell_row ,1 ]
+			AT column , row
+			IN WINDOW window
+			WITH ( width = cell_width )
+	ENDIF
+
+ENDROUTINE { display_assigned_grid }
+
+
+{******************************************************************************}
+
+ROUTINE prompt_available_grid (       self        ,
+				VALUE cell_column ,
+				VALUE cell_row    ,
+				      window      ,
+				VALUE column      ,
+				VALUE row         ,
+				VALUE cell_width  ,
+				VALUE cell_height )
+
+{
+*
+*	prompt user in the available groups grid and highlight their
+*	selections
+*
+*******************************************************************************}
+
+DECLARE key , the_form 
+
+	the_form = self . parent_prompt
+
+	DISPLAY available_groups [ cell_row , 1 ]
+		AT column , row INVERSE
+		IN WINDOW window
+		WITH ( width = cell_width ,
+			display_only = TRUE     )
+
+	REPEAT
+		PROMPT FOR_KEY key IN WINDOW window AT column , row
+
+	UNTIL ( key <> " " )
+
+	IF NOT ( available_groups [ cell_row , 2 ] ) THEN
+
+		DISPLAY available_groups [ cell_row , 1 ]
+			AT column , row
+			IN WINDOW window
+			WITH ( width = cell_width 	,
+				display_only = TRUE	)
+	ELSE
+	       	DISPLAY available_groups [ cell_row ,1 ]
+			AT column , row
+			IN WINDOW window
+			BOLD = TRUE
+			WITH (  width = cell_width 	,
+				display_only = TRUE 	,
+				foreground_colour = PROMPT_COLOUR_RED )
+	ENDIF
+
+	IF ( key = "RETURN" ) AND
+	   ( the_form . user_info = TRUE ) THEN
+
+		mouse_click_on_add_1 ( self )
+	ENDIF
+
+	IF ( size_of_array ( available_groups ) < 1 ) THEN
+
+		the_form . set_position ( left_grid )
+		self . stop_prompt ( )
+	
+	ENDIF
+
+	IF ( size_of_array ( assigned_groups ) >= 1 ) THEN
+
+		IF ( key = "RIGHT" ) THEN
+
+			the_form . set_position ( right_grid )
+			self . stop_prompt ( )
+		
+		ENDIF
+	ENDIF
+
+	IF ( the_form . user_info = TRUE ) THEN
+
+		IF ( key = "REMOVE" ) THEN
+
+			mouse_click_on_remove_all ( self )
+
+		ELSEIF ( key = "SELECT" ) THEN
+
+			available_groups [ cell_row , 2 ] =
+					NOT available_groups [ cell_row , 2 ]
+
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE { prompt_available_grid }
+
+
+{******************************************************************************}
+
+ROUTINE prompt_assigned_grid (        self        ,
+				VALUE cell_column ,
+				VALUE cell_row    ,
+				      window      ,
+				VALUE column      ,
+				VALUE row         ,
+				VALUE cell_width  ,
+				VALUE cell_height )
+
+{
+*
+*	prompt user in the assigned groups grid and highlight their selections
+*
+*******************************************************************************}
+
+DECLARE key  , the_form 
+
+	the_form = self . parent_prompt
+
+	DISPLAY assigned_groups [ cell_row ,1 ]
+		AT column , row INVERSE
+		IN WINDOW window
+		WITH ( width = cell_width 	,
+			display_only = TRUE	)
+	REPEAT
+		PROMPT FOR_KEY key IN WINDOW window AT column , row
+
+	UNTIL ( key <> " " )
+
+	IF NOT ( assigned_groups [ cell_row , 2 ] ) THEN
+
+		DISPLAY assigned_groups [ cell_row ,1 ]
+			AT column , row
+			IN WINDOW window
+			WITH ( width = cell_width ,
+					display_only = TRUE     )
+	ELSE
+		DISPLAY assigned_groups [ cell_row ,1 ]
+			AT column , row
+			IN WINDOW window
+			BOLD
+			WITH (  width = cell_width 	,
+				display_only = TRUE	,
+				foreground_colour = PROMPT_COLOUR_RED )
+	ENDIF
+
+
+	IF ( key = "RETURN" )  AND
+	   ( the_form . user_info = TRUE ) THEN
+
+		mouse_click_on_remove_1 ( self )
+	ENDIF
+
+	IF ( size_of_array ( assigned_groups ) < 1 ) THEN
+
+		the_form . set_position ( right_grid )
+		self . stop_prompt ( )
+	
+	ENDIF
+
+	IF ( size_of_array ( available_groups ) >= 1 ) THEN
+
+		IF ( key = "LEFT" ) THEN
+			
+			the_form . set_position ( left_grid )
+			self . stop_prompt ( )
+		ENDIF
+
+	ENDIF
+
+	IF ( the_form . user_info = TRUE ) THEN
+
+		IF ( key = "INSERT HERE" ) THEN
+
+			mouse_click_on_add_all ( self )
+
+		ELSEIF ( key = "SELECT" ) THEN
+
+			assigned_groups [ cell_row , 2 ] =
+					NOT assigned_groups [ cell_row , 2 ]
+
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE { prompt_assigned_grid }
+
+{******************************************************************************}
+
+ROUTINE mouse_click_on_available_cell (		self      	,
+					VALUE cell_column 	,
+					VALUE cell_row    	)
+
+{
+*
+*	If there is a mouse click on the left grid then, if the cell is marked
+*	as selected then mark it as de-selected and vice versa.  Make the
+*	assign button enabled.
+*
+*******************************************************************************}
+
+	available_groups [ cell_row , 2 ] =
+				NOT available_groups [ cell_row , 2 ]
+
+ENDROUTINE
+
+
+{******************************************************************************}
+
+ROUTINE mouse_click_on_assigned_cell (        self		,
+					VALUE cell_column 	,
+					VALUE cell_row    	)
+
+{
+*
+*	If there is a mouse click on the right grid then, if the cell is marked
+*	as selected then mark it as de-selected and vice versa.  Make the
+*	remove button enabled.
+*
+*******************************************************************************}
+
+	assigned_groups [ cell_row , 2 ] =
+				NOT assigned_groups [ cell_row , 2 ]
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE sort_array (	      source_array	,
+			      destination_array ,
+			      source_grid	,
+			      destination_grid	,
+			VALUE element_ptr	,
+			VALUE do_insert		)
+{
+*
+*	insert items in their correct alphabetical order in the grids
+*
+*******************************************************************************}
+
+DECLARE left_ptr , right_ptr , element , refresh
+
+	refresh = FALSE
+
+	left_ptr = 1
+	right_ptr = destination_grid . cell_rows
+
+	element = source_array [ element_ptr , 1 ]
+
+	array_remove_slice ( source_array , 1 , element_ptr )
+
+	IF ( do_insert )
+
+		source_grid . remove_row ( element_ptr )
+	ENDIF
+
+	IF ( right_ptr < 1 ) THEN
+
+		right_ptr = right_ptr + 1
+
+		destination_array [ right_ptr , 1 ] = element
+		destination_array [ right_ptr , 2 ] = FALSE
+
+		IF ( do_insert ) THEN
+
+			destination_grid . insert_row ( right_ptr , 1 ,
+						  GRID_SEPARATOR_NONE )
+		ELSE
+			destination_grid . cell_rows =
+			destination_grid . cell_rows + 1
+		ENDIF
+	ELSE
+		WHILE ( left_ptr <= right_ptr ) DO
+
+			IF ( element < destination_array [ left_ptr ,1 ] ) THEN
+
+				array_insert_slice ( destination_array,
+						     1 ,
+						     left_ptr )
+
+				destination_array [ left_ptr , 1 ] = element
+				destination_array [ left_ptr , 2 ] = FALSE
+                                                   
+				IF GLOBAL ( "TERMTYPE" ) = "GUI" THEN
+                                
+                                	refresh = TRUE
+				ENDIF
+                                
+				IF ( do_insert ) THEN
+
+					destination_grid . insert_row (
+						left_ptr ,
+						1 ,
+						GRID_SEPARATOR_NONE )
+                                ELSE
+					destination_grid . cell_rows =
+					destination_grid . cell_rows + 1
+
+				ENDIF
+
+				left_ptr = right_ptr + 1
+
+			ELSEIF ( element > destination_array
+							[ left_ptr ,1 ] ) THEN
+
+				IF ( left_ptr = right_ptr ) THEN
+
+					left_ptr = left_ptr + 1
+
+					destination_array [ left_ptr , 1 ] =
+									element
+
+					destination_array [ left_ptr , 2 ] =
+									FALSE
+                                        
+					IF ( do_insert ) THEN
+
+						destination_grid . insert_row (
+							left_ptr ,
+							1 ,
+							GRID_SEPARATOR_NONE )
+					ELSE
+						destination_grid . cell_rows =
+							destination_grid . cell_rows + 1
+					ENDIF
+
+				ELSE
+					left_ptr = left_ptr + 1
+				ENDIF
+
+			ENDIF
+
+		ENDWHILE
+	ENDIF
+
+	return ( refresh )
+
+
+ENDROUTINE { sort_array }
+
+
+{******************************************************************************}
+
+ROUTINE mouse_click_on_add_1 ( self )
+
+{
+*
+*	if an item is selected in the right grid then move it to the left grid
+*
+*******************************************************************************}
+
+DECLARE source_grid , destination_grid , element_ptr , remove_all_option ,
+	assign1_option , assign_all_option , the_form , count , current_pos ,
+	refresh
+
+	the_form = self . parent_prompt
+
+	source_grid      = self . parent_prompt . prompt_objects [ left_grid  ]
+	destination_grid = self . parent_prompt . prompt_objects [ right_grid ]
+
+	count = 1
+
+	current_pos = source_grid . current_row
+
+	available_groups [ current_pos , 2 ] = TRUE
+
+	WHILE ( count <= size_of_array ( available_groups ) ) DO
+
+		element_ptr = available_groups [ count , 2 ]
+
+		IF ( element_ptr = TRUE ) THEN
+
+			refresh = sort_array ( 	available_groups	,
+						assigned_groups		,
+						source_grid		,
+						destination_grid	,
+						count			,
+						TRUE			)
+
+			IF GLOBAL ( "TERMTYPE" ) = "GUI" THEN
+
+				remove_all_option = self . parent_prompt .
+					prompt_objects [ remove_all_button ]
+
+				remove_all_option . set_enabled ( TRUE )
+
+				IF ( size_of_array ( available_groups ) < 1 ) THEN
+
+					assign1_option = self . parent_prompt .
+							prompt_objects [ assign_button ]
+
+					assign_all_option = self . parent_prompt .
+						prompt_objects [ assign_all_button ]
+
+					assign1_option . set_enabled ( FALSE )
+
+					assign_all_option . set_enabled ( FALSE )
+
+				ENDIF
+			ENDIF
+
+			IF ( size_of_array ( available_groups ) < 1 )THEN
+
+				the_form . set_position ( right_grid )
+			ENDIF
+
+			count = count - 1
+		ENDIF
+
+		count = count + 1
+
+	ENDWHILE
+             
+	IF refresh THEN
+
+        	destination_grid . redisplay_column ( 1 )
+	ENDIF
+	     
+ENDROUTINE  { mouse_click_on_add_1 }
+
+
+{******************************************************************************}
+
+ROUTINE mouse_click_on_remove_1 ( self )
+
+{
+*
+*	if an item is selected in the right grid then move to the left
+*
+*******************************************************************************}
+
+DECLARE source_grid , destination_grid , element_ptr , assign_all_option ,
+	remove1_option , remove_all_option , the_form , count , current_pos , 
+	refresh
+
+	the_form = self . parent_prompt
+
+	source_grid = self . parent_prompt . prompt_objects [ left_grid  ]
+	destination_grid = self . parent_prompt . prompt_objects [ right_grid ]
+
+	current_pos = destination_grid . current_row
+
+	assigned_groups [ current_pos , 2 ] = TRUE
+
+	count = 1
+
+	WHILE ( count <= size_of_array ( assigned_groups ) ) DO
+
+		element_ptr = assigned_groups [ count , 2 ]
+
+		IF ( element_ptr = TRUE ) THEN
+
+			refresh = sort_array (  assigned_groups	,
+				      		available_groups,
+				      		destination_grid,
+				      		source_grid 	,
+				      		count		,
+				      		TRUE		)
+
+
+			IF GLOBAL ( "TERMTYPE" ) = "GUI" THEN
+
+				assign_all_option = self . parent_prompt .
+					prompt_objects [ assign_all_button ]
+
+				assign_all_option . set_enabled ( TRUE )
+
+				IF ( size_of_array ( assigned_groups ) < 1 ) THEN
+
+					remove1_option = self . parent_prompt .
+							prompt_objects [ remove_button ]
+
+					remove_all_option = self . parent_prompt .
+							prompt_objects [ remove_all_button ]
+
+					remove1_option . set_enabled ( FALSE )
+
+					remove_all_option . set_enabled ( FALSE )
+
+				ENDIF
+			ENDIF
+
+			IF ( size_of_array ( assigned_groups ) < 1 ) THEN
+
+				the_form . set_position ( left_grid )
+
+			ENDIF
+
+			count = count - 1
+		ENDIF
+
+		count = count + 1
+
+	ENDWHILE
+             
+	IF refresh THEN
+
+        	source_grid . redisplay_column ( 1 )
+	ENDIF
+
+ENDROUTINE { mouse_click_on_remove_1 }
+
+
+{******************************************************************************}
+
+ROUTINE mouse_click_on_remove_all ( self )
+
+{
+*
+*	move all items in the right grid to the left
+*
+*******************************************************************************}
+
+DECLARE source_grid , destination_grid  , element_ptr , count , remove1_option ,
+	assign_all_option , remove_all_option , the_form
+
+	the_form = self . parent_prompt
+
+	source_grid = self . parent_prompt . prompt_objects [ left_grid ]
+	destination_grid = self . parent_prompt . prompt_objects [ right_grid ]
+
+	element_ptr = destination_grid . cell_rows
+
+	count = 1
+
+	IF ( element_ptr >= 1 ) THEN
+                          
+		the_form . set_position ( left_grid )
+
+		WHILE ( count <= element_ptr ) DO
+
+			sort_array (	assigned_groups		,
+					available_groups	,
+					destination_grid	,
+					source_grid 		,
+					1			,
+					FALSE			)
+
+			count = count + 1
+
+		ENDWHILE
+                          
+		destination_grid . cell_rows = size_of_array ( assigned_groups )
+		source_grid . cell_rows = size_of_array ( available_groups )
+                
+		screen_begin_update ( )
+                
+		destination_grid . rebuild ( )
+		source_grid . rebuild ( )
+                   
+	       	screen_end_update ( )
+                                     
+		IF GLOBAL ( "TERMTYPE" ) = "GUI" THEN
+                                           
+			remove1_option = self . parent_prompt .
+					prompt_objects [ remove_button ]
+
+			remove_all_option = self . parent_prompt .
+					prompt_objects [ remove_all_button ]
+
+			assign_all_option = self . parent_prompt .
+					prompt_objects [ assign_all_button ]
+
+			remove_all_option . set_enabled ( FALSE )
+			remove1_option . set_enabled ( FALSE )
+
+			assign_all_option . set_enabled ( TRUE )
+
+		ENDIF
+                          
+	ENDIF
+
+ENDROUTINE { mouse_click_on_remove_all }
+
+
+{******************************************************************************}
+
+ROUTINE mouse_click_on_add_all ( self )
+
+{
+*
+*	move all items in the left grid to the right grid
+*
+*******************************************************************************}
+
+DECLARE source_grid , destination_grid  , element_ptr , count , the_form ,
+	assign1_option , remove_all_option , assign_all_option
+        
+	the_form = self . parent_prompt
+
+	source_grid = self . parent_prompt . prompt_objects [ left_grid ]
+	destination_grid = self . parent_prompt . prompt_objects [ right_grid ]
+
+	element_ptr = source_grid . cell_rows
+	count = 1
+
+	IF ( element_ptr >= 1 ) THEN
+                               
+		the_form . set_position ( right_grid )
+
+		WHILE ( count <= element_ptr ) DO
+
+			sort_array (	available_groups ,
+					assigned_groups  ,
+					source_grid	 ,
+					destination_grid ,
+					1		 ,
+					FALSE		 )
+
+			count = count + 1
+
+		ENDWHILE
+                          
+		source_grid . cell_rows = size_of_array ( available_groups )
+		destination_grid . cell_rows = size_of_array ( assigned_groups )
+
+		screen_begin_update ( )
+                
+		source_grid . rebuild ( )
+		destination_grid . rebuild ( )
+                          
+		screen_end_update ( )
+                          
+		IF GLOBAL ( "TERMTYPE" ) = "GUI" THEN
+
+			assign1_option = self . parent_prompt .
+					prompt_objects [ assign_button ]
+
+			assign_all_option = self . parent_prompt .
+					prompt_objects [ assign_all_button ]
+
+			remove_all_option = self . parent_prompt .
+					prompt_objects [ remove_all_button ]
+
+			assign1_option . set_enabled ( FALSE )
+			assign_all_option . set_enabled ( FALSE )
+
+			remove_all_option . set_enabled ( TRUE )
+		ENDIF
+                          
+		          
+	ENDIF
+
+ENDROUTINE { mouse_click_on_add_all }
+
+

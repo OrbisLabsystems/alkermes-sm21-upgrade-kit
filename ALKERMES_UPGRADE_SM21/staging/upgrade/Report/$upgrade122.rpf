@@ -1,0 +1,1533 @@
+{******************************************************************************
+*
+* Module Name   : $UPGRADE
+*
+* Purpose       : Upgrade SampleManager to 12.2
+*
+* Document Ref. :
+*
+* Specification :
+*
+* Portability   : Not Checked
+*
+* Re-entrant    : No
+*
+*******************************************************************************}
+
+SET COMPILE_OPTION DECLARE
+SET NOTPROTECTED
+SET NAME "DEFER/"
+ENABLE WINDOWS
+
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN STANDARD_LIBRARY STD_STRUCTURE
+JOIN STANDARD_LIBRARY STD_UTILS
+
+JOIN LIBRARY $LIB_DB
+JOIN LIBRARY $LIB_MENU
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $TABLE_LOAD_SAVE_LIB
+JOIN LIBRARY $MENU_CONVERT
+JOIN LIBRARY $LOAD_ENTITY_TEMP
+JOIN LIBRARY $LOAD_MISSING_WF
+JOIN LIBRARY $LOAD_TABLE_DEFAULTS
+JOIN LIBRARY $LOAD_WORKFLOW
+JOIN LIBRARY $ENTITY_NAMES
+JOIN LIBRARY $CONVERT_CRITERIA
+JOIN LIBRARY $CONVERT_INSTTYPE
+JOIN LIBRARY $UPGRADE_DATA
+
+{******************************************************************************}
+
+CONSTANT data_dir = "smp$datafiles:"
+CONSTANT data_extn = ".csv"
+
+CONSTANT menu_toolbar_1210 = "smp$datafiles:menu_toolbar_1210_1220.mtb"
+
+CONSTANT menu_toolbar_appearance = "smp$datafiles:menu_toolbar_appearance.mtb"
+
+{******************************************************************************}
+
+DECLARE upgrade_version
+
+IF GLOBAL ( "PARAM_ACTIVE" ) THEN
+
+	PROMPT FOR upgrade_version
+
+ELSE
+
+	upgrade_version = "12.1"
+
+ENDIF
+
+{ For 12.2 all upgrades follow the same path }
+
+IF upgrade_version = "12.1" THEN
+
+ELSEIF upgrade_version = "12.1.1" THEN
+
+ELSEIF upgrade_version = "12.1.2" THEN
+
+ELSE
+
+	EXIT
+
+ENDIF
+
+import_new_menu_options ( menu_toolbar_1210 )
+load_table_defaults ( "", "_1210_1220", ".td_csv" )
+
+menu_toolbar_replace_appearance ( )
+
+upgrade_instrument_maintenance ( )
+
+upgrade_workflow_tweaks ( )
+
+load_workflow_defaults_standard ( )
+load_missing_workflows ( )
+load_default_entity_templates ( )
+
+upgrade_report_layout_tweaks ( )
+
+upgrade_delete_bad_unit_alias ( )
+
+upgrade_master_menu_tweaks ( )
+
+upgrade_explorer_aux_tweaks ( )
+upgrade_explorer_folder_tweaks ( )
+upgrade_explorer_rmb_tweaks ( )
+
+upgrade_data_process ( )
+
+EXIT
+
+{******************************************************************************}
+
+ROUTINE import_new_menu_options ( VALUE menu_import_file )
+
+{
+*     Import the new menu options into the SYSTEM menu
+*
+*******************************************************************************}
+
+	menu_convert_load_menu_file ( "SYSTEM", menu_import_file )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE load_if_present ( VALUE file_nam  ,
+                          VALUE load_mode )
+
+{
+* Load CSV if present
+*
+******************************************************************************}
+
+	IF FILE EXISTS ( file_nam ) THEN
+
+		input_csv_file ( file_nam                  ,
+		                 load_mode                 ,
+		                 FALSE                     ,
+		                 SINGLE_TRANSACTION_NUMBER ,
+		                 TRUE                      )
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE menu_toolbar_replace_appearance
+
+{
+*     Delete the menu tree for the old appearance options and load the new ones
+*
+*******************************************************************************}
+
+	DECLARE sql_statement ,
+	        parent_number
+
+	sql_statement = "DELETE FROM MENU_TOOLBAR " :
+	                "WHERE INTERNAL_ITEM_NAME LIKE 'WINDOW_SKIN%' OR " :
+	                "INTERNAL_ITEM_NAME LIKE 'WINDOW_STYLE%' OR " :
+	                "(PROCEDURE_NUM >= 40006 AND PROCEDURE_NUM <= 40024)"
+
+	execute_sql ( sql_statement )
+	execute_sql ( "COMMIT" )
+
+	menu_toolbar_delete_entries ( "SELECT MTA.TOOLBAR_NAME,MTA.ITEM_NUMBER FROM MENU_TOOLBAR MTA LEFT " :
+	                              "JOIN MENU_TOOLBAR MTB ON MTA.ITEM_NUMBER = MTB.PARENT_NUMBER AND " :
+	                              "MTA.TOOLBAR_NAME = MTB.TOOLBAR_NAME " :
+	                              "WHERE MTB.ITEM_NUMBER IS NULL AND MTA.TYPE='MENU'" )
+
+	parent_number = SELECT menu_toolbar . item_number
+	                 WHERE internal_item_name = "MENU_VIEW"
+
+	{ Work out where the appearance menu should be loaded }
+
+	IF parent_number = EMPTY THEN
+		parent_number = 0
+	ENDIF
+
+	menu_convert_load_menu_file_under_parent ( "SYSTEM", menu_toolbar_appearance, parent_number )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE menu_toolbar_delete_entries ( VALUE sql_statement )
+
+{
+*	Delete items selected by the passed SQL statement
+*	Repeat until the select no longer retrieves entries
+*
+*******************************************************************************}
+
+	DECLARE delete_items ,
+	        dynamic_sql ,
+	        items ,
+	        toolbar_name ,
+	        delete_count
+
+	REPEAT
+
+		ARRAY delete_items ARRAYSIZE ( 0, 2 )
+
+		CREATE OBJECT "STD_DYNAMIC_SQL" , dynamic_sql
+
+		dynamic_sql . add_to_sql_statement ( sql_statement )
+
+		dynamic_sql . add_select_field ( "MENU_TOOLBAR", "TOOLBAR_NAME" )
+		dynamic_sql . add_select_field ( "MENU_TOOLBAR", "ITEM_NUMBER" )
+
+		dynamic_sql . execute ()
+
+		items = 0
+
+		toolbar_name = dynamic_sql . select ( 1 )
+
+		WHILE toolbar_name <> EMPTY DO
+
+			items = items + 1
+
+			delete_items [ items, 1 ] = dynamic_sql . select ( 1 )
+			delete_items [ items, 2 ] = dynamic_sql . select ( 2 )
+
+			dynamic_sql . next ()
+
+			toolbar_name = dynamic_sql . select ( 1 )
+
+		ENDWHILE
+
+		IF items > 0 THEN
+
+			START WRITE TRANSACTION "Delete old menu toolbar items"
+
+			delete_count = 0
+
+			WHILE delete_count < items DO
+
+				delete_count = delete_count + 1
+
+				toolbar_name = SELECT menu_toolbar . toolbar_name FOR UPDATE
+				                WHERE toolbar_name = delete_items [ delete_count, 1 ] AND
+				                      item_number  = delete_items [ delete_count, 2 ]
+
+				IF toolbar_name <> EMPTY THEN
+
+					DELETE menu_toolbar
+
+				ENDIF
+
+			ENDWHILE
+
+			COMMIT
+
+		ENDIF
+
+	UNTIL items = 0
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_instrument_maintenance
+
+{
+*     Set existing instrument, parts and templates as use_maintenance false
+*
+*******************************************************************************}
+
+	upgrade_instrument_table ( "INSTRUMENT" )
+	upgrade_instrument_table ( "INSTRUMENT_PART" )
+	upgrade_instrument_table ( "INSTRUMENT_TEMPLATE" )
+	upgrade_instrument_table ( "INSTRUMENT_PART_TEMPLATE" )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_instrument_table ( VALUE table )
+
+{
+*	Set the use_maintenance flag for all the records in the passed table
+*
+*******************************************************************************}
+
+	DECLARE inst_values ,
+	        count ,
+	        inst_item ,
+	        has_maintenance
+
+	ARRAY inst_values ARRAYSIZE ( 0 )
+
+	count = 0
+
+	inst_item = SELECT 'table' . identity
+	             WHERE  identity > ""
+
+	WHILE inst_item <> EMPTY DO
+
+		has_maintenance = SELECT maintenance . record_key0
+		                   WHERE record_key0 = inst_item AND
+		                         table_name = table
+
+		IF has_maintenance = EMPTY THEN
+
+			count = count + 1
+
+			inst_values [ count ] = inst_item
+
+		ENDIF
+
+		NEXT 'table'
+		inst_item = SELECT 'table' . identity
+
+	ENDWHILE
+
+	count = 1
+
+	START WRITE TRANSACTION "Updating " : table : " use_maintenance"
+
+	WHILE count <= size_of_array ( inst_values ) DO
+
+		inst_item = SELECT 'table' . identity FOR UPDATE
+		             WHERE  identity = inst_values [ count ]
+
+		ASSIGN 'table' . use_maintenance = FALSE
+
+		UPDATE 'table'
+
+		count = count + 1
+
+	ENDWHILE
+
+	COMMIT
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_workflow_tweaks
+
+{
+*     Specific updates to workflows
+*
+*******************************************************************************}
+
+	DECLARE wn
+
+	START WRITE TRANSACTION "Updating batch workflow"
+
+	wn = SELECT workflow . name FOR UPDATE
+	      WHERE workflow_guid = "BDD721DC-9792-4E7A-A82C-CC305752124E"
+
+	IF wn = "Single Batch" THEN
+
+		ASSIGN workflow . name = "Single Batch Non Interactive"
+		UPDATE workflow
+
+		COMMIT
+
+	ELSE
+
+		ROLLBACK
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_report_layout_tweaks
+
+{
+*     Specific updates to report layout definitions
+*
+*******************************************************************************}
+
+	upgrade_delete_report_layout_field ( "SAMP_RES_LIST_L", "RawResult" )
+	upgrade_delete_report_layout_field ( "MLP_COMP_L", "AnalysisId" )
+
+	upgrade_delete_report_layout ( "INSTRUMENT_P" )
+	upgrade_delete_report_layout ( "INSTRUMENT_PART_P" )
+	upgrade_delete_report_layout ( "INSTRUMENT_PART_TEMPLATE_P" )
+	upgrade_delete_report_layout ( "INSTRUMENT_TEMPLATE_P" )
+
+	upgrade_delete_report_layout ( "SAMPLE_RECIEPT" )
+
+	upgrade_delete_report_layout_link ( "INSTRUMENT_P" )
+	upgrade_delete_report_layout_link ( "INSTRUMENT_PART_P" )
+	upgrade_delete_report_layout_link ( "INSTRUMENT_PART_TEMPLATE_P" )
+	upgrade_delete_report_layout_link ( "INSTRUMENT_TEMPLATE_P" )
+
+	upgrade_delete_report_layout_link ( "MLP_HEADER_P" )
+
+	load_if_present ( data_dir:"report_layout_field":data_extn ,
+	                  IGNORE_FILE                              )
+
+	load_if_present ( data_dir:"report_layout_link":data_extn ,
+	                  IGNORE_FILE                              )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_delete_report_layout ( VALUE rpt_header )
+
+{
+*     Specific updates to report layout definitions
+*
+*******************************************************************************}
+
+	DECLARE rpt_layout ,
+	        count ,
+	        layout_field
+
+	rpt_layout = SELECT report_layout_field . field_name
+	              WHERE  report_layout_header = rpt_header
+
+	ARRAY layout_field ARRAYSIZE ( 0 )
+	count = 0
+
+	WHILE rpt_layout <> EMPTY DO
+
+		count = count + 1
+
+		layout_field [ count ] = rpt_layout
+
+		NEXT report_layout_field
+		rpt_layout = SELECT report_layout_field . field_name
+
+	ENDWHILE
+
+	WHILE count > 0 DO
+
+		upgrade_delete_report_layout_field ( rpt_header             ,
+		                                     layout_field [ count ] )
+
+		count = count - 1
+
+	ENDWHILE
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_delete_report_layout_field ( VALUE rpt_header ,
+                                             VALUE rpt_field  )
+
+{
+*     Specific updates to report layout definitions
+*
+*******************************************************************************}
+
+	DECLARE rpt_layout
+
+	START WRITE TRANSACTION "Updating report layout fields"
+
+	rpt_layout = SELECT report_layout_field . field_name FOR UPDATE
+	              WHERE  report_layout_header = rpt_header AND
+	                     field_name = rpt_field
+
+	IF rpt_layout = rpt_field THEN
+
+		DELETE report_layout_field
+		COMMIT
+
+	ELSE
+
+		ROLLBACK
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_delete_report_layout_link ( VALUE rpt_header )
+
+{
+*     Specific updates to report layout definitions
+*
+*******************************************************************************}
+
+	DECLARE rpt_link ,
+	        count ,
+	        layout_link
+
+	rpt_link = SELECT report_layout_link . order_number
+	            WHERE report_layout_header = rpt_header
+
+	ARRAY layout_link ARRAYSIZE ( 0 )
+	count = 0
+
+	WHILE rpt_link <> EMPTY DO
+
+		count = count + 1
+
+		layout_link [ count ] = rpt_link
+
+		NEXT report_layout_link
+		rpt_link = SELECT report_layout_link . order_number
+
+	ENDWHILE
+
+	WHILE count > 0 DO
+
+		START WRITE TRANSACTION "Updating report layout link"
+
+		rpt_link = SELECT report_layout_link . order_number FOR UPDATE
+		            WHERE report_layout_header = rpt_header AND
+		                  order_number = layout_link [ count ]
+
+		IF rpt_link = layout_link [ count ] THEN
+
+			DELETE report_layout_link
+			COMMIT
+
+		ELSE
+
+			ROLLBACK
+
+		ENDIF
+
+		count = count - 1
+
+	ENDWHILE
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_delete_bad_unit_alias
+
+{
+*     Delete incorrect unit aliases
+*
+*******************************************************************************}
+
+	upgrade_delete_unit_alias ( "lbf", "lb" )
+	upgrade_delete_unit_alias ( "lbf", "LB" )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_delete_unit_alias ( VALUE parent_id ,
+                                    VALUE identity  )
+
+{
+*     Delete incorrect unit aliases
+*
+*******************************************************************************}
+
+	DECLARE ua
+
+	START WRITE TRANSACTION "Deleting unit alias"
+
+	ua = SELECT unit_alias . identity FOR UPDATE
+	      WHERE identity = identity AND
+	            parent_id = parent_id
+
+	IF TOUPPER ( ua ) = TOUPPER ( identity ) THEN
+
+		DELETE unit_alias
+		COMMIT
+
+	ELSE
+
+		ROLLBACK
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_master_menu_tweaks
+
+{
+*     Specific updates to master menu definitions
+*
+*******************************************************************************}
+
+	upgrade_mm_web_tweaks ( )
+	upgrade_mm_mnemonics ( )
+	upgrade_mm_table_implementation ( )
+	upgrade_mm_implementation ( )
+	upgrade_mm_specific_tweaks ( )
+	upgrade_mm_lte_instrument ( )
+
+	{ Don't know about this }
+	{ upgrade_mm_obsolete ( ) }
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_mm_web_tweaks
+
+{
+*     Update master menu we settings
+*
+*******************************************************************************}
+
+	upgrade_mm_specific_web (   339, TRUE, TRUE )
+	upgrade_mm_specific_web ( 35031, TRUE, TRUE )
+	upgrade_mm_specific_web ( 35032, TRUE, TRUE )
+	upgrade_mm_specific_web ( 35033, TRUE, TRUE )
+	upgrade_mm_specific_web ( 35034, TRUE, TRUE )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_mm_specific_web ( VALUE proc_num  ,
+                                  VALUE web_enab  ,
+                                  VALUE web_avail )
+
+{
+*     Update master menu we settings
+*
+*******************************************************************************}
+
+	DECLARE menu_item
+
+	START WRITE TRANSACTION "Updating master menu web settings"
+
+	menu_item = SELECT master_menu . procedure_num FOR UPDATE
+	            WHERE  procedure_num = proc_num
+
+	IF menu_item <> EMPTY THEN
+
+		ASSIGN master_menu . web_enabled = web_enab
+		ASSIGN master_menu . web_available = web_avail
+
+		UPDATE master_menu
+
+	ENDIF
+
+	COMMIT
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_mm_mnemonics
+
+{
+*     Update master menu we settings
+*
+*******************************************************************************}
+
+	upgrade_mm_specific_mnemonic ( 501, "" )
+
+	upgrade_mm_specific_mnemonic ( 15201, "ATAB" )
+	upgrade_mm_specific_mnemonic ( 15202, "MTAB" )
+	upgrade_mm_specific_mnemonic ( 15203, "GTAB" )
+	upgrade_mm_specific_mnemonic ( 15206, "" )
+	upgrade_mm_specific_mnemonic ( 15208, "RTAB" )
+	upgrade_mm_specific_mnemonic ( 15209, "UTAB" )
+	upgrade_mm_specific_mnemonic ( 15211, "PTAB" )
+	upgrade_mm_specific_mnemonic ( 15212, "LTAB" )
+	upgrade_mm_specific_mnemonic ( 15421, "AMA" )
+
+	upgrade_mm_specific_mnemonic ( 15911, "ALBLT" )
+	upgrade_mm_specific_mnemonic ( 15912, "CLBLT" )
+	upgrade_mm_specific_mnemonic ( 15913, "MLBLT" )
+	upgrade_mm_specific_mnemonic ( 15914, "DLBLT" )
+
+	upgrade_mm_specific_mnemonic ( 15915, "LLBLT" )
+	upgrade_mm_specific_mnemonic ( 15916, "PLBLT" )
+	upgrade_mm_specific_mnemonic ( 15917, "RLBLT" )
+	upgrade_mm_specific_mnemonic ( 15918, "ULBLT" )
+
+	upgrade_mm_specific_mnemonic ( 15961, "ALTL" )
+	upgrade_mm_specific_mnemonic ( 15962, "CLTL" )
+	upgrade_mm_specific_mnemonic ( 15963, "MLTL" )
+	upgrade_mm_specific_mnemonic ( 15964, "DLTL" )
+	upgrade_mm_specific_mnemonic ( 15965, "LLTL" )
+	upgrade_mm_specific_mnemonic ( 15966, "PLTL" )
+	upgrade_mm_specific_mnemonic ( 15967, "RLTL" )
+	upgrade_mm_specific_mnemonic ( 15968, "ULTL" )
+
+	upgrade_mm_specific_mnemonic ( 35032, "AREPT" )
+	upgrade_mm_specific_mnemonic ( 35033, "CREPT" )
+	upgrade_mm_specific_mnemonic ( 35034, "MREPT" )
+	upgrade_mm_specific_mnemonic ( 35035, "DREPT" )
+	upgrade_mm_specific_mnemonic ( 35036, "LREPT" )
+	upgrade_mm_specific_mnemonic ( 35037, "PREPT" )
+	upgrade_mm_specific_mnemonic ( 35038, "RREPT" )
+	upgrade_mm_specific_mnemonic ( 35039, "UREPT" )
+
+	upgrade_mm_specific_mnemonic ( 35119, "FORA" )
+
+	upgrade_mm_specific_mnemonic ( 35134, "SSAMP" )
+
+	upgrade_mm_specific_mnemonic ( 35243, "AMODR" )
+	upgrade_mm_specific_mnemonic ( 35244, "CMODR" )
+	upgrade_mm_specific_mnemonic ( 35245, "MMODR" )
+	upgrade_mm_specific_mnemonic ( 35246, "DMODR" )
+	upgrade_mm_specific_mnemonic ( 35247, "LMODR" )
+	upgrade_mm_specific_mnemonic ( 35248, "PMODR" )
+	upgrade_mm_specific_mnemonic ( 35249, "RMODR" )
+	upgrade_mm_specific_mnemonic ( 35250, "UMODR" )
+	upgrade_mm_specific_mnemonic ( 35252, "GMODR" )
+
+	upgrade_mm_specific_mnemonic ( 35267, "CLOT" )
+	upgrade_mm_specific_mnemonic ( 35268, "XLOT" )
+	upgrade_mm_specific_mnemonic ( 35271, "RLOTI" )
+	upgrade_mm_specific_mnemonic ( 35272, "RLOT" )
+	upgrade_mm_specific_mnemonic ( 35274, "ALOT" )
+
+	upgrade_mm_specific_mnemonic ( 35275, "SREPT" )
+	upgrade_mm_specific_mnemonic ( 35276, "AREPTA" )
+	upgrade_mm_specific_mnemonic ( 35277, "VREPT" )
+	upgrade_mm_specific_mnemonic ( 35278, "SMODR" )
+	upgrade_mm_specific_mnemonic ( 35279, "AMODRA" )
+	upgrade_mm_specific_mnemonic ( 35280, "VMODR" )
+	upgrade_mm_specific_mnemonic ( 35281, "HREPT" )
+	upgrade_mm_specific_mnemonic ( 35282, "HMODR" )
+
+	upgrade_mm_specific_mnemonic ( 35288, "ARLO" )
+	upgrade_mm_specific_mnemonic ( 35289, "CRLO" )
+	upgrade_mm_specific_mnemonic ( 35290, "MRLO" )
+	upgrade_mm_specific_mnemonic ( 35291, "DRLO" )
+	upgrade_mm_specific_mnemonic ( 35292, "LRLO" )
+	upgrade_mm_specific_mnemonic ( 35293, "PRLO" )
+	upgrade_mm_specific_mnemonic ( 35294, "RRLO" )
+	upgrade_mm_specific_mnemonic ( 35295, "URLO" )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_mm_specific_mnemonic ( VALUE proc_num ,
+                                       VALUE mnemonic )
+
+{
+*     Update master menu web settings
+*
+*******************************************************************************}
+
+	DECLARE menu_item
+
+	START WRITE TRANSACTION "Updating master menu mnemonic"
+
+	menu_item = SELECT master_menu . procedure_num FOR UPDATE
+	            WHERE  procedure_num = proc_num
+
+	IF menu_item <> EMPTY THEN
+
+		ASSIGN master_menu . mnemonic = mnemonic
+
+		UPDATE master_menu
+
+	ENDIF
+
+	COMMIT
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_mm_table_implementation
+
+{
+*     Update master menu entries
+*
+*******************************************************************************}
+
+	upgrade_mm_specific_table_implementation ( 17, "MLP_HEADER", "DESIGNER", "MlpHeaderTask", "MlpHeader" )
+	upgrade_mm_specific_table_implementation ( 18, "MLP_HEADER", "DESIGNER", "MlpHeaderTask", "MlpHeader" )
+
+	upgrade_mm_specific_table_implementation ( 703, "APPROVAL", "DESIGNER", "LabtableListTask", "" )
+	upgrade_mm_specific_table_implementation ( 704, "APPROVAL", "DESIGNER", "LabtablePrintTask", "" )
+
+	upgrade_mm_specific_table_implementation ( 822, "BATCH_HEADER", "DESIGNER", "SingleEntityReportingTask", "BATCH_HEADER" )
+	upgrade_mm_specific_table_implementation ( 823, "BATCH_HEADER", "DESIGNER", "LabtablePrintTask", "BATCH_JOB_REPORT" )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_mm_specific_table_implementation ( VALUE menu_num  ,
+                                                   VALUE tab_name  ,
+                                                   VALUE imp_type  ,
+                                                   VALUE task_name ,
+                                                   VALUE task_parm )
+
+{
+*     Update master menu entries
+*
+*******************************************************************************}
+
+	DECLARE menu_item
+
+	START WRITE TRANSACTION "Updating master menu entries"
+
+	menu_item = SELECT master_menu . procedure_num FOR UPDATE
+	            WHERE  procedure_num = menu_num
+
+	IF menu_item <> EMPTY THEN
+
+		ASSIGN master_menu . table_name          = tab_name
+		ASSIGN master_menu . implementation_type = imp_type
+		ASSIGN master_menu . task_name           = task_name
+		ASSIGN master_menu . task_parameters     = task_parm
+
+		UPDATE master_menu
+
+	ENDIF
+
+	COMMIT
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_mm_implementation
+
+{
+*     Update master menu entry implementation details
+*
+*******************************************************************************}
+
+	upgrade_mm_specific_implementation ( 111, "DESIGNER", "LabtablePrintCriteriaTask", "SAMPLE_RECEIPT" )
+
+	upgrade_mm_specific_implementation ( 531, "DESIGNER", "MlpLevelTask", "MlpLevel" )
+	upgrade_mm_specific_implementation ( 532, "DESIGNER", "MlpLevelTask", "MlpLevel" )
+	upgrade_mm_specific_implementation ( 533, "DESIGNER", "MlpLevelTask", "MlpLevel" )
+	upgrade_mm_specific_implementation ( 534, "DESIGNER", "MlpLevelTask", "MlpLevel" )
+
+	upgrade_mm_specific_implementation ( 541, "DESIGNER", "BrowseTask", "MLP_FAMILY_HEADER" )
+
+	upgrade_mm_specific_implementation ( 542, "DESIGNER", "MlpFamilyTask", "MlpFamily" )
+	upgrade_mm_specific_implementation ( 543, "DESIGNER", "MlpFamilyTask", "MlpFamily" )
+	upgrade_mm_specific_implementation ( 544, "DESIGNER", "MlpFamilyTask", "MlpFamily" )
+	upgrade_mm_specific_implementation ( 545, "DESIGNER", "MlpFamilyTask", "MlpFamily" )
+	upgrade_mm_specific_implementation ( 548, "DESIGNER", "MlpFamilyTask", "MlpFamily" )
+	upgrade_mm_specific_implementation ( 549, "DESIGNER", "MlpFamilyTask", "MlpFamily" )
+
+	upgrade_mm_specific_implementation ( 551, "DESIGNER", "MlpHeaderTask", "MlpHeader" )
+	upgrade_mm_specific_implementation ( 553, "DESIGNER", "MlpHeaderTask", "MlpHeader" )
+	upgrade_mm_specific_implementation ( 554, "DESIGNER", "MlpHeaderTask", "MlpHeader" )
+	upgrade_mm_specific_implementation ( 555, "DESIGNER", "MlpHeaderTask", "MlpHeader" )
+	upgrade_mm_specific_implementation ( 557, "DESIGNER", "MlpHeaderTask", "MlpHeader" )
+
+	upgrade_mm_specific_implementation ( 591, "DESIGNER", "LimitPhraseHeaderTask", "LimitPhraseHeader" )
+	upgrade_mm_specific_implementation ( 592, "DESIGNER", "LimitPhraseHeaderTask", "LimitPhraseHeader" )
+	upgrade_mm_specific_implementation ( 593, "DESIGNER", "LimitPhraseHeaderTask", "LimitPhraseHeader" )
+	upgrade_mm_specific_implementation ( 594, "DESIGNER", "LimitPhraseHeaderTask", "LimitPhraseHeader" )
+	upgrade_mm_specific_implementation ( 597, "DESIGNER", "LimitPhraseHeaderTask", "LimitPhraseHeader" )
+	upgrade_mm_specific_implementation ( 598, "DESIGNER", "LimitPhraseHeaderTask", "LimitPhraseHeader" )
+
+	upgrade_mm_specific_implementation ( 599, "DESIGNER", "LimitPhraseFromPhraseTask", "LimitPhraseFromPhrase" )
+
+	upgrade_mm_specific_implementation ( 731, "DESIGNER", "LimitCalculationTask", "LimitCalculation" )
+	upgrade_mm_specific_implementation ( 732, "DESIGNER", "LimitCalculationTask", "LimitCalculation" )
+	upgrade_mm_specific_implementation ( 733, "DESIGNER", "LimitCalculationTask", "LimitCalculation" )
+	upgrade_mm_specific_implementation ( 734, "DESIGNER", "LimitCalculationTask", "LimitCalculation" )
+	upgrade_mm_specific_implementation ( 737, "DESIGNER", "LimitCalculationTask", "LimitCalculation" )
+	upgrade_mm_specific_implementation ( 738, "DESIGNER", "LimitCalculationTask", "LimitCalculation" )
+
+	upgrade_mm_specific_implementation ( 10093, "DESIGNER", "WorkflowActionTask", "SUBMIT,SUBMITTABLE" )
+	upgrade_mm_specific_implementation ( 10094, "DESIGNER", "IncidentTask", "Incident,REVIEWABLE" )
+	upgrade_mm_specific_implementation ( 10095, "DESIGNER", "ParameterIncidentTask", "" )
+	upgrade_mm_specific_implementation ( 10096, "DESIGNER", "WorkflowActionTask", "COMPLETE,COMPLETABLE" )
+	upgrade_mm_specific_implementation ( 10097, "DESIGNER", "WorkflowActionTask", "INSPECT,INSPECTABLE" )
+	upgrade_mm_specific_implementation ( 10098, "DESIGNER", "IncidentTask", "Incident,INSPECTABLE" )
+	upgrade_mm_specific_implementation ( 10101, "DESIGNER", "WorkflowActionTask", "CANCEL,CANCELABLE" )
+
+	upgrade_mm_specific_implementation ( 15055, "DESIGNER", "InspectionHistoryTask", "InspectionHistory" )
+
+	upgrade_mm_specific_implementation ( 15421, "DESIGNER", "MlpHeaderTask", "MlpHeader" )
+	upgrade_mm_specific_implementation ( 15422, "DESIGNER", "MlpHeaderTask", "MlpHeader" )
+
+	upgrade_mm_specific_implementation ( 15423, "DESIGNER", "InspectionHistoryTask", "InspectionHistory" )
+	upgrade_mm_specific_implementation ( 35235, "DESIGNER", "InspectionHistoryTask", "InspectionHistory" )
+	upgrade_mm_specific_implementation ( 35238, "DESIGNER", "InspectionHistoryTask", "InspectionHistory" )
+	upgrade_mm_specific_implementation ( 35281, "DESIGNER", "InspectionHistoryTask", "InspectionHistory" )
+	upgrade_mm_specific_implementation ( 35282, "DESIGNER", "InspectionHistoryTask", "InspectionHistory" )
+	upgrade_mm_specific_implementation ( 37040, "DESIGNER", "InspectionHistoryTask", "InspectionHistory" )
+	upgrade_mm_specific_implementation ( 37043, "DESIGNER", "InspectionHistoryTask", "InspectionHistory" )
+	upgrade_mm_specific_implementation ( 37046, "DESIGNER", "InspectionHistoryTask", "InspectionHistory" )
+	upgrade_mm_specific_implementation ( 37060, "DESIGNER", "InspectionHistoryTask", "InspectionHistory" )
+	upgrade_mm_specific_implementation ( 37076, "DESIGNER", "InspectionHistoryTask", "InspectionHistory" )
+	upgrade_mm_specific_implementation ( 37122, "DESIGNER", "InspectionHistoryTask", "InspectionHistory" )
+
+	upgrade_mm_specific_implementation ( 37156, "DESIGNER", "SingleEntityReportingTask", "LAB_EXECUTION" )
+
+	upgrade_mm_specific_implementation ( 37173, "DESIGNER", "InspectionHistoryTask", "InspectionHistory" )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_mm_specific_implementation ( VALUE menu_num  ,
+                                             VALUE imp_type  ,
+                                             VALUE task_name ,
+                                             VALUE task_parm )
+
+{
+*     Update a specifc master menu entry's implementation details
+*
+*******************************************************************************}
+
+	DECLARE menu_item
+
+	START WRITE TRANSACTION "Updating master menu entries"
+
+	menu_item = SELECT master_menu . procedure_num FOR UPDATE
+	            WHERE  procedure_num = menu_num
+
+	IF menu_item <> EMPTY THEN
+
+		ASSIGN master_menu . implementation_type = imp_type
+		ASSIGN master_menu . task_name           = task_name
+		ASSIGN master_menu . task_parameters     = task_parm
+
+		UPDATE master_menu
+
+	ENDIF
+
+	COMMIT
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_mm_specific_tweaks
+
+{
+*     Update a specifc master menu entries
+*
+*******************************************************************************}
+
+	DECLARE menu_item
+
+	START WRITE TRANSACTION "Updating master menu entries"
+
+	menu_item = SELECT master_menu . procedure_num FOR UPDATE
+	            WHERE  procedure_num = 555
+
+	IF menu_item <> EMPTY THEN
+
+		ASSIGN master_menu . table_name = "MLP_HEADER"
+
+		UPDATE master_menu
+
+	ENDIF
+
+	menu_item = SELECT master_menu . procedure_num FOR UPDATE
+	            WHERE  procedure_num = 10094
+
+	IF menu_item <> EMPTY THEN
+
+		ASSIGN master_menu . action_type = "AUTHORISE"
+
+		UPDATE master_menu
+
+	ENDIF
+
+	menu_item = SELECT master_menu . procedure_num FOR UPDATE
+	            WHERE  procedure_num = 10095
+
+	IF menu_item <> EMPTY THEN
+
+		ASSIGN master_menu . action_type = "PROCESS"
+		ASSIGN master_menu . icon        = "INT_INCIDENTS_V"
+
+		UPDATE master_menu
+
+	ENDIF
+
+	menu_item = SELECT master_menu . procedure_num FOR UPDATE
+	            WHERE  procedure_num = 10097
+
+	IF menu_item <> EMPTY THEN
+
+		ASSIGN master_menu . action_type = "SUBMIT"
+
+		UPDATE master_menu
+
+	ENDIF
+
+	menu_item = SELECT master_menu . procedure_num FOR UPDATE
+	            WHERE  procedure_num = 10098
+
+	IF menu_item <> EMPTY THEN
+
+		ASSIGN master_menu . action_type = "AUTHORISE"
+
+		UPDATE master_menu
+
+	ENDIF
+
+	menu_item = SELECT master_menu . procedure_num FOR UPDATE
+	            WHERE  procedure_num = 10101
+
+	IF menu_item <> EMPTY THEN
+
+		ASSIGN master_menu . icon = "INT_INCIDENTS_X"
+
+		UPDATE master_menu
+
+	ENDIF
+
+	menu_item = SELECT master_menu . procedure_num FOR UPDATE
+	            WHERE  procedure_num = 35241
+
+	IF menu_item <> EMPTY THEN
+
+		ASSIGN master_menu . action_type = "EXPORT"
+
+		UPDATE master_menu
+
+	ENDIF
+
+	menu_item = SELECT master_menu . procedure_num FOR UPDATE
+	            WHERE  procedure_num = 35253
+
+	IF menu_item <> EMPTY THEN
+
+		ASSIGN master_menu . action_type = "IMPORT"
+
+		UPDATE master_menu
+
+	ENDIF
+
+	menu_item = SELECT master_menu . procedure_num FOR UPDATE
+	            WHERE  procedure_num = 35254
+
+	IF menu_item <> EMPTY THEN
+
+		ASSIGN master_menu . action_type = "EXPORT"
+
+		UPDATE master_menu
+
+	ENDIF
+
+	menu_item = SELECT master_menu . procedure_num FOR UPDATE
+	            WHERE  procedure_num = 37024
+
+	IF menu_item <> EMPTY THEN
+
+		ASSIGN master_menu . action_type = "EXPORT"
+
+		UPDATE master_menu
+
+	ENDIF
+
+	menu_item = SELECT master_menu . procedure_num FOR UPDATE
+	            WHERE  procedure_num = 37025
+
+	IF menu_item <> EMPTY THEN
+
+		ASSIGN master_menu . action_type = "IMPORT"
+
+		UPDATE master_menu
+
+	ENDIF
+
+	menu_item = SELECT master_menu . procedure_num FOR UPDATE
+	            WHERE  procedure_num = 37088
+
+	IF menu_item <> EMPTY THEN
+
+		ASSIGN master_menu . action_type = "EXPORT"
+
+		UPDATE master_menu
+
+	ENDIF
+
+	menu_item = SELECT master_menu . procedure_num FOR UPDATE
+	            WHERE  procedure_num = 37089
+
+	IF menu_item <> EMPTY THEN
+
+		ASSIGN master_menu . action_type = "EXPORT"
+
+		UPDATE master_menu
+
+	ENDIF
+
+	menu_item = SELECT master_menu . procedure_num FOR UPDATE
+	            WHERE  procedure_num = 37107
+
+	IF menu_item <> EMPTY THEN
+
+		ASSIGN master_menu . action_type = "EXPORT"
+
+		UPDATE master_menu
+
+	ENDIF
+
+	menu_item = SELECT master_menu . procedure_num FOR UPDATE
+	            WHERE  procedure_num = 37108
+
+	IF menu_item <> EMPTY THEN
+
+		ASSIGN master_menu . action_type = "EXPORT"
+
+		UPDATE master_menu
+
+	ENDIF
+
+	menu_item = SELECT master_menu . procedure_num FOR UPDATE
+	            WHERE  procedure_num = 37123
+
+	IF menu_item <> EMPTY THEN
+
+		ASSIGN master_menu . action_type = "EXPORT"
+
+		UPDATE master_menu
+
+	ENDIF
+
+	menu_item = SELECT master_menu . procedure_num FOR UPDATE
+	            WHERE  procedure_num = 37177
+
+	IF menu_item <> EMPTY THEN
+
+		ASSIGN master_menu . action_type = "EXPORT"
+
+		UPDATE master_menu
+
+	ENDIF
+
+	{ From the previous upgrade }
+
+	menu_item = SELECT master_menu . procedure_num FOR UPDATE
+	            WHERE  procedure_num = 15931
+
+	IF menu_item <> EMPTY THEN
+
+		ASSIGN master_menu . action_type = "HISTORY"
+
+		UPDATE master_menu
+
+	ENDIF
+
+	menu_item = SELECT master_menu . procedure_num FOR UPDATE
+	            WHERE  procedure_num = 35006
+
+	IF menu_item <> EMPTY THEN
+
+		ASSIGN master_menu . action_type = "HISTORY"
+
+		UPDATE master_menu
+
+	ENDIF
+
+	COMMIT
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_mm_obsolete
+
+{
+*     Update master menu
+*
+*******************************************************************************}
+
+	upgrade_mm_specific_obsolete ( 15013 )
+	upgrade_mm_specific_obsolete ( 15015 )
+	upgrade_mm_specific_obsolete ( 15017 )
+
+	upgrade_mm_specific_obsolete ( 15311 )
+	upgrade_mm_specific_obsolete ( 15312 )
+	upgrade_mm_specific_obsolete ( 15313 )
+	upgrade_mm_specific_obsolete ( 15314 )
+	upgrade_mm_specific_obsolete ( 15315 )
+	upgrade_mm_specific_obsolete ( 15316 )
+	upgrade_mm_specific_obsolete ( 15317 )
+	upgrade_mm_specific_obsolete ( 15318 )
+	upgrade_mm_specific_obsolete ( 15319 )
+	upgrade_mm_specific_obsolete ( 15321 )
+	upgrade_mm_specific_obsolete ( 15322 )
+	upgrade_mm_specific_obsolete ( 15323 )
+	upgrade_mm_specific_obsolete ( 15324 )
+	upgrade_mm_specific_obsolete ( 15325 )
+	upgrade_mm_specific_obsolete ( 15326 )
+	upgrade_mm_specific_obsolete ( 15327 )
+	upgrade_mm_specific_obsolete ( 15328 )
+	upgrade_mm_specific_obsolete ( 15329 )
+	upgrade_mm_specific_obsolete ( 15331 )
+	upgrade_mm_specific_obsolete ( 15332 )
+	upgrade_mm_specific_obsolete ( 15333 )
+	upgrade_mm_specific_obsolete ( 15334 )
+	upgrade_mm_specific_obsolete ( 15335 )
+	upgrade_mm_specific_obsolete ( 15336 )
+	upgrade_mm_specific_obsolete ( 15337 )
+	upgrade_mm_specific_obsolete ( 15338 )
+	upgrade_mm_specific_obsolete ( 15339 )
+	upgrade_mm_specific_obsolete ( 15341 )
+	upgrade_mm_specific_obsolete ( 15342 )
+	upgrade_mm_specific_obsolete ( 15343 )
+	upgrade_mm_specific_obsolete ( 15344 )
+	upgrade_mm_specific_obsolete ( 15345 )
+	upgrade_mm_specific_obsolete ( 15346 )
+	upgrade_mm_specific_obsolete ( 15347 )
+	upgrade_mm_specific_obsolete ( 15348 )
+	upgrade_mm_specific_obsolete ( 15349 )
+	upgrade_mm_specific_obsolete ( 15351 )
+	upgrade_mm_specific_obsolete ( 15352 )
+	upgrade_mm_specific_obsolete ( 15353 )
+	upgrade_mm_specific_obsolete ( 15354 )
+
+	upgrade_mm_specific_obsolete ( 15356 )
+	upgrade_mm_specific_obsolete ( 15357 )
+	upgrade_mm_specific_obsolete ( 15358 )
+	upgrade_mm_specific_obsolete ( 15359 )
+	upgrade_mm_specific_obsolete ( 15361 )
+	upgrade_mm_specific_obsolete ( 15362 )
+	upgrade_mm_specific_obsolete ( 15363 )
+	upgrade_mm_specific_obsolete ( 15364 )
+	upgrade_mm_specific_obsolete ( 15365 )
+	upgrade_mm_specific_obsolete ( 15366 )
+	upgrade_mm_specific_obsolete ( 15367 )
+	upgrade_mm_specific_obsolete ( 15368 )
+	upgrade_mm_specific_obsolete ( 15369 )
+	upgrade_mm_specific_obsolete ( 15371 )
+	upgrade_mm_specific_obsolete ( 15372 )
+	upgrade_mm_specific_obsolete ( 15373 )
+	upgrade_mm_specific_obsolete ( 15374 )
+	upgrade_mm_specific_obsolete ( 15375 )
+	upgrade_mm_specific_obsolete ( 15376 )
+	upgrade_mm_specific_obsolete ( 15377 )
+	upgrade_mm_specific_obsolete ( 15378 )
+	upgrade_mm_specific_obsolete ( 15379 )
+	upgrade_mm_specific_obsolete ( 15381 )
+	upgrade_mm_specific_obsolete ( 15382 )
+	upgrade_mm_specific_obsolete ( 15383 )
+	upgrade_mm_specific_obsolete ( 15384 )
+	upgrade_mm_specific_obsolete ( 15385 )
+	upgrade_mm_specific_obsolete ( 15386 )
+	upgrade_mm_specific_obsolete ( 15387 )
+	upgrade_mm_specific_obsolete ( 15388 )
+	upgrade_mm_specific_obsolete ( 15389 )
+	upgrade_mm_specific_obsolete ( 15391 )
+	upgrade_mm_specific_obsolete ( 15392 )
+	upgrade_mm_specific_obsolete ( 15393 )
+	upgrade_mm_specific_obsolete ( 15394 )
+	upgrade_mm_specific_obsolete ( 15395 )
+	upgrade_mm_specific_obsolete ( 15396 )
+	upgrade_mm_specific_obsolete ( 15397 )
+	upgrade_mm_specific_obsolete ( 15398 )
+	upgrade_mm_specific_obsolete ( 15399 )
+	upgrade_mm_specific_obsolete ( 15401 )
+	upgrade_mm_specific_obsolete ( 15402 )
+	upgrade_mm_specific_obsolete ( 15403 )
+	upgrade_mm_specific_obsolete ( 15404 )
+	upgrade_mm_specific_obsolete ( 15405 )
+	upgrade_mm_specific_obsolete ( 15406 )
+	upgrade_mm_specific_obsolete ( 15407 )
+	upgrade_mm_specific_obsolete ( 15408 )
+	upgrade_mm_specific_obsolete ( 15409 )
+	upgrade_mm_specific_obsolete ( 15411 )
+	upgrade_mm_specific_obsolete ( 15412 )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_mm_specific_obsolete ( VALUE proc_num )
+
+{
+*     Update master menu
+*
+*******************************************************************************}
+
+	DECLARE menu_item
+
+	START WRITE TRANSACTION "Updating master menu mnemonic"
+
+	menu_item = SELECT master_menu . procedure_num FOR UPDATE
+	            WHERE  procedure_num = proc_num
+
+	IF menu_item <> EMPTY THEN
+
+		ASSIGN master_menu . type = "OBSOLETE"
+
+		UPDATE master_menu
+
+	ENDIF
+
+	COMMIT
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_mm_lte_instrument
+
+{
+*     Correct $LTE_INSTRUMENT_CATE entries
+*
+*******************************************************************************}
+
+	DECLARE menu_values ,
+	        count ,
+	        menu_item
+
+	ARRAY menu_values ARRAYSIZE ( 0 )
+
+	count = 0
+
+	menu_item = SELECT master_menu . procedure_num
+	            WHERE  library = "$LTE_INSTRUMENT_CATE"
+
+	WHILE menu_item <> EMPTY DO
+
+		count = count + 1
+
+		menu_values [ count ] = menu_item
+
+		NEXT master_menu
+		menu_item = SELECT master_menu . procedure_num
+
+	ENDWHILE
+
+	count = 1
+
+	START WRITE TRANSACTION "Updating master menu lte instrument"
+
+	WHILE count <= size_of_array ( menu_values ) DO
+
+		menu_item = SELECT master_menu . procedure_num FOR UPDATE
+		            WHERE  procedure_num = menu_values [ count ]
+
+		ASSIGN master_menu . library = "$LTE_INSTRUMENT_CATEGORY"
+
+		UPDATE master_menu
+
+		count = count + 1
+
+	ENDWHILE
+
+	COMMIT
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_explorer_aux_tweaks
+
+{
+*     Specific updates to explorer aux definitions
+*
+*******************************************************************************}
+
+	DECLARE stat
+
+	START WRITE TRANSACTION "Upgrade updating explorer_aux"
+
+	stat = SELECT explorer_aux . from_status FOR UPDATE
+	      WHERE table_name = "SAMPLE" AND
+	            identity   = "CANCEL"
+
+	IF ( stat <> EMPTY ) AND ( stat <> LOCKED ) THEN
+
+		IF ( INDEX ( stat, "B" ) = 0 ) THEN
+
+			ASSIGN explorer_aux . from_status = STRIP ( stat ) : ",B"
+
+			UPDATE explorer_aux
+
+		ENDIF
+
+	ENDIF
+
+	COMMIT
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_explorer_folder_tweaks
+
+{
+*     Specific updates to explorer folder definitions
+*
+*******************************************************************************}
+
+	DECLARE ef
+
+	START WRITE TRANSACTION "Upgrade updating explorer_folder"
+
+	{ explorer_folder }
+
+	ef = SELECT explorer_folder . data_icon FOR UPDATE
+	      WHERE cabinet    = "DEFAULT" AND
+	            table_name = "CERTIFICATE"
+
+	IF ( ef <> EMPTY ) AND ( ef <> LOCKED ) THEN
+
+		ASSIGN explorer_folder . data_icon      = ""
+		ASSIGN explorer_folder . table_name     = "CERT"
+		ASSIGN explorer_folder . column_mode    = "BROWSE"
+		ASSIGN explorer_folder . default_action = 332017
+		ASSIGN explorer_folder . removeflag     = FALSE
+
+		UPDATE explorer_folder
+
+	ENDIF
+
+	ef = SELECT explorer_folder . data_icon FOR UPDATE
+	      WHERE cabinet    = "SYSTEM" AND
+	            table_name = "CERTIFICATE_TEMPLATE"
+
+	IF ( ef <> EMPTY ) AND ( ef <> LOCKED ) THEN
+
+		ASSIGN explorer_folder . removeflag = TRUE
+
+		UPDATE explorer_folder
+
+	ENDIF
+
+	ef = SELECT explorer_folder . data_icon FOR UPDATE
+	      WHERE cabinet    = "LABTABLE" AND
+	            table_name = "BATCH_TMPL_HEADER"
+
+	IF ( ef <> EMPTY ) AND ( ef <> LOCKED ) THEN
+
+		ASSIGN explorer_folder . default_action = 803
+
+		UPDATE explorer_folder
+
+	ENDIF
+
+	ef = SELECT explorer_folder . data_icon FOR UPDATE
+	      WHERE cabinet    = "LOGIN" AND
+	            table_name = "BATCH_TMPL_HEADER"
+
+	IF ( ef <> EMPTY ) AND ( ef <> LOCKED ) THEN
+
+		ASSIGN explorer_folder . default_action = 803
+
+		UPDATE explorer_folder
+
+	ENDIF
+
+	ef = SELECT explorer_folder . data_icon FOR UPDATE
+	      WHERE cabinet    = "TABLE_DETAILS" AND
+	            table_name = "BATCH_HEADER"
+
+	IF ( ef <> EMPTY ) AND ( ef <> LOCKED ) THEN
+
+		ASSIGN explorer_folder . data_icon = "BATCH_HEADER"
+		ASSIGN explorer_folder . default_action = 37181
+
+		UPDATE explorer_folder
+
+	ENDIF
+
+	ef = SELECT explorer_folder . data_icon FOR UPDATE
+	      WHERE cabinet    = "TABLE_DETAILS" AND
+	            table_name = "BATCH_TMPL_HEADER"
+
+	IF ( ef <> EMPTY ) AND ( ef <> LOCKED ) THEN
+
+		ASSIGN explorer_folder . default_action = 37140
+
+		UPDATE explorer_folder
+
+	ENDIF
+
+	ef = SELECT explorer_folder . data_icon FOR UPDATE
+	      WHERE cabinet    = "TABLE_DETAILS" AND
+	            table_name = "VERSIONED_ANALYSIS"
+
+	IF ( ef <> EMPTY ) AND ( ef <> LOCKED ) THEN
+
+		ASSIGN explorer_folder . default_action = 37140
+
+		UPDATE explorer_folder
+
+	ENDIF
+
+	ef = SELECT explorer_folder . data_icon FOR UPDATE
+	      WHERE cabinet    = "TABLE_DETAILS" AND
+	            table_name = "ENTITY_TEMPLATE"
+
+	IF ( ef <> EMPTY ) AND ( ef <> LOCKED ) THEN
+
+		ASSIGN explorer_folder . data_icon = "INT_TABLE_SETTINGS"
+
+		UPDATE explorer_folder
+
+	ENDIF
+
+	COMMIT
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_explorer_rmb_tweaks
+
+{
+*     Specific updates to explorer rmb definitions
+*
+*******************************************************************************}
+
+	DECLARE er
+
+	START WRITE TRANSACTION "Upgrade updating explorer_rmb"
+
+	er = SELECT explorer_rmb . menuproc FOR UPDATE
+	      WHERE menuproc = 35305 AND
+	            using    = "LOT_ID"
+
+	IF ( er <> EMPTY ) AND ( er <> LOCKED ) THEN
+
+		ASSIGN explorer_rmb . menuproc = 35306
+
+		UPDATE explorer_rmb
+
+	ENDIF
+
+	er = SELECT explorer_rmb . menuproc FOR UPDATE
+	      WHERE menuproc = 16
+
+	IF ( er <> EMPTY ) AND ( er <> LOCKED ) THEN
+
+		ASSIGN explorer_rmb . using = "IDENTITY"
+
+		UPDATE explorer_rmb
+
+	ENDIF
+
+	COMMIT
+
+ENDROUTINE
+
+{*****************************************************************************}
+{*****************************************************************************}
+{*****************************************************************************}

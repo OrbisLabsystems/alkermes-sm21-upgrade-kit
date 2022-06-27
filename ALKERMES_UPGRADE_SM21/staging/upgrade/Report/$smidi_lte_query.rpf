@@ -1,0 +1,651 @@
+{******************************************************************************
+*
+* Module Name   : $SMIDI_LTE_QUERY
+*
+* Purpose       : Laboratory table editor for the smidi_query table
+*
+* Document Ref. :
+*
+* Specification :
+*
+* Portability   : OVMS, Unix, NT4 and Windows2000
+*
+* Re-entrant    :
+*
+*
+* Modification History
+* By        Date        Reason _____________________________________________
+*
+*******************************************************************************}
+
+ENABLE WINDOWS
+
+SET NOTPROTECTED
+SET NAME "DISPLAY/"
+SET COMPILE_OPTION DECLARE
+
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT  { mandatory array                      }
+JOIN STANDARD_LIBRARY STD_CLASS         { objectaddtable                       }
+JOIN STANDARD_LIBRARY STD_MESSAGE       { Message Support                      }
+JOIN STANDARD_LIBRARY STD_PROMPT        { Prompt library                       }
+JOIN STANDARD_LIBRARY STD_SMIDI         { TEST/pword                           }
+JOIN STANDARD_LIBRARY STD_STRUCTURE     { Structure Modifications.             }
+JOIN STANDARD_LIBRARY STD_UTILS         { Standard Utilities.                  }
+JOIN STANDARD_LIBRARY STD_VGL           { VGL validate routine                 }
+
+JOIN LIBRARY $LABTABLIB                 { Lab Table Functionality              }
+JOIN LIBRARY $LIB_UTILS                 { flash_messages                       }
+
+JOIN LIBRARY $SMIDI_LIB_SAP             { smidi_lib_init                       }
+
+{*******************************************************************************
+*                           M A I N   C O D E 
+*******************************************************************************}
+
+
+DECLARE name_of_table,help_context,directory,extn,default_value,input_mess,header_mess,
+	footer_mess,display_footer_mess,displayed_name_of_table,prompt_details,fields_to_output,
+	special_actions_report,labtable_messages
+
+{ --------------------------------------------------------------------------- }
+{ -------------------------- Table Setup Routine ---------------------------- }
+
+ROUTINE table_setup ( operation )
+
+	DECLARE count
+
+	name_of_table           = "SMIDI_QUERY"
+	help_context            = "SMIDI_QUERY_EDIT"
+	directory               = EMPTY
+	extn                    = EMPTY
+	default_value           = "DEFAULT"
+
+	input_mess              = get_user_message( "SMIDI_LTE_QRY_PROMPT", 1 )
+	header_mess             = get_user_message( "SMIDI_LTE_QRY_HEADER", 1 )
+	footer_mess             = get_user_message( "SMIDI_LTE_QRY_FOOTER", 1 )
+	display_footer_mess     = get_user_message( "SMIDI_LTE_QRY_FOOTER", 2 )
+	displayed_name_of_table = get_user_message( "SMIDI_LTE_QRY_TABLE" , 1 )
+
+	ARRAY prompt_details	ARRAY_SIZE ( 0 , 6 )
+
+		count = 1
+		prompt_details [ count , MESSAGE_POSITION    ] = get_user_message( "SMIDI_LTE_QRY_GROUP", 1 )
+        	prompt_details [ count , FIELD_NAME_POSITION ] = "GROUP_ID"
+
+		count = count + 1
+		prompt_details [ count , MESSAGE_POSITION    ] = get_user_message( "SMIDI_LTE_QRY_MOD", 1 )
+        	prompt_details [ count , FIELD_NAME_POSITION ] = "MODIFIABLE"
+
+		count = count + 1
+		prompt_details [ count , MESSAGE_POSITION    ] = get_user_message( "SMIDI_LTE_QRY_DESCR", 1 )
+		prompt_details [ count , FIELD_NAME_POSITION ] = "DESCRIPTION"
+
+		count = count + 1
+		prompt_details [ count , MESSAGE_POSITION    ] = get_user_message( "SMIDI_LTE_QRY_RPT", 1 )
+		prompt_details [ count , FIELD_NAME_POSITION ] = "QUERY_REPEAT"
+
+		count = count + 1
+		prompt_details [ count , MESSAGE_POSITION    ] = get_user_message( "SMIDI_LTE_QRY_FLIB", 1 )
+		prompt_details [ count , FIELD_NAME_POSITION ] = "FILTER_LIBRARY"
+
+		count = count + 1
+		prompt_details [ count , MESSAGE_POSITION    ] = get_user_message( "SMIDI_LTE_QRY_FROUT", 1 )
+		PROMPT_DETAILS [ count , TYPE_POSITION       ] = "ROUTINE"
+		PROMPT_DETAILS [ count , ROUTINE_POSITION    ] = "FILTER_ROUTINE_PROMPT"
+		PROMPT_DETAILS [ count , LIBRARY_POSITION    ] = GLOBAL ( "CURRENT_LIBRARY" )
+
+		count = count + 1
+		prompt_details [ count , MESSAGE_POSITION    ] = get_user_message( "SMIDI_LTE_QRY_RPT", 2 )
+		prompt_details [ count , FIELD_NAME_POSITION ] = "PROCESS_REPEAT"
+
+		count = count + 1
+		prompt_details [ count , MESSAGE_POSITION    ] = get_user_message( "SMIDI_LTE_QRY_PLIB", 1 )
+		prompt_details [ count , FIELD_NAME_POSITION ] = "PROCESS_LIBRARY"
+
+		count = count + 1
+		prompt_details [ count , MESSAGE_POSITION    ] = get_user_message( "SMIDI_LTE_QRY_PROUT", 1 )
+		PROMPT_DETAILS [ count , TYPE_POSITION       ] = "ROUTINE"
+		PROMPT_DETAILS [ count , ROUTINE_POSITION    ] = "PROCESS_ROUTINE_PROMPT"
+		PROMPT_DETAILS [ count , LIBRARY_POSITION    ] = GLOBAL ( "CURRENT_LIBRARY" )
+
+		count = count + 1
+		prompt_details [ count , MESSAGE_POSITION    ] = get_user_message( "SMIDI_LTE_QRY_MAP", 1 )
+		prompt_details [ count , FIELD_NAME_POSITION ] = "MAPPING_PROFILE"
+
+		count = count + 1
+		prompt_details [ count , MESSAGE_POSITION    ] = get_user_message( "SMIDI_LTE_QRY_TWO_STAGE", 1 )
+		prompt_details [ count , FIELD_NAME_POSITION ] = "DO_TWO_STAGE"
+
+
+	ARRAY fields_to_output  ARRAY_SIZE ( 0 )
+		fields_to_output [ 1 ]  = "3"
+		fields_to_output [ 2 ]  = "4"
+		fields_to_output [ 3 ]  = "5"
+		fields_to_output [ 4 ]  = "6"
+		fields_to_output [ 5 ]  = "7"
+
+	ARRAY special_actions_report 	ARRAY_SIZE ( 0 , 4 )
+		special_actions_report [ 1 , CHARACTER_POSITION ] = "*"
+		special_actions_report [ 1 , TITLE_POSITION     ] = get_user_message( "SMIDI_LTE_QRY_MENUHDR", 1 )
+
+		special_actions_report [ 2 , CHARACTER_POSITION ] = get_user_message( "SMIDI_LTE_QRY_MENU", 1 )
+		special_actions_report [ 2 , TITLE_POSITION     ] = get_user_message( "SMIDI_LTE_QRY_MENU", 2 )
+		special_actions_report [ 2 , LIBRARY_POSITION   ] = GLOBAL ( "CURRENT_LIBRARY" )
+		special_actions_report [ 2 , ROUTINE_POSITION   ] = "SMIDI_LTE_SELECT"
+
+		special_actions_report [ 3 , CHARACTER_POSITION ] = get_user_message( "SMIDI_LTE_QRY_MENU", 3 )
+		special_actions_report [ 3 , TITLE_POSITION     ] = get_user_message( "SMIDI_LTE_QRY_MENU", 4 )
+		special_actions_report [ 3 , LIBRARY_POSITION   ] = GLOBAL ( "CURRENT_LIBRARY" )
+		special_actions_report [ 3 , ROUTINE_POSITION   ] = "SMIDI_CONFIG"
+
+	ARRAY labtable_messages ARRAY_SIZE ( 0 )
+		labtable_messages [ IDENTITY1_MESSAGE ] = get_user_message( "SMIDI_LTE_QRY_IDENTITY", 1 )   { SMIDI_SYSTEM          }
+		labtable_messages [ IDENTITY2_MESSAGE ] = get_user_message( "SMIDI_LTE_QRY_IDENTITY", 2 )   { Identity              }
+		labtable_messages [ IDENTITY3_MESSAGE ] = get_user_message( "SMIDI_LTE_QRY_IDENTITY", 3 )   { Inspect status ABCD   }
+		labtable_messages [ MOD_ON_MESSAGE    ] = GET MESSAGE ( 2546 , 1 )
+		labtable_messages [ MOD_BY_MESSAGE    ] = GET MESSAGE ( 2547 , 1 )
+		labtable_messages [ READ_MESSAGE      ] = GET MESSAGE ( 2566 , 1 )
+		labtable_messages [ WRITE_MESSAGE     ] = GET MESSAGE ( 2567 , 1 )
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+ROUTINE validation_routine
+
+	RETURN ( TRUE )
+
+ENDROUTINE  { validation routine }
+
+{ --------------------------------------------------------------------------- }
+ROUTINE prompt_object_routine ( prompt_object, VALUE key0_count, VALUE operation )
+ 
+	{ Called during the creation of the identity prompts              }
+	{                                                                 }
+	{ prompt_object is the prompt object fro the specified prompt     }
+	{ key0_count    is the current key0 segment number                }
+	{               eg this would be 2 for the version_number         }
+	{ operation     the current LTE operation eg ADD, MODIFY, DISPLAY }
+	{                                                                 }
+	{ No return value is required                                     }
+           
+	IF ( operation != "MODIFY"  ) AND ( operation != "DISPLAY" ) THEN
+
+		prompt_object.display_only = FALSE
+
+	ELSEIF  ( key0_count = 1 ) AND  ( ( operation = "MODIFY" ) | ( operation = "DISPLAY" ) ) THEN
+
+		ARRAY_SELECT_ADD ( prompt_object.mandatory_array, ARRAY_SELECT_EQ, "REMOVEFLAG", FALSE )
+
+	ENDIF
+
+ENDROUTINE  { prompt object routine }
+
+{ --------------------------------------------------------------------------- }
+ROUTINE update_routine ( labtable )
+
+	{ Called on pressing the DO key to save LTE screen.               }
+	{ Called after the LTE write transaction has been started.        }
+	{                                                                 }
+	{ labtable is the labtable object.                                }
+	{                                                                 }
+	{ The return value is TRUE  if updates have been performed        }
+	{                     FALSE if updates have NOT been performed    }
+	{                     EMPTY - the systems checks for updates      }
+
+
+
+	{ ==================================================== }
+	{ check the process and query for the style of queries }
+	{ ==================================================== }
+
+	DECLARE subsystem, smidi_server
+
+	smidi_server = SELECT SMIDI_QUERY.SMIDI_SYSTEM
+	subsystem    = SELECT SMIDI_SYSTEM.SUBSYSTEM_ID WHERE IDENTITY = smidi_server
+
+	ASSIGN SMIDI_QUERY.SUBSYSTEM = subsystem
+
+	RETURN ( EMPTY )
+
+ENDROUTINE  { update routine }
+
+{ --------------------------------------------------------------------------- }
+ROUTINE read_data_routine ( labtable, VALUE operation )
+
+                                
+	{ Called after the record has been selected / reserved but before }
+	{ the editor screen has been built.                               }
+	{                                                                 }
+	{ labtable      the labtable object.                              }
+	{ operation     the current LTE operation eg ADD, MODIFY, DISPLAY }
+	{                                                                 }
+	{ No return value is required                                     }
+
+	DECLARE removed_system, smidi_system_length, tmpString
+
+	IF ( operation = "MODIFY" ) THEN
+
+		GET_FIELD_DETAILS SMIDI_SYSTEM.IDENTITY, "FIELD_SIZE", smidi_system_length
+
+		tmpString      = LEFTSTRING ( labtable.identity, smidi_system_length )
+		removed_system = SELECT SMIDI_SYSTEM.REMOVEFLAG WHERE IDENTITY = tmpString
+
+		IF ( removed_system <> EMPTY ) & ( removed_system ) THEN
+
+			FLASH_MESSAGE ( "SMIDI_SYSTEM is removed - cannot edit this query ":tmpString, TRUE )
+			EXIT
+
+		ENDIF
+
+	ENDIF
+
+                                                    
+ENDROUTINE  { read data routine }
+
+{ --------------------------------------------------------------------------- }
+ROUTINE do_the_work  ( VALUE operation )
+
+	smp_lte_initialise()
+	table_setup ( operation )
+	smp_lte_perform_option  ( name_of_table              ,
+                                displayed_name_of_table    ,
+                                prompt_details             ,
+                                labtable_messages          ,
+                                default_value		     ,
+                                input_mess		     ,
+                                header_mess                ,
+                                footer_mess                ,
+                                display_footer_mess        ,
+                                directory                  ,
+                                extn                       ,
+                                help_context               ,
+                                GLOBAL ("CURRENT_LIBRARY") ,
+                                fields_to_output           ,
+                                special_actions_report     ,
+                                operation                  )
+ENDROUTINE   { do_the_work }
+
+{ --------------------------------------------------------------------------- }
+ROUTINE add_option ( option )
+	do_the_work ( "add_ident" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE copy_option ( option )
+	do_the_work ( "copy_ident" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE modify_option ( option )
+	do_the_work ( "modify_ident" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE display_option ( option )
+	do_the_work ( "display_ident" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE remove_option ( option )
+	do_the_work ( "remove_ident" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE restore_option ( option )
+	do_the_work ( "restore_ident" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE list_option ( option )
+	do_the_work ( "list_idents" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE print_option ( option )
+	do_the_work ( "print_ident" )
+ENDROUTINE
+{ --------------------------------------------------------------------------- }
+ROUTINE spreadsheet_option ( option )
+
+	DECLARE key_search_field, the_table
+
+	the_table        = "SMIDI_QUERY"
+	key_search_field = "IDENTITY"
+	CALL_ROUTINE "LTE_spreadsheet" USING the_table, key_search_field IN LIBRARY SMIDI_LIB_SAP
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+ROUTINE smp_lte_initialise
+ENDROUTINE
+{******************************************************************************}
+
+ROUTINE sel_form_validate( self )
+
+	declare valid
+
+	valid = FALSE
+
+	IF (self.get_lastkey() = "EXIT") THEN
+
+		valid = TRUE
+
+	ELSE
+
+		assign smidi_query.from_lot_no       = self.prompt_objects[ self.user_info[ 1  ] ].value
+		assign smidi_query.to_lot_no         = self.prompt_objects[ self.user_info[ 2  ] ].value
+		assign smidi_query.from_date         = self.prompt_objects[ self.user_info[ 3  ] ].value
+		assign smidi_query.to_date           = self.prompt_objects[ self.user_info[ 4  ] ].value
+		assign smidi_query.from_op_no        = self.prompt_objects[ self.user_info[ 5  ] ].value
+		assign smidi_query.to_op_no          = self.prompt_objects[ self.user_info[ 6  ] ].value
+		assign smidi_query.from_order_no     = self.prompt_objects[ self.user_info[ 7  ] ].value
+		assign smidi_query.to_order_no       = self.prompt_objects[ self.user_info[ 8  ] ].value
+
+		assign smidi_query.max_lots          = self.prompt_objects[ self.user_info[ 9  ] ].value
+		assign smidi_query.material_no       = self.prompt_objects[ self.user_info[ 10 ] ].value
+		assign smidi_query.mat_doc_no        = self.prompt_objects[ self.user_info[ 11 ] ].value
+
+		assign smidi_query.op_sequence       = self.prompt_objects[ self.user_info[ 12 ] ].value
+		assign smidi_query.work_centre       = self.prompt_objects[ self.user_info[ 13 ] ].value
+		assign smidi_query.op_plant          = self.prompt_objects[ self.user_info[ 14 ] ].value
+		assign smidi_query.wc_plant          = self.prompt_objects[ self.user_info[ 15 ] ].value
+
+		assign smidi_query.batch_no          = self.prompt_objects[ self.user_info[ 16 ] ].value
+		assign smidi_query.vendor_no         = self.prompt_objects[ self.user_info[ 17 ] ].value
+		assign smidi_query.inspection_type   = self.prompt_objects[ self.user_info[ 18 ] ].value
+		assign smidi_query.origin            = self.prompt_objects[ self.user_info[ 19 ] ].value
+		assign smidi_query.customer_no       = self.prompt_objects[ self.user_info[ 20 ] ].value
+
+		assign smidi_query.sort_ascending    =     self.prompt_objects[ self.user_info[ 21 ] ].value
+		assign smidi_query.sort_descending   = NOT self.prompt_objects[ self.user_info[ 21 ] ].value
+		assign smidi_query.allow_corrections = ( SELECT SMIDI_QUERY.INSP_STATUS != "A" )
+		assign smidi_query.get_work_centre   = TRUE
+		assign smidi_query.lock_chars        = TRUE 
+
+		assign smidi_query.get_vendor        = self.prompt_objects[ self.user_info[ 22  ] ].value
+		assign smidi_query.get_purchasing    = self.prompt_objects[ self.user_info[ 23  ] ].value
+		assign smidi_query.get_sales         = self.prompt_objects[ self.user_info[ 24  ] ].value
+		assign smidi_query.get_required      = self.prompt_objects[ self.user_info[ 25  ] ].value
+		assign smidi_query.get_res_cat       = self.prompt_objects[ self.user_info[ 26  ] ].value
+		assign smidi_query.get_valuation     = self.prompt_objects[ self.user_info[ 27  ] ].value
+		assign smidi_query.get_ud_cat        = self.prompt_objects[ self.user_info[ 28  ] ].value
+
+		valid = TRUE
+
+	ENDIF
+
+	return( valid )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE sel_main_form( sel_form )
+
+	DECLARE sel_prompts, i
+
+	array sel_prompts
+
+	CREATE OBJECT "STD_FORM", sel_form
+		sel_form.add_frame( "", 1,  1, 14, 80 )
+		sel_form.add_frame( "", 1, 17,  4, 80 )
+		sel_form.height             = 20
+		sel_form.width              = 80
+		sel_form.row                = 2
+		sel_form.column             = 20
+		sel_form.header             = get_user_message("SMIDI_LTE_SEL_HEADER",1)
+		sel_form.footer             = get_user_message("SMIDI_LTE_SEL_FOOTER",1)
+		sel_form.border             = TRUE
+		sel_form.return_behaviour   = FORM_RETURN_STAY
+		sel_form.validation_routine = "sel_form_validate"
+
+	sel_form.add_display ( pad ( get_user_message("SMIDI_LTE_SEL_LOT",   1), " ", 25 ),  2, 1, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display ( pad ( get_user_message("SMIDI_LTE_SEL_LOT",   2), " ", 5  ), 28, 1, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display ( pad ( get_user_message("SMIDI_LTE_SEL_LOT",   3), " ", 5  ), 50, 1, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display ( pad ( get_user_message("SMIDI_LTE_SEL_DATE",  1), " ", 25 ),  2, 2, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display ( pad ( get_user_message("SMIDI_LTE_SEL_DATE",  2), " ", 5  ), 28, 2, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display ( pad ( get_user_message("SMIDI_LTE_SEL_DATE",  3), " ", 5  ), 50, 2, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display ( pad ( get_user_message("SMIDI_LTE_SEL_OPER",  1), " ", 25 ),  2, 3, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display ( pad ( get_user_message("SMIDI_LTE_SEL_OPER",  2), " ", 5  ), 28, 3, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display ( pad ( get_user_message("SMIDI_LTE_SEL_OPER",  3), " ", 5  ), 50, 3, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display ( pad ( get_user_message("SMIDI_LTE_SEL_ORDER", 1), " ", 25 ),  2, 4, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display ( pad ( get_user_message("SMIDI_LTE_SEL_ORDER", 2), " ", 5  ), 28, 4, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display ( pad ( get_user_message("SMIDI_LTE_SEL_ORDER", 3), " ", 5  ), 50, 4, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display ( pad ( get_user_message("SMIDI_LTE_SEL_LOTS",  1), " ", 31 ),  2, 6, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display ( pad ( get_user_message("SMIDI_LTE_SEL_MATN",  1), " ", 31 ),  2, 7, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display ( pad ( get_user_message("SMIDI_LTE_SEL_MATD",  1), " ", 31 ),  2, 8, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display ( pad ( get_user_message("SMIDI_LTE_SEL_OSEQ",  1), " ", 21 ),  2,10, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display ( pad ( get_user_message("SMIDI_LTE_SEL_WORK",  1), " ", 21 ), 40,10, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display ( pad ( get_user_message("SMIDI_LTE_SEL_OPLT",  1), " ", 21 ),  2,11, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display ( pad ( get_user_message("SMIDI_LTE_SEL_WKPL",  1), " ", 21 ), 40,11, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+
+	sel_form.add_display ( pad ( get_user_message("SMIDI_LTE_SEL_BTCH",  1), " ", 21 ), 40,12, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display ( pad ( get_user_message("SMIDI_LTE_SEL_INST",  1), " ", 21 ),  2,13, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display ( pad ( get_user_message("SMIDI_LTE_SEL_VDNO",  1), " ", 21 ), 40,13, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display ( pad ( get_user_message("SMIDI_LTE_SEL_INSO",  1), " ", 21 ),  2,14, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display ( pad ( get_user_message("SMIDI_LTE_SEL_CSNO",  1), " ", 21 ), 40,14, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+
+	sel_form.add_display ( pad ( get_user_message("SMIDI_LTE_DNL_SORTD", 1), " ", 23 ),  2,17, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display ( pad ( get_user_message("SMIDI_LTE_DNL_GETV" , 1), " ", 28 ), 40,17, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display ( pad ( get_user_message("SMIDI_LTE_DNL_GETP" , 1), " ", 28 ),  2,18, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display ( pad ( get_user_message("SMIDI_LTE_DNL_GETS" , 1), " ", 28 ), 40,18, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display ( pad ( get_user_message("SMIDI_LTE_DNL_GETOPT",1), " ", 28 ),  2,19, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display ( pad ( get_user_message("SMIDI_LTE_DNL_GETRC" ,1), " ", 28 ), 40,19, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display ( pad ( get_user_message("SMIDI_LTE_DNL_GETVAL",1), " ", 28 ),  2,20, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+	sel_form.add_display ( pad ( get_user_message("SMIDI_LTE_DNL_GETUC" ,1), " ", 28 ), 40,20, PROMPT_RENDITION_BOLD + PROMPT_RENDITION_RAISED )
+
+
+	PROMPT OBJECT sel_prompts[1]  ON LINE 1  FROM 35 FORMAT smidi_query.from_lot_no     WITH ( value = select smidi_query.from_lot_no     )
+	PROMPT OBJECT sel_prompts[2]  ON LINE 1  FROM 57 FORMAT smidi_query.to_lot_no       WITH ( value = select smidi_query.to_lot_no       )
+	PROMPT OBJECT sel_prompts[3]  ON LINE 2  FROM 35 FORMAT DATE                        WITH ( value = select smidi_query.from_date       )
+	PROMPT OBJECT sel_prompts[4]  ON LINE 2  FROM 57 FORMAT DATE                        WITH ( value = select smidi_query.to_date         )
+	PROMPT OBJECT sel_prompts[5]  ON LINE 3  FROM 35 FORMAT smidi_query.from_op_no      WITH ( value = select smidi_query.from_op_no      )
+	PROMPT OBJECT sel_prompts[6]  ON LINE 3  FROM 57 FORMAT smidi_query.to_op_no        WITH ( value = select smidi_query.to_op_no        )
+	PROMPT OBJECT sel_prompts[7]  ON LINE 4  FROM 35 FORMAT smidi_query.from_order_no   WITH ( value = select smidi_query.from_order_no   )
+	PROMPT OBJECT sel_prompts[8]  ON LINE 4  FROM 57 FORMAT smidi_query.to_order_no     WITH ( value = select smidi_query.to_order_no     )
+
+	PROMPT OBJECT sel_prompts[9]  ON LINE 6  FROM 35 FORMAT smidi_query.max_lots        WITH ( value = select smidi_query.max_lots        )
+	PROMPT OBJECT sel_prompts[10] ON LINE 7  FROM 35 FORMAT smidi_query.material_no     WITH ( value = select smidi_query.material_no     )
+	PROMPT OBJECT sel_prompts[11] ON LINE 8  FROM 35 FORMAT smidi_query.mat_doc_no      WITH ( value = select smidi_query.mat_doc_no      )
+
+	PROMPT OBJECT sel_prompts[12] ON LINE 10 FROM 25 FORMAT smidi_query.op_sequence     WITH ( value = select smidi_query.op_sequence     )
+	PROMPT OBJECT sel_prompts[13] ON LINE 10 FROM 63 FORMAT smidi_query.work_centre     WITH ( value = select smidi_query.work_centre     )
+	PROMPT OBJECT sel_prompts[14] ON LINE 11 FROM 25 FORMAT smidi_query.op_plant        WITH ( value = select smidi_query.op_plant        )
+	PROMPT OBJECT sel_prompts[15] ON LINE 11 FROM 63 FORMAT smidi_query.wc_plant        WITH ( value = select smidi_query.wc_plant        )
+
+	PROMPT OBJECT sel_prompts[16] ON LINE 12 FROM 63 FORMAT smidi_query.batch_no        WITH ( value = select smidi_query.batch_no        )
+	PROMPT OBJECT sel_prompts[17] ON LINE 13 FROM 63 FORMAT smidi_query.vendor_no       WITH ( value = select smidi_query.vendor_no       )
+	PROMPT OBJECT sel_prompts[18] ON LINE 13 FROM 25 FORMAT smidi_query.inspection_type WITH ( value = select smidi_query.inspection_type )
+	PROMPT OBJECT sel_prompts[19] ON LINE 14 FROM 25 FORMAT smidi_query.origin          WITH ( value = select smidi_query.origin          )
+	PROMPT OBJECT sel_prompts[20] ON LINE 14 FROM 63 FORMAT smidi_query.customer_no     WITH ( value = select smidi_query.customer_no     )
+
+	PROMPT OBJECT sel_prompts[21] ON LINE 17 FROM 25 FORMAT BOOLEAN WITH ( value = select smidi_query.sort_ascending, true_word = "Ascending", false_word = "Descending" )
+	PROMPT OBJECT sel_prompts[22] ON LINE 17 FROM 70 FORMAT BOOLEAN WITH ( value = select smidi_query.get_vendor    , is_check = TRUE )
+	PROMPT OBJECT sel_prompts[23] ON LINE 18 FROM 35 FORMAT BOOLEAN WITH ( value = select smidi_query.get_purchasing, is_check = TRUE )
+	PROMPT OBJECT sel_prompts[24] ON LINE 18 FROM 70 FORMAT BOOLEAN WITH ( value = select smidi_query.get_sales     , is_check = TRUE )
+	PROMPT OBJECT sel_prompts[25] ON LINE 19 FROM 35 FORMAT BOOLEAN WITH ( value = select smidi_query.get_required  , is_check = TRUE )
+	PROMPT OBJECT sel_prompts[26] ON LINE 19 FROM 70 FORMAT BOOLEAN WITH ( value = select smidi_query.get_res_cat   , is_check = TRUE )
+	PROMPT OBJECT sel_prompts[27] ON LINE 20 FROM 35 FORMAT BOOLEAN WITH ( value = select smidi_query.get_valuation , is_check = TRUE )
+	PROMPT OBJECT sel_prompts[28] ON LINE 20 FROM 70 FORMAT BOOLEAN WITH ( value = select smidi_query.get_ud_cat    , is_check = TRUE )
+
+	i = 1
+	WHILE sel_prompts[i] <> EMPTY DO
+
+		sel_prompts[i] = sel_form.add_prompt( sel_prompts[i] )
+		i = i + 1
+
+	ENDWHILE
+
+	sel_form.user_info = sel_prompts
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE smidi_lte_select( VALUE id, VALUE old_id, VALUE mode )
+
+	declare sel_form
+
+	IF mode = "PRINT" THEN
+
+	ELSEIF index( "#MODIFY#", mode ) <> 0 THEN
+
+		smidi_lib_init( OPERATOR:PACKED_DECIMAL(1) )
+		sel_main_form( sel_form )
+		sel_form.start_prompt()
+		sel_form.wait_prompt()
+		sel_form.end_prompt()
+
+	ELSEIF index( "#DISPLAY#", mode ) <> 0 THEN
+
+		set display true
+
+		smidi_lib_init( OPERATOR:PACKED_DECIMAL(1) )
+		sel_main_form( sel_form )
+		sel_form.start_prompt()
+		sel_form.wait_prompt()
+		sel_form.end_prompt()
+		set display false
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE filter_routine_prompt  ( VALUE column, VALUE row, VALUE cell_width, window, VALUE is_display )
+
+	routine_prompt  ( column, row, cell_width, window, is_display, "FILTER", "SMIDI_QUERY" )
+
+ENDROUTINE { filter_routine_prompt }
+
+{******************************************************************************}
+
+ROUTINE process_routine_prompt  ( VALUE column, VALUE row, VALUE cell_width, window, VALUE is_display )
+
+	routine_prompt  ( column, row, cell_width, window, is_display, "PROCESS", "SMIDI_QUERY" )
+
+ENDROUTINE  { process_routine_prompt }
+
+{******************************************************************************}
+
+ROUTINE routine_prompt  ( VALUE column, VALUE row, VALUE cell_width, window, VALUE is_display, VALUE mode, VALUE tableid )
+
+	DECLARE rootine, library_name, tmpArray
+
+	
+	IF mode = "PROCESS" THEN
+		library_name  = SELECT 'tableid'.process_library
+		rootine       = SELECT 'tableid'.process_routine FOR UPDATE
+	ELSE
+		library_name  = SELECT 'tableid'.filter_library
+		rootine       = SELECT 'tableid'.filter_routine FOR UPDATE
+	ENDIF
+
+	ARRAY tmpArray
+	tmpArray[1] = library_name
+	tmpArray[2] = TOUPPER ( mode )
+
+	IF is_display = EMPTY THEN
+	ELSEIF is_display THEN
+
+		DISPLAY rootine ON LINE row FROM column TO column+cell_width-1 IN WINDOW window
+
+	ELSE
+
+		PROMPT FOR rootine ON LINE row FROM column TO column+cell_width-1 IN WINDOW window FORMAT TEXT50
+		    WITH ( browse_routine     = "routine_browse"             ,
+		           vgl_library        = GLOBAL ( "CURRENT_LIBRARY" ) ,
+		           user_info          = tmpArray                     ,
+		           validation_routine = "routine_validate"           )
+
+		IF ( LASTKEY <> "EXIT" ) THEN
+
+			IF mode = "PROCESS" THEN
+				ASSIGN 'tableid'.process_routine = rootine
+			ELSE
+				ASSIGN 'tableid'.filter_routine = rootine
+			ENDIF
+
+		ENDIF
+
+	ENDIF
+
+	RETURN ( rootine )
+
+ENDROUTINE { routine_prompt }
+
+{******************************************************************************}
+
+ROUTINE routine_browse ( self ) 
+
+	DECLARE routine_array, lib_name, map_array, count, map_count, len_mode
+
+	ARRAY routine_array
+	ARRAY map_array
+
+	lib_name = self.user_info[1]
+	len_mode = STRINGLENGTH ( self.user_info[2] )
+
+	IF NOT BLANK ( lib_name ) THEN
+		vgl_find_routines ( lib_name, routine_array )
+	ENDIF
+
+	count     = 1
+	map_count = 0
+
+	WHILE ( count <= SIZE_OF_ARRAY ( routine_array ) ) DO
+
+		IF ( LEFTSTRING ( routine_array[count], len_mode ) = self.user_info[2] ) THEN
+
+			map_count            = map_count + 1
+			map_array[map_count] = routine_array[count]
+
+		ENDIF
+
+		count = count + 1
+
+	ENDWHILE
+
+	browse_on_array ( 80 , self.text , map_array )
+
+	self.repaste()
+
+ENDROUTINE { routine_browse }
+
+{******************************************************************************}
+
+ROUTINE routine_validate ( self ) 
+
+	DECLARE lib_name, rout_name, valid_flag, message, detail
+
+	valid_flag = TRUE
+	lib_name   = self.user_info[1]
+	rout_name  = self.text
+
+	IF NOT BLANK ( rout_name ) THEN
+
+		valid_flag = vgl_validate_routine ( lib_name , rout_name )
+		
+		IF NOT valid_flag THEN
+
+			message_fetch ( "SMIDI_MAP_MSG_BAD_ROUT", message )
+			detail = STRIP ( lib_name ) : "/" : STRIP ( rout_name )
+			message_add_parameter ( message, detail )
+			message = message_get_text ( message, 1 )
+
+			flash_message ( message, TRUE )
+
+		ENDIF
+
+	ENDIF
+
+	RETURN ( valid_flag )
+
+ENDROUTINE { routine_validate }
+
+{******************************************************************************}
+
+ROUTINE smidi_config ( VALUE id, VALUE old_id, VALUE mode )
+
+	DECLARE tmpString
+	tmpString = "QUERY"
+
+	CALL_ROUTINE "smidi_config_items" IN LIBRARY "$SMIDI_LTE_SYSTEM" USING id, old_id, mode, tmpString
+
+ENDROUTINE  { smidi_config }
+
+{ $SMIDI_lte_query }

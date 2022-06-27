@@ -1,0 +1,2273 @@
+{******************************************************************************
+*
+* Module Name   : $LIB_SAMP.RPF
+*
+* Purpose       : Various routines for samples
+*
+* Document Ref. : SE/T/TVGL-WORK-REPORTS/1/3
+*
+* Specification :
+*
+* Portability   : Not Checked
+*
+* Re-entrant    :
+*
+*
+********************************************************************************
+*
+*  Ref   Date        Name             Comment
+*  ===== ==========  ===============  =========================================
+*  1.1   06-Mar-07   V. Molloy        Changes to use background queue for print
+*                                     operations
+*  1.2   27-FEB-2014 Ken Jacobs       Upgrade 10.2
+*******************************************************************************}
+
+SET NOTPROTECTED
+SET COMPILE_OPTION DECLARE
+
+JOIN LIBRARY $LIB_DB
+JOIN LIBRARY $SAMP_CONF
+JOIN LIBRARY $LIB_INSPECT
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $LIB_TEMP
+JOIN LIBRARY $LIB_JOB
+JOIN LIBRARY $LIB_MLPS
+JOIN LIBRARY $TEST_ASSN
+JOIN LIBRARY $SAMP_EGC
+JOIN LIBRARY $SAMP_USER
+JOIN LIBRARY $CRITERIA_CACHE
+JOIN LIBRARY $LIB_WORKFLOW
+
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_LOGIN
+JOIN STANDARD_LIBRARY STD_VGL
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+
+JOIN LIBRARY $BSMP_LIB    {1.1}
+
+{*********************************************************************************}
+
+GLOBAL CONSTANT SAMPLE_TABLE = "SAMPLE"
+
+{*********************************************************************************}
+
+CONSTANT QUOTE = ascii ( 34 )
+
+CONSTANT SUPERTEMPLATE_HEADER = 1
+CONSTANT SUPERTEMPLATE_FIELDS = 2
+
+CONSTANT OPERATION_POSITION = 1
+CONSTANT REPORT_POSITION    = 2
+CONSTANT PRINTER_POSITION   = 3
+CONSTANT SAMPLE_ID_POSITION = 4
+
+CONSTANT SR_WORK_PROFILE = "UPDATE_WORK_PROFILE"
+CONSTANT SL_WORK_PROFILE = "$LIB_SAMP"
+
+{*********************************************************************************}
+
+DECLARE sample_defer_list, next_defer_position
+
+{*********************************************************************************}
+
+ROUTINE create_sample_entry ( id_numeric )
+
+	sample_reserve ()
+	id_numeric = SELECT sample . id_numeric
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE get_next_linknumber
+
+	RETURN ( increment ( "SUPERTEMPLATE" , "LINK_NUMBER" ))
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE field_in_array ( VALUE field_name    ,
+                               details_array )
+
+	DECLARE found, count
+
+	found = FALSE
+	count = 1
+
+	WHILE NOT found AND ( count <= size_of_array ( details_array )) DO
+
+		IF field_name = details_array [ count, 1 ] THEN
+			
+			found = TRUE
+
+		ELSE
+
+			count = count + 1
+
+		ENDIF
+
+	ENDWHILE
+
+	RETURN ( found )
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+GLOBAL ROUTINE create_internal_sample_array ( sample_info )
+
+	DECLARE count,
+	        template_details,
+	        field_array,
+	        default_info,
+	        new_pos
+
+	ARRAY sample_info  ARRAY_SIZE ( 0 , 7 )
+
+	get_field_names ( "SAMPLE", field_array )
+
+	IF ( read_in_sample_template_header ( "BLANK"           , 	
+					       template_details )) THEN
+
+		criteria_cache_initialise ( )
+
+		read_in_template_fields  ( "BLANK"         ,
+		                           "SAMPLE"        ,
+		                            default_info   ,
+		                            FALSE          ,
+		                            FALSE          )
+
+		count = 1
+
+		WHILE count <= size_of_array ( field_array ) DO
+
+			IF field_array [ count, 2 ] THEN
+			
+			ELSEIF field_in_array ( field_array [ count, 1 ] ,
+			                        default_info             ) THEN
+
+			ELSE
+
+				new_pos = size_of_array ( sample_info ) + 1
+
+				sample_info [ new_pos, 1 ] =
+				                criteria_cache_field_title (
+				                          "SAMPLE"                  ,
+				                           field_array [ count, 1 ] )
+				sample_info [ new_pos, 4 ] =
+				                field_array [ count, 1 ]
+
+			ENDIF
+
+			count = count + 1
+
+		ENDWHILE
+
+	ELSE
+
+		sample_info [ 1 , 1 ] = GET_USER_MESSAGE("LIB_SAMP_SAM_10" ,1)
+		sample_info [ 1 , 4 ] = "LOGIN_DATE"
+
+		sample_info [ 2 , 1 ] = GET_USER_MESSAGE("LIB_SAMP_SAM_11" ,1)
+		sample_info [ 2 , 4 ] = "DATERESAVAIL"
+
+		sample_info [ 3 , 1 ] = GET_USER_MESSAGE("LIB_SAMP_SAM_12" ,1)
+		sample_info [ 3 , 4 ] = "AUTHORISE_DATE"
+
+		sample_info [ 4 , 1 ] = GET_USER_MESSAGE("LIB_SAMP_SAM_13" ,1)
+		sample_info [ 4 , 4 ] = "LOGIN_BY"
+
+		sample_info [ 5 , 1 ] = GET_USER_MESSAGE("LIB_SAMP_SAM_14" ,1)
+		sample_info [ 5 , 4 ] = "AUTHORISER"
+
+		sample_info [ 6 , 1 ] = GET_USER_MESSAGE("LIB_SAMP_SAM_15" ,1)
+		sample_info [ 6 , 4 ] = "AUTHORISATION_NOTES"
+
+		sample_info [ 7 , 1 ] = GET_USER_MESSAGE("LIB_SAMP_SAM_16" ,1)
+		sample_info [ 7 , 4 ] = "PRODUCT_NAME"
+
+		sample_info [ 8 , 1 ] = GET_USER_MESSAGE("LIB_SAMP_SAM_17" ,1)
+		sample_info [ 8 , 4 ] = "GRADE_NAME"
+
+		sample_info [ 9 , 1 ] = GET_USER_MESSAGE("LIB_SAMP_SAM_18" ,1)
+		sample_info [ 9 , 4 ] = "PRODUCT_VERSION"
+
+		sample_info [ 10 , 1 ] = GET_USER_MESSAGE("LIB_SAMP_SAM_1" ,1)
+		sample_info [ 10 , 4 ] = "TEMPLATE_ID"
+
+		sample_info [ 11 , 1 ] = GET_USER_MESSAGE("LIB_SAMP_SAM_2" ,1)
+		sample_info [ 11 , 4 ] = "OLD_STATUS"
+
+		sample_info [ 12 , 1 ] = GET_USER_MESSAGE("LIB_SAMP_SAM_3" ,1)
+		sample_info [ 12 , 4 ] = "COMPARED"
+
+		sample_info [ 13 , 1 ] = GET_USER_MESSAGE("LIB_SAMP_SAM_4" ,1)
+		sample_info [ 13 , 4 ] = "ON_SPEC"
+
+		sample_info [ 14 , 1 ] = GET_USER_MESSAGE("LIB_SAMP_SAM_5" ,1)
+		sample_info [ 14 , 4 ] = "RE_SAMPLED"
+
+		sample_info [ 15 , 1 ] = GET_USER_MESSAGE("LIB_SAMP_SAM_6" ,1)
+		sample_info [ 15 , 4 ] = "ORIGINAL_SAMPLE"
+
+		sample_info [ 16 , 1 ] = GET_USER_MESSAGE("LIB_SAMP_SAM_7" ,1)
+		sample_info [ 16 , 4 ] = "LINK_NUMBER"
+
+		sample_info [ 17 , 1 ] = GET_USER_MESSAGE("LIB_SAMP_SAM_8" ,1)
+		sample_info [ 17 , 4 ] = "TESTS_TO_DO"
+
+		sample_info [ 18 , 1 ] = GET_USER_MESSAGE("LIB_SAMP_SAM_9" ,1)
+		sample_info [ 18 , 4 ] = "ON_WKS"
+
+	ENDIF
+
+	count = 1
+
+	WHILE count <= size_of_array ( sample_info ) DO
+
+		sample_info [ count , 2 ] = "DISPLAY"
+		sample_info [ count , 3 ] = "SAMPLE"
+
+		count = count + 1
+
+	ENDWHILE
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE build_from_syntax ( VALUE syntax )
+
+	DECLARE the_syntax
+
+	the_syntax = get_sample_syntax ( syntax )
+
+	IF the_syntax = ERROR THEN
+
+		the_syntax = get_sample_syntax ( "DEFAULT" )
+
+	ENDIF
+
+	IF the_syntax = ERROR THEN
+
+		the_syntax = "ID" : select sample . id_numeric
+
+	ENDIF
+
+	RETURN ( the_syntax )
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+GLOBAL ROUTINE get_the_syntax ( login_details )
+
+	RETURN ( build_from_syntax ( login_details . syntax ))
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+GLOBAL ROUTINE perform_receipt ( VALUE sample_id    ,
+                                 VALUE receipt_name )
+
+
+	IF BLANK ( receipt_name ) THEN
+
+		receipt_name = global ( "receipt_name" )
+
+	ENDIF
+
+	MENUPROC 159 USING receipt_name , sample_id
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+GLOBAL ROUTINE create_new_sample ( table_id    ,
+                                   table_info  )
+
+	create_sample_entry ( table_id )
+
+ENDROUTINE
+
+
+{ --------------------------------------------------------------------------- }
+
+GLOBAL ROUTINE read_sample_template ( VALUE template_id         ,
+                                            template_details    ,
+                                            field_controls      ,
+                                      VALUE modify_sample       ,
+                                      VALUE ignore_supertemplate,
+                                            is_supertemplate    )
+
+	IF NOT ( read_in_sample_template_header ( template_id , template_details )) THEN
+
+		fatal_error (GET_USER_MESSAGE("LIB_SAMP_DISPLAY_1" ,1): template_id )
+
+	ENDIF
+
+	is_supertemplate = template_details [ SUPERTEMPLATE_POSITION ]  AND
+				 NOT ignore_supertemplate
+
+	read_in_template_fields ( template_id    ,
+	                          SAMPLE_TABLE   ,
+	                          field_controls ,
+	                          modify_sample  ,
+	                          FALSE          )
+
+	create_custom_prompts ( field_controls )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+GLOBAL ROUTINE read_in_supertemplate ( supertemplate_id      ,
+                                       supertemplate_details ,
+                                       number_of_templates   )
+
+	DECLARE template_list , count , is_supertemplate
+
+	ARRAY supertemplate_details
+	ARRAY template_list ARRAY_SIZE ( 0 )
+
+	read_supertemplate_list ( supertemplate_id  ,
+				  template_list     )
+
+	count = 1
+
+	WHILE template_list [ count ] <> EMPTY DO
+
+		ARRAY supertemplate_details [ count , SUPERTEMPLATE_HEADER ]
+		ARRAY supertemplate_details [ count , SUPERTEMPLATE_FIELDS ]
+
+		read_sample_template ( template_list [ count ]                         ,
+		                       supertemplate_details [ count                 ,
+		                                               SUPERTEMPLATE_HEADER  ] ,
+		                       supertemplate_details [ count                 ,
+		                                               SUPERTEMPLATE_FIELDS  ] ,
+		                       FALSE                                           ,
+		                       FALSE                                           ,
+		                       is_supertemplate                                )
+
+		count = count + 1
+
+	ENDWHILE
+
+	number_of_templates = count - 1
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+GLOBAL ROUTINE initialise_sample_login (       template_details      ,
+                                               field_controls        ,
+                                         VALUE template_id           ,
+                                               supertemplate_details ,
+                                               number_of_templates   ,
+                                               top_line              )
+
+	DECLARE is_supertemplate
+
+	sample_create ()
+	read_sample_template ( template_id , template_details ,
+	                       field_controls ,
+	                       FALSE , FALSE , is_supertemplate )
+
+	IF is_supertemplate THEN
+
+		read_in_supertemplate ( template_id           ,
+		                        supertemplate_details ,
+		                        number_of_templates   )
+
+	ELSE
+
+		number_of_templates = -1
+
+	ENDIF
+
+	top_line = template_details [ LOGIN_TITLE_POSITION ]
+
+	RETURN ( TRUE )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+GLOBAL ROUTINE fill_in_special_fields ( VALUE job_identity   ,
+                                        VALUE template_id    ,
+                                              field_controls )
+
+	IF NOT BLANK ( job_identity ) THEN
+
+		remove_job_prompts ( field_controls )
+		ASSIGN sample . job_name = job_identity
+
+	ENDIF
+
+	ASSIGN sample . template_id = template_id
+
+ENDROUTINE
+{------------------------------------------------------------------------------}
+
+{ Note this routine assumes that the sample has already been selected }
+
+GLOBAL ROUTINE initialise_sample_entry (       template_details      ,
+                                               field_controls        ,
+                                               do_modify_full_sample ,
+                                         VALUE prompt_for_template   ) { #SUSAND}
+
+	DECLARE template_id , is_supertemplate
+
+	template_id = select sample . template_id
+
+	IF do_modify_full_sample OR BLANK ( template_id ) THEN
+
+
+		read_sample_template ( PAD ( "BLANK", " " , 10 ) , template_details ,
+		                       field_controls ,
+		                       TRUE , FALSE, is_supertemplate)
+
+	ELSE
+		  { #SUSAND 19/5/92 Bug 1298 }
+		IF prompt_for_template THEN
+
+			get_sample_view_template ( template_id )
+
+			IF LASTKEY = "EXIT" THEN
+
+				EXIT
+
+			ENDIF
+
+		ENDIF
+
+		read_sample_template ( template_id , template_details ,
+		                       field_controls ,
+		                       TRUE , FALSE , is_supertemplate)
+
+	ENDIF
+
+	IF do_modify_full_sample THEN
+
+		set_fields_to_prompt ( field_controls )
+
+	ENDIF
+
+ENDROUTINE
+
+
+{-----------------------------------------------------------------------------}
+{ #SUSAND 19/5/92 Bug 1298. Copied from RMS }
+ROUTINE get_sample_view_template ( template_id )
+
+	get_identity ( template_id                       ,
+	               GET MESSAGE ( 448, 1 )            ,
+	               STRIP ( GET MESSAGE ( 1831, 1 ) ) ,
+	              "SAMP_TMPL_HEADER"                 ,
+	              "$LIB_SAMP_TEMPLATE"               )
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE update_interval ( VALUE field_id )
+
+	IF is_interval ( select sample . 'field_id' ) THEN
+
+		ASSIGN sample . 'field_id'  = date ( select sample . 'field_id' ) +
+		                              date ( select sample . login_date )
+
+	ENDIF
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE update_dateresreq ( VALUE is_modify   ,
+                            VALUE action_type )
+
+	update_interval ( "DATERESREQ" )
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE update_datestarttest ( VALUE is_modify   ,
+                               VALUE action_type )
+
+	update_interval ( "DATESTARTTEST" )
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+
+ROUTINE update_sampled_date ( VALUE is_modify ,
+		              VALUE action_type  )
+
+{ ROB
+sample_values [ SC_SAMPLED_DATE ] = convert_sample_date (
+					sample_values [ SC_SAMPLED_DATE] )
+}
+ENDROUTINE
+{-----------------------------------------------------------------------------}
+
+ROUTINE update_job_name ( VALUE is_modify   ,
+                          VALUE action_type )
+
+	DECLARE new_job_name, old_job_name, sample_id, context, status
+
+	IF is_modify THEN
+
+		sample_id = SELECT sample . id_numeric
+		
+		status = SELECT sample . status
+
+		new_job_name = SELECT sample . job_name
+		
+		push_file_descriptor( "SAMPLE", context )
+		
+		old_job_name = SELECT sample . job_name
+					WHERE id_numeric = sample_id
+					
+		pop_file_descriptor( context )
+
+		IF ( status <> "C" ) THEN
+		
+			IF NOT BLANK ( old_job_name ) THEN
+
+				subtract_samples_from_job ( 1 , old_job_name )
+
+			ENDIF
+
+			IF NOT BLANK ( new_job_name ) THEN
+
+				add_samples_to_job ( 1 , new_job_name )
+
+			ENDIF
+			
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE update_preparation_id ( VALUE is_modify ,
+		                VALUE action_type )
+
+	DECLARE status, samp_id, sample_status, test_status, try_suppressed
+	DECLARE prep_id, wait_for_prep, messages
+
+	ARRAY messages ARRAY_SIZE (2)
+
+	IF is_modify THEN
+
+		status = EMPTY
+		try_suppressed = GLOBAL( "ALLOW_STATUS_SUPPRESS" )
+		samp_id = SELECT sample . id_numeric
+		sample_status = SELECT sample . status
+		prep_id = SELECT sample . preparation_id
+		wait_for_prep = FALSE
+
+		IF blank ( prep_id ) THEN
+
+			{ ** STATUS CHANGE 'W' ---> 'V'** }
+
+			IF ( sample_status = "W" ) THEN
+
+				IF try_suppressed THEN
+
+					SET STATUS_CHECK_SUPPRESS
+					CHANGE SAMPLE STATUS TO "V", status
+
+				ELSE
+
+					CHANGE SAMPLE STATUS TO "V", status
+
+				ENDIF
+
+			ENDIF
+
+		ELSE
+
+			{ ** STATUS CHANGE 'V' ---> 'W'|'V' ** }
+
+			wait_for_prep = SELECT preparation . wait_prep
+			                WHERE ( identity = prep_id )
+			                ORDER ON identity
+
+			IF ( (( sample_status = "V" ) OR ( sample_status = "W" ) OR
+				    ( sample_status = "C" )) AND
+			     ( try_suppressed      ) AND
+			     ( wait_for_prep <> EMPTY ) ) THEN
+
+				test_status = SELECT test.status
+				              WHERE sample_id =  samp_id
+				              ORDER ON analysis
+
+				WHILE ( (test_status <> EMPTY) AND (INDEX("VW",test_status)=0 ) ) DO
+
+					IF ( INDEX( "VW", test_status ) = 0 ) THEN
+
+						status = GET_USER_MESSAGE( "LIB_SAMP_NOT_SAMP_CHANGE_STAT_TEST",1):
+						                           test_status:
+						                           GET_USER_MESSAGE( "LIB_SAMP_NOT_SAMP_CHANGE_STAT_TEST",2)
+
+
+					ENDIF
+
+					NEXT test
+					test_status = SELECT test.status
+
+				ENDWHILE
+
+				IF status = EMPTY THEN
+					IF wait_for_prep THEN
+						SET STATUS_CHECK_SUPPRESS
+						CHANGE SAMPLE STATUS TO "W", status
+
+					ELSE
+						SET STATUS_CHECK_SUPPRESS
+						CHANGE SAMPLE STATUS TO "V", status
+
+					ENDIF
+				ENDIF
+
+			ELSEIF sample_status = "U" THEN
+
+				{ Do nothing - no error, no action }
+
+			ELSEIF ( wait_for_prep = EMPTY ) THEN
+
+				status = GET_USER_MESSAGE( "LIB_SAMP_NO_PREP",1 )
+
+			ELSEIF NOT try_suppressed THEN
+
+			    status = GET_USER_MESSAGE( "LIB_SAMP_TRY_SUPPRESSED",1 )
+
+			ELSE
+
+				status = GET_USER_MESSAGE( "LIB_SAMP_NOT_SAMP_STAT_CHANGE_TEST",1):
+				                           sample_status :
+				                           GET_USER_MESSAGE("LIB_SAMP_NOT_SAMP_STAT_CHANGE_TEST",2)   {1.1}
+
+			ENDIF
+
+		ENDIF
+
+		IF status <> EMPTY THEN
+			messages[1] = status
+			flash_messages( GET_USER_MESSAGE( "LIB_SAMP_ERROR_SAMP_PREP_ID",1 ), "", messages, TRUE )
+		ENDIF
+	ENDIF
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+ROUTINE update_work_profile ( VALUE is_modify ,
+                              VALUE action_type )
+
+
+	IF NOT BLANK ( SELECT sample . work_profile ) THEN
+
+		IF NOT BLANK ( SELECT sample . test_schedule ) THEN
+
+			IF SELECT sample . test_schedule <> SELECT sample . product THEN
+
+				{ put up an annoying message }
+
+				flash_message ( get_user_message ( "LIB_SAMP_PROFILE_AND_SCHED" ,1 ) , TRUE )
+
+			ENDIF
+
+		ENDIF
+
+		ASSIGN sample . test_schedule = SELECT sample . product
+
+	ENDIF
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+GLOBAL ROUTINE update_old_sample ( VALUE table_id         ,
+                                         table_info       ,
+                                         template_details )
+
+	IF NOT transaction_is_write () THEN
+
+		START WRITE TRANSACTION "Sample Update"
+
+	ENDIF
+
+	update_fields ( table_info , template_details , TRUE )
+	UPDATE sample
+	COMMIT
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE get_information ( VALUE template_details ,
+                          VALUE global_name      )
+
+	DECLARE temp
+
+	IF BLANK ( template_details ) THEN
+
+		temp = GLOBAL ( global_name  )
+
+	ELSE
+
+		temp = template_details
+
+	ENDIF
+
+	RETURN ( temp )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE get_boolean_information ( VALUE template_details ,
+                                  VALUE global_name      )
+
+	DECLARE temp
+
+	IF BLANK ( template_details ) THEN
+
+		temp = GLOBAL ( global_name  )
+
+	ELSE
+
+		temp = template_details = "Y"
+
+	ENDIF
+
+	RETURN ( temp )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+GLOBAL ROUTINE get_initial_status ( template_details )
+
+	RETURN ( get_information ( template_details [ SAMPLE_STATUS_POSITION ] ,
+                                "DEFAULT_STATUS" ))
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+GLOBAL ROUTINE get_edit_tests ( template_details )
+
+	RETURN (( template_details  [ EDIT_TESTS_POSITION ] ) AND
+	        ( global ( "MODE" ) = "INTERACTIVE" ))
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE assign_on_background ( template_details )
+
+	RETURN ( template_details  [ TEST_ASSIGNMENT_POSITION ] )
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+GLOBAL ROUTINE print_label (  VALUE print_the_label ,
+                              VALUE report_id       ,
+                              VALUE printer_id      ,
+                              VALUE sample_id       )
+
+     DECLARE context
+
+     IF print_the_label THEN
+
+           IF BLANK ( report_id ) THEN
+
+                report_id = GLOBAL ( "BARCODE_NAME" )
+
+		ENDIF
+
+ {1.1}
+
+            IF ( transaction_is_write() )
+
+                IF ( bsmp_lib_reserve_timer() )
+
+                    ASSIGN timerqueue.report_name = report_id
+                    ASSIGN timerqueue.run_time = NOW + INTERVAL( "0000 00:00:10" )
+                    ASSIGN timerqueue.param_string = sample_id : " " : printer_id
+                    UPDATE timerqueue
+
+                ELSE
+	   	
+                    { Error already reported }
+
+                ENDIF
+
+            ELSE
+
+   
+                menuproc 56 USING  report_id , sample_id  , printer_id
+
+            ENDIF
+
+{/1.1}
+
+     ENDIF
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE print_label_template_list ( VALUE report_id       ,
+                                    VALUE printer_id      ,
+                                          sample_array    )
+
+	DECLARE device_type, queue_name, error_return, label_tempalate_id_array, template_version
+
+	device_type = SELECT printer . device_type
+	              WHERE identity = printer_id
+
+	IF device_type = "QUEUE" THEN
+
+		queue_name = STRIP ( SELECT printer . logical_name )
+		ARRAY label_tempalate_id_array ARRAYSIZE ( 2 )
+		
+		template_version = get_maximum_version_label ( report_id )
+
+		label_tempalate_id_array[1] = report_id
+		label_tempalate_id_array[2] = template_version
+		report_id = lib_db_array_to_padded ( "label_template"         ,
+		                                     label_tempalate_id_array )
+
+		error_return = PRINT_LABEL_TEMPLATE ( report_id    ,
+		                                      queue_name   ,
+		                                      1            ,
+		                                      sample_array )
+
+		IF error_return <> EMPTY THEN
+			FLASH_MESSAGE ( error_return, TRUE )
+		ENDIF
+
+	ELSE
+		FLASH_MESSAGE ( GET_USER_MESSAGE( "LIB_SAMP_INVALID_QUEUE",1 ), TRUE )
+	ENDIF
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE print_label_template_single ( VALUE print_the_label ,
+                                      VALUE report_id ,
+                                      VALUE printer_id ,
+                                      VALUE sample_id )
+
+	DECLARE id_array, label_tempalate_id_array, template_version
+
+	IF print_the_label THEN
+		
+		ARRAY id_array ARRAYSIZE ( 0 )
+		ARRAY label_tempalate_id_array ARRAYSIZE ( 2 )
+		
+		template_version = get_maximum_version_label ( report_id )
+
+		id_array [1] = sample_id
+
+		label_tempalate_id_array[1] = report_id
+		label_tempalate_id_array[2] = template_version
+		report_id = lib_db_array_to_padded ( "label_template"         ,
+		                                     label_tempalate_id_array )
+		
+		print_label_template_list ( report_id ,
+		                            printer_id ,
+		                            id_array   )
+
+	ENDIF
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE get_maximum_version_label ( VALUE template_id )
+
+	RETURN ( SELECT MAX label_template . version 
+	         WHERE (label_template. identity = template_id) AND
+	               (label_template. removeflag = false) AND
+	               (label_template. approval_status = "A"))
+	
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+GLOBAL ROUTINE print_receipt (  VALUE print_the_receipt ,
+                                VALUE receipt_id ,
+                                VALUE printer_id ,
+                                VALUE sample_id )
+
+{1.1	DECLARE context }
+
+	IF print_the_receipt THEN
+
+		IF blank ( receipt_id ) THEN
+
+			receipt_id = global ( "RECEIPT_NAME" )
+
+		ENDIF
+{1.1}
+
+            IF ( transaction_is_write() )
+
+                IF ( bsmp_lib_reserve_timer() )
+
+                    ASSIGN timerqueue.report_name = receipt_id
+                    ASSIGN timerqueue.run_time = NOW + INTERVAL( "0000 00:00:10" )
+                    ASSIGN timerqueue.param_string = sample_id : " " : printer_id
+	            UPDATE timerqueue
+
+                ELSE
+
+                    { Error already reported }
+
+                ENDIF
+
+            ELSE
+
+                menuproc 56 USING receipt_id , sample_id  , printer_id
+
+            ENDIF
+{/1.1}
+
+	ENDIF
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+GLOBAL ROUTINE generate_worksheet ( VALUE sample_id )
+
+{1.1	DECLARE context}
+
+{1.1}
+
+    IF ( transaction_is_write() )
+
+        IF ( bsmp_lib_reserve_timer() )
+
+            ASSIGN timerqueue.report_name = "$SAMPWSHT_STB"
+            ASSIGN timerqueue.run_time = NOW + INTERVAL( "0000 00:00:10" )
+            ASSIGN timerqueue.param_string = sample_id
+            UPDATE timerqueue
+
+        ELSE
+        	
+            { Error already reported }
+
+        ENDIF
+
+    ELSE
+
+	menuproc 461 USING sample_id
+	
+    ENDIF
+
+{/1.1}
+
+	{ menuproc 461 USING sample_id }
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+GLOBAL ROUTINE print_worksheet (  VALUE print_the_worksheet ,
+			          VALUE report_id ,
+			          VALUE printer_id ,
+			          VALUE sample_id )
+
+{1.1	DECLARE context }
+
+	IF BLANK ( report_id ) THEN
+
+		report_id = "$PRSAMPWS"
+
+	ENDIF
+
+{1.1}
+
+	IF print_the_worksheet THEN
+
+            IF ( transaction_is_write() )
+
+                IF ( bsmp_lib_reserve_timer() )
+	
+                    ASSIGN timerqueue.report_name = report_id
+                    ASSIGN timerqueue.run_time = NOW + INTERVAL( "0000 00:00:20" )
+                    ASSIGN timerqueue.param_string = sample_id : " " : printer_id
+                    UPDATE timerqueue
+
+                ELSE
+                    { Error already reported }
+
+                ENDIF
+
+            ELSE
+
+                menuproc 56 USING report_id ,  sample_id , printer_id
+
+            ENDIF
+
+{/1.1}
+
+		{ menuproc 56 USING report_id ,  sample_id , printer_id }
+
+	ENDIF
+
+ENDROUTINE
+
+
+{ --------------------------------------------------------------------------- }
+
+GLOBAL ROUTINE setup_sample_defer_list
+
+	ARRAY sample_defer_list  ARRAYSIZE ( 0 , 4 )
+
+	next_defer_position = 1
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+GLOBAL ROUTINE lib_samp_get_current_defer_list ( current_sample_defer_list   ,
+                                                 current_next_defer_position )
+
+	IF NOT global ( "LIBRARY_INITIALISED" ) THEN
+
+		setup_sample_defer_list ()
+
+		SET GLOBAL "LIBRARY_INITIALISED" TO TRUE
+
+	ENDIF
+        
+	current_sample_defer_list   = sample_defer_list
+	current_next_defer_position = next_defer_position
+	
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+GLOBAL ROUTINE lib_samp_set_current_defer_list ( current_sample_defer_list   ,
+                                                 current_next_defer_position )
+
+	sample_defer_list   = current_sample_defer_list   
+	next_defer_position = current_next_defer_position
+	
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE check_if_need_to_defer ( VALUE operation ,
+				 VALUE action ,
+				 VALUE report ,
+				 VALUE printer ,
+				 VALUE sample_id ,
+				 VALUE assigned_on_background )
+
+	IF NOT assigned_on_background THEN
+
+		IF action = "D" THEN
+
+			sample_defer_list [ next_defer_position , OPERATION_POSITION ]=
+				operation
+			sample_defer_list [ next_defer_position , REPORT_POSITION ]=
+				report
+			sample_defer_list [ next_defer_position , PRINTER_POSITION ]=
+				printer
+			sample_defer_list [ next_defer_position , SAMPLE_ID_POSITION ]=
+				sample_id
+
+			next_defer_position = next_defer_position + 1
+
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE do_defer_label_templates
+
+	DECLARE count, 
+	        lt_count,
+	        lt_array,
+	        found,
+	        search_count,
+	        samp_count,
+	        samp_id_array
+
+	ARRAY lt_array ARRAYSIZE ( 0, 2 )
+	lt_count = 0
+
+	count = 1
+
+	WHILE sample_defer_list [ count , OPERATION_POSITION ] <> EMPTY DO
+
+		IF sample_defer_list [ count , OPERATION_POSITION ] = "LABEL_TEMPLATE" THEN
+
+			found = FALSE
+			search_count = 1
+
+			WHILE search_count <= lt_count DO
+
+				IF ( lt_array [ search_count, 1 ] =
+				     sample_defer_list [ count , REPORT_POSITION ] ) AND
+				   ( lt_array [ search_count, 2 ] =
+				     sample_defer_list [ count , PRINTER_POSITION ] ) THEN
+					found = TRUE
+				ENDIF
+
+				search_count = search_count + 1
+
+			ENDWHILE
+
+			IF NOT found THEN
+
+				lt_count = lt_count + 1
+
+				lt_array [ lt_count, 1 ] = sample_defer_list [ count , REPORT_POSITION ]
+				lt_array [ lt_count, 2 ] = sample_defer_list [ count , PRINTER_POSITION ]
+
+			ENDIF
+
+		ENDIF
+
+		count = count + 1
+
+	ENDWHILE
+
+	count = 1
+
+	WHILE count <= lt_count DO
+
+		found = FALSE
+		search_count = 1
+		samp_count = 0
+		ARRAY samp_id_array ARRAYSIZE ( 0 )
+
+		WHILE sample_defer_list [ search_count , OPERATION_POSITION ] <> EMPTY DO
+
+			IF ( lt_array [ count, 1 ] =
+			     sample_defer_list [ search_count , REPORT_POSITION ] ) AND
+			   ( lt_array [ count, 2 ] =
+			     sample_defer_list [ search_count , PRINTER_POSITION ] ) THEN
+
+				samp_count = samp_count + 1
+
+				samp_id_array [ samp_count ] = sample_defer_list [ search_count , SAMPLE_ID_POSITION ]
+
+			ENDIF
+
+			search_count = search_count + 1
+
+		ENDWHILE
+
+		IF samp_count > 0 THEN
+
+			print_label_template_list ( lt_array [ count, 1 ] ,
+			                            lt_array [ count, 2 ] ,
+			                            samp_id_array         )
+
+		ENDIF
+
+		count = count + 1
+
+	ENDWHILE
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+GLOBAL ROUTINE do_defer_operations
+
+	DECLARE count
+
+	count = 1
+
+	WHILE sample_defer_list [ count , OPERATION_POSITION ] <> EMPTY DO
+
+		IF sample_defer_list [ count , OPERATION_POSITION ] = "RECEIPT" THEN
+
+			print_receipt ( TRUE ,
+				        sample_defer_list [ count , REPORT_POSITION ] ,
+				        sample_defer_list [ count , PRINTER_POSITION ] ,
+				        sample_defer_list [ count , SAMPLE_ID_POSITION ] )
+
+		ELSEIF sample_defer_list [ count , OPERATION_POSITION ] = "LABEL" THEN
+
+			print_label ( TRUE ,
+				      sample_defer_list [ count , REPORT_POSITION ] ,
+				      sample_defer_list [ count , PRINTER_POSITION ] ,
+				      sample_defer_list [ count , SAMPLE_ID_POSITION ] )
+
+		ELSEIF sample_defer_list [ count , OPERATION_POSITION ] = "WORKSHEET" THEN
+
+			print_worksheet ( TRUE ,
+				          sample_defer_list [ count , REPORT_POSITION ] ,
+				          sample_defer_list [ count , PRINTER_POSITION ] ,
+				          sample_defer_list [ count , SAMPLE_ID_POSITION ] )
+
+		ENDIF
+
+		count = count + 1
+
+	ENDWHILE
+
+	do_defer_label_templates ( )
+
+	setup_sample_defer_list ( )
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+ROUTINE can_do_now ( VALUE action ,
+		     VALUE assigned_on_background )
+
+IF ( action = "I" ) AND NOT assigned_on_background THEN
+
+	RETURN ( TRUE )
+
+ELSE
+
+	RETURN ( FALSE )
+
+ENDIF
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+GLOBAL ROUTINE do_print_receipt ( VALUE sample_id       ,
+					login_details   ,
+					template_header ,
+				  VALUE assigned_on_background )
+
+
+check_if_need_to_defer ( "RECEIPT" ,
+			 template_header [ receipt_action_position ] ,
+			 template_header [ receipt_id_position ] ,
+			 template_header [ receipt_printer_position ] ,
+			 sample_id ,
+			 assigned_on_background )
+
+print_receipt ( login_details . user_receipt_wanted  ,
+		login_details . user_receipt_id      ,
+		login_details . user_receipt_printer ,
+	        sample_id                            )
+
+print_receipt ( can_do_now ( template_header [ receipt_action_position ] ,
+		           assigned_on_background ),
+	        template_header [ receipt_id_position ] ,
+	        template_header [ receipt_printer_position ] ,
+		sample_id )
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+GLOBAL ROUTINE do_print_label ( VALUE sample_id       ,
+				      login_details   ,
+			              template_header ,
+				VALUE assigned_on_background )
+
+	DECLARE label_to_print,
+	        is_label_template,
+	        operation
+
+	IF BLANK ( template_header [ label_template_position ]) AND 
+	   BLANK ( login_details . user_label_template ) THEN
+		label_to_print = template_header [ label_id_position ]
+		is_label_template = FALSE
+		operation = "LABEL"
+	ELSE
+		IF BLANK ( login_details . user_label_template ) THEN		
+			label_to_print = template_header [ label_template_position ]
+		ELSE
+			label_to_print = login_details . user_label_template
+		ENDIF		
+		is_label_template = TRUE
+		operation = "LABEL_TEMPLATE"
+	ENDIF
+
+
+	check_if_need_to_defer ( operation ,
+				 template_header [ label_action_position ] ,
+				 label_to_print ,
+				 template_header [ label_printer_position ] ,
+				 sample_id ,
+				 assigned_on_background )
+				 
+
+				 
+	IF BLANK ( login_details . user_label_template ) THEN
+
+		print_label ( login_details . user_label_wanted  ,
+			      login_details . user_label_id      ,
+			      login_details . user_label_printer ,
+			      sample_id                          )
+
+	ELSE
+
+		print_label_template_single ( login_details . user_label_wanted   ,
+		                              login_details . user_label_template ,
+		                              login_details . user_label_printer  ,
+		                              sample_id                           )
+
+
+	ENDIF	
+
+	
+	IF NOT ( login_details . user_label_override ) THEN 
+
+		IF is_label_template THEN
+			print_label_template_single ( can_do_now ( template_header [ label_action_position ] ,
+			                                           assigned_on_background ),
+			                              label_to_print,
+			                              template_header [ label_printer_position ] ,
+			                              sample_id )
+		ELSE
+			print_label ( can_do_now ( template_header [ label_action_position ] ,
+						   assigned_on_background ),
+					       label_to_print,
+				      template_header [ label_printer_position ] ,
+				      sample_id )
+		ENDIF
+	
+	ENDIF
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+GLOBAL ROUTINE do_generate_worksheet ( VALUE sample_id       ,
+					     login_details   ,
+					     template_header ,
+				       VALUE tests_added )
+
+IF tests_added THEN
+
+	IF ( template_header [ auto_wks_position ] ) OR
+	   ( login_details . user_worksheet_wanted ) THEN
+
+		generate_worksheet ( sample_id )
+
+	ENDIF
+
+ENDIF
+
+ENDROUTINE
+
+{ --------------------------------------------------------------------------- }
+
+GLOBAL ROUTINE do_print_worksheet ( VALUE sample_id       ,
+					  login_details   ,
+					  template_header ,
+				    VALUE assigned_on_background ,
+				    VALUE tests_added )
+
+IF tests_added THEN
+
+	check_if_need_to_defer ( "WORKSHEET" ,
+				 template_header [ wsht_action_position ] ,
+				 template_header [ wsht_id_position ] ,
+				 template_header [ wsht_printer_position ] ,
+				 sample_id ,
+				 assigned_on_background )
+
+
+    	print_worksheet ( login_details . user_worksheet_print ,
+			  " " ,
+			  " " ,
+			  sample_id )
+
+	print_worksheet ( can_do_now ( template_header [ wsht_action_position ] ,
+			               assigned_on_background ),
+	        	  template_header [ wsht_id_position ] ,
+		          template_header [ wsht_printer_position ] ,
+			  sample_id )
+
+ENDIF
+
+ENDROUTINE
+
+
+{ --------------------------------------------------------------------------- }
+
+GLOBAL ROUTINE sample_control ( VALUE sample_id              ,
+                                      login_details          ,
+                                      template_header        ,
+                                VALUE assigned_on_background ,
+                                VALUE tests_added            )
+
+	{ Deal with login control fields }
+
+	do_print_receipt ( sample_id              ,
+	                   login_details          ,
+	                   template_header        ,
+	                   assigned_on_background )
+
+	do_print_label ( sample_id              ,
+	                 login_details          ,
+	                 template_header        ,
+	                 assigned_on_background )
+
+	do_generate_worksheet ( sample_id       ,
+	                        login_details   ,
+	                        template_header ,
+	                        tests_added     )
+
+	do_print_worksheet ( sample_id              ,
+	                     login_details          ,
+	                     template_header        ,
+	                     assigned_on_background ,
+	                     tests_added            )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE update_routine_present ( VALUE field_name   ,
+                                       routine_name ,
+                                       library_name )
+
+	routine_name = GET CONSTANT ( "SR_" : field_name )
+
+	IF routine_name <> ERROR THEN
+
+		routine_name = STRIP ( routine_name )
+		library_name = GET CONSTANT ( "SL_" : field_name )
+
+		  RETURN ( TRUE )
+
+	ENDIF
+
+	RETURN ( FALSE )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE update_necessary ( VALUE compare_with_record ,
+                           VALUE field_name          )
+
+	DECLARE answer
+
+	IF compare_with_record THEN
+
+		FIELD_CHANGED sample . 'field_name' , answer
+		RETURN ( answer )
+
+	ENDIF
+
+	RETURN ( TRUE )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+GLOBAL
+
+ROUTINE update_fields (       field_controls      ,
+                              template_details    ,
+                        VALUE compare_with_record )
+
+	DECLARE count, field_name, action_type, routine_name, library_name
+
+	count = 1
+	action_type = template_details [ action_type_position ]
+
+	WHILE field_controls [ count , field_name_position ] <> EMPTY DO
+
+		field_name = field_controls [ count , field_name_position ]
+
+		IF update_routine_present ( field_name ,
+		                            routine_name ,
+		                            library_name ) THEN
+
+
+			IF update_necessary ( compare_with_record ,
+			                      field_name          ) THEN
+
+				CALL_ROUTINE routine_name
+				    USING compare_with_record ,
+				          action_type
+				    IN LIBRARY library_name
+
+			ENDIF
+
+		ENDIF
+
+		count = count + 1
+
+	ENDWHILE
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE special_routine_present ( VALUE field_name ,
+	 			        routine_name ,
+				        library_name )
+
+{
+*	Determine whether we have a special version.
+*
+*******************************************************************************}
+
+	routine_name = GET CONSTANT ( "SRP_" : STRIP ( field_name ) )
+
+	IF routine_name <> ERROR THEN
+
+		routine_name = STRIP ( routine_name )
+		library_name = GET CONSTANT ( "SLP_" : STRIP ( field_name ) )
+
+	ENDIF
+
+	RETURN ( routine_name <> ERROR )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE create_custom_prompts ( field_controls )
+
+{
+*	Create any Custom Prompt Routines
+*
+*******************************************************************************}
+
+	DECLARE count, field, rout, lib
+	count = 1
+
+	WHILE field_controls [ count, FIELD_NAME_POSITION ] <> EMPTY DO
+
+		rout  = field_controls [ count, ROUTINE_DETAILS ] 
+		field = field_controls [ count, FIELD_NAME_POSITION ]
+
+		IF ( BLANK ( rout )                               ) AND
+		   ( special_routine_present ( field, rout, lib ) ) THEN
+
+			field_controls [ count, ROUTINE_DETAILS ] = rout
+			field_controls [ count, LIBRARY_DETAILS ] = lib 
+
+		ENDIF
+
+		count = count + 1
+
+	ENDWHILE
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE prompt_product_version ( VALUE column      ,
+                                 VALUE line        ,
+                                       disp_window ,
+                                 VALUE is_display  )
+
+{
+*	Special Prompt for the Product Version
+*
+*******************************************************************************}
+ 
+	DECLARE product, version, orig_version, min, max
+
+	product = SELECT sample . product_name
+	version = SELECT sample . product_version
+
+	IF is_display THEN
+
+		DISPLAY STRIP ( version )
+		    IN WINDOW disp_window
+		    ON LINE line
+		    FROM column
+
+	ELSEIF BLANK ( product ) THEN
+
+		PROMPT FOR version
+		    IN WINDOW disp_window
+		    ON LINE line
+		    FROM column
+		    BROWSE ON INTEGER
+		    WITH ( display_only = TRUE )
+
+	ELSE
+
+		orig_version = version
+
+		min = SELECT MIN mlp_header . product_version
+		             WHERE ( identity = product ) AND
+		                   ( approval_status = APPR_APPROVED )
+
+		mlp_get_version ( product, max )
+
+		IF (( version < min ) OR ( version > max )) AND
+		   (  NOT GLOBAL ( "DISPLAY_MODE" )       ) THEN
+
+			version = max
+
+		ENDIF
+
+		PROMPT FOR version
+		    IN WINDOW disp_window
+		    ON LINE line
+		    FROM column
+		    BROWSE ON INTEGER
+		    WITH ( minimum  = min   ,  
+		           maximum  = max   ,
+		           override = FALSE )
+
+		IF version <> orig_version THEN
+
+			ASSIGN sample . product_version = version
+
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE { prompt_product_version }
+
+{******************************************************************************}
+
+ROUTINE prompt_product_name ( VALUE column      ,
+                              VALUE line        ,
+                                    disp_window ,
+                              VALUE is_display  )
+
+{
+*	Special Prompt for the Product Name
+*
+*******************************************************************************}
+ 
+	DECLARE product, orig_product, version
+
+	product = SELECT sample . product_name
+
+	IF is_display THEN
+
+		DISPLAY product
+		    IN WINDOW disp_window
+		    ON LINE line
+		    FROM column
+
+	ELSE
+
+		orig_product = product
+
+		PROMPT FOR product
+		    IN WINDOW disp_window
+		    ON LINE line
+		    FROM column
+		    BROWSE ON mlp_header
+
+		IF product <> orig_product THEN
+
+			mlp_get_version ( product, version )
+
+			ASSIGN sample . product_name    = product
+			ASSIGN sample . product_version = version
+
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE { prompt_product_name }
+
+{******************************************************************************}
+
+ROUTINE lib_samp_setup_login (       login_details    ,
+			             template_details ,
+			       VALUE edit_tests       )
+
+	DECLARE syntax_id ,
+	        preparation ,
+		status , 
+		starting_status
+
+	IF login_details . use_template_syntax THEN
+
+		syntax_id = template_details [ SYNTAX_ID_POSITION ]
+
+		IF blank ( syntax_id ) THEN
+
+			syntax_id = login_details . syntax
+
+		ENDIF
+
+	ELSE
+
+		syntax_id = login_details . syntax
+
+	ENDIF
+
+
+	IF ( blank ( syntax_id ) ) OR
+	   ( syntax_id = EMPTY ) THEN
+
+		syntax_id = "DEFAULT"
+
+	ENDIF
+
+	login_details . syntax = syntax_id
+
+	IF blank ( login_details . syntax ) THEN
+
+		syntax_id = login_details . syntax
+
+	ENDIF
+
+	IF ( blank ( login_details . syntax ) ) OR
+	   ( syntax_id = EMPTY ) THEN
+
+		syntax_id = "DEFAULT"
+
+	ENDIF
+
+	{ Get the initial status of the sample }
+
+	IF VARIABLE_IS_ASSIGNED ( login_details . user_status ) THEN
+
+		status = login_details . user_status
+
+	ELSE
+
+ 		status = template_details [ SAMPLE_STATUS_POSITION ]
+
+	ENDIF
+
+
+	IF NOT ( edit_tests ) THEN
+
+	 	IF  ( blank ( SELECT sample . test_schedule )) AND
+		    ( status = "V" ) THEN
+
+			preparation = SELECT sample . preparation
+			
+			starting_status = "C"
+			
+			IF GLOBAL("EMPTY_SAMPLES_AVAILABLE") AND 
+			   GLOBAL("WORKFLOW_STATUS_CHANGE") THEN
+				
+				starting_status = "V"
+				
+			ENDIF
+
+			IF BLANK ( preparation ) THEN
+
+				status = starting_status
+
+			ELSEIF ( TRUE = SELECT preparation . wait_prep
+			                 WHERE identity = preparation ) THEN
+
+				status = "W"
+
+			ELSE
+
+				status = starting_status
+
+			ENDIF
+
+		ENDIF
+
+	ENDIF
+
+	login_details . status = status
+
+ENDROUTINE
+
+{******************************************************************************}
+
+GLOBAL ROUTINE sample_login_assign_workflow_version ( VALUE workflow_id )
+
+	DECLARE workflow_node    ,
+	        workflow_version
+
+	workflow_version = SELECT workflow . workflow_version
+	                    WHERE workflow_guid = workflow_id AND
+	                          active = TRUE
+	                 ORDER ON workflow_version DESCENDING
+
+	IF workflow_version <> EMPTY THEN
+
+		workflow_node = SELECT workflow_node . workflow_node_guid
+		                WHERE  workflow_id = workflow_id AND
+		                       workflow_version = workflow_version AND
+		                       order_number = PACKED_DECIMAL ( 1 )
+
+		IF ( workflow_node <> EMPTY ) THEN
+			ASSIGN sample . workflow_node = workflow_node
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+GLOBAL ROUTINE sample_login_assign_workflow ( login_details    ,
+                                              template_details )
+
+	DECLARE workflow_id
+
+	IF VARIABLE_IS_ASSIGNED ( login_details . user_workflow ) THEN
+		workflow_id = login_details . user_workflow
+	ELSE
+		workflow_id = template_details [ WORKFLOW_POSITION ]
+	ENDIF
+
+	sample_login_assign_workflow_version ( workflow_id )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+GLOBAL ROUTINE login_sample (       header_details   ,
+                                    login_details    ,
+                                    template_details ,
+                                    template_fields  ,
+                              VALUE link_number      )
+
+	DECLARE the_sample             ,
+ 	        tests_added            ,
+	        assigned_on_background ,
+	        edit_tests             ,
+	        status                 ,
+	        test_sched
+
+	edit_tests = get_edit_tests ( template_details )
+
+	sample_login_post_prompt ( template_fields               ,
+	                           template_details              ,
+	                           login_details . session_count )
+
+	copy_default_values ( "A"             ,
+	                      sample_table    ,
+	                      template_fields )
+
+	ASSIGN sample . LOGIN_BY          = operator
+	ASSIGN sample . LINK_NUMBER       = link_number
+	ASSIGN sample . REPLICATE_LINK_NO = login_details . replicate_link_no
+
+	IF NOT transaction_is_write () THEN
+
+		START WRITE TRANSACTION "SAMPLE_LOGIN"
+
+	ENDIF
+
+	update_fields ( template_fields  ,
+	                template_details ,
+	                FALSE            )
+
+	sample_reserve ()
+
+	the_sample = SELECT sample . id_numeric
+
+	{ Workflow event }
+	lib_workflow_trigger_event_noupdate ( SAMPLE_TABLE             ,
+	                                      WORKFLOW_EVENT_POST_EDIT )
+
+	lib_workflow_update ( )
+
+	lib_samp_setup_login ( login_details    ,
+	                       template_details	,
+	                       edit_tests  	)
+
+	assign sample . id_text = get_the_syntax ( login_details )
+
+	change sample status to login_details . status, status
+
+	IF status <> EMPTY THEN
+
+		ROLLBACK
+		flash_message (status, TRUE)
+		EXIT
+
+	ENDIF
+
+	UPDATE sample
+
+	the_sample = SELECT sample . id_numeric FOR UPDATE
+	              WHERE id_numeric = the_sample
+
+	sample_login_pre_test_assignment ( template_fields               ,
+	                                   template_details              ,
+	                                   login_details . session_count )
+
+	IF login_details . use_current_transaction THEN
+
+		assigned_on_background = FALSE
+
+		IF login_details . suppress_schedule_tests THEN
+
+			test_sched = SELECT sample . test_schedule
+			ASSIGN sample . test_schedule = ""
+
+		ENDIF
+
+		test_assn_assign_tests ( login_details . user_add_tests ,
+		                         login_details . user_test_list ,
+		                         tests_added                    )
+
+		IF login_details . suppress_schedule_tests THEN
+
+			ASSIGN sample . test_schedule = test_sched
+
+		ENDIF
+
+		UPDATE sample
+
+	ELSE
+
+		UPDATE sample
+
+		COMMIT
+
+		IF login_details . user_add_tests THEN
+
+			test_assn_set_internal_test_list ( login_details . user_test_list )
+
+		ENDIF
+
+		assign_and_edit_tests ( the_sample   ,
+					edit_tests   ,
+					assign_on_background ( template_details )    ,
+	                		edit_tests OR login_details . user_add_tests ,
+	   				tests_added ,
+				        assigned_on_background )
+
+	ENDIF
+
+	header_details . add_sample ( the_sample )
+
+	sample_control ( the_sample              ,
+			 login_details           ,
+			 template_details        ,
+        	         assigned_on_background  ,
+			 tests_added             )
+
+	sample_login_post_test_assignment ( template_fields               ,
+					    template_details              ,
+					    the_sample                    ,
+					    login_details . session_count )
+
+	{ Workflow event }
+	IF NOT transaction_is_write () THEN
+	
+		START WRITE TRANSACTION "SAMPLE_POST_LOGIN"
+
+	ENDIF
+	
+	the_sample = SELECT sample . id_numeric FOR UPDATE
+	              WHERE id_numeric = the_sample
+
+
+	lib_workflow_trigger_event_noupdate ( SAMPLE_TABLE, 
+                                   WORKFLOW_EVENT_POST_LOGIN )                                 
+                    
+
+	UPDATE sample
+	
+	lib_workflow_update ( )
+
+	IF NOT login_details . use_current_transaction THEN
+	
+		COMMIT
+
+	ENDIF
+
+	IF ( login_details . return_sample_library <> EMPTY ) THEN
+
+		CALL_ROUTINE login_details . return_sample_routine
+			IN LIBRARY login_details . return_sample_library
+			USING login_details . return_sample_param,
+			      the_sample
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE login_subtemplate (        header_details   ,
+				   login_details    ,
+				   template_details ,
+				   field_details    ,
+			    VALUE  link_number      )
+
+	DECLARE count
+
+
+	sample_super_copy ( "JOB_NAME" )
+	ASSIGN sample . template_id = template_details [ IDENTITY_POSITION ]
+
+
+	copy_default_values ( "B" , SAMPLE_TABLE , field_details )
+
+	count = 1
+
+	WHILE field_details [ count , field_name_position ] <> EMPTY DO
+
+		IF  ( field_details [ count , prompt_position  ] )  OR
+  		    ( field_details [ count , copy_position    ] ) THEN
+
+			sample_super_copy ( field_details [ count ,
+					    field_name_position ] )
+
+ 		ENDIF
+
+		count = count + 1
+
+	ENDWHILE
+
+	login_sample ( header_details   ,
+	               login_details    ,
+	               template_details ,
+	               field_details    ,
+	               link_number      )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE login_supertemplate ( header_details ,
+			      login_details  )
+
+	DECLARE count       ,
+	        link_number
+
+	sample_super_initialise ()
+	link_number = get_next_linknumber ()
+
+	count = 1
+
+	WHILE count <= login_details . number_of_templates DO
+
+		sample_create ()
+
+		login_subtemplate ( header_details ,
+		                    login_details  ,
+		                    login_details . supertemplate_details [ count      ,
+		                                                    SUPERTEMPLATE_HEADER ] ,
+		                    login_details . supertemplate_details [ count      ,
+		                                                    SUPERTEMPLATE_FIELDS ] ,
+		                    link_number                            )
+
+
+  		count = count + 1
+
+	ENDWHILE
+
+	sample_super_release ()
+
+ENDROUTINE
+
+{******************************************************************************}
+
+GLOBAL ROUTINE login_entered_samples (       header_details ,
+                                             login_details  ,
+                                       VALUE first_time     )
+
+	IF login_details . number_of_templates = -1 THEN
+
+		login_sample ( header_details                   ,
+		               login_details                    ,
+		               login_details . template_details ,
+		               login_details . template_fields  ,
+		               0                                )
+
+	ELSE
+
+		login_supertemplate ( header_details ,
+		                      login_details  )
+
+	ENDIF
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+GLOBAL ROUTINE update_copied_fields (       template_details ,
+                                      VALUE first_time       ,
+                                            need_new_screen  )
+
+	sample_create ()
+
+	update_prompt_copy_display ( template_details ,
+	                             first_time       ,
+	                             need_new_screen  )
+
+	IF NOT copy_from_first THEN
+
+		sample_copy_release ()
+
+	ENDIF
+
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+GLOBAL ROUTINE can_modify_sample ( VALUE is_display ,
+				   VALUE is_full_sample )
+
+DECLARE the_menu_number
+
+IF NOT is_display THEN
+
+	IF is_full_sample THEN
+
+		the_menu_number = 361
+
+	ELSE
+
+		the_menu_number = 86
+
+	ENDIF
+
+ELSE
+
+	IF is_full_sample THEN
+
+		the_menu_number = 600
+
+	ELSE
+
+		the_menu_number = 47
+
+	ENDIF
+
+ENDIF
+
+RETURN ( can_access_menu ( the_menu_number ) )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+GLOBAL ROUTINE setup_sample_status ( VALUE is_display ,
+				     VALUE is_full_sample )
+
+DECLARE sample_status
+
+IF NOT is_display THEN
+
+	IF is_full_sample THEN
+
+		sample_status = modify_full_sample_status
+
+	ELSE
+
+		sample_status = modify_sample_entry_status
+
+	ENDIF
+
+ELSE
+
+	IF is_full_sample THEN
+
+		sample_status = display_full_sample_status
+
+	ELSE
+
+		sample_status = display_sample_entry_status
+
+	ENDIF
+
+ENDIF
+
+set sample_status sample_status
+
+ENDROUTINE
+
+
+{------------------------------------------------------------------------------}
+
+GLOBAL ROUTINE release_test_list
+
+release_stored_test_list ()
+
+ENDROUTINE
+
+
+{------------------------------------------------------------------------------}
+{ Routine added to take account of NOINPUT                                     }
+{ Added PT 02-MAR-1992.                                                        }
+{------------------------------------------------------------------------------}
+
+GLOBAL ROUTINE create_sample_for_noinput ( VALUE calling_report )
+
+	DECLARE samp_id, syntax_id, login_time
+
+	create_sample_entry( samp_id)
+
+	IF samp_id <> EMPTY THEN
+
+		syntax_id = SELECT samp_tmpl_header.syntax_id
+		            WHERE identity = "NOINPUT   "
+
+		IF ( BLANK ( syntax_id ) ) OR ( syntax_id = EMPTY ) THEN
+			syntax_id = "NOINPUT"
+		ENDIF
+
+		{ Assign system controlled fields }
+
+		login_time = NOW
+
+		{ RESTXT_V2 reads in the textual ID,  }
+		{ Standard creation builds it itself  }
+		{ therefore should not build a syntax }
+
+		IF (calling_report <> "$RESTXT_V2") AND
+		   (calling_report <> "$LIB_STAN") THEN
+			ASSIGN sample.id_text = build_from_syntax ( syntax_id )
+		ENDIF
+
+		ASSIGN sample.login_date     = login_time
+		ASSIGN sample.login_by       = OPERATOR
+		ASSIGN sample.template_id    = "NOINPUT  "
+
+		{ Dates should be assigned to prevent them showing 17-NOV-1858 }
+
+		ASSIGN sample.dateresavail   = login_time
+		ASSIGN sample.authorise_date = login_time
+		ASSIGN sample.sampled_date   = login_time
+		ASSIGN sample.recd_date      = login_time
+		ASSIGN sample.datestarttest  = login_time
+		ASSIGN sample.dateresreq     = login_time
+
+		{ Assign the workflow }
+
+		sample_login_assign_workflow_version ( SELECT samp_tmpl_header . workflow )
+
+		user_create_sample_noinput ( calling_report )
+
+		CHANGE SAMPLE STATUS TO "V"   { 2.6 functionality prevents direct status
+		                                changing. }
+
+	ENDIF
+
+	RETURN ( samp_id )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+

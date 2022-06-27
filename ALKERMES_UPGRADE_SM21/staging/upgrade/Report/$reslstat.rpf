@@ -1,0 +1,124 @@
+{******************************************************************************
+*
+* Module Name   : $RESLSTAT
+*
+* Purpose       : SMP report for user defined code which is called when the
+*                 status of a sample is changed
+*
+* Document Ref. : SE/T/TVGL-WORK-REPORTS/1/3
+*
+* Specification : 
+*
+* Portability   : Not Checked
+*
+* Re-entrant    : 
+*
+*******************************************************************************}
+{
+The functionality is not held within this report.
+SM-IDI functionality is held within the $SMIDI_RESLSTAT report.
+The reason for this is to reduce the amount of code that is held within this
+core file. Although this is a user trigger there is a danger that all functionality
+could be put into this one file, hence we call through to the specific sm-idi report.
+(this is more visible when more user changes are made to this file - and not just
+for sm-idi)
+}
+{
+ MOD1    AF    20-Feb-2014      For balance integration
+ MOD2    LD    16-APR-2014      IM Empower
+
+ 10.2   MOD3  10-Sep-2014  M. Flattery  Change control no. CC-ATH-2014-1762, TS Protocol no. 1600029756
+                                         Update to routine set_status_a to only call smidi routine for sap samples, 
+                                         smidi_lot not blank
+ 10.2   MOD4  09-Dec-2014  L. Dawson    Change control no. CC-ATH-2014-1769, TS Protocol no. 1600029956
+                                        Add Set NotProtected
+ }
+
+
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY BALANCE_LIB  { MOD1 }
+
+{ ========================================================================== }
+ROUTINE set_status_a
+	
+	{MOD3}
+	DECLARE sap_sample, test, sample
+
+	     test = SELECT result.test_number
+
+		sample = SELECT test.sample
+				where test_number = test		
+
+
+		sap_sample = SELECT sample.smidi_lot
+					where id_numeric = sample
+
+
+
+	IF ((sap_sample <> EMPTY) AND (sap_sample <> NULL)AND (sap_sample <> "")) THEN
+
+		
+		CALL_ROUTINE "set_status_a" IN LIBRARY "$SMIDI_RESLSTAT"
+
+	ELSE
+
+		{do nothing}
+	
+	ENDIF
+{/MOD3}	
+
+ROUTINE set_status_e
+
+	or_auto_handle_result_change ()  { MOD1 }
+
+ENDROUTINE
+
+
+ROUTINE set_status_m
+
+	or_auto_handle_result_change ()  { MOD1 }
+
+      blank_auto_fields_if_interactive ("M") {MOD2}
+ENDROUTINE
+
+
+ROUTINE set_status_r
+
+ENDROUTINE
+
+
+ROUTINE set_status_u
+	or_auto_handle_result_change ()  { MOD1 }
+
+ENDROUTINE
+
+
+ROUTINE set_status_x
+
+ENDROUTINE
+
+{ **************************************************************************** }
+
+ROUTINE blank_auto_fields_if_interactive (VALUE trigger)
+
+	DECLARE is_manual
+
+	is_manual = FALSE
+
+	IF (GLOBAL ( "mode" ) = "INTERACTIVE") THEN
+
+		is_manual = TRUE
+
+	ENDIF
+
+	IF (is_manual) THEN		
+
+		ASSIGN result . mill_res_id = 0
+		ASSIGN result . mill_project = ""
+		ASSIGN result . empower_sampleset = ""
+		ASSIGN result . im_ip = ""
+
+	ENDIF
+
+ENDROUTINE
+

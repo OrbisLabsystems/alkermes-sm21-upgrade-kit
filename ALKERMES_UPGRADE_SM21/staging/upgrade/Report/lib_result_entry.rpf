@@ -1,0 +1,370 @@
+{******************************************************************************
+*
+* Module Name          : LIB_RESULT_ENTRY
+*
+* Purpose              : Routines for extra buttons on result entry screen
+*
+* Portability          : Not Checked
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By             Description
+* -------   -----------  ----------     ---------------------------------------
+* 1.0       02-Aug-2005  J. O'Neill     Release Version 
+*
+*******************************************************************************}
+
+
+ENABLE WINDOWS
+
+SET NAME "DEFER/"
+SET COMPILE_OPTION DECLARE
+SET NOTPROTECTED
+
+JOIN LIBRARY $LIB_UTILS
+
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN STANDARD_LIBRARY STD_CLIENT
+JOIN STANDARD_LIBRARY STD_PROMPT
+
+CONSTANT EXTENSION = "ECH"
+
+{******************************************************************************}
+
+ROUTINE display_sop (VALUE the_anal, VALUE the_anal_version)
+
+{
+*  Desription : Displays a SOP document if one has been referanced on the 
+*               analysis
+*
+*  Parameters : analysis identity
+*               analysis version
+*
+*******************************************************************************}
+
+    DECLARE sop,
+            ole_shell,
+            command,
+            file_attributes,
+		create_date,
+		modified_date,
+		high_size,
+		low_size   
+    
+    sop = SELECT versioned_analysis . sop
+           WHERE identity = the_anal
+           AND analysis_version = the_anal_version
+           
+    IF strip ( sop ) <> "" THEN
+    
+        IF client_get_file_attributes ( sop,
+                                        file_attributes,
+	                                  create_date,
+	                                  modified_date,
+	                                  high_size,
+                                        low_size        
+                                      ) = FALSE THEN        
+    
+            flashmessage(GET_USER_MESSAGE("RESULTS_DOCUMENT", 1):" ":
+                         STRIP ( sop ):" ":
+                         GET_USER_MESSAGE("RESULTS_NOT_FOUND", 1), TRUE)
+    
+        ELSE
+        
+            CREATE OBJECT "STD_OLE_AUTOMATION", ole_shell
+    
+            ole_shell . create("WScript.Shell")
+            
+            command = "cmd /C ":ASCII(34):sop:ASCII(34)
+    
+            ole_shell . run (command,0)       
+            
+            ole_shell = EMPTY
+            
+        ENDIF
+        
+    ELSE
+    
+        flashmessage(GET_USER_MESSAGE("RESULTS_NO_SOP_DOCUMENT", 1), TRUE)
+            
+    ENDIF
+
+ENDROUTINE {display_sop}
+
+{******************************************************************************}
+
+ROUTINE display_hazards (VALUE the_anal, VALUE the_anal_version)
+
+{
+*  Description : Displays a hazard document if one has been referanced on the 
+*                analysis
+*
+*  Parameters  : analysis identity
+*                analysis version
+*
+*******************************************************************************}
+
+    DECLARE hazards,
+            ole_shell,
+            command,
+            file_attributes,
+		create_date,
+		modified_date,
+		high_size,
+            low_size   
+            
+    
+    hazards = SELECT versioned_analysis . hazards
+               WHERE identity = the_anal
+               AND analysis_version = the_anal_version
+           
+    IF strip ( hazards ) <> "" THEN
+        
+        IF client_get_file_attributes ( hazards,
+                                        file_attributes,
+	                                  create_date,
+	                                  modified_date,
+	                                  high_size,
+                                        low_size        
+                                      ) = FALSE THEN
+    
+            flashmessage(GET_USER_MESSAGE("RESULTS_DOCUMENT", 1):" ":
+                         STRIP ( hazards ):" ":
+                         GET_USER_MESSAGE("RESULTS_NOT_FOUND", 1), TRUE)
+    
+        ELSE
+        
+            CREATE OBJECT "STD_OLE_AUTOMATION", ole_shell
+    
+            ole_shell . create("WScript.Shell")
+            
+            command = "cmd /C ":ASCII(34):hazards:ASCII(34)
+    
+            ole_shell . run (command,0)       
+            
+            ole_shell = EMPTY
+            
+        ENDIF
+        
+    ELSE
+    
+        flashmessage(GET_USER_MESSAGE("RESULTS_NO_HAZARDS_DOCUMENT", 1), TRUE)
+            
+    ENDIF
+
+ENDROUTINE {display_hazards}
+
+{******************************************************************************}
+
+ROUTINE lib_tsr_toolbox_obs ( test_number, display_only )
+
+{
+*  Description : Saves a text comment related to a test to the database
+*
+*  Parameters  : test number
+*
+*******************************************************************************}
+
+
+    DECLARE observation,
+            form,
+            prompt_obj
+		
+	observation = SELECT test . observation FOR UPDATE
+                    WHERE test_number = test_number        
+	
+    IF display_only THEN
+
+		PROMPT OBJECT form
+			CLASS PROMPT_CLASS_FORM
+			WITH ( width = 100 ,
+						height = 6 )
+        
+			form . header = "Observation"
+			form . footer = ""
+			form . height = 5
+			form . width  = 105
+			form . row    = ( GLOBAL ( "SCREEN_HEIGHT") - form . height) / 2
+			form . column = ( GLOBAL ( "SCREEN_WIDTH" ) - form . width ) / 2
+			form . border = TRUE
+			form . active_prompt = 1
+			form . return_behaviour = FORM_RETURN_STAY
+
+			PROMPT OBJECT prompt_obj 
+				FORMAT test.observation AT 2,1
+				WITH (  display_only = TRUE,
+						width = 100, 
+						height = 5, 
+						lowered = TRUE,
+						value = observation,
+						vertical_scroll = TRUE                       
+						)
+	
+			form . add_prompt ( prompt_obj )
+      
+			form . start_prompt()
+			form . wait_prompt()
+			form . end_prompt()
+                
+			IF form . get_lastkey () = "DO" THEN
+    
+			ENDIF				
+		
+	ELSE
+	
+		IF ( observation <> LOCKED ) THEN
+	
+			PROMPT OBJECT form
+				CLASS PROMPT_CLASS_FORM
+				WITH ( width = 100 ,
+						height = 6 )
+        
+			form . header = "Observation"
+			form . footer = ""
+			form . height = 5
+			form . width  = 105
+			form . row    = ( GLOBAL ( "SCREEN_HEIGHT") - form . height) / 2
+			form . column = ( GLOBAL ( "SCREEN_WIDTH" ) - form . width ) / 2
+			form . border = TRUE
+			form . active_prompt = 1
+			form . return_behaviour = FORM_RETURN_STAY
+
+			PROMPT OBJECT prompt_obj 
+				FORMAT test.observation AT 2,1
+				WITH (  ALWAYS_VALIDATE = TRUE,			           
+						width = 100, 
+						height = 5, 
+						lowered = TRUE,
+						value = observation,
+						vertical_scroll = TRUE,                       
+						VALIDATION_ROUTINE = "OBS_VALIDATE_PROMPT",
+						VGL_LIBRARY = GLOBAL( "CURRENT_LIBRARY" ) )
+	
+			form . add_prompt ( prompt_obj )
+      
+			form . start_prompt()
+			form . wait_prompt()
+			form . end_prompt()
+                
+			IF form . get_lastkey () = "DO" THEN
+    
+				observation  = form . prompt_objects[1] . text
+			
+				IF NOT transaction_is_write() THEN
+
+					START WRITE TRANSACTION "Write Observation"
+					ASSIGN test . observation = observation
+					UPDATE test
+					COMMIT
+
+				ELSE
+
+					ASSIGN test . observation = observation
+					UPDATE test
+
+				ENDIF
+       
+			ELSE
+				UNLOCK ("test")		
+			ENDIF
+				
+		ENDIF
+    
+	ENDIF
+	
+ENDROUTINE { lib_tsr_toolbox_obs }
+
+{******************************************************************************}
+
+ROUTINE obs_validate_prompt ( self )
+
+{
+*    Checks to make sure that the number of characters entered is no greater
+*    than the tables field lenght.
+*
+*******************************************************************************}
+    
+	DECLARE length_entered,
+	        field_length
+	
+    length_entered = LENGTH(self . text)
+	
+	GET_FIELD_DETAILS test.observation, "FIELD_SIZE", field_length  
+	
+	IF (length_entered > field_length) THEN
+	 
+	    flashmessage (GET_USER_MESSAGE("RESULTS_OBS_MAX_SIZE_1", 1):" ":
+		              STRIP(field_length):" ":GET_USER_MESSAGE("RESULTS_OBS_MAX_SIZE_2", 1), 
+					  TRUE)
+		
+		RETURN ( FALSE ) 
+	 
+	ELSE
+	
+	    RETURN ( TRUE )
+		
+	ENDIF                                                 
+
+ENDROUTINE { obs_validate_prompt }
+
+{******************************************************************************}
+
+
+ROUTINE lib_tsr_toolbox_test_flag ( test_number, display_only )
+
+{
+*  Description : Turns On / Off a Test Flag
+*
+*  Parameters  : test number
+*
+*******************************************************************************}
+
+
+    DECLARE flag,
+            new_flag
+		
+    flag = SELECT test . test_flag FOR UPDATE WHERE 
+                  test_number = test_number        
+	
+	
+    IF ( flag <> LOCKED ) THEN
+
+        IF (flag = "INCLUDE") THEN
+	
+            new_flag = "EXCLUDE"
+
+        ELSEIF (flag = "EXCLUDE") THEN
+ 
+            new_flag = "INCLUDE"
+
+        ENDIF
+
+        IF NOT transaction_is_write() THEN
+
+            START WRITE TRANSACTION "Write Test Flag"
+
+            ASSIGN test . test_flag = new_flag
+
+            UPDATE test
+
+            COMMIT
+
+        ELSE
+
+            ASSIGN test . test_flag = new_flag
+	
+            UPDATE test
+
+        ENDIF
+       
+    ELSE
+
+        UNLOCK ("test")		
+
+    ENDIF
+				
+
+	
+ENDROUTINE { lib_tsr_toolbox_test_flag }

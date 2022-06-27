@@ -1,0 +1,192 @@
+{******************************************************************************
+*
+* Module Name	: OLS_EMPOWER_USER
+* Purpose	: Send worksheet for Empower to IM, user security routines
+*
+* Version	: 1.0
+*
+*******************************************************************************}
+
+SET NAME "DEFER/"
+ENABLE WINDOWS
+SET NOTPROTECTED
+SET COMPILE_OPTION DECLARE
+
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_WINDOW
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_CLIENT
+JOIN LIBRARY $LIB_STAN
+JOIN LIBRARY $lib_utils
+
+
+{ Text constants  }
+
+CONSTANT CTXT_USR_NOT_MAPPED         = "You are not mapped as an interface user. Contact your system administrator!"
+CONSTANT CTXT_CAP_PWD_ADD            = "Add Empower User Password"
+CONSTANT CTXT_CAP_PWD_MOD            = "Modify Empower User Password"
+CONSTANT CTXT_LBL_MILLHOST           = "Empower Host:"
+CONSTANT CTXT_LBL_MILLUSER           = "Empower User:"
+CONSTANT CTXT_LBL_NEWPWD             = "New Password"
+CONSTANT CTXT_LBL_ENTERPWD           = "Enter Password"
+CONSTANT CTXT_LBL_CONFIRMPWD         = "Confirm Password"
+CONSTANT CTXT_VERIFYOLDPWD           = "Problem verifying old Password!..."
+CONSTANT CTXT_BLANKPWDASSIGN         = "Blank Password will be assigned...."
+CONSTANT CTXT_NEWPWD_NOTVERONE       = "New Password and Verification are different!"
+CONSTANT CTXT_CANT_UPDATE_USR_REC    = "Error Updating User record!......" 
+CONSTANT CTXT_CANT_GETMILPWD_DETAILS = "Problem Accessing Empower Password Details!..."
+
+
+DECLARE g_completed, g_is_pwd_confirm
+
+DECLARE xu,xp,xc
+get_cds_user_details (xc,xu,xp,TRUE)
+flashmessage (xu, true)
+
+
+GLOBAL ROUTINE get_cds_user_details (cds, user, pwd, VALUE is_pwd_confirm)
+
+       DECLARE the_form 
+
+       g_completed = FALSE
+       user = ""
+       pwd = ""
+       cds = GLOBAL("OLS_CDS_ALIAS")
+
+       create_form ( the_form , cds , is_pwd_confirm)
+
+       IF (g_completed) THEN
+
+           user = the_form . user_info [2]
+           pwd = the_form . user_info [3]
+
+       ENDIF
+
+ENDROUTINE    
+
+
+ROUTINE create_form ( the_form , VALUE cds, VALUE is_pwd_confirm)
+
+    DECLARE the_header, the_value,   menu_prompt1, menu_prompt3,
+            menu_prompt5, menu_prompt6, the_height
+
+     the_value = ""
+     g_is_pwd_confirm = FALSE
+
+     the_header = "Empower user/password"
+	the_height = 3
+
+	IF (is_pwd_confirm) THEN
+
+     	the_height = the_height + 1
+	ENDIF
+
+    CREATE OBJECT "STD_FORM", the_form
+
+    the_form . HEIGHT       = the_height
+    the_form . WIDTH        = 50
+    the_form . COLUMN       = 15
+    the_form . ROW          = 10
+    the_form . HEADER       = the_header
+    the_form . FOOTER       = ""
+    the_form . BUTTON_STYLE = FORM_BUTTON_OK_CANCEL
+    the_form . add_frame ( "",1,1,the_height,50 )
+
+    the_form . validation_routine = "add_user_validation"
+
+    PROMPT OBJECT menu_prompt1
+	   AT 18, 1
+	   FORMAT TEXT30
+	   WITH ( VALUE = cds, display_only=TRUE)
+
+    the_form . add_prompt ( menu_prompt1)
+    the_form . add_display ( "CDS" , 2 , 1 ,
+	                                PROMPT_RENDITION_BOLD )
+
+    
+    PROMPT OBJECT menu_prompt3
+	   AT 18, 2
+	   FORMAT TEXT30
+	   WITH ( VALUE = "")
+
+
+    the_form . add_prompt ( menu_prompt3)
+    the_form . add_display ( CTXT_LBL_MILLUSER , 2 , 2 ,
+	                                PROMPT_RENDITION_BOLD )
+
+
+    PROMPT OBJECT menu_prompt5
+	   AT 18, 3
+	   FORMAT TEXT30
+	   WITH ( silent_mode = TRUE,
+                  LOWERED = TRUE,
+                  value = the_value )
+
+
+    the_form . add_display ( "Password" , 2 , 3 ,
+	                          PROMPT_RENDITION_BOLD )
+
+    the_form . add_prompt ( menu_prompt5 )
+
+    IF (is_pwd_confirm) THEN
+
+          g_is_pwd_confirm = TRUE
+
+	 	PROMPT OBJECT menu_prompt6
+		   AT 18, 4
+	   	FORMAT TEXT30
+	    	WITH ( silent_mode = TRUE,
+                   LOWERED = TRUE,
+                   value = the_value )
+
+    		the_form . add_display ( "Confirm Password" , 2 , 4 ,
+	                          PROMPT_RENDITION_BOLD )
+
+	     the_form . add_prompt ( menu_prompt6 )
+
+    ENDIF
+
+    the_form . start_prompt ( )
+
+    the_form . set_position ( 4 )
+    the_form . wait_prompt ( )
+    the_form . end_prompt ( )
+
+    
+ENDROUTINE
+
+ROUTINE add_user_validation ( self )
+
+    DECLARE valid 
+
+    valid = FALSE
+    ARRAY self . user_info
+
+     
+    IF ( self . get_lastkey ( ) <> "EXIT" ) THEN 
+
+	IF (NOT g_is_pwd_confirm) OR
+        (self . prompt_objects [ 3 ] . text = self . prompt_objects [ 4 ] . text) THEN
+            
+            g_completed = TRUE
+   	       valid = TRUE
+            ARRAY self . user_info
+            self . user_info [1] = self . prompt_objects [ 1 ] . value
+            self . user_info [2] = self . prompt_objects [ 2 ] . value
+            self . user_info [3] = self . prompt_objects [ 3 ] . value
+
+	ELSE
+
+	    flash_message ( CTXT_NEWPWD_NOTVERONE , TRUE )
+
+        ENDIF
+
+    ENDIF
+
+
+    RETURN ( valid )
+
+ENDROUTINE

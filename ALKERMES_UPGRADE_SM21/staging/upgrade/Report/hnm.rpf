@@ -1,0 +1,660 @@
+
+{
+
+    Module Name   : INST_CALIB_REP_BGR.RPF
+
+    Purpose       : Report "Do Not Use Labels" in the background
+
+    Document Ref. : Elan-Calibration SDS 0-1.doc 
+
+    Specification : Section 4.5.3 "Do Not Use" Schedule Task
+
+
+MODIFICATION HISTORY
+====================
+
+SM         Reference                            Date         Name            Description
+-------    -------------------------------      ----------   ------------    --------------------------------
+2000R1     Elan-Calibration SDS 0-1.doc         30/10/02     M Kavanagh      Created report
+2000R1     Elan-Calibration SDS 0-1.doc         06/12/02     A Finnerty      Made some routines GLOBAL and added routine dnu_label
+
+
+{ --------------------------------------------------------------------------------------------------------------------------------------- }
+
+SET NAME "DEFER/"
+ENABLE WINDOWS
+
+SET NOTPROTECTED
+SET COMPILE_OPTION DECLARE
+
+SET PRINTERCODES TRUE
+SET FORMAT "9999999999"
+
+JOIN STANDARD_LIBRARY STD_VGL
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_WINDOW
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN LIBRARY $LIB_UTILS
+
+CONSTANT INST_ID = 1
+CONSTANT CAL_TYP = 2
+CONSTANT CAL_NUM = 3
+CONSTANT NET_PRN = 4
+CONSTANT CAL_REP = 5
+
+{---------------------------------------------------------------------------------------}
+
+back_generate_do_not_use_labels ()
+
+EXIT
+
+{******************************************************************************
+*                                                                              
+*  Routine Name    : back_generate_do_not_use_labels
+*                                                                             
+* Description      : Generates "Do Not Use Labels for all instruments that are due
+*                    for calibration on the date the report is executed.
+*                    If there is more then one calibration of different types for a 
+*                    given instrument due within the specified period, a label will 
+*                    be printed for each calibration type for the instrument. 
+*                    If there is more than one calibration due for a given instrument
+*                    and calibration type, only one label will be printed for the one 
+*                    with the highest calibration number.
+*                    The labels are sent to the network printer assigned to the instrument.
+*                    The report is to be ran on the Watch Dog Timer.
+*                                                                              
+* Parameters       : None
+*                                                                              
+* Return Value     : None
+*                                                                   
+*******************************************************************************}
+
+
+ROUTINE back_generate_do_not_use_labels
+
+    DECLARE instrument, report, the_date, start_date, end_date, count
+    DECLARE type, calib_no, label_printer, printer_id, typ_cnt, ins_cnt
+    DECLARE type_array, calib_array, inst_array, calib_error, check_exists
+
+    ARRAY inst_array
+    ARRAY calib_array
+
+    the_date = NOW + INTERVAL("1 00:00:00.00")
+
+    the_date = LEFTSTRING(NOW, 11)
+
+    start_date = DATE(the_date:" 00:00:00.00")
+    end_date = DATE(the_date: "23:59:59.59")
+
+    count = 1
+    ins_cnt = 1
+
+    instrument = SELECT DISTINCT inst_calib_hist . instrument
+                  WHERE (actual_calib_due BETWEEN start_date AND end_date)
+  
+   
+    WHILE instrument <> EMPTY
+
+        inst_array[ins_cnt] = STRIP(instrument)  
+
+        ins_cnt = ins_cnt + 1         
+
+        NEXT inst_calib_hist
+        instrument = SELECT inst_calib_hist . instrument
+
+    ENDWHILE
+
+    ins_cnt = 1
+
+    WHILE ins_cnt <= SIZEOFARRAY(inst_array)
+
+        type = SELECT DISTINCT inst_calib_hist . type
+                WHERE (actual_calib_due BETWEEN start_date AND end_date)
+                AND (instrument = inst_array[ins_cnt])
+        
+        typ_cnt = 1
+        ARRAY type_array
+
+        WHILE type <> EMPTY
+
+            type_array[typ_cnt] = type
+
+
+            typ_cnt = typ_cnt + 1
+
+            NEXT inst_calib_hist
+            type = SELECT inst_calib_hist . type
+
+        ENDWHILE
+
+        typ_cnt = 1
+
+        WHILE typ_cnt <= SIZEOFARRAY(type_array)
+
+            calib_no = SELECT MAX inst_calib_hist . calibration_number
+                        WHERE (actual_calib_due BETWEEN start_date AND end_date)
+                        AND (instrument = inst_array[ins_cnt])
+                        AND (type = type_array[typ_cnt])
+
+            calib_array[count, INST_ID] = inst_array[ins_cnt]
+            calib_array[count, CAL_TYP] = type_array[typ_cnt]
+            calib_array[count, CAL_NUM] = STRIP(calib_no)
+
+            typ_cnt = typ_cnt + 1
+            count = count + 1        
+
+        ENDWHILE
+
+        ins_cnt = ins_cnt + 1
+
+    ENDWHILE
+
+    count = 1
+
+    WHILE count <= SIZEOFARRAY(calib_array)
+
+        instrument = calib_array[count, INST_ID]
+        type = calib_array[count, CAL_TYP]
+        calib_no = calib_array[count, CAL_NUM]
+
+	label_printer = SELECT instrument . label_printer
+                         WHERE identity = calib_array[count, INST_ID]
+
+        printer_id = STRIP(label_printer)
+ 
+        SET NAME "PRINTER/":printer_id
+       
+        IF label_printer <> EMPTY THEN
+
+	    report = STRIP(SELECT inst_calib_types . dnu_label
+                      WHERE identity = calib_array[count, CAL_TYP])
+
+            check_exists = vgl_validate_routine ( GLOBAL("current_library"), report)
+
+            IF check_exists THEN
+
+                CALL_ROUTINE report 
+                USING instrument, type, calib_no
+
+            ELSE
+
+                calib_error = "No label routine specified for calibration type: - ":type
+                log_calib_error  ( calib_error )
+
+            ENDIF
+
+        ELSE
+
+            calib_error = "No label printer specified for instrument: - ":instrument
+            log_calib_error ( calib_error )
+
+        ENDIF
+
+        count = count + 1
+
+    ENDWHILE
+
+    RESTORE DATE FORMAT
+
+
+ENDROUTINE
+
+
+
+{******************************************************************************
+*                                                                              
+*  Routine Name    : log_calib_error
+*                                                                             
+* Description      : Generates logfile for Calibration Module Background Report
+*                    Logfile created in SMP$LOGFILES directory 
+*                                                                              
+* Parameters       : file_error_status - error written to logfile
+*                                                                              
+* Return Value     : None
+*                                                                   
+*******************************************************************************}
+
+ROUTINE log_calib_error ( VALUE file_error_status )
+
+    DECLARE mapped_drive, the_date, file_name, check_ok, check_exist
+
+    mapped_drive = "SMP$LOGFILES:"
+
+    the_date = TODAY
+    the_date = LEFTSTRING(the_date, 11)
+    the_date = STRIP(the_date)
+    file_name = mapped_drive:the_date:"_CALIBRATION_LOGFILE.TXT"
+
+    the_date = NOW
+    file_error_status = the_date:"...":STRIP(file_error_status)
+
+    check_exist = FILE EXISTS(file_name)
+
+    IF check_exist = TRUE THEN
+
+        FILE EXTEND file_name, check_ok
+        FILE WRITE file_name, file_error_status, check_ok
+        FILE CLOSE file_name, check_ok
+
+    ELSE
+
+        FILE CREATE file_name, check_ok
+
+        IF (check_ok = EMPTY) THEN
+
+        FILE OPEN file_name, check_ok
+        FILE WRITE file_name, file_error_status, check_ok
+        FILE CLOSE file_name, check_ok
+
+        ENDIF
+
+    ENDIF
+
+
+ENDROUTINE
+
+{******************************************************************************
+*                                                                              
+*  Routine Name    : print_label
+*                                                                             
+* Description      : Generates label to be sent to label printer 
+*                                                                              
+* Parameters       : None
+*                                                                            
+* Return Value     : None
+*                                                                   
+*******************************************************************************}
+
+ROUTINE print_label
+{ Example Printer Codes
+
+    DECLARE STX, ETX, CR, ETB, CAN, ESC
+
+    STX = ASCII(2)
+    ETX = ASCII(3)
+    CR  = ASCII(13)
+    ETB = ASCII(23)
+    CAN = ASCII(24)
+    ESC = ASCII(27) 
+
+
+    LITERAL
+    <STX><ESC>C<ETX>
+    <STX><ESC>P<ETX>
+    <STX>E4;F4;<ETX>
+ 
+    <STX>H0;o180,10;f0;c20;d0,30;<ETX>
+    <STX>H1;o10, 60;f0;c25;h15;w15;d0,20;<ETX>
+    <STX>H2;o25, 90;f0;c25;h15;w15;d0,35;<ETX>
+    <STX>H3;o10,130;f0;c25;h15;w15;d0,20;<ETX>
+    <STX>H4;o10,200;f0;c25;h15;w15;d0,20;<ETX>
+    <STX>H5;o10,230;f0;c25;h15;w15;d0,20;<ETX>
+    <STX>H6;o10,260;f0;c25;h15;w15;d0,20;<ETX>
+    <STX>H7;o10,320;f0;c25;h15;w15;d0,20;<ETX>
+    <STX>H8;o270,130;f0;c25;h15;w15;d0,20;<ETX>
+    <STX>H9;o270,200;f0;c25;h15;w15;d0,20;<ETX>
+    <STX>H10;o270,230;f0;c25;h15;w15;d0,20;<ETX>
+    <STX>H11;o270,260;f0;c25;h15;w15;d0,20;<ETX>
+    <STX>H12;o290,320;f0;c25;h15;w15;d0,20;<ETX>
+
+    <STX>R;<ETX>
+    <STX><ESC>E4<ETX>
+    <STX><CAN><ETX>
+    <STX>Do Not Use Out of Calibration  <CR><ETX>
+    <STX>Material:<CR><ETX>
+    <STX>mat______________________________<CR><ETX>
+    <STX>RM/Batch No  :<CR><ETX>
+    <STX>Approved Date:<CR><ETX>
+    <STX>Retest Date  :<CR><ETX>
+    <STX>Printed By   :<CR><ETX>
+    <STX>Approved By/On:<CR><ETX>
+    <STX>rm_no_______ <CR><ETX>
+    <STX>dat__________ <CR><ETX>
+    <STX>retest_dat___ <CR><ETX>
+    <STX>p_by_____________ <CR><ETX>
+    <STX>app_by_________ <CR><ETX>
+    <STX><ETB><ETX>
+    $ENDLITERAL
+
+
+
+    send_line(STX : ESC : "C"                                : ETX )
+    send_line(STX : ESC : "P"                                : ETX )
+    send_line(STX : ESC : "E4;F4"                            : ETX )
+    send_line(STX : "H0;o15,100;  f0;c20;h1;w0;d0,45;"      : ETX )
+    send_line(STX : "H1;o15,150;  f0;c20;h1;w1;d0,30;"      : ETX )
+    send_line(STX : "H2;o15,200;  f0;c20;h1;w1;d0,45;"     : ETX )
+    send_line(STX : "H3;o15,250;  f0;c20;h1;w1;d0,30;"      : ETX )
+    send_line(STX : "H4;o15,300;  f0;c20;h1;w1;d0,30;"      : ETX )
+    send_line(STX : "H5;o15,350;  f0;c20;h1;w1;d0;30;"       : ETX)
+    send_line(STX:"H6;o15,30;  f0;c20; h1; w2;r0;b0;d3,Elan Corporation.": ETX)
+
+					
+    send_line(STX : "R ": ETX )
+    send_line(STX : ESC : "E4" :ETX )
+    send_line(STX : CAN : ETX )
+
+    send_line(STX : "Instrument: " : instrument : CR : ETX )
+    send_line(STX : "Calibration Type: " : type   : CR : ETX )
+    send_line(STX : "Calibration Seq: " : calib_no : CR : ETX )
+    send_line(STX : "mkStage: Drum 1"     : CR : ETX )
+    send_line(STX : "mkProcess Order No.: "           : CR : ETX )
+    send_line(STX : "mkAmount: "           : CR : ETX )
+
+    send_line(STX : ETB : ETX )
+
+
+    FLUSHLITERAL
+}
+
+
+ENDROUTINE
+
+
+{******************************************************************************
+*                                                                              
+*  Routine Name    : dnu_label
+*                                                                             
+* Description      : Routine to generte "Do Not Use" Label not specific to
+*                    any calibration type  
+*                                                                              
+* Parameters       : instrument - Name of instrument
+*                    type - calibration type
+*                    calib_no - calibration number
+*                                                                              
+* Return Value     : None
+*                                                                   
+*******************************************************************************}
+
+GLOBAL ROUTINE dnu_label ( instrument, type, calib_no )
+
+
+    DECLARE STX, ETX, CR, ETB, CAN, ESC
+
+    STX = ASCII(2)
+    ETX = ASCII(3)
+    CR  = ASCII(13)
+    ETB = ASCII(23)
+    CAN = ASCII(24)
+    ESC = ASCII(27) 
+
+    send_line(STX : ESC : "C"                                : ETX )
+    send_line(STX : ESC : "P"                                : ETX )
+    send_line(STX : ESC : "E4;F4"                            : ETX )
+    send_line(STX : "H0;o15,200;  f0;c20;h1;w1;d0,45;"      : ETX )
+    send_line(STX : "H1;o15,250;  f0;c20;h1;w1;d0,30;"      : ETX )
+    send_line(STX : "H2;o15,325;  f0;c20;h1;w1;d0,45;"     : ETX )
+    send_line(STX : "H3;o15,400;  f0;c20;h1;w1;d0,30;"      : ETX )
+    send_line(STX : "H4;o15, 80;  f0;c20;h2;w2;r0;b0;d3,OUT OF CALIBRATION": ETX)
+    send_line(STX : "H5;o15, 30;  f0;c20;h2;w2;r0;b0;d3,DO NOT USE": ETX)
+
+					
+    send_line(STX : "R ": ETX )
+    send_line(STX : ESC : "E4" :ETX )
+    send_line(STX : CAN : ETX )
+
+    send_line(STX : "Instrument: " : instrument : CR : ETX )
+    send_line(STX : "Calibration Type: " : type   : CR : ETX )
+    send_line(STX : "Issued By: ___________________" : CR : ETX )
+    send_line(STX : "Date: _________________": CR : ETX )
+
+
+    send_line(STX : ETB : ETX )
+
+
+    FLUSHLITERAL
+
+ENDROUTINE
+
+
+
+{******************************************************************************
+*                                                                              
+*  Routine Name    : dnu_label_ext
+*                                                                             
+* Description      : Routine to generte "Do Not Use" Label for External
+*                    Calibration Type  
+*                                                                              
+* Parameters       : instrument - Name of instrument
+*                    type - calibration type
+*                    calib_no - calibration number
+*                                                                              
+* Return Value     : None
+*                                                                   
+*******************************************************************************}
+
+GLOBAL ROUTINE dnu_label_ext ( instrument, type, calib_no )
+
+
+    DECLARE STX, ETX, CR, ETB, CAN, ESC
+
+    STX = ASCII(2)
+    ETX = ASCII(3)
+    CR  = ASCII(13)
+    ETB = ASCII(23)
+    CAN = ASCII(24)
+    ESC = ASCII(27) 
+
+    send_line(STX : ESC : "C"                                : ETX )
+    send_line(STX : ESC : "P"                                : ETX )
+    send_line(STX : ESC : "E4;F4"                            : ETX )
+    send_line(STX : "H0;o15,200;  f0;c20;h1;w1;d0,45;"      : ETX )
+    send_line(STX : "H1;o15,250;  f0;c20;h1;w1;d0,30;"      : ETX )
+    send_line(STX : "H2;o15,325;  f0;c20;h1;w1;d0,45;"     : ETX )
+    send_line(STX : "H3;o15,400;  f0;c20;h1;w1;d0,30;"      : ETX )
+    send_line(STX : "H4;o15, 80;  f0;c20;h2;w2;r0;b0;d3,OUT OF CALIBRATION": ETX)
+    send_line(STX : "H5;o15, 30;  f0;c20;h2;w2;r0;b0;d3,DO NOT USE": ETX)
+
+					
+    send_line(STX : "R ": ETX )
+    send_line(STX : ESC : "E4" :ETX )
+    send_line(STX : CAN : ETX )
+
+    send_line(STX : "Instrument: " : instrument : CR : ETX )
+    send_line(STX : "Calibration Type: " : type   : CR : ETX )
+    send_line(STX : "Issued By: ___________________" : CR : ETX )
+    send_line(STX : "Date: _________________": CR : ETX )
+
+
+    send_line(STX : ETB : ETX )
+
+
+    FLUSHLITERAL
+
+ENDROUTINE
+
+{******************************************************************************
+*                                                                              
+*  Routine Name    : dnu_label_int
+*                                                                             
+* Description      : Routine to generte "Do Not Use" Label for Internal
+*                    Calibration Type  
+*                               
+* Parameters       : instrument - Name of instrument
+*                    type - calibration type
+*                    calib_no - calibration number
+*                                                                              
+* Return Value     : None
+*                                                                   
+*******************************************************************************}
+
+GLOBAL ROUTINE dnu_label_int ( instrument, type, calib_no )
+
+
+    DECLARE STX, ETX, CR, ETB, CAN, ESC
+
+    STX = ASCII(2)
+    ETX = ASCII(3)
+    CR  = ASCII(13)
+    ETB = ASCII(23)
+    CAN = ASCII(24)
+    ESC = ASCII(27) 
+
+    send_line(STX : ESC : "C"                                : ETX )
+    send_line(STX : ESC : "P"                                : ETX )
+    send_line(STX : ESC : "E4;F4"                            : ETX )
+    send_line(STX : "H0;o15,200;  f0;c20;h1;w1;d0,45;"      : ETX )
+    send_line(STX : "H1;o15,250;  f0;c20;h1;w1;d0,30;"      : ETX )
+    send_line(STX : "H2;o15,325;  f0;c20;h1;w1;d0,45;"     : ETX )
+    send_line(STX : "H3;o15,400;  f0;c20;h1;w1;d0,30;"      : ETX )
+    send_line(STX : "H4;o15, 80;  f0;c20;h2;w2;r0;b0;d3,OUT OF CALIBRATION": ETX)
+    send_line(STX : "H5;o15, 30;  f0;c20;h2;w2;r0;b0;d3,DO NOT USE": ETX)
+
+					
+    send_line(STX : "R ": ETX )
+    send_line(STX : ESC : "E4" :ETX )
+    send_line(STX : CAN : ETX )
+
+    send_line(STX : "Instrument: " : instrument : CR : ETX )
+    send_line(STX : "Calibration Type: " : type   : CR : ETX )
+    send_line(STX : "Issued By: ___________________" : CR : ETX )
+    send_line(STX : "Date: _________________": CR : ETX )
+
+
+    send_line(STX : ETB : ETX )
+
+
+    FLUSHLITERAL
+
+
+
+ENDROUTINE
+
+{******************************************************************************
+*                                                                              
+*  Routine Name    : dnu_label_pm
+*                                                                             
+* Description      : Routine to generte "Do Not Use" Label for PM
+*                    Calibration Type  
+*                                                                              
+* Parameters       : instrument - Name of instrument
+*                    type - calibration type
+*                    calib_no - calibration number
+*                                                                              
+* Return Value     : None
+*                                                                   
+*******************************************************************************}
+
+GLOBAL ROUTINE dnu_label_pm ( instrument, type, calib_no )
+
+
+    DECLARE STX, ETX, CR, ETB, CAN, ESC
+
+    STX = ASCII(2)
+    ETX = ASCII(3)
+    CR  = ASCII(13)
+    ETB = ASCII(23)
+    CAN = ASCII(24)
+    ESC = ASCII(27) 
+
+    send_line(STX : ESC : "C"                                : ETX )
+    send_line(STX : ESC : "P"                                : ETX )
+    send_line(STX : ESC : "E4;F4"                            : ETX )
+    send_line(STX : "H0;o15,200;  f0;c20;h1;w1;d0,45;"      : ETX )
+    send_line(STX : "H1;o15,250;  f0;c20;h1;w1;d0,30;"      : ETX )
+    send_line(STX : "H2;o15,325;  f0;c20;h1;w1;d0,45;"     : ETX )
+    send_line(STX : "H3;o15,400;  f0;c20;h1;w1;d0,30;"      : ETX )
+    send_line(STX : "H4;o15, 80;  f0;c20;h2;w2;r0;b0;d3,OUT OF CALIBRATION": ETX)
+    send_line(STX : "H5;o15, 30;  f0;c20;h2;w2;r0;b0;d3,DO NOT USE": ETX)
+
+					
+    send_line(STX : "R ": ETX )
+    send_line(STX : ESC : "E4" :ETX )
+    send_line(STX : CAN : ETX )
+
+    send_line(STX : "Instrument: " : instrument : CR : ETX )
+    send_line(STX : "Calibration Type: " : type   : CR : ETX )
+    send_line(STX : "Issued By: ___________________" : CR : ETX )
+    send_line(STX : "Date: _________________": CR : ETX )
+
+
+    send_line(STX : ETB : ETX )
+
+
+    FLUSHLITERAL
+
+
+
+
+ENDROUTINE
+
+{******************************************************************************
+*                                                                              
+*  Routine Name    : dnu_label_pq
+*                                                                             
+* Description      : Routine to generte "Do Not Use" Label for PQ
+*                    Calibration Type  
+*                                                                              
+* Parameters       : instrument - Name of instrument
+*                    type - calibration type
+*                    calib_no - calibration number
+*                                                                              
+* Return Value     : None
+*                                                                   
+*******************************************************************************}
+
+GLOBAL ROUTINE dnu_label_pq ( instrument, type, calib_no )
+
+
+    DECLARE STX, ETX, CR, ETB, CAN, ESC
+
+    STX = ASCII(2)
+    ETX = ASCII(3)
+    CR  = ASCII(13)
+    ETB = ASCII(23)
+    CAN = ASCII(24)
+    ESC = ASCII(27) 
+
+    send_line(STX : ESC : "C"                                : ETX )
+    send_line(STX : ESC : "P"                                : ETX )
+    send_line(STX : ESC : "E4;F4"                            : ETX )
+    send_line(STX : "H0;o15,200;  f0;c20;h1;w1;d0,45;"      : ETX )
+    send_line(STX : "H1;o15,250;  f0;c20;h1;w1;d0,30;"      : ETX )
+    send_line(STX : "H2;o15,325;  f0;c20;h1;w1;d0,45;"     : ETX )
+    send_line(STX : "H3;o15,400;  f0;c20;h1;w1;d0,30;"      : ETX )
+    send_line(STX : "H4;o15, 80;  f0;c20;h2;w2;r0;b0;d3,OUT OF CALIBRATION": ETX)
+    send_line(STX : "H5;o15, 30;  f0;c20;h2;w2;r0;b0;d3,DO NOT USE": ETX)
+
+					
+    send_line(STX : "R ": ETX )
+    send_line(STX : ESC : "E4" :ETX )
+    send_line(STX : CAN : ETX )
+
+    send_line(STX : "Instrument: " : instrument : CR : ETX )
+    send_line(STX : "Calibration Type: " : type   : CR : ETX )
+    send_line(STX : "Issued By: ___________________" : CR : ETX )
+    send_line(STX : "Date: _________________": CR : ETX )
+
+
+    send_line(STX : ETB : ETX )
+
+
+    FLUSHLITERAL
+
+
+
+ENDROUTINE
+
+{******************************************************************************
+*                                                                              
+*  Routine Name    : send_line
+*                                                                             
+* Description      : Accepts the vairable to be outputted from a print label  
+*                                                                              
+* Parameters       : line - string to be outputted to the intermec containing
+*                           the label information
+*                                                                              
+* Return Value     : None
+*                                                                   
+*******************************************************************************}
+
+ROUTINE send_line (VALUE line)
+
+    LITERAL
+    $line_______________________________________________________________________
+    $ENDLITERAL
+
+ENDROUTINE
+
+

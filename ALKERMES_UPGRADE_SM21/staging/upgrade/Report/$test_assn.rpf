@@ -439,6 +439,7 @@ ROUTINE instrument_routine (       self        ,
 
 	DECLARE inst_value      ,
 		inst_type_value ,
+		inst_cat_value ,
 		mandatory_array ,
 		test_list
 
@@ -450,6 +451,7 @@ ROUTINE instrument_routine (       self        ,
 
 	inst_value = SELECT test . instrument
 	inst_type_value = SELECT test . instrument_type
+	inst_cat_value = SELECT test . instrument_category
 
 	IF is_display THEN
 
@@ -471,6 +473,16 @@ ROUTINE instrument_routine (       self        ,
 
 		ENDIF
 
+		IF ( NOT BLANK ( inst_cat_value )) THEN
+
+			array_select_add ( mandatory_array       ,
+			                   ARRAY_SELECT_EQ       ,
+			                   "INSTRUMENT_CATEGORY" ,
+			                   inst_cat_value       )
+
+		ENDIF
+
+		
 		array_select_add ( mandatory_array ,
 		                   ARRAY_SELECT_EQ ,
 		                   "AVAILABLE"     ,
@@ -692,8 +704,8 @@ ROUTINE test_assn_add_test (       self        ,
 		ASSIGN test . analysis_version    = version_number
 		ASSIGN test . auto_validate       = auto_val
 		ASSIGN test . instrument_type     = SELECT analysis_view . insttype_id
+		ASSIGN test . instrument_category = SELECT analysis_view . instcat_id
 		ASSIGN test . instrument_required = SELECT analysis_view . instrument_required
-		ASSIGN test . analysis_type       = SELECT analysis_view . analysis_type
 
 		replicate_count = SELECT analysis_view . replicates
 
@@ -995,6 +1007,14 @@ ROUTINE create_prompt_details ( prompt_details )
 		next_field = next_field + 1
 
 	ENDIF
+
+	prompt_details [ next_field , 2 ] = "FORMAT"
+	prompt_details [ next_field , 3 ] = "TEST"
+	prompt_details [ next_field , 4 ] = "INSTRUMENT_CATEGORY"
+	prompt_details [ next_field , 5 ] =  GET_USER_MESSAGE("TEST_ASSN_FIELD_INST_CATEGORY" ,1)
+	prompt_details [ next_field , 6 ] =  0
+
+	next_field = next_field + 1
 
 	prompt_details [ next_field , 2 ] = "FORMAT"
 	prompt_details [ next_field , 3 ] = "TEST"

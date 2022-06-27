@@ -1,0 +1,358 @@
+
+{
+
+    Module Name   : LTE_INST_CALIBRATION
+
+    Purpose       : Instrument calibration configuration. The main routine from this report (instrument_calibration)
+                    is called when the 'Calibration' button on the $LTE_INST data entry screen
+                    is clicked.  It brings up a new window into which calibration information can be entered.               
+
+    Document Ref. : 
+
+    Specification : 
+
+
+MODIFICATION HISTORY
+=======================
+
+SM      Module   Reference                         Date        Name            Description
+------  ------   -----------------------------     ---------   ---------      --------------------------------------
+2000R1  V1.0     Elan-Calibration SDS 0-1.doc      30/10/02    K Jacobs       Created report
+2000R1  V1.0     Elan-Calibration SDS 0-1.doc      30/10/02    A Finnerty     Added file header information
+2000R1  V1.1     Elan-Calibration SDS 0-1.doc      18/06/03    P. O'Neill     Creates list_editor_version2 and added validation routines. 
+2000R1  V1.2     Elan-Calibration SDS 0-1.doc      03/07/03    P. O'Neill     Updated validation routine to check for negative calib window intervals.
+2000R1  V1.3     Elan-Calibration SDS 0-1.doc      30/08/03    Elaine Henry   Updated as per change control 2003-102
+2000R1  V1.4     Elan-Calibration SDS 0-1.doc      01/09/03    Elaine Henry   Updated as per change control 2003-102
+
+-------------------------------------------------------------------------------------------------------------------------- }
+
+
+
+ENABLE WINDOWS
+
+SET NAME "DEFER/"
+SET NOTPROTECTED
+
+JOIN STANDARD_LIBRARY std_utils
+JOIN LIBRARY $LABTABLIB
+JOIN LIBRARY $LIST_EDITOR
+JOIN LIBRARY $LIB_UTILS
+
+
+
+
+
+
+
+{******************************************************************************
+*                                                                              
+*  Routine Name     :  instrument_calibration                                        
+*                                                                             
+* Description      :  Calls list_editor_version1 to bring up 'instrument calibration' screen.
+*                                 Main routine.
+*                                                                              
+* Parameters       :  
+*         VALUE   identity - the instrument identity
+*         VALUE   copied_identity - copied instrument identity, used if copying
+*         operation  - the operation being carried out - e.g. modify or print
+*                                                                              
+* Return Value     :  same as list_editor_version1 return value
+*                                                                                                                                                            
+*******************************************************************************}
+
+GLOBAL ROUTINE instrument_calibration
+    ( 
+    VALUE   identity,
+    VALUE   copied_identity,
+            operation
+    )
+
+    DECLARE answer
+    DECLARE prompt_details      ARRAY prompt_details    ARRAY_SIZE(0,6)
+    DECLARE field_details       ARRAY field_details     ARRAY_SIZE(0,2)
+    DECLARE heading
+    DECLARE i
+    
+
+  
+    heading = ""
+        
+    i = 0
+    i = i + 1
+    field_details[i,1]  = "TYPE"
+    field_details[i,2]  = GET_USER_MESSAGE ( "INST_CALIBRATION_TYPE" , 1 )
+    prompt_details[i,2] = "DISPLAY"
+    prompt_details[i,3] = "INST_CALIBRATION"
+    prompt_details[i,4] = field_details[i,1]
+    prompt_details[i,5] = 0
+    prompt_details[i,6] = 10
+    heading = heading : PAD( field_details[i,2], " ", ( prompt_details[i,6] + 1 ) )
+
+    i = i + 1
+    field_details[i,1]  = "INTERVAL"
+    field_details[i,2]  = GET_USER_MESSAGE ( "INST_CALIBRATION_INTERVAL" , 1 )
+    prompt_details[i,2] = "FORMAT"
+    prompt_details[i,3] = "INST_CALIBRATION"
+    prompt_details[i,4] = field_details[i,1]
+    prompt_details[i,5] = 0
+    prompt_details[i,6] = 20
+    heading = heading : PAD( field_details[i,2], " ", ( prompt_details[i,6] + 1 ) )
+
+
+    i = i + 1
+    field_details[i,1]  = "WINDOW"
+    field_details[i,2]  = GET_USER_MESSAGE ( "INST_CALIBRATION_WINDOW" , 1 )
+    prompt_details[i,2] = "FORMAT"
+    prompt_details[i,3] = "INST_CALIBRATION"
+    prompt_details[i,4] = field_details[i,1]
+    prompt_details[i,5] = 0
+    prompt_details[i,6] = 20
+    heading = heading : PAD( field_details[i,2], " ", ( prompt_details[i,6] + 1 ) )
+
+
+    i = i + 1
+    field_details[i,1]  = "COMMENTS"
+    field_details[i,2]  = GET_USER_MESSAGE ( "INST_CALIBRATION_COMMENTS" , 1 )
+    prompt_details[i,2] = "FORMAT"
+    prompt_details[i,3] = "INST_CALIBRATION"
+    prompt_details[i,4] = field_details[i,1]
+    prompt_details[i,5] = 0
+    prompt_details[i,6] = 30
+    heading = heading : PAD( field_details[i,2], " ", ( prompt_details[i,6] + 1 ) )
+
+
+
+    IF ( operation = "PRINT" ) 
+
+        print_fields( "INST_CALIBRATION", PAD( identity, " ", 10 ), "", "", 2, 28, field_details )
+
+        answer = TRUE
+
+    ELSE
+    
+        SET GLOBAL "STD_EDITOR_HELP" TO "$INSTRUMENT"
+
+{MC MOD 11/08/03 - reverted bact to list_editor_version1 for Call HA001334}
+{EH 01/09/03 modifications as per change control 2003-102}
+        answer = list_editor_version1
+                ( 19,
+                  70,
+                  5,
+                  3,
+                  "INST_CALIBRATION",
+                  "Calibration",
+                  heading,
+                  "Bottom Line",
+                  TRUE             ,
+                  EMPTY            ,
+                  EMPTY            ,		
+                  prompt_details   ,
+                  "PRE_INSERT"     ,
+                  EMPTY    , {HA001334 RB}
+                  EMPTY            ,
+                  EMPTY            ,
+                  copied_identity  ,
+                  identity ,
+                  GLOBAL( "current_library" ) ,
+                  operation     ,
+                  the_list_editor
+                  )
+
+    ENDIF
+
+
+
+    RETURN( answer )
+    
+ENDROUTINE    { instrument_calibration }
+
+
+
+
+
+{******************************************************************************
+*                                                                              
+*  Routine Name     :  pre_insert
+*                                                                             
+* Description      :  Passed to list_editor_version1
+*                                                                              
+* Parameters       :   VALUE   line, display_id, new_value
+*                                                                              
+* Return Value     :  same as list_editor_version1 return value                                            
+*                                                                              
+*******************************************************************************}
+ROUTINE pre_insert
+    ( 
+    VALUE   line, 
+            display_id, 
+            new_value
+    )
+
+
+        PROMPT FOR new_value 
+            ON LINE line 
+            FROM 1 
+            IN WINDOW display_id
+            FORMAT inst_calibration.type
+
+{flash_message(new_value, TRUE)}
+
+
+
+
+ENDROUTINE  { pre_insert }
+
+
+
+ROUTINE validation
+    	(	self
+    	)
+
+
+DECLARE grid,
+	num_row,
+	valid
+
+	grid = self.grid
+	num_row = grid.cell_rows
+
+	IF (num_row > 0) 
+		valid = validate_details(self, num_row)
+	ELSE
+		valid = TRUE
+	ENDIF
+
+	RETURN (valid)
+
+ENDROUTINE
+
+
+
+
+ROUTINE validate_details(      the_list_editor,
+			 VALUE num_row)
+
+	DECLARE ok,
+		object,
+		calib_intv,
+		calib_window,
+		calib_type,
+		check_row
+
+	check_row = 1
+
+	WHILE check_row < num_row DO
+
+		object = the_list_editor.get_object(check_row)
+
+		calib_intv  = SELECT inst_calibration.interval  IN OBJECT object
+
+		calib_window = SELECT inst_calibration.window  IN OBJECT object
+
+		ok = (calib_intv > INTERVAL(0))
+
+		IF NOT OK THEN
+
+			calib_type  = SELECT inst_calibration.type  IN OBJECT object
+
+			flash_message(GET_USER_MESSAGE ( "INST_CALIBRATION_NON_POS_INTERVAL" , 1 ) 
+				: STRIP(calib_type) 
+				: GET_USER_MESSAGE ( "INST_CALIBRATION_NON_POS_INTERVAL" , 2 ) 
+				, TRUE)
+
+			RETURN (ok)
+
+		ENDIF
+
+		ok =  (calib_window >= INTERVAL(0))
+
+		IF NOT OK THEN
+
+			calib_type  = SELECT inst_calibration.type  IN OBJECT object
+
+			flash_message( GET_USER_MESSAGE ("INST_CALIBRATION_NON_POS_INTERVAL" , 3 ) 
+				: STRIP(calib_type) 
+				: GET_USER_MESSAGE ( "INST_CALIBRATION_NON_POS_INTERVAL" , 2 ) 
+				, TRUE)
+
+			RETURN (ok)
+
+		ENDIF
+
+		check_row = check_row + 1
+
+	ENDWHILE
+
+	RETURN (ok)
+
+ENDROUTINE
+
+
+
+
+{*****************************************************************************}
+
+GLOBAL ROUTINE list_editor_version2 ( VALUE screen_height       ,
+				      VALUE screen_width        ,
+				      VALUE screen_row          ,
+				      VALUE screen_column       ,
+				      VALUE the_table_name      ,
+				      VALUE top_line            ,
+				      VALUE header_line         ,
+				      VALUE bottom_line         ,
+				      VALUE use_array           ,
+				      VALUE display_routine     ,
+				      VALUE prompt_routine      ,
+					    prompt_details      ,
+				      VALUE pre_insert_routine  ,
+				      VALUE post_insert_routine ,
+				      VALUE delete_routine	,
+				      VALUE select_routine      ,
+					    copy_identity       ,
+				      VALUE record_prefix       ,
+				      VALUE calling_library     ,
+				      VALUE action              ,
+					    the_list_editor     ,
+				      VALUE validation_routine	)
+
+
+	DECLARE return_value
+
+	IF list_editor_create_object ( the_list_editor ) THEN
+
+	{the_list_editor . compatability = PROMPT_DETAILS_260}
+                 
+		the_list_editor . table  = the_table_name
+		the_list_editor . header = top_line
+		the_list_editor . footer = bottom_line
+
+		the_list_editor . pre_insert  = pre_insert_routine
+		the_list_editor . post_insert = post_insert_routine
+		the_list_editor . delete      = delete_routine
+		the_list_editor . select      = select_routine
+		the_list_editor . validation  = validation_routine
+
+		the_list_editor . library     = calling_library
+
+		IF use_array THEN
+
+			the_list_editor . setup_prompt_details ( prompt_details ,
+							     header_line    )
+
+
+		ENDIF
+
+	ENDIF
+
+	return_value = the_list_editor . operation ( record_prefix ,
+							 copy_identity ,
+							 action        )
+
+	RETURN ( return_value )
+
+ENDROUTINE
+
+
+
+
+

@@ -1,0 +1,2450 @@
+{******************************************************************************
+*
+* Module Name   : $REPORTER_EDIT.RPF
+*
+* Purpose       : Reporter report.
+*
+* Document Ref. :
+*
+* Specification :
+*
+* Portability   : Not Checked
+*
+* Re-entrant    :
+*
+********************************************************************************
+*
+*  Ref   Date        Name             Comment
+*  ===== ==========  ===============  =========================================
+*  1.1   05-Mar-07   V. Molloy        Ken Jacobs: Read date format from global 
+*                                     CSV_DATE_FORMAT
+*
+*******************************************************************************}
+
+SET COMPILE_OPTION DECLARE
+
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN STANDARD_LIBRARY STD_STRUCTURE
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_BLOCK
+JOIN STANDARD_LIBRARY STD_WINDOW
+JOIN STANDARD_LIBRARY STD_MESSAGE
+JOIN STANDARD_LIBRARY STD_DDE
+JOIN STANDARD_LIBRARY STD_TRANSFER
+JOIN STANDARD_LIBRARY STD_SQUIRL
+JOIN STANDARD_LIBRARY STD_CLIENT
+
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $CRITERIA_EDIT
+JOIN LIBRARY $CRITERIA_SAVED
+JOIN LIBRARY $CRITERIA_CACHE
+JOIN LIBRARY $CRITERIA_LIB
+JOIN LIBRARY $TABLE_LOAD_SAVE_LIB
+JOIN LIBRARY $INSTALL_WINDOW
+JOIN LIBRARY $REPORTER_FIELDS
+JOIN LIBRARY $REPORTER_CLASS
+JOIN LIBRARY $REPORTER_STAN
+JOIN LIBRARY $REPORTER_USER
+JOIN LIBRARY $BROWSE
+
+ENABLE WINDOWS
+SET NOTPROTECTED
+SET NAME "DEFER/"
+
+{* GLOBAL CONSTANTS ***********************************************************}
+
+GLOBAL CONSTANT REPORTER_CLASS        = "STD_REPORTER_FORM"
+
+GLOBAL CONSTANT NEW_REPORT    = 1
+GLOBAL CONSTANT MODIFY_REPORT = 2
+GLOBAL CONSTANT RUN_REPORT    = 3
+GLOBAL CONSTANT DIRECTORY     = "smp$textfiles:"
+GLOBAL CONSTANT EXTENSION     = "rep"
+
+{* LOCAL CONSTANTS ************************************************************}
+
+CONSTANT TABLE_PROMPT  = 1
+CONSTANT OUTPUT_PROMPT = 2
+CONSTANT FILE_PROMPT   = 3
+
+CONSTANT FIELD_ORDER_COL = 3
+
+CONSTANT CSV_DATE_FORMAT = "DZ-MON-YYYY H24:MI:SS"
+
+{* VARIABLES*******************************************************************}
+
+	DECLARE report_display_list, global_report_name, global_group_name  
+
+{******************************************************************************}
+
+	GLOBAL
+
+	ROUTINE reporter_edit_report ( VALUE global_report_name  ,
+				       VALUE global_group_name   ,
+				       VALUE option              ,
+					     report_display_list )
+
+{
+*
+*	Prompts the user for table/view and output destination i.e. excel,
+*	CSV file or VB.
+*
+*******************************************************************************}
+
+	DECLARE the_form, ok
+
+	reporter_edit_initialise ( )
+
+	reporter_class_initialise ( )
+
+	set_up_field_list_class ( )
+
+	criteria_cache_initialise ( )
+
+	CREATE OBJECT REPORTER_CLASS, the_form
+
+	IF option = RUN_REPORT THEN
+
+		ok = reporter_edit_load_squirrel ( global_report_name ,
+		                                   FALSE              ,
+						           the_form           )
+
+		IF ok THEN
+
+			ok = reporter_edit_check_criteria_fields ( the_form )
+
+		ENDIF
+
+		IF ok THEN
+
+			reporter_edit_output_records ( the_form )
+
+		ENDIF
+
+	ELSE
+
+		ok = TRUE
+
+		IF option = MODIFY_REPORT THEN
+
+			ok = reporter_edit_load_squirrel ( global_report_name ,
+			                                   TRUE               ,
+							           the_form           )
+
+		ELSEIF option = NEW_REPORT THEN
+
+			the_form . order_stored = TRUE
+
+		ENDIF
+
+		IF ok THEN
+
+			the_form . start_prompt ( )
+
+			REPEAT
+
+				the_form . wait_prompt  ( )
+
+				IF ( the_form . get_lastkey ( ) = "DO" ) THEN
+
+					ok =
+					reporter_edit_check_criteria_fields
+							( the_form )
+
+					IF ok THEN
+
+						reporter_edit_output_records
+							( the_form )
+
+					ENDIF
+
+				ENDIF
+
+			UNTIL the_form . get_lastkey ( ) = "EXIT"
+
+			the_form . end_prompt   ( )
+
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_initialise
+
+{
+*	Initialises the reporter module..
+*
+*******************************************************************************}
+
+	IF NOT ( GLOBAL ( "LIBRARY_INITIALISED" ) ) THEN
+
+		std_reporter_form_class_declare ( )
+
+		SET GLOBAL "LIBRARY_INITIALISED" TO TRUE
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_check_criteria_fields ( the_form )
+
+{
+* 	Called when OK pressed to warn the user that either did not
+*	preselect any fields so all will be written out or that the number
+*	of records selected is very large so may wish to reconsider criteria.
+*
+*******************************************************************************}
+
+	DECLARE mess_txt, ok, name_of_table, no_records, no_fields_selected
+
+	name_of_table =  the_form . prompt_objects [ TABLE_PROMPT ] . value
+
+	ok = TRUE
+
+	no_fields_selected = reporter_edit_check_fields_selected
+					( the_form . select_list )
+
+	IF no_fields_selected THEN
+
+		mess_txt = GET_USER_MESSAGE ( "REPORTER_WARNING" , 1 )
+		flash_message ( mess_txt, TRUE )
+		ok = FALSE
+
+	ELSE
+
+		no_records = array_select_count ( name_of_table           ,
+						  the_form . select_array )
+
+		IF no_records > 100 THEN
+
+			mess_txt = STRIP ( TRUNC ( no_records ) ) :
+				GET_USER_MESSAGE ( "REPORTER_WARNING" , 2 )
+
+			ok = confirm_with_text ( mess_txt )
+
+		ELSEIF no_records = 0 THEN
+
+			flash_message ( GET_USER_MESSAGE("REPORTER_NO_RECORDS",
+				 1) ,TRUE )
+
+		ENDIF
+
+	ENDIF
+
+	RETURN ( ok )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_check_fields_selected ( select_list )
+
+{
+*	Declares the reporter form class.
+*
+*******************************************************************************}
+
+	DECLARE count, no_fields_selected
+
+	no_fields_selected = TRUE
+
+	IF size_of_array ( select_list ) > 0 THEN
+
+		count = 1
+
+		WHILE ( count <= size_of_array ( select_list ) ) AND
+			( no_fields_selected ) DO
+
+			no_fields_selected = NOT select_list [ count ]
+
+			count = count + 1
+
+		ENDWHILE
+
+	ENDIF
+
+	RETURN ( no_fields_selected )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE std_reporter_form_class_declare
+
+{
+* 	Declares the reporter form class.
+*
+*******************************************************************************}
+
+	DEFINE CLASS REPORTER_CLASS
+
+		INHERIT PROMPT_CLASS_FORM
+
+		ACTIONS "SELECT"
+
+		PROPERTIES "SELECT_LIST"    ,  { List of fields selected }
+		           "FIELD_WIDTH"    ,  { Widths of fields in table }
+                           "FIELD_ORDER"    ,  { Order in which fields selected}
+                           "ORDER_STORED"   ,  { Order stored for report }
+		           "FIELD_LIST"     ,  { Fields in table/view }
+		           "SELECT_ARRAY"   ,  { Array for selection criteria }
+		           "VALUE_ARRAY"    ,  { Values selected for fields }
+		           "DEST_LIST"
+
+		INITIALISATION
+
+	END CLASS
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE std_reporter_form_class_initialisation ( self )
+
+{
+*	Initialisation routine for the reporter form class. Ensure that
+*	properties are correctly set up.
+*
+*******************************************************************************}
+
+	DECLARE table_prompt_text, output_prompt_text, prompt_text_width,
+		prompt_text_start, display_object, prompt_object,
+		table_name_len, output_array, file_prompt_text, count, tables
+
+	ARRAY output_array ARRAY_SIZE ( 0, 2 )
+	ARRAY tables ARRAYSIZE ( 0 , 2 )
+
+	ARRAY self . select_array
+	ARRAY self . field_list
+	ARRAY self . field_order ARRAYSIZE ( 0 ) = ""
+	ARRAY self . field_width
+	ARRAY self . value_array
+	ARRAY self . select_list
+
+	self . order_stored = FALSE
+
+	table_prompt_text    = GET_USER_MESSAGE ( "REPORTER_TABLE_PROMPT" , 1 )
+	output_prompt_text   = GET_USER_MESSAGE ( "REPORTER_OUTPUT_PROMPT" , 1 )
+	file_prompt_text     = GET_USER_MESSAGE ( "REPORTER_FILE_PROMPT" , 1 )
+
+	prompt_text_width = find_max_number ( LENGTH ( table_prompt_text )   ,
+	                                 LENGTH ( output_prompt_text  ) )
+
+	prompt_text_width = find_max_number ( prompt_text_width   ,
+	                                 LENGTH ( file_prompt_text  ) )
+
+	GET_FIELD_DETAILS criteria . table_name , "FIELD_SIZE" , table_name_len
+
+	CREATE OBJECT APPLICATION_LIST_CLASS , self . dest_list
+
+	reporter_stan_add_options ( self . dest_list )
+
+	reporter_user_add_options ( self . dest_list )
+
+	reporter_edit_setup_output_applications ( output_array     ,
+						  self . dest_list )
+
+	self . height           =  5
+
+	IF GLOBAL ( "TERMTYPE" ) = "GUI" THEN
+		self . height = self . height + 2
+	ENDIF
+
+	self . width            = prompt_text_width + 54
+	self . row              = 10
+	self . column           =
+		( GLOBAL ( "SCREEN_WIDTH" ) - self . width ) / 2
+	self . border           = TRUE
+	self . header           = GET_USER_MESSAGE( "REPORTER_FORM_HEADER" , 2 )
+	self . footer           =
+		GET_USER_MESSAGE ( "REPORTER_FORM_FOOTER" , 1 )
+	self . confirm_required = FALSE
+	self . return_behaviour = FORM_RETURN_WRAP
+	self . help_context     = "$REPORTER_FORM_PROMPT"
+	self . proportional = TRUE
+	self . validation_routine = "reporter_edit_validate_prompts"
+	self . button_style       = FORM_BUTTON_NONE
+
+	prompt_text_start = 3
+
+	PROMPT OBJECT display_object
+		FORMAT TEXT
+		AT prompt_text_start , 1
+		WITH ( bold              = TRUE                ,
+		       length            = prompt_text_width   ,
+		       raised            = TRUE                ,
+		       foreground_colour = PROMPT_COLOUR_BLACK ,
+		       value             = table_prompt_text   )
+
+	self . add_display ( display_object )
+
+	{**********************************************************************}
+	{* Browse on the Available Tables.                                    *}
+	{**********************************************************************}
+
+	count = 1
+	get_table_names ( tables )
+
+	WHILE count <= SIZE_OF_ARRAY ( tables ) DO
+
+		tables [ count,2 ] = tables [ count,1 ]
+		count = count + 1
+
+	ENDWHILE
+
+	PROMPT OBJECT prompt_object
+		ON LINE 1 FROM ( prompt_text_start + prompt_text_width + 2 )
+		CHOOSE OUT_OF tables
+		WITH ( leave_prompt_routine = "TABLE_NAME_LEAVE_PROMPT" ,
+		       always_validate      = TRUE                      ,
+		       value                = ""                        ,        
+		       lowered              = TRUE                      )
+
+	self . add_prompt ( prompt_object )
+
+	PROMPT OBJECT display_object
+		FORMAT TEXT
+		AT prompt_text_start , 2
+		WITH ( bold              = TRUE                ,
+		       length            = prompt_text_width   ,
+		       raised            = TRUE                ,
+		       foreground_colour = PROMPT_COLOUR_BLACK ,
+		       value             = output_prompt_text  )
+
+	self . add_display ( display_object )
+
+	PROMPT OBJECT prompt_object
+                CHOOSE OUTOF output_array
+		ON LINE 2 FROM ( prompt_text_start + prompt_text_width + 2 )
+		WITH ( lowered            = TRUE                    ,
+		       width              = table_name_len          ,
+		       foreground_colour  = PROMPT_COLOUR_BLACK     )
+
+	self . add_prompt ( prompt_object )
+
+	PROMPT OBJECT display_object
+		FORMAT TEXT
+		AT prompt_text_start , 3
+		WITH ( bold              = TRUE                ,
+		       length            = prompt_text_width   ,
+		       raised            = TRUE                ,
+		       foreground_colour = PROMPT_COLOUR_BLACK ,
+		       value             = file_prompt_text    )
+
+	self . add_display ( display_object )
+
+	IF ( ( GLOBAL ( "CLIENT_TYPE" ) <> CLIENT_WEB ) ) THEN
+
+	PROMPT OBJECT prompt_object
+		FORMAT TEXT255
+		ON LINE 3 FROM ( prompt_text_start + prompt_text_width + 2 )
+		WITH ( width                = self . width - 
+		                              ( prompt_text_start + prompt_text_width + 5 ),
+		       validation_routine   = "FILE_NAME_VALIDATION"   ,
+		       browse_routine       = "FILE_NAME_BROWSE"       ,
+		       lowered              = TRUE                     ,
+		       value                = "C:\REPORTER.CSV"        ,
+		       foreground_colour    = PROMPT_COLOUR_BLACK      )
+
+	ELSE
+
+	PROMPT OBJECT prompt_object
+		FORMAT TEXT255
+		ON LINE 3 FROM ( prompt_text_start + prompt_text_width + 2 )
+		WITH ( width                = self . width - 
+		                              ( prompt_text_start + prompt_text_width + 5 ),
+		       validation_routine   = "FILE_NAME_VALIDATION"   ,
+		       lowered              = TRUE                     ,
+		       value                = "REPORTER.CSV"           ,
+		       foreground_colour    = PROMPT_COLOUR_BLACK      )
+
+	ENDIF
+
+	self . add_prompt ( prompt_object )
+
+	IF global ( "TERMTYPE" ) = "GUI" THEN
+
+		self . add_frame ( ""                    ,
+				   prompt_text_start -1  ,
+				   1                     ,
+				   self . height - 4     ,
+				   self . width - 2      )
+
+		reporter_edit_add_control_buttons ( self )
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_setup_output_applications ( output_array ,
+							  dest_list    )
+
+{
+*	Sets up the output array.
+*
+*******************************************************************************}
+
+	DECLARE loop, count
+
+	loop  = 1
+	count = 0
+
+	WHILE loop <= size_of_array ( dest_list . destinations ) DO
+
+		IF reporter_edit_check_application_exists ( dest_list .
+					destinations [ loop ] . name ) THEN
+
+			count = count + 1
+
+			output_array [ count, 1 ] =
+				dest_list . destinations [ loop ] . prompt_text
+			output_array [ count, 2 ] =
+				dest_list . destinations [ loop ] . name
+
+		ENDIF
+
+		loop = loop + 1
+
+	ENDWHILE
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_check_application_exists
+						( VALUE application_name )
+
+{
+*	Sets up the output array.
+*
+*******************************************************************************}
+
+	{ Need to do some checking here ...wait till core code ready }
+
+	RETURN ( TRUE )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_add_control_buttons ( the_form )
+
+{
+*	Adds buttons to the reporter form.
+*
+*******************************************************************************}
+
+	DECLARE button, row, start_column, button_width ,number_buttons,
+		caption_text
+
+	number_buttons = 6
+	button_width   = 10
+
+	row = the_form . height - 1
+
+	start_column = ( ( the_form . width / number_buttons ) -
+				button_width ) / 2
+
+	caption_text = GET_USER_MESSAGE ( "REPORTER_RUN_CAPTION" , 1 )
+
+	PROMPT OBJECT button
+		CLASS "STD_PROMPT_BUTTON"
+		ON LINE row
+		FROM    start_column
+		TO      start_column + button_width
+		WITH ( caption      = caption_text ,
+		       enabled      = TRUE         ,
+		       send_lastkey = "DO"         )
+
+	the_form . add_prompt ( button )
+
+	start_column = start_column +
+			( the_form . width / number_buttons )
+
+	PROMPT OBJECT button
+		CLASS "STD_PROMPT_BUTTON"
+		ON LINE row
+		FROM    start_column
+		TO      start_column + button_width
+		WITH ( caption             =
+			GET_USER_MESSAGE ( "REPORTER_CRITERIA_CAPTION" , 1 ),
+		       enabled             = TRUE                           ,
+		       mouse_click_routine =
+				"REPORTER_EDIT_BUTTON_DO_CRITERIA_SELECTION")
+
+	the_form . add_prompt ( button )
+
+	start_column = start_column +
+			( the_form . width / number_buttons )
+
+	PROMPT OBJECT button
+		CLASS "STD_PROMPT_BUTTON"
+		ON LINE row
+		FROM    start_column
+		TO      start_column + button_width
+		WITH ( caption             =
+			GET_USER_MESSAGE ( "REPORTER_FIELDS_CAPTION" , 1 ),
+		       enabled             = TRUE                         ,
+		       mouse_click_routine =
+				"REPORTER_EDIT_BUTTON_DO_FIELD_SELECTION" )
+
+	the_form . add_prompt ( button )
+
+
+	start_column = start_column +
+			( the_form . width / number_buttons )
+
+	PROMPT OBJECT button
+		CLASS "STD_PROMPT_BUTTON"
+		ON LINE row
+		FROM    start_column
+		TO      start_column + button_width
+		WITH ( caption             =
+			GET_USER_MESSAGE ( "REPORTER_SAVE_CAPTION" , 1    ),
+		       enabled             = TRUE                          ,
+		       mouse_click_routine =
+				"REPORTER_EDIT_BUTTON_SAVE_SELECTION"      )
+
+	the_form . add_prompt ( button )
+
+	start_column = start_column +
+			( the_form . width / number_buttons )
+
+	caption_text = GET_USER_MESSAGE ( "SMP_PROMPT_BUTTON_HELP" , 1 )
+
+	PROMPT OBJECT button
+		CLASS "STD_PROMPT_BUTTON"
+		ON LINE row
+		FROM    start_column
+		TO      start_column + button_width
+		WITH ( caption      = caption_text ,
+		       enabled      = TRUE         ,
+		       send_lastkey = "HELP"       )
+
+	the_form . add_prompt ( button )
+
+	start_column = start_column +
+			( the_form . width / number_buttons )
+
+	caption_text = GET_USER_MESSAGE ( "SMP_PROMPT_BUTTON_CLOSE" , 1 )
+
+	PROMPT OBJECT button
+		CLASS "STD_PROMPT_BUTTON"
+		ON LINE row
+		FROM    start_column
+		TO      start_column + button_width
+		WITH ( caption = caption_text ,
+		       enabled = TRUE         ,
+		       send_lastkey = "EXIT"  )
+
+	the_form . add_prompt ( button )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_do_criteria_selection ( the_form )
+
+{
+*	Allows the user to assign selection criteria.
+*
+*******************************************************************************}
+
+	DECLARE mandatory_array
+
+	ARRAY mandatory_array
+
+	criteria_edit ( the_form . prompt_objects [ TABLE_PROMPT ] . value ,
+			the_form . select_array                            ,
+			mandatory_array                                    ,
+			TRUE                                               ,
+			TRUE                                               )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE std_reporter_form_action_select ( self )
+
+{
+*	Select key action for the criteria form. Allow saving and loading
+*	of criteria. Applicable to non GUI mode.
+*
+*******************************************************************************}
+
+	DECLARE option , select_menu, option_count
+
+	ARRAY select_menu ARRAY_SIZE ( 4 , 3 )
+
+	option_count = 1
+
+	select_menu [ option_count , 1 ] = "*"
+	select_menu [ option_count , 2 ] =
+			GET_USER_MESSAGE ( "REPORTER_OPTIONS_TITLE" , 1 )
+	select_menu [ option_count , 3 ] = "$REPORTER_SELECT"
+
+	option_count = option_count + 1
+
+	select_menu [ option_count , 1 ] = "C"
+	select_menu [ option_count , 2 ] =
+			GET_USER_MESSAGE ( "REPORTER_CRITERIA_CAPTION" , 1 )
+	select_menu [ option_count , 3 ] = "1"
+
+	option_count = option_count + 1
+
+	select_menu [ option_count , 1 ] = "F"
+	select_menu [ option_count , 2 ] =
+			GET_USER_MESSAGE ( "REPORTER_FIELDS_CAPTION" , 1 )
+	select_menu [ option_count , 3 ] = "2"
+
+	option_count = option_count + 1
+
+	select_menu [ option_count , 1 ] = "S"
+	select_menu [ option_count , 2 ] =
+			GET_USER_MESSAGE ( "REPORTER_SAVE_OPTION_CAPTION" , 1 )
+	select_menu [ option_count , 3 ] = "4"
+
+	CHOOSE option OUTOF select_menu AT 10 , 10
+
+	IF LASTKEY <> "EXIT" THEN
+
+		IF option = "1" THEN
+
+			reporter_edit_do_criteria_selection ( self )
+
+		ELSEIF option = "2"
+
+			reporter_edit_do_field_selection ( self )
+
+		ELSE
+
+			IF valid_table ( self .
+				prompt_objects [ TABLE_PROMPT ] . text ) THEN
+
+				reporter_edit_save_current_report ( self )
+
+			ENDIF
+
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_validate_prompts ( self )
+
+{
+*	Validates entry in the form before OK code executed.
+*
+*******************************************************************************}
+
+	DECLARE valid
+
+	IF ( self . get_lastkey ( ) = "EXIT" ) THEN
+	 	valid = TRUE
+	ELSEIF BLANK ( self . prompt_objects [ TABLE_PROMPT ] . value ) OR
+	   BLANK ( self . prompt_objects [ OUTPUT_PROMPT ] . value ) OR
+	   BLANK ( self . prompt_objects [ FILE_PROMPT ] . value ) THEN
+		valid = FALSE
+	ELSE
+		valid = TRUE
+	ENDIF
+
+ 	RETURN ( valid )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_button_save_selection ( self )
+
+{
+* 	Asks user if they want to save this report.
+*
+*******************************************************************************}
+
+	IF valid_table ( self . parent_prompt
+		. prompt_objects [ TABLE_PROMPT ] . text ) THEN
+
+		reporter_edit_save_current_report ( self . parent_prompt )
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_get_report ( identity ,
+					   group_id )
+
+{
+* 	Prompts the user for file to save / load
+*
+*******************************************************************************}
+
+	DECLARE prompt_width , header_mess , footer_mess , prompt_mess ,
+		load , form , window_width , prompt_object , prompt_pos,
+		group_mess , rendition
+
+	prompt_width = 30
+
+	rendition = PROMPT_RENDITION_RAISED + PROMPT_RENDITION_BOLD
+
+	header_mess = GET_USER_MESSAGE ( "REPORTER_LOAD_HEADER" , 1 )
+	footer_mess = GET_USER_MESSAGE ( "REPORTER_LOAD_FOOTER" , 1 )
+	prompt_mess = GET_USER_MESSAGE ( "REPORTER_LOAD_PROMPT" , 1 )
+	group_mess  = GET_USER_MESSAGE ( "REPORTER_GROUP_PROMPT" , 1 )
+
+	window_width = find_max_number ( LENGTH ( header_mess ) + 2 ,
+	                                 LENGTH ( footer_mess ) + 2 )
+
+	prompt_pos = find_max_number ( LENGTH ( prompt_mess ) ,
+	                               LENGTH ( group_mess )  )
+
+	prompt_mess = PAD ( prompt_mess, " ", prompt_pos )
+	group_mess  = PAD ( group_mess,  " ", prompt_pos )
+
+	prompt_pos = prompt_pos + 3
+
+	window_width = find_max_number ( window_width              ,
+	                                 prompt_pos + prompt_width )
+
+	window_width = find_min_number ( window_width                  ,
+	                                 GLOBAL ( "SCREEN_WIDTH" ) - 4 )
+
+	PROMPT OBJECT form
+	       CLASS PROMPT_CLASS_FORM
+	       AT ( GLOBAL ( "SCREEN_WIDTH" ) - window_width ) / 2 , 10
+	       WITH ( header              = header_mess      ,
+	              footer              = footer_mess      ,
+	              proportional        = TRUE             ,
+	              return_behaviour    = FORM_RETURN_STAY ,
+	              width               = window_width     ,
+		      help_context        = "$REPORTER_REPORT_NAME",
+	              height              = 2                )
+
+	form . add_display ( prompt_mess , 2 , 1 , rendition )
+
+	PROMPT OBJECT prompt_object
+	       FORMAT TEXT30
+	       AT prompt_pos , 1
+	       WITH ( value  = global_report_name )
+
+	form . add_prompt ( prompt_object )
+
+	form . add_display ( group_mess , 2 , 2 , rendition )
+
+	PROMPT OBJECT prompt_object
+	       BROWSE ON group_header
+	       AT prompt_pos , 2
+	       WITH ( value = global_group_name )
+
+	form . add_prompt ( prompt_object )
+
+	form . add_frame ( "", 1, 1, 2, form . width )
+
+	form . start_prompt ( )
+	form . wait_prompt ( )
+	form . end_prompt ( )
+
+	load = ( form . get_lastkey ( ) = "DO" )
+
+	identity = form . prompt_objects [ 1 ] . value
+	group_id = form . prompt_objects [ 2 ] . value
+
+	RETURN ( load )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_load_squirrel ( VALUE name       ,
+	                                      VALUE modifiable ,
+	                                            self       )
+
+{
+*	Loads a squirrel.
+*
+*******************************************************************************}
+
+	DECLARE filename , squirrel , status , message , text_to_flash,
+		name_of_table
+
+	IF modifiable THEN
+
+		filename = SELECT reporter . identity
+			FOR UPDATE
+			WHERE ( title = name )
+
+	ELSE
+
+		filename = SELECT reporter . identity
+			WHERE ( title = name )
+
+	ENDIF		
+
+	IF filename = LOCKED THEN
+
+		status = "LOCKED"
+
+	ELSEIF  filename <> EMPTY 
+
+		{ Make filename lowercase for Unix }
+		filename = TOLOWER ( DIRECTORY : "REPORT"
+			: STRIP ( filename ) : "." : EXTENSION )
+
+		status = squirrel_open ( filename , squirrel )
+
+	ELSE
+
+		status = "ERROR"
+
+	ENDIF
+
+	IF ( status = EMPTY ) THEN
+		status = squirrel_read ( self . prompt_objects
+					[ TABLE_PROMPT ] . value , squirrel )
+	ENDIF
+
+	{ Need to check if the table exists }
+
+	IF ( status = EMPTY ) THEN
+
+		IF NOT valid_table ( self . prompt_objects [ TABLE_PROMPT ] . value ) THEN
+
+			status = GET_USER_MESSAGE ( "REPORTER_NO_TABLE" , 1 )
+
+		ELSE
+
+			self . prompt_objects [ TABLE_PROMPT ] . text =
+			self . prompt_objects [ TABLE_PROMPT ] . value
+	
+			self . prompt_objects [ TABLE_PROMPT ] . repaste ( )
+
+		ENDIF
+
+	ENDIF
+
+	IF ( status = EMPTY ) THEN
+		status = squirrel_read ( self . prompt_objects
+					[ OUTPUT_PROMPT ] . value , squirrel )
+	ENDIF
+
+	self . prompt_objects [ OUTPUT_PROMPT ] . text =
+		self . prompt_objects [ OUTPUT_PROMPT ] . value
+
+	self . prompt_objects [ OUTPUT_PROMPT ] . repaste ( )
+
+	IF ( status = EMPTY ) THEN
+		status = squirrel_read ( self . prompt_objects
+					[ FILE_PROMPT ] . value , squirrel )
+	ENDIF
+
+	self . prompt_objects [ FILE_PROMPT ] . text =
+		self . prompt_objects [ FILE_PROMPT ] . value
+
+	self . prompt_objects [ FILE_PROMPT ] . repaste ( )
+
+	IF ( status = EMPTY ) THEN
+		status = squirrel_read ( self . select_array , squirrel )
+	ENDIF
+
+	IF ( status = EMPTY ) THEN
+
+		name_of_table = self . prompt_objects [ TABLE_PROMPT ] . value
+
+		criteria_cache_fields ( name_of_table     ,
+					self . field_list )
+
+		status = reporter_edit_read_selected_fields ( self     ,
+						              squirrel )
+
+	ENDIF
+
+
+	IF ( status = EMPTY ) THEN
+		status = squirrel_release ( squirrel )
+	ENDIF
+
+	IF status <> EMPTY THEN
+
+		message_fetch ( "REPORTER_LOAD_FAIL" , message )
+		message_add_parameter ( message , status )
+		text_to_flash = message_get_text ( message , 1 )
+
+		flash_message ( text_to_flash , TRUE )
+
+	ENDIF
+
+	RETURN ( status = EMPTY )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_read_selected_fields ( self     ,
+						     squirrel )
+
+{
+* 	Reads in the selected fields.
+*
+*******************************************************************************}
+
+	DECLARE loop , fields_selected, status, inner_loop, found,
+		field_widths, old_file_format, mess_txt , order_of_fields ,
+                order_count
+
+	ARRAY fields_selected
+	ARRAY field_widths
+	ARRAY order_of_fields
+
+	status = squirrel_read ( fields_selected, squirrel )
+
+	IF status = EMPTY THEN
+
+		reporter_edit_check_file_format ( fields_selected ,
+						  old_file_format )
+
+		IF old_file_format THEN
+
+			status = squirrel_read ( field_widths, squirrel )
+			mess_txt = GET_USER_MESSAGE ( "REPORTER_NO_FIELD" , 1 )
+			flash_message ( mess_txt, TRUE )
+
+		ENDIF
+
+		{ Read the field order stored flag. Ignore the error if the field
+		  is not found as it may be an old report }
+
+		IF ( status = EMPTY ) THEN
+			status = squirrel_read
+					( self . order_stored , squirrel )
+
+			IF status <> EMPTY THEN
+				status = EMPTY
+				self . order_stored = FALSE
+			ENDIF
+
+		ENDIF
+
+		loop        = 0
+                order_count = 0
+
+		{ Loop through the array of fields in the table reading in
+		  the relevant array(s) saved in the squirrel file }
+
+ 		WHILE loop < size_of_array ( self . field_list ) DO
+ 
+			loop = loop + 1
+
+			self . field_width [ loop ] = criteria_cache_field_width
+			( self . prompt_objects [ TABLE_PROMPT ] . value ,
+			  self . field_list [ loop, 2 ]                  )
+
+			self . select_list [ loop ] = FALSE
+			self . field_order [ loop ] = ""
+
+
+			IF old_file_format THEN
+
+                                self . field_order [ loop ] = ""
+
+				IF loop <= size_of_array ( fields_selected )
+								THEN
+
+					self . select_list [ loop ] =
+						fields_selected [ loop ]
+
+					self . field_width [ loop ] =
+						field_widths [ loop ]
+
+					IF fields_selected [ loop ] THEN
+
+						order_count = order_count + 1
+
+						self . field_order [ loop ] =
+							STRING ( order_count )
+
+					ENDIF
+				ENDIF
+
+			ELSE
+
+				inner_loop = 0
+				found = FALSE
+
+				WHILE ( inner_loop < size_of_array
+					( fields_selected ) )
+					AND ( NOT found ) DO
+
+					inner_loop = inner_loop + 1
+
+					IF self . field_list [ loop, 2 ] =
+				fields_selected [ inner_loop, 1 ] THEN
+
+						found = TRUE
+
+						self . select_list [ loop ]
+							= TRUE
+
+						self . field_width [ loop ]
+					= fields_selected [ inner_loop, 2 ]
+
+						IF self . order_stored THEN
+
+							self . field_order
+								 [ loop ] = 
+					      fields_selected [ inner_loop, 3 ]
+
+						ELSE
+
+							self . field_order
+                                                                  [ loop ] =
+                                                         STRING ( inner_loop )
+
+						ENDIF
+
+					ENDIF
+
+				ENDWHILE
+
+			ENDIF
+
+		ENDWHILE
+
+		{ Set the field order stored flag }
+
+		self . order_stored = TRUE
+
+	ENDIF
+
+	RETURN ( status )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_check_file_format ( fields_selected ,
+						  old_file_format )
+
+{
+* 	Chekcs to see if the file format is the original one where the
+*	boolean array and field widths were stored, or whether its the
+*	new one where one 2D array is stored.
+*
+*******************************************************************************}
+
+	DECLARE index_array, two_dimensional
+
+	ARRAY index_array   ARRAY_SIZE ( 2 )
+
+	{ See if new or old file format }
+
+	old_file_format = FALSE
+	IF size_of_array ( fields_selected ) > 0 THEN
+
+		index_array [ 1 ] = 1
+		index_array [ 2 ] = 1
+
+		two_dimensional = array_element_exists ( fields_selected ,
+		                                         index_array     )
+
+		old_file_format = NOT two_dimensional
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_save_current_report ( self )
+
+{
+* 	Saves the current report.
+*
+*******************************************************************************}
+
+	DECLARE name, save, continue, ok, group_id, confirm_msg, id
+
+	REPEAT
+		save = reporter_edit_get_report ( name     ,
+					  	  group_id )
+
+		{ If overwritting another report then confirm first }
+
+		continue = TRUE
+
+		IF ( save ) AND ( global_report_name <> name ) THEN
+
+			id = SELECT reporter . identity
+	      			WHERE ( title = name )
+
+			IF ( id <> EMPTY ) THEN
+
+				message_fetch ( "REPORTER_CONFIRM_OVERWRITE",
+						confirm_msg )
+
+				message_add_parameter ( confirm_msg,
+							STRIP ( name ) )
+
+				continue = confirm_with_text (
+					   message_get_text ( confirm_msg, 1 ) )
+			ENDIF
+		ENDIF
+
+	UNTIL ( continue )
+
+	IF save THEN
+
+		global_report_name = name
+		global_group_name  = group_id
+
+		ok = reporter_edit_save_database ( name     ,
+						   group_id )
+
+		IF ok THEN
+
+			reporter_edit_save_squirrel ( name ,
+						      self )
+
+			reporter_edit_check_report_display_list ( name )
+
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_check_report_display_list ( VALUE name )
+{
+* 	Checks display list
+*
+*******************************************************************************}
+
+	DECLARE count, found
+
+	count = 1
+	found = FALSE
+
+	WHILE ( count <= size_of_array ( report_display_list ) ) AND
+		( NOT found ) DO
+
+		found = name = report_display_list [ count ]
+
+		count = count + 1
+
+	ENDWHILE
+
+	IF NOT found THEN
+
+		report_display_list [ count ] = name
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_save_database ( VALUE name     ,
+					      VALUE group_id )
+{
+* 	Writes the report to the database
+*
+*******************************************************************************}
+
+	DECLARE ok, id, dbase_error, new_id
+
+	ok = TRUE
+
+	id = SELECT reporter . identity
+	      FOR UPDATE
+	      WHERE ( title = name )
+
+	IF id = EMPTY THEN
+
+		START WRITE TRANSACTION "Reporter"
+
+		new_id = INCREMENT ( "REPORTER", "KEY0" )
+
+		RESERVE ENTRY reporter, new_id, dbase_error
+
+		ok = dbase_error = EMPTY
+
+		IF ok THEN
+
+			ASSIGN reporter . title    = name
+			ASSIGN reporter . group_id = group_id
+
+			UPDATE reporter
+			COMMIT
+
+		ELSE
+
+			ROLLBACK
+
+		ENDIF
+
+	ELSEIF id <> LOCKED THEN
+
+		START WRITE TRANSACTION "Reporter"
+
+		ASSIGN reporter . group_id = group_id
+
+		UPDATE reporter
+		COMMIT
+
+	ENDIF
+
+	RETURN ( ok )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_save_squirrel ( VALUE name ,
+						    self )
+{
+* 	Writes out the current report as a squirrel.
+*
+*******************************************************************************}
+
+	DECLARE filename , squirrel , status , message , text_to_flash
+
+	filename = SELECT reporter . identity
+		     WHERE ( title = name )
+
+	IF filename <> EMPTY THEN
+
+		{ Make filename lowercase for Unix }
+		filename = TOLOWER ( DIRECTORY : "REPORT"
+			: STRIP ( filename ) : "." : EXTENSION )
+
+		IF FILE EXISTS ( filename ) THEN
+
+			FILE DELETE filename , status
+
+		ELSE
+
+			status = EMPTY
+
+		ENDIF
+
+	ELSE
+
+		status = "ERROR"
+
+	ENDIF
+
+	IF ( status = EMPTY ) THEN
+		status = squirrel_create ( filename , squirrel )
+	ENDIF
+
+	IF ( status = EMPTY ) THEN
+		status = squirrel_write ( self . prompt_objects
+					[ TABLE_PROMPT ] . value , squirrel )
+	ENDIF
+
+	IF ( status = EMPTY ) THEN
+		status = squirrel_write ( self . prompt_objects
+					[ OUTPUT_PROMPT ] . value , squirrel )
+	ENDIF
+
+	IF ( status = EMPTY ) THEN
+		status = squirrel_write ( self . prompt_objects
+					[ FILE_PROMPT ] . value , squirrel )
+	ENDIF
+
+	IF ( status = EMPTY ) THEN
+		status = squirrel_write ( self . select_array , squirrel )
+	ENDIF
+
+	IF ( status = EMPTY ) THEN
+		status = reporter_edit_write_selected_fields ( self     ,
+							       squirrel )
+	ENDIF
+
+	IF ( status = EMPTY ) THEN
+		status = squirrel_write ( self . order_stored , squirrel )
+	ENDIF
+
+	IF ( status = EMPTY ) THEN
+		status = squirrel_release ( squirrel )
+	ENDIF
+
+	IF status <> EMPTY THEN
+
+		message_fetch ( "REPORTER_SAVE_FAIL" , message )
+		message_add_parameter ( message , status )
+		text_to_flash = message_get_text ( message , 1 )
+
+		flash_message ( text_to_flash , TRUE )
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_write_selected_fields ( self     ,
+						      squirrel )
+
+{
+* 	Writes out the fields selected, field widths and selection order.
+*
+*******************************************************************************}
+
+	DECLARE loop , fields_to_save, status, count
+
+	ARRAY fields_to_save
+
+	loop = 0
+	count = 0
+
+	WHILE loop < size_of_array ( self . field_list ) DO
+
+		loop = loop + 1
+
+		IF self . select_list [ loop ] THEN
+
+			count = count + 1
+
+			fields_to_save [ count, 1 ] =
+				self . field_list [ loop, 2 ]
+
+			fields_to_save [ count, 2 ] =
+				self . field_width [ loop ]
+
+			fields_to_save [ count, 3 ] =
+				self . field_order [ loop ]
+
+
+		ENDIF
+
+	ENDWHILE
+
+	status = squirrel_write ( fields_to_save, squirrel )
+
+	RETURN ( status )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_button_do_field_selection ( self )
+
+{
+* 	Allows the selection of fields to write out.
+*
+*******************************************************************************}
+
+	IF valid_table ( self . parent_prompt
+			. prompt_objects [ TABLE_PROMPT ] . text ) THEN
+
+		reporter_edit_do_field_selection ( self . parent_prompt )
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_button_do_criteria_selection ( self )
+
+{
+* 	Allows the definition of selection criteria for fields.
+*
+*******************************************************************************}
+
+	IF valid_table ( self . parent_prompt
+			. prompt_objects [ TABLE_PROMPT ] . text ) THEN
+
+		reporter_edit_do_criteria_selection ( self . parent_prompt )
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_do_field_selection ( the_form )
+
+{
+*	Prompts the user for a list of fields to output.
+*
+*******************************************************************************}
+
+	DECLARE field_list_box , mess_ptr,name_of_table, saved_select_list,
+		saved_field_widths, count , saved_field_order
+
+	ARRAY saved_select_list
+	ARRAY saved_field_widths
+	ARRAY saved_field_order
+
+	name_of_table =  the_form . prompt_objects [ TABLE_PROMPT ] . value
+
+	array_copy ( saved_select_list  , the_form . select_list )
+	array_copy ( saved_field_widths , the_form . field_width )
+	array_copy ( saved_field_order  , the_form . field_order )
+
+	CREATE OBJECT "STD_FIELD_LIST" , field_list_box
+
+	message_fetch ( "REPORTER_FIELD_LIST" , mess_ptr )
+	message_add_parameter ( mess_ptr , STRIP ( name_of_table ) )
+
+	ARRAY field_list_box . display_list
+
+	count = 1
+                              
+	WHILE count <= size_of_array ( the_form . field_list ) DO
+
+		field_list_box . display_list [ count ] =
+				the_form . field_list [ count, 1 ]
+
+		count = count + 1
+
+	ENDWHILE
+
+	field_list_box . select_list      = the_form . select_list
+	field_list_box . field_width      = the_form . field_width
+	field_list_box . field_order      = the_form . field_order
+	field_list_box . width            = 60
+	field_list_box . height           = 15
+	field_list_box . row              = 6
+	field_list_box . column           =
+		( GLOBAL ( "SCREEN_WIDTH" ) - 60 ) DIV 2
+	field_list_box . header           =
+		GET_USER_MESSAGE ( "REPORTER_FIELD_LIST_HEADER" , 1 )
+	field_list_box . list_title       = message_get_text ( mess_ptr , 1 )
+	field_list_box . footer           =
+		GET_USER_MESSAGE ( "REPORTER_FIELD_LIST_FOOTER" , 1 )
+	field_list_box . help_context     = "$REPORTER_FIELD_LIST"
+	field_list_box . confirm_required = FALSE
+	field_list_box . button_style       = FORM_BUTTON_NONE
+	field_list_box . grid . height  = field_list_box . height
+
+	IF GLOBAL ( "TERMTYPE" ) = "GUI" THEN
+
+		field_list_box . grid . height  = field_list_box . height - 3
+
+		reporter_edit_field_list_box_add_buttons ( field_list_box )
+
+	ENDIF
+
+	field_list_box . start_prompt ( )
+	field_list_box . wait_prompt  ( )
+	field_list_box . end_prompt   ( )
+
+	IF ( LASTKEY = "EXIT" ) THEN
+
+		array_copy ( the_form . select_list , saved_select_list  )
+		array_copy ( the_form . field_width , saved_field_widths )
+		array_copy ( the_form . field_order , saved_field_order  )
+
+	ENDIF
+
+	RETURN ( LASTKEY <> "EXIT" )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_field_list_box_add_buttons ( field_list_box )
+
+{
+*	Manually adds buttons to the field list box.
+*
+*******************************************************************************}
+
+	DECLARE button, row, start_column, button_width ,number_buttons,
+		caption_text
+
+	number_buttons = 5
+	button_width = 10
+
+	row = field_list_box . height - 1
+
+	start_column = ( ( field_list_box . width / number_buttons ) -
+				button_width ) / 2
+
+	caption_text = GET_USER_MESSAGE ( "SMP_PROMPT_BUTTON_OK" , 1 )
+
+	PROMPT OBJECT button
+		CLASS "STD_PROMPT_BUTTON"
+		ON LINE row
+		FROM    start_column
+		TO      start_column + button_width
+		WITH ( caption = caption_text ,
+		       enabled = TRUE         ,
+		       send_lastkey = "DO"    )
+
+	field_list_box . add_prompt ( button )
+
+	start_column = start_column +
+			( field_list_box . width / number_buttons )
+
+	caption_text = GET_USER_MESSAGE ( "SMP_PROMPT_BUTTON_HELP" , 1 )
+
+	PROMPT OBJECT button
+		CLASS "STD_PROMPT_BUTTON"
+		ON LINE row
+		FROM    start_column
+		TO      start_column + button_width
+		WITH ( caption      = caption_text ,
+		       enabled      = TRUE         ,
+		       send_lastkey = "HELP"       )
+
+	field_list_box . add_prompt ( button )
+
+	start_column = start_column +
+			( field_list_box . width / number_buttons )
+
+	caption_text = GET_USER_MESSAGE ( "SMP_PROMPT_BUTTON_CANCEL" , 1 )
+
+	PROMPT OBJECT button
+		CLASS "STD_PROMPT_BUTTON"
+		ON LINE row
+		FROM    start_column
+		TO      start_column + button_width
+		WITH ( caption = caption_text ,
+		       enabled = TRUE         ,
+		       send_lastkey = "EXIT"  )
+
+	field_list_box . add_prompt ( button )
+
+	start_column = start_column +
+			( field_list_box . width / number_buttons )
+
+	PROMPT OBJECT button
+		CLASS "STD_PROMPT_BUTTON"
+		ON LINE row
+		FROM    start_column
+		TO      start_column + button_width
+		WITH ( caption             =
+			GET_USER_MESSAGE ( "REPORTER_SELECT_ALL_CAPTION" , 1 ),
+		       enabled             = TRUE                             ,
+		       mouse_click_routine =
+				"REPORTER_EDIT_SELECT_ALL_FIELDS"             )
+
+	field_list_box . add_prompt ( button )
+
+	start_column = start_column +
+			( field_list_box . width / number_buttons )
+
+	PROMPT OBJECT button
+		CLASS "STD_PROMPT_BUTTON"
+		ON LINE row
+		FROM    start_column
+		TO      start_column + button_width
+		WITH ( caption             =
+		       GET_USER_MESSAGE ( "REPORTER_DESELECT_ALL_CAPTION" , 1 ),
+		       enabled             = TRUE                              ,
+		       mouse_click_routine =
+               				  "REPORTER_EDIT_DESELECT_ALL_FIELDS" )
+
+	field_list_box . add_prompt ( button )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_select_all_fields ( self )
+
+{
+*	Respond to the select all button being click. Selects all the fields
+*	for inclusion.
+*
+*******************************************************************************}
+
+	DECLARE field_list_box, count , order_no
+
+	field_list_box = self . parent_prompt
+
+	count    = 1
+        order_no = field_list_box . selected_number
+
+	WHILE count <= size_of_array ( field_list_box . display_list ) DO
+
+		IF NOT field_list_box . select_list [ count ] THEN
+
+                        order_no = order_no + 1
+			field_list_box . field_order [ count ] = order_no
+
+		ENDIF
+
+		field_list_box . select_list [ count ] = TRUE
+
+		field_list_box . grid . redisplay_cell
+			( field_list_box . grid . current_column, count )
+
+		field_list_box . grid . redisplay_cell
+						( FIELD_ORDER_COL, count )
+
+		count = count + 1
+
+	ENDWHILE
+            
+	field_list_box . selected_number = order_no
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_deselect_all_fields ( self )
+
+{
+*	Respond to the deselect all button being click. Deselects all the 
+*	fields which have been selected for inclusion.
+*
+*******************************************************************************}
+
+	DECLARE field_list_box, count
+
+	field_list_box = self . parent_prompt
+
+	count                            = 1
+        field_list_box . selected_number = 0
+
+	WHILE count <= size_of_array ( field_list_box . display_list ) DO
+
+		field_list_box . select_list [ count ] = FALSE
+		field_list_box . field_order [ count ] = ""
+
+		field_list_box . grid . redisplay_cell
+			( field_list_box . grid . current_column, count )
+
+		field_list_box . grid . redisplay_cell
+						( FIELD_ORDER_COL, count )
+
+		count = count + 1
+
+	ENDWHILE
+            
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE table_name_leave_prompt ( self )
+
+{
+*	Leave prompt code - will reinitialise variables if the table changed.
+*
+*******************************************************************************}
+
+	DECLARE the_form, count
+	the_form = self . parent_prompt
+
+	IF ( self . text <> self . original_text         ) OR
+	   ( SIZE_OF_ARRAY ( the_form . field_list ) = 0 ) THEN
+		
+		
+		ARRAY the_form . select_array
+		ARRAY the_form . field_list
+		ARRAY the_form . field_width
+		ARRAY the_form . field_order ARRAYSIZE ( 0 ) = ""
+		ARRAY the_form . value_array
+		ARRAY the_form . select_list
+
+		criteria_cache_fields ( self . value          ,
+					the_form . field_list )
+
+		count = 0
+
+		ARRAY the_form . select_list
+			ARRAY_SIZE ( size_of_array ( the_form . field_list ) )
+
+		WHILE count < size_of_array ( the_form . field_list ) DO
+
+			count = count + 1
+			the_form . select_list [ count ] = FALSE
+
+			the_form . field_width [ count ]
+			= criteria_cache_field_width
+				( self . value                       ,
+				  the_form . field_list [ count, 2 ] )
+
+		ENDWHILE
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE file_name_validation ( self )
+
+{
+*	Validation routine for the file name prompt. Make sure it is of *.*
+*	format.
+*
+*******************************************************************************}
+
+	DECLARE client_new_filename, found, count, return_value
+
+	client_new_filename = reporter_edit_get_file_name ( self . text )
+
+	found = INDEX( client_new_filename, "." )
+
+	count = 0
+	return_value = FALSE
+
+	WHILE found <> 0 DO
+
+		client_new_filename = RIGHTSTRING ( client_new_filename,
+			LENGTH ( client_new_filename ) - found )
+
+		count = count + 1
+
+		found = INDEX( client_new_filename, "." )
+
+	ENDWHILE
+
+	IF count = 1 THEN
+
+		return_value = TRUE
+
+	ELSE
+
+		flash_message ( GET_USER_MESSAGE ( "REPORTER_INVALID_FILE" , 1 )
+							 , TRUE)
+
+	ENDIF
+
+	RETURN ( return_value )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE file_name_browse ( self )
+
+{
+*	Browse routine for the file name prompt.
+*
+*******************************************************************************}
+
+	DECLARE client_new_filename, client_file_dir,
+		client_file_filter, client_file_title, client_file_help,
+		client_file
+
+	client_new_filename = reporter_edit_get_file_name ( self . text )
+
+	client_file_dir = LEFTSTRING ( self . text, LENGTH ( self . text ) -
+					LENGTH ( client_new_filename ) )
+
+	client_file_filter = GET_USER_MESSAGE ( "REPORTER_FILE_FILTER" , 1 )
+	client_file_title = GET_USER_MESSAGE ( "REPORTER_FILE_TITLE" , 1 )
+	client_file_help = " "
+
+	client_file = client_find_file ( FALSE               ,
+					 client_new_filename ,
+					 client_file_dir     ,
+					 client_file_filter  ,
+					 client_file_title   ,
+					 client_file_help    )
+
+	IF client_file <> EMPTY THEN
+
+		self . text = client_file
+		self . repaste ( )
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_output_records ( the_form )
+
+{
+*
+*	Selects the records and writes out to a CSV file or uses DDE
+*	to poke into VB / EXCEL
+*
+*******************************************************************************}
+
+	DECLARE no_of_records , ok, bar_counter , mess_ptr ,
+		error_message, name_of_table
+
+	ok = TRUE
+
+	name_of_table =  the_form . prompt_objects [ TABLE_PROMPT ] . value
+
+	set_up_install_window_class ( )
+
+	no_of_records = TRUNC ( array_select_count ( name_of_table           ,
+	                                             the_form . select_array ) )
+
+	IF no_of_records > 0 THEN
+
+		CREATE OBJECT INSTALL_WINDOW_CLASS , bar_counter
+
+		message_fetch ( "REPORTER_BAR_HEADER" , mess_ptr )
+
+		message_add_parameter ( mess_ptr                          ,
+		                        STRIP ( TRUNC ( no_of_records ) ) )
+		message_add_parameter ( mess_ptr , STRIP ( name_of_table ) )
+
+		bar_counter . header      = message_get_text ( mess_ptr , 1 )
+		bar_counter . footer      =
+			GET_USER_MESSAGE ( "REPORTER_BAR_FOOTER" , 1 )
+		bar_counter . row         = 15
+		bar_counter . start_value = 0
+		bar_counter . end_value   = no_of_records
+
+		bar_counter . start_install ( )
+
+		reporter_edit_select_records ( the_form                ,
+					       no_of_records           ,
+					       bar_counter             )
+
+		bar_counter . end_install ( )
+
+		ok = reporter_edit_write_array_to_output ( the_form      ,
+							   error_message )
+
+	ENDIF
+
+	RETURN ( ok )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_select_records (       the_form        ,
+					       VALUE no_of_records   ,
+					             bar_counter     )
+
+{
+*
+*	Selects the records.
+*
+*******************************************************************************}
+
+	DECLARE record_count, id, mess_ptr, name_of_table, loop,
+		data , output_order , field_ptr , no_of_fields
+
+	ARRAY the_form . value_array
+
+	name_of_table =  the_form . prompt_objects [ TABLE_PROMPT ] . value
+
+	array_select ( name_of_table           ,
+		       FALSE                   ,
+		       the_form . select_array )
+
+	reporter_edit_get_output_order ( the_form     ,
+                                         no_of_fields ,
+                                         output_order )
+
+	record_count = 1
+
+	message_fetch ( "REPORTER_READ_TRAN" , mess_ptr )
+	message_add_parameter ( mess_ptr , name_of_table )
+
+	START READ TRANSACTION message_get_text ( mess_ptr , 1 )
+
+	field_ptr = output_order [ 1 ]
+
+	id = SELECT 'name_of_table' . 'the_form . field_list [ field_ptr, 2 ]'
+
+	WHILE ( id <> EMPTY ) DO
+
+		loop = 1
+
+		WHILE ( loop <= no_of_fields ) DO
+
+			field_ptr = output_order [ loop ]
+			
+			data = SELECT 'name_of_table' .
+                                      'the_form . field_list [ field_ptr , 2 ]'
+
+			IF ( data = NULL ) THEN
+				data = ""
+			ENDIF
+
+			the_form . value_array
+					[ record_count, loop ] = data
+
+			loop = loop + 1
+
+		ENDWHILE
+
+		bar_counter . increase_one ( )
+
+		NEXT 'name_of_table'
+
+		field_ptr = output_order [ 1 ]
+
+		id = SELECT 'name_of_table' .
+				 'the_form . field_list [ field_ptr, 2 ]'
+
+		record_count = record_count + 1
+
+	ENDWHILE
+
+	IF record_count = 1 THEN
+
+		flash_message ( GET_USER_MESSAGE("REPORTER_NO_RECORDS", 1) ,
+							TRUE )
+
+	ENDIF
+
+ENDROUTINE
+
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_get_output_order ( the_form       ,
+					         no_of_fields   ,
+					         output_order   )
+
+{
+*	 Reads the field order array to determine what order to output the
+*	 selected fields in. Uses the order number to determine the array
+*	 element store and stores a pointer to the selected field in the
+*	 array.
+*
+*
+*******************************************************************************}
+
+	DECLARE count
+
+	ARRAY output_order ARRAYSIZE ( 0 )
+
+	count  = 1
+
+	WHILE count <= size_of_array ( the_form . field_list ) DO
+
+		IF the_form . select_list [ count ]  THEN
+			output_order [ the_form . field_order [ count ] ]
+							 = count
+
+		ENDIF
+
+		count = count + 1
+
+	ENDWHILE
+
+	no_of_fields = size_of_array ( output_order )
+
+ENDROUTINE
+
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_write_array_to_output ( the_form      ,
+						      error_message )
+
+{
+*
+* 	Selects the records and writes out to a CSV file or uses DDE
+*	to poke into VB / EXCEL
+*
+*******************************************************************************}
+
+	DECLARE ok, application_name, client_file, found, status,
+		application_object
+
+	ok = TRUE
+
+	application_name = the_form . prompt_objects [ OUTPUT_PROMPT ] . value
+
+	IF reporter_edit_check_application_exists ( application_name ) THEN
+
+		found = reporter_edit_find_routine ( the_form . dest_list ,
+						     application_name     ,
+						     application_object   )
+
+		IF found THEN
+
+			ok = reporter_edit_write_array_to_csv
+					( the_form                           ,
+					  application_object . tab_separated ,
+					  client_file                        )
+
+			IF ok THEN
+
+				reporter_edit_get_application_path
+						( application_name )
+
+				IF application_object . output_routine
+						<> EMPTY THEN
+
+					CALL_ROUTINE
+					  application_object . output_routine
+						USING client_file ,
+						      application_name ,
+						      the_form .select_list ,
+						      the_form .field_width ,
+                                                      the_form .field_order
+						RETURNING status
+						IN LIBRARY
+					application_object . library
+
+				ELSE
+
+					reporter_edit_load_application
+							( client_file      ,
+							  application_name )
+
+				ENDIF
+
+			ENDIF
+
+		ENDIF
+
+	ENDIF
+
+	RETURN ( ok )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_get_application_path ( application_name )
+{
+*
+*	Sets the application_name to be the full path
+*
+*******************************************************************************}
+
+	{ Need code to here to query the client and determine the path
+	  for the application }
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_find_routine (       dest_list            ,
+					     VALUE application_name     ,
+					           application_object   )
+{
+*
+*	Finds the routine and library for the application
+*
+*******************************************************************************}
+
+	DECLARE found
+
+	found =  dest_list . fetch ( application_name   ,
+				     application_object )
+
+	RETURN ( found )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_load_application ( VALUE client_file      ,
+						 VALUE application_name )
+
+{
+*
+*	Loads application
+*
+*******************************************************************************}
+
+	DECLARE status
+
+	dde_winexec ( STRIP ( application_name ) : ".EXE" : client_file,
+			"SW_SHOW", status )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_write_array_to_csv (       the_form    ,
+						   VALUE is_tab      ,
+						         client_file )
+
+{
+*
+*	Writes the output to a CSV file on the client PC.
+*
+*******************************************************************************}
+
+	DECLARE row , output_line , status, server_file
+
+	SET DATE FORMAT CSV_DATE_FORMAT
+{1.1}
+	RESTORE DATE FORMAT
+	SET DATE FORMAT GLOBAL( "CSV_DATE_FORMAT" )
+{/1.1}
+	server_file = "REPORTER" : STRIP( GLOBAL( "PROCESS_ID" ) )
+	server_file = TOLOWER ( "SMP$TEXTREPORTS:" : server_file : ".CSV" )
+
+	client_file = STRIP( the_form . prompt_objects [ FILE_PROMPT ] . value )
+
+	FILE CREATE server_file , status
+
+	IF ( status = EMPTY ) THEN
+
+		reporter_edit_write_title_line ( the_form    ,
+						 is_tab      ,
+						 output_line )
+
+		FILE WRITE server_file , output_line , status
+
+	ENDIF
+
+	row = 1
+
+	WHILE ( row <= size_of_array ( the_form . value_array ) ) AND
+	      ( status = EMPTY ) DO
+
+		reporter_edit_write_record ( the_form    ,
+					     is_tab      ,
+					     output_line ,
+					     row         )
+
+		FILE WRITE server_file , output_line , status
+
+		row = row + 1
+
+	ENDWHILE
+
+	IF ( status <> EMPTY ) THEN
+
+		flash_message ( status , TRUE )
+
+	ELSE
+
+		FILE CLOSE server_file , status
+
+		IF status = EMPTY THEN
+
+			IF GLOBAL ( "TERMTYPE" ) = "GUI" THEN
+
+				status = transfer_from_server ( server_file ,
+						                client_file )
+
+				IF status = EMPTY THEN
+
+					FILE DELETE server_file , status
+
+					IF ( status <> EMPTY ) THEN
+						flash_message ( status , TRUE )
+					ENDIF
+
+				ELSE
+
+					flash_message ( GET_USER_MESSAGE ( "REPORTER_TRANSFER_ERROR" , 1 ) :
+					                " : " : status ,
+					                TRUE )
+
+				ENDIF
+
+			ENDIF
+
+		ELSE
+
+			flash_message ( status , TRUE )
+
+		ENDIF
+
+	ENDIF
+
+	RESTORE DATE FORMAT
+
+	RETURN ( status = EMPTY )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_write_title_line (       the_form    ,
+						 VALUE is_tab      ,
+						       output_line )
+
+{
+*
+*	Creates the title line output string
+*
+*******************************************************************************}
+
+	DECLARE delimiter, field_title, loop, first , no_of_fields ,
+                output_order , field_ptr
+
+	IF is_tab THEN
+		delimiter = CHR ( 09 )
+	ELSE
+		delimiter = ","
+	ENDIF
+
+	reporter_edit_get_output_order ( the_form     ,
+                                         no_of_fields ,
+                                         output_order )
+
+	loop  = 1
+	first = TRUE
+
+	WHILE loop <= no_of_fields DO
+
+		field_ptr = output_order [ loop ]
+
+		field_title = the_form . field_list [ field_ptr, 1 ]
+
+		IF LEFTSTRING ( field_title, 2 ) = "ID" THEN
+
+		field_title = "Id" : RIGHTSTRING
+				  ( field_title, LENGTH ( field_title ) - 2 )
+
+		ENDIF
+
+		IF is_tab THEN
+
+			field_title = PAD ( STRIP ( field_title ), " ",
+					the_form . field_width [ field_ptr ] )
+
+		ENDIF
+
+		IF first THEN
+
+			output_line = field_title
+
+			first = FALSE
+
+		ELSE
+
+			output_line = output_line :
+			              delimiter :
+			              field_title
+
+		ENDIF
+
+		loop = loop + 1
+
+	ENDWHILE
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_write_record (       the_form    ,
+					     VALUE is_tab      ,
+						   output_line ,
+					     VALUE row         )
+
+{
+*
+*	Writes the record to the output string
+*
+*******************************************************************************}
+
+	DECLARE delimiter, 
+	        field_value,
+	        loop,
+	        first,
+	        count,
+	        CurFieldWidth,
+	        field_ptr,
+	        no_of_fields,
+	        output_order,
+	        newstr,
+	        quote_pos
+
+	IF is_tab THEN
+		delimiter = CHR ( 09 )
+	ELSE
+		delimiter = ","
+	ENDIF
+
+	loop  = 1
+	first = TRUE
+	count = 0
+
+	WHILE loop <= size_of_array ( the_form . select_list ) DO
+
+		IF the_form . select_list [ loop ] = TRUE THEN
+
+			count = count + 1
+
+			field_value = the_form . value_array [ row , count ]
+
+			IF is_tab THEN
+
+				reporter_edit_get_output_order ( the_form, no_of_fields, output_order) 
+				field_ptr     = output_order [ count ] 
+				CurFieldWidth = the_form . field_width [ field_ptr ] 
+				field_value = PAD ( Strip ( field_value ), " ", CurFieldWidth) 
+
+			ELSE
+
+				newstr = ""
+				quote_pos = index ( field_value, ascii(34))
+
+				WHILE quote_pos > 0 DO
+
+					newstr      = newstr : LEFTSTRING ( field_value, quote_pos ) : ascii(34)
+					field_value = RIGHTSTRING ( field_value, STRINGLENGTH ( field_value ) - quote_pos )
+
+					quote_pos = index ( field_value, ascii(34))
+
+				ENDWHILE
+
+				newstr = newstr : field_value
+
+				field_value = ASCII (34) : newstr : ASCII (34)
+
+			ENDIF
+
+			IF first THEN
+
+				output_line = field_value
+
+				first = FALSE
+
+			ELSE
+
+				output_line = output_line :
+				              delimiter :
+				              field_value
+
+			ENDIF
+
+		ENDIF
+
+		loop = loop + 1
+
+	ENDWHILE
+
+ENDROUTINE
+
+{******************************************************************************}
+
+	ROUTINE reporter_edit_get_file_name ( VALUE client_file )
+
+{
+*
+*	Strips off the directory part of the file and returns the name
+*
+*******************************************************************************}
+
+	DECLARE found
+
+	found = INDEX( client_file, "\" )
+
+	WHILE found <> 0 DO
+
+		client_file = RIGHTSTRING ( client_file,
+			LENGTH ( client_file ) - found )
+
+		found = INDEX( client_file, "\" )
+
+	ENDWHILE
+
+	RETURN ( client_file )
+
+ENDROUTINE

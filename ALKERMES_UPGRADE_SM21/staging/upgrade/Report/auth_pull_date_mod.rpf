@@ -1,0 +1,242 @@
+{*************************************************************************************************
+*
+* Module Name   : Due_PULL_DATE
+*
+* Purpose       : Allow for the modification of due pull login date due to stability down time to 
+*		  be authorised by the appropriate personel
+*
+* Document Ref. : Stability Scheduler Enhancements - URS
+*
+* Date Created   : 13-May-2003
+*
+* Author	: Anne-Marie Fanning
+*
+* Company 	: Orbis Information Systems
+*
+**************************************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By             		Description
+* -------   -----------  ----------     		-------------------------------
+* 0.1       May 2003     Anne-Marie Fanning 		First Development Version
+*
+**************************************************************************************************}
+
+
+SET NOTPROTECTED
+SET NAME "DEFER/"
+SET COMPILE_OPTION DECLARE
+ENABLE WINDOWS
+
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_VGL
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN STANDARD_LIBRARY STD_CLIENT
+
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $LIB_LIST_VIEWER
+JOIN LIBRARY $PROMPT_LIST
+
+set_up_std_prompt_list_class ( )
+main()
+
+EXIT
+
+ROUTINE main
+
+{
+*  Main Routine 
+*
+**************************************************************************************************}
+DECLARE form
+
+create_form(form)
+ENDROUTINE{MAIN}
+
+
+ROUTINE create_form(form)
+
+{
+*  Create form to prompt for study 
+*
+**************************************************************************************************}
+
+DECLARE list, select_array, study_prompt, auth_button,  close_button
+
+ARRAY select_array
+
+CREATE OBJECT PROMPT_CLASS_FORM, form
+
+	form . height = GLOBAL ( "GUI_HEIGHT") DIV 2
+	form . width  = GLOBAL ( "GUI_WIDTH" ) DIV 2
+	form . row    = 4
+	form . column = form . width DIV 2
+	form . header = "Pull Date Modification Authorisation"
+	form . return_behaviour = FORM_RETURN_STAY
+	{form . confirm_required = TRUE}
+	form . button_style = FORM_BUTTON_NONE
+	
+	array_select_add (select_array, 
+                           ARRAY_SELECT_EQ, 
+                           "status",
+                           "H")
+
+       	array_select ("SAMPLE", 
+                      TRUE, 
+                      select_array)
+
+	PROMPT OBJECT study_prompt
+		ON LINE 1 FROM 20
+		BROWSE ON pds_study . identity
+		WITH(   vgl_library = GLOBAL ( "CURRENT_LIBRARY" ) ,
+			leave_prompt_routine = "get_pull_info"	,
+			select_array = select_array{,
+			always_validate = TRUE}	  )
+		
+	form . add_prompt ( study_prompt )
+
+	form . add_display ( "Study ID ", 2, 1, PROMPT_RENDITION_RAISED )
+
+	create_list(form,list)
+	
+	form . add_prompt(list)
+
+
+	PROMPT OBJECT auth_button
+		CLASS PROMPT_CLASS_BUTTON
+		ON LINE form . height - 1 FROM 8
+		WITH (  caption = "Authorise"			,
+			width   = 10     			,
+			mouse_click_routine = "auth_pull_dates" ,
+			enabled = FALSE		)
+
+	form . add_prompt ( auth_button )
+
+	
+	PROMPT OBJECT close_button
+		CLASS PROMPT_CLASS_BUTTON
+		ON LINE form . height - 1 FROM 32
+		WITH (  caption = "Close"	,
+			width   = 10     	,
+			send_lastkey = "EXIT" 	)
+
+	form . add_prompt ( close_button )
+
+
+	form . start_prompt()
+	form . wait_prompt()
+	form . end_prompt()
+
+
+ENDROUTINE{create_form}
+
+
+ROUTINE get_pull_info(self)
+
+{
+*  For the study specified get the due pull dates  
+*
+**************************************************************************************************}
+DECLARE due_date, list
+
+list = self . parent_prompt . prompt_objects[2]
+
+
+ due_date = SELECT PDS_STUDY_PULL . due_login_date
+	    WHERE header = self . value
+	    AND cell_disp = "H"
+
+
+WHILE (due_date <> EMPTY) DO
+	list . insert_item ( due_date, EMPTY )
+
+	list . set_item ( 2, SELECT PDS_STUDY_PULL . cell_disp )
+	list . set_item ( 3, SELECT PDS_STUDY_PULL . layer_factor )
+	list . set_item ( 4, SELECT PDS_STUDY_PULL . time_factor )
+	list . set_item ( 5, SELECT PDS_STUDY_PULL . c_factor )
+	NEXT PDS_STUDY_PULL 
+	due_date = SELECT PDS_STUDY_PULL . due_login_date
+	
+	{enalbe the authorise and reject buttons when the list is populated with data}
+	self . parent_prompt . Prompt_objects[3] . set_enabled(TRUE)
+	self . parent_prompt . Prompt_objects[4] . set_enabled(TRUE)
+
+
+ENDWHILE
+
+ENDROUTINE{get_pull_info}
+
+
+ROUTINE create_list(form,list)
+
+{
+*  Create list to display pull due login dates 
+*
+**************************************************************************************************}
+
+CREATE OBJECT "STD_PROMPT_LIST", list
+
+list . row = 3
+list . column = 1
+list . height = form . height - 6
+list . width = form . width - 2
+
+list . add_column ( "Due Pull Date", 15 )
+list . add_column ( "Status", 6 )
+list . add_column ( "Layer Factor", 8 )
+list . add_column ( "Time Factor", 8 )
+list . add_column ( "C-Factor", 8 )
+
+
+ENDROUTINE {create_list}
+
+ROUTINE auth_pull_dates(self)
+
+{
+*  authorise the date modification
+*
+**************************************************************************************************}
+DECLARE study_id, pull_stat
+
+START WRITE TRANSACTION "update status of study"
+study_id = SELECT PDS_STUDY . identity FOR UPDATE
+ 	   WHERE identity = self . parent_prompt . prompt_objects[1] . value
+
+	ASSIGN PDS_STUDY . status = "A"
+	
+
+	UPDATE PDS_STUDY
+	   
+	COMMIT
+START WRITE TRANSACTION "update status of pull"
+
+
+pull_stat = SELECT PDS_STUDY_PULL . cell_disp FOR UPDATE
+            WHERE header = study_id
+	    AND cell_disp = "H"
+
+WHILE (pull_stat <> EMPTY) DO
+
+	ASSIGN PDS_STUDY_PULL . cell_disp = "P"
+	UPDATE PDS_STUDY_PULL
+	
+	NEXT PDS_STUDY_PULL
+	pull_stat = SELECT PDS_STUDY_PULL . cell_disp FOR UPDATE 
+
+ENDWHILE
+
+COMMIT
+self . parent_prompt . prompt_objects[2] . remove_all_items()
+
+
+ENDROUTINE{auth_pull_dates}
+
+
+
+
+
+

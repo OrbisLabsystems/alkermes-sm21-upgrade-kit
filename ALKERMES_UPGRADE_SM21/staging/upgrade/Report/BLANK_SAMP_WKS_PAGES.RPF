@@ -1,0 +1,874 @@
+{===========================================================================}
+{                                                                           }
+{  ORBIS INFORMATION SYSTEMS                                                }
+{                                                                           }
+{  Filename         :   BLANK_SAMP_WKS                                      }
+{  Version          :   1.0                                                 }
+{  Document Ref.    :                                                       }
+{  Author           :   D.Cunningham                                        }
+{  Date Created     :   07/09/00                                            }
+{  Responsible      :                                                       }
+{  Description      :   Creates a form based on std sample worksheet for    }
+{                       samples that are not of status = X or U. Edition    }
+{                       uses same field as mod_wks. The constant            }
+{                       TOTAL_NUMBER_PAGES determines the number of pages   }
+{                       printed for each sample. Based on mod_wks.          }
+{                                                                           }
+{                                                                           }
+{===========================================================================}
+{                                                                           }
+{  Modification History                                                     }
+{                                                                           }
+{  Ver.     Date        By          Description                             }
+{  ----     ----        --          -----------                             }
+{  1.1      07/12/00    DC          Make the TOTAL_NUMBER_PAGES user        }
+{                                   selectable                              }
+{  1.2      20/05/02    EH          Ref 2002-095                            }
+{  1.3      29/03/04    EH          Ref 2004-052                            }
+{  1.4      08/12/05	EH          Ref 05D-0791                            }
+{  1.5      11/05/11    MF	    Ref CC No CC-ATH-2011-0030		    }
+{  AP change								    }
+{  AP change 16/10/13   MF          Ref CC No. CC-ATH-2013-1420,            } 
+{                                   TS protocol No. 1600028266 	            }
+{===========================================================================}
+
+SET PRINTERCODES TRUE
+SET NOTPROTECTED
+
+JOIN STANDARD_LIBRARY std_prompt
+JOIN STANDARD_LIBRARY std_utils
+JOIN LIBRARY $lib_utils
+JOIN LIBRARY $wksbrowse
+JOIN LIBRARY grid_routine
+JOIN STANDARD_LIBRARY std_browse
+
+ENABLE WINDOWS
+
+SET FORMAT "9999999999"
+
+SET WIDTH 132
+SET LENGTH 63
+
+SET COMPILE_OPTION DECLARE
+SET NAME "DISPLAY/"
+SET SAMPLE_STATUS "WVCSHRI"  {Remove Status A 1.5}
+
+{Mod 1.1 DC 7/12/00}
+
+{CONSTANT TOTAL_NUMBER_PAGES = 10}
+
+{End of Mod DC 7/12/00}
+
+CONSTANT esc = ASCII(27)
+CONSTANT BOTTOM_MARGIN = 2
+CONSTANT HEADER_NO_LINES   = 1
+                                      { number of lines used with the         }
+                                      { "ON NEW PAGE" command                 }
+CONSTANT NEW_PAGE_NO_LINES = 3
+CONSTANT LINES_END_REP     = 8{9} {10}   { Number of lines printed at the end of }
+                                      { the report                            }
+CONSTANT BANNER_LINES      = 6{ 7 }       { Number of lines in the analysis banner}
+CONSTANT LAST_TWO          = 2
+CONSTANT NO_PRINT_ANALYSIS = "QA"         {Any analysis with these first 2 chars }
+                                          {will not be printed                   }
+CONSTANT CC_DATE_ANALYSIS   = "CC_DATE"   { This analysis will also not be    }
+                                          { printed                           }
+CONSTANT PRN_BOLD            = esc : "(8U" : esc : "(s0p10.00h112.0v0s3b3T"
+CONSTANT PRN_BOLD_OFF        = esc : "(8U" : esc : "(s0p10.00h12.0v0s0b3T"
+CONSTANT PRN_SMALL_TEXT      = esc : "(8U" : esc : "(s0p16.67h8.5v0s0b0T"
+CONSTANT PRN_NORMAL          = esc : "(8U" : esc : "(s0p10.00h12.0v0s0b3T"
+CONSTANT PRN_UNDERLINE       = esc : "&d1D"
+CONSTANT PRN_UNDERLINE_OFF   = esc : "&d@"
+CONSTANT PRN_LANDSCAPE       = esc : "&a90P" {esc : "&l3O"}
+CONSTANT DECREASE_VERT_SPACE = esc : "&l8D"
+CONSTANT INCREASE_VERT_SPACE = esc : "&l12D"
+CONSTANT RESET_ALL           = esc : "E"
+
+CONSTANT PAGE_WIDTH = 175
+
+SET FOOTER "Tested By:______________ Date:_______ Reviewed By:______________ Date:_______" 
+
+{------------------------------------------------------------------------------}
+
+{ Start of processing }
+
+DECLARE sample_id, printer_id
+DECLARE total_no_lines, page_x, total_number_pages
+
+TOTAL_NO_LINES = LINESLEFT
+PAGE_X = TOTAL_NO_LINES - (HEADER_NO_LINES + NEW_PAGE_NO_LINES)
+
+sample_id  = " "
+printer_id = " "
+
+sample_worksheet ( sample_id, printer_id )
+
+EXIT
+
+{------------------------------------------------------------------------------}
+
+ROUTINE sample_worksheet ( sample_id,
+			   VALUE printer_id )
+
+	DECLARE form, ok
+
+	ok = TRUE
+
+	create_form ( form, sample_id )
+
+	form . start_prompt ()
+
+	IF ( sample_id = " " ) THEN
+
+		form . wait_prompt ()
+
+		ok = ( form . get_lastkey () <> "EXIT" )
+
+		IF ( ok ) THEN
+			sample_id = form . prompt_objects [ 1 ] . value
+
+
+
+            total_number_pages = form . prompt_objects [ 2 ] . value
+			disable_buttons ( form )
+        ELSE
+            EXIT
+		ENDIF
+
+	ENDIF
+
+    {sample_audits ( sample_id )}
+
+    ok = confirm_printing ()
+
+	IF ( ok ) THEN
+               
+    		do_print ( form, sample_id)
+
+	{Mod 1.1 DC 7/12/00}			       
+
+            update_no_of_worksheets_printed ( sample_id )
+
+    {End of Mod DC 7/12/00}
+
+ 	ENDIF
+        DECLARE print_window
+        CREATE TEXT WINDOW print_window
+        HEIGHT 5
+        WIDTH 40
+        HEADER = " Select Printer "
+        FOOTER = " <Browse> To Display "
+        BORDER
+
+
+        PASTE TEXT WINDOW print_window AT 10, 10
+
+        printer_id = GLOBAL ("TEXT_ID")
+
+        PROMPT FOR printer_id
+            IN WINDOW print_window
+            ON LINE 3 FROM 2
+            USING " Printer : "
+            BROWSE ON PRINTER
+
+        UNPASTE TEXT WINDOW print_window
+
+        IF ( printer_id <> " " ) THEN
+
+            SET NAME "PRINTER/" : STRIP ( printer_id )
+
+        ELSE
+
+            SET NAME "DISPLAY/"
+
+        ENDIF
+
+	form . end_prompt ()
+
+	RETURN ( ok )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE create_form ( form, sample_id )
+
+	{ Routine to set up windows }
+
+	DECLARE prompt_col, display_col, prompt_text, prompt_row, line_no,
+		separator, form_height, display_len, prompt_object, prompt_object1
+
+	form_height = 3
+    sample_id = " "    
+
+	PROMPT OBJECT form
+		CLASS PROMPT_CLASS_FORM
+		WITH  ( column       = 15,
+			row          = 8,
+			height       = form_height,
+			width        = 50,
+			border       = TRUE,
+			proportional = TRUE,
+                	help_context = "$PRSAMPWS_SCREEN",
+			header 	     = GET_USER_MESSAGE ( "PRSAMPWS_HEADER",1 ))
+
+	IF ( sample_id = "" ) THEN
+		form . footer       = GET_USER_MESSAGE ( "PRSAMPWS_FOOTER",1 )
+	ELSE
+		form . button_style = FORM_BUTTON_NONE
+		form . height = form . height + 1
+	ENDIF
+
+	CONSTANT PAGE_NO_FLD   = 1
+	CONSTANT SAMPLE_ID_FLD = 2
+
+	ARRAY prompt_text
+	ARRAY prompt_row
+
+	prompt_text [ SAMPLE_ID_FLD ] = "Sample ID: "
+	prompt_text [ PAGE_NO_FLD   ] = "Total Pages: "
+
+	prompt_row [ SAMPLE_ID_FLD ] = 1
+	prompt_row [ PAGE_NO_FLD   ] = 3
+
+	IF ( GLOBAL ( "TERMTYPE" ) = "GUI" ) THEN
+		display_col = 2
+		separator = " "
+	ELSE
+		display_col = 1
+		separator = " :"
+	ENDIF
+
+	{ Find the maximum size of the prompts }
+
+	line_no = 1
+	display_len = 0
+
+	WHILE ( prompt_text [ line_no ] <> EMPTY ) DO
+
+		display_len = find_max_number (
+				      STRINGLENGTH ( prompt_text [ line_no ] ) ,
+				      display_len )
+		line_no = line_no + 1
+
+	ENDWHILE
+
+	prompt_col = display_col + display_len + STRINGLENGTH ( separator ) + 1
+
+	line_no = 1
+
+	{ First add the fixed text }
+
+	WHILE ( prompt_text [ line_no ] <> EMPTY ) DO
+
+		prompt_text [ line_no ] = PAD ( prompt_text [ line_no ],
+						" ", display_len ) : separator
+
+		form . add_display ( prompt_text [ line_no ],
+				     display_col,
+				     prompt_row [ line_no ],
+		     	     PROMPT_RENDITION_RAISED +
+     				 PROMPT_RENDITION_BOLD )
+
+		line_no = line_no + 1
+
+	ENDWHILE
+
+	{ Now add the actual prompt objects to the form}
+
+        PROMPT OBJECT prompt_object
+	        BROWSE ON sample
+            WITH (BROWSE_ROUTINE = "sample_browse",
+                  vgl_library = GLOBAL ( "CURRENT_LIBRARY" ))
+            ON LINE prompt_row [ SAMPLE_ID_FLD ] FROM prompt_col
+                  WITH ( always_validate = TRUE,
+		          value = sample_id )
+
+   {Mod 1.1 DC 7/12/00}
+
+        PROMPT OBJECT prompt_object1
+            FORMAT integer
+        WITH (Minimum = 1,
+              Maximum = 10)
+        ON LINE prompt_row [ PAGE_NO_FLD ] FROM prompt_col
+              WITH (value = 10)
+
+    {End of Mod DC 7/12/00}
+
+	{ If no sample has been given then prompt for it, else just
+	  display it }
+
+	IF ( sample_id = "" ) THEN
+
+		form . add_prompt ( prompt_object )
+
+   {Mod 1.1 DC 7/12/00}
+
+        form . add_prompt ( prompt_object1)
+
+   {End of Mod DC 7/12/00}
+
+	ELSE
+		prompt_object . lowered = TRUE
+		form . display_objects [ SAMPLE_ID_FLD ] = prompt_object
+	ENDIF
+
+	{ Now add the rest of the display objects }
+
+{
+   Mod 1.1 DC 7/12/00
+
+	PROMPT OBJECT prompt_object
+		ON LINE prompt_row [ PAGE_NO_FLD ] FROM prompt_col
+                FORMAT TEXT_10
+		WITH ( lowered = TRUE,
+               value = TOTAL_NUMBER_PAGES )
+
+	form . display_objects [ PAGE_NO_FLD ] = prompt_object
+
+   End of Mod DC 7/12/00
+
+}
+	form . add_frame ( "", 1, 1, 1, form . width )
+
+	form . add_frame ( "", 1, 3, 1, form . width )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+
+ROUTINE disable_buttons ( form )
+
+	DECLARE button, start_button
+
+	IF ( GLOBAL ( "TERMTYPE" ) = "GUI" ) THEN
+
+		IF ( form . prompt_objects [ 4 ] = EMPTY ) THEN
+			start_button = 1
+		ELSE
+			start_button = 2
+		ENDIF
+
+		button = form . prompt_objects [ start_button ]
+		button . set_enabled ( FALSE )
+
+		button = form . prompt_objects [ start_button + 1 ]
+		button . set_enabled ( FALSE )
+
+		button = form . prompt_objects [ start_button + 2 ]
+		button . set_enabled ( FALSE )
+	ENDIF
+
+ENDROUTINE
+
+{-----------------------------------------------------------------------------}
+
+{-----------------------------------------------------------------------------}
+{ WARNING - Do NOT change the format of the report in do_print without also   }
+{           changing the get_number_pages routine - especially if the number  }
+{           of lines in the report has been changed.                          }
+{                                                                             }
+{           The HEADER_NO_LINES and NEW_PAGE_NO_LINES                         }
+{           constants may need to be changed if the current usage of SET      }
+{           HEADER and ON NEW PAGE is changed. Be aware that forcing a NEW    }
+{           PAGE requires a calculation of the number of lines left which is  }
+{           implemented in get_number_pages.                                  }
+{                                                                             }
+{           If in doubt, please contact Tensor Technologies Ltd.              }
+{                                                                             }
+{           JOD, 18th September 1997                                          }
+{           LINES_END_REP may need to be changed if the number of lines to be }
+{           printed at the end of the report changes.                         }
+{ =========================================================================== }
+{ ROUTINE do_print                                                            }
+{                                                                             }
+{ Description: This routine does all the literals in the report.              }
+{                                                                             }
+{ =========================================================================== }
+
+ROUTINE do_print ( form,
+                   sample_id)
+
+        DECLARE tab_1, tab_2, tab_3, tab_4, op_name, sample_text,
+                description, desc_bit
+        DECLARE tab_3b, op_id, date_now, mlp_version, mlp_identity
+        DECLARE line2, line3, edition_no, x
+        DECLARE product_id, product_desc, page_no, line_no, op, the_len, protocol_version, analytical_prot_no {AP}
+ {rb 26-Jan-04 HA001649}
+        SET LENGTH 63
+        SET NAME "DEFER/"
+
+        x = STRIP ( STRING ( TOTAL_NUMBER_PAGES ) )
+        mlp_identity = ""
+        mlp_version = ""                
+
+        op = TOUPPER ( STRIP ( OPERATOR ) )
+
+        op_name = SELECT personnel.description
+                  WHERE identity = op
+            IF ( op_name = EMPTY ) THEN
+                op_name = "."
+            ELSEIF op_name <> " " THEN
+                op_name = GET_USER_MESSAGE ( "PRSAMPWS_OP_1", 1): STRIP ( op_name ) : "."
+            ENDIF
+        
+        sample_text = SELECT sample . id_text
+                       WHERE id_numeric = sample_id
+
+        edition_no  = ( SELECT sample . no_worksheet_printed ) + 1
+
+        SET HEADER JUSTIFY ( PAD ( "Page ## of " :X," ", 76 ), "RIGHT" )
+
+        product_id = SELECT sample . product
+
+        product_desc = SELECT mlp_header . description
+                        WHERE ( identity = product_id )
+
+        IF product_desc = EMPTY
+            product_desc = ""
+
+        ENDIF
+        
+      analytical_prot_no = SELECT sample . analytical_prot_no
+
+        line2 = "Sample :" :STRIP ( sample_id ) :"  Product : " :product_desc
+
+        line3 = JUSTIFY ( PAD ( "Print Edition No. " :
+                          STRIP ( STRING ( edition_no ) ), " ", 76 ), "RIGHT" )
+
+       { header_line = "Sheet Prepared On :":STRIP ( substring ( NOW, 1, 11 ))
+
+        IF LENGTH ( header_line ) < 80 THEN
+
+                header_line = pad ( " ", " ", (80 - length ( header_line )) DIV 2 ) :
+                        header_line
+        ENDIF }
+
+        tab_1=GET_USER_MESSAGE ( "PRSAMPWS_TAB_1", 1)
+        tab_2=GET_USER_MESSAGE ( "PRSAMPWS_TAB_2", 1)
+        tab_3=GET_USER_MESSAGE ( "PRSAMPWS_TAB_3", 1)
+
+                                        
+        mlp_identity = SELECT SAMPLE . product
+	mlp_version = SELECT SAMPLE . product_version
+
+        IF ( mlp_identity <> EMPTY ) AND ( mlp_identity <> "" ) THEN
+
+	    analytical_prot_no = SELECT mlp_header. analytical_protocol_no
+					WHERE mlp_header.identity = mlp_identity and
+					      mlp_header . product_version = mlp_version
+
+            protocol_version =  SELECT mlp_header. protocol_version
+					WHERE mlp_header.identity = mlp_identity and
+					      mlp_header . product_version = mlp_version
+        
+        ENDIF
+
+        {tab_3b = SELECT sample . id_numeric}
+        op_id = JUSTIFY ( STRIP ( OPERATOR ), "LEFT" )
+
+        date_now = NOW
+
+LITERAL
+$line2________________________________________________________________________
+$line3________________________________________________________________________
+
+                     $tab_1____________________________
+                     ----------------------------------
+
+       $tab_2____$sample_id__  $tab_3_______$sample_text_________________
+
+       Analytical Protocol No. : $analytical_prot_no
+
+       Part Code : $mlp_identity    Protocol Revision No. : $protocol_version
+
+
+    Printed by : $op_id______    Print Date : $date_now___________________
+
+$ENDLITERAL
+
+        description = SELECT sample.description
+	the_len = length(description) {rb 26-Jan-04 HA001649}
+	desc_bit = splitwords ( description, 65 )
+        description = description # desc_bit
+	
+
+        IF desc_bit <> " " THEN
+
+                tab_4=GET_USER_MESSAGE ( "PRSAMPWS_TAB_4", 1)
+LITERAL
+$tab_4________$desc_bit_______________________________________________________
+
+------------------------------------------------------------------------------
+$ENDLITERAL
+
+        ELSE
+LITERAL
+
+
+-----------------------------------------------------------------------------
+$ENDLITERAL
+
+        ENDIF
+
+        WHILE description <> " " DO
+                desc_bit = splitwords ( description, 65 )
+                description = description # desc_bit
+
+LITERAL
+              $desc_bit_____________________________________________________
+
+----------------------------------------------------------------------------
+$ENDLITERAL
+
+        ENDWHILE
+
+page_no = 1
+
+ON NEW PAGE
+page_no = page_no+1
+LITERAL
+$line2________________________________________________________________________
+$line3________________________________________________________________________
+------------------------------------------------------------------------------
+$ENDLITERAL
+ENDON
+
+WHILE (page_no < TOTAL_NUMBER_PAGES) DO
+LITERAL
+|                                                                            |
+------------------------------------------------------------------------------
+$ENDLITERAL
+ENDWHILE
+{rb 24-Feb-04  HA001649}
+IF the_len >  190
+THEN line_no = 14{rb 26-Jan-04 HA001649}
+ELSE
+IF
+the_len > 127
+THEN line_no = 14 {EH 08-DEC-05 05D-0791 changed the value from 10 to 14}
+ELSE
+IF the_len > 65 
+then line_no = 8
+
+
+ELSE
+
+line_no = 4
+{rb 24-Feb-04 HA001649}
+ENDIF
+ENDIF
+ENDIF
+
+{EH 2002-095 Start}
+IF (TOTAL_NUMBER_PAGES > 1) THEN
+
+{ IF (page_no = TOTAL_NUMBER_PAGES) THEN}
+{EH 2002-095 End}
+
+    WHILE (line_no <= PAGE_X) DO
+LITERAL
+|                                                                            |
+------------------------------------------------------------------------------
+$ENDLITERAL
+line_no = line_no + 2
+ENDWHILE
+
+{EH 2002-095 Start}
+ELSE
+ WHILE (line_no <= (PAGE_X-11)) DO
+LITERAL
+|                                                                            |
+------------------------------------------------------------------------------
+$ENDLITERAL
+line_no = line_no + 2
+ENDWHILE
+{EH 2002-095 End}
+
+ENDIF           
+          RETURN
+
+ENDROUTINE {locate_results}
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE sample_audits                                                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  21/11/1997   JMW/JOD         Gives the edition history for the worksheet    }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  samp_id                value                Worksheet ID                    }
+{==============================================================================}
+
+ROUTINE sample_audits ( VALUE samp_id )
+                                         
+SET WIDTH PAGE_WIDTH
+SET LENGTH 46
+
+    DECLARE event, the_data, the_transaction, the_date, the_oper, the_group
+    DECLARE the_reason, nv, reason_part
+    DECLARE v
+
+    SET NAME "DEFER/"
+
+    v = RESET_ALL
+
+event = SELECT AUDIT_EVENT . event
+        WHERE ( record_key0 = samp_id )
+          AND ( table_name = "SAMPLE" )
+        ORDER ON event
+
+IF event <> EMPTY THEN print_header () ENDIF
+
+WHILE ( event <> EMPTY ) DO
+
+    the_data        = SELECT AUDIT_DATA . field
+                      WHERE ( event = event )
+                        AND ( field = "NO_WORKSHEET_PRINTED" )
+
+    IF ( the_data <> EMPTY )
+
+        the_transaction = SELECT AUDIT_EVENT . transaction
+
+        the_date        = SELECT AUDIT_TRANSACTION . transaction_date
+                          WHERE ( transaction = the_transaction )
+        the_oper        = SELECT AUDIT_TRANSACTION . user_id
+        the_group       = SELECT PERSONNEL . default_group
+                          WHERE ( identity = the_oper )
+
+        the_reason      = SELECT AUDIT_DATA . data_reason
+        nv              = SELECT AUDIT_DATA . value_after
+        nv              = STRIP ( nv )
+
+        reason_part = splitwords ( the_reason, 50 )
+        the_reason  = the_reason # reason_part
+
+LITERAL
+$the_oper_ $the_group $nv $reason_part______________________________________ $the_date______________
+$ENDLITERAL
+
+        WHILE NOT ( BLANK ( the_reason ) )
+            reason_part = splitwords ( the_reason, 50 )
+            the_reason  = the_reason # reason_part
+
+LITERAL
+                         $reason_part______________________________________
+$ENDLITERAL
+
+
+        ENDWHILE
+
+
+    ENDIF
+
+    NEXT AUDIT_EVENT
+    event = SELECT AUDIT_EVENT . event
+
+ENDWHILE
+
+LITERAL
+$v______________________
+$ENDLITERAL
+
+FLUSH_LITERAL
+
+SET FOOTER "Tested By:______________ Date:_______ Reviewed By:______________ Date:_______"
+
+SET NAME "DEFER/"
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE confirm_printing                                                    }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  21/11/1997   JOD             Prompts the user to confirm a new worksheet    }
+{                               edition. Returns TRUE or FALSE                 }
+{==============================================================================}
+
+ROUTINE confirm_printing
+
+DECLARE the_answer, the_width, x_position, the_window, form, text_display
+DECLARE prompt_text, the_header
+
+    the_answer = TRUE
+    prompt_text = "Do you wish to continue printing?"
+    the_header = "Verify new edition"
+
+    IF global ( "TERMTYPE" ) = "GUI" THEN
+
+        CREATE OBJECT PROMPT_CLASS_FORM, form
+
+        form . row    = 10
+        form . column = 20
+        form . width  = LENGTH ( prompt_text )
+        form . height = 1
+
+        form . header = the_header
+        form . footer = "Press DO to Continue, EXIT to Abort"
+
+        form . border = TRUE
+
+        PROMPT OBJECT text_display
+           CLASS "STD_PROMPT_TEXT"
+           ON LINE 1 FROM 1
+           WITH ( VALUE = prompt_text  ,
+                  BOLD = TRUE          )
+
+        form . add_display ( text_display )
+
+        form . start_prompt()
+        form . wait_prompt()
+        form . end_prompt ()
+
+        IF ( form . get_lastkey() = "EXIT" ) THEN
+
+            the_answer = FALSE
+
+        ENDIF
+
+    ELSE
+
+        the_width = LENGTH ( prompt_text ) + 9
+        x_position =  (80 - the_width)/2
+
+        CREATE TEXT WINDOW the_window
+            HEIGHT 5
+            WIDTH  the_width
+            BORDER
+            HEADER = the_header
+            FOOTER = "SpaceBar=Yes/No : DO=Continue"
+
+        PASTE TEXT WINDOW the_window AT x_position, 4
+
+        PROMPT FOR the_answer
+           USING STRIP(prompt_text) : " "
+           ON LINE 3 FROM 3
+           IN WINDOW the_window
+           BROWSE ON BOOLEAN
+
+        IF ( LASTKEY = "EXIT" ) THEN
+
+            the_answer = FALSE
+
+        ENDIF
+
+        UNPASTE TEXT WINDOW the_window
+
+    ENDIF
+
+    RETURN ( the_answer )
+
+ENDROUTINE
+{==============================================================================}
+{                                                                              }
+{  ROUTINE update_no_of_worksheets_printed                                     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  21/11/1997   JOD             increments the no_worksheet_printed field in   }
+{                               the sample record                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  wks_sample             value                Worksheet ID                    }
+{==============================================================================}
+
+ROUTINE update_no_of_worksheets_printed ( wks_sample )
+
+DECLARE no_printed
+
+START READ TRANSACTION "Get Sample"
+no_printed = SELECT SAMPLE . no_worksheet_printed FOR UPDATE
+             WHERE ( id_numeric = wks_sample )
+
+
+START WRITE TRANSACTION "Updating Worksheet Printed"
+
+ASSIGN SAMPLE . no_worksheet_printed  = no_printed + 1
+UPDATE SAMPLE
+
+COMMIT
+ENDROUTINE
+{==============================================================================}
+
+ROUTINE print_header
+
+SET WIDTH PAGE_WIDTH
+SET LENGTH 46
+
+    DECLARE u
+
+    u = PRN_LANDSCAPE
+
+LITERAL
+$u_______________________
+User Id      User   Edition      Reason ( from Audit Trail )                 Date Printed    Time
+             Group    No.
+$ENDLITERAL
+
+ENDROUTINE
+
+{============================================================================}
+ROUTINE sample_browse(self)
+
+DECLARE browse_array, counter
+
+ARRAY browse_array ARRAYSIZE(0,2)
+
+counter =0
+
+sample_id = SELECT sample.id_numeric 
+            WHERE (status <> "X")
+            AND (status <> "U")
+            ORDER ON id_numeric
+
+WHILE (sample_id <> EMPTY) DO
+    
+    counter = counter + 1
+    browse_array[counter,1] = sample_id
+    browse_array[counter,2] = SELECT sample.description
+
+    NEXT sample
+    
+    sample_id = SELECT sample.id_numeric
+
+ENDWHILE
+
+browse_on_array (10, self.value, browse_array)
+self.text = self.value
+self . repaste ( )
+
+
+ENDROUTINE
+
+{============================================================================}
+
+
+
+
+
+

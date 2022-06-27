@@ -1,0 +1,283 @@
+{******************************************************************************
+*
+* Module Name   : $UPGRADE
+*
+* Purpose       : Upgrade SampleManager to 12.1
+*
+* Document Ref. :
+*
+* Specification :
+*
+* Portability   : Not Checked
+*
+* Re-entrant    : No
+*
+*******************************************************************************}
+
+SET COMPILE_OPTION DECLARE
+SET NOTPROTECTED
+SET NAME "DEFER/"
+ENABLE WINDOWS
+
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN STANDARD_LIBRARY STD_STRUCTURE
+JOIN STANDARD_LIBRARY STD_UTILS
+
+JOIN LIBRARY $LIB_DB
+JOIN LIBRARY $LIB_MENU
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $TABLE_LOAD_SAVE_LIB
+JOIN LIBRARY $MENU_CONVERT
+JOIN LIBRARY $LOAD_MISSING_WF
+JOIN LIBRARY $LOAD_TABLE_DEFAULTS
+JOIN LIBRARY $LOAD_WORKFLOW_OLD
+JOIN LIBRARY $ENTITY_NAMES
+JOIN LIBRARY $CONVERT_CRITERIA
+JOIN LIBRARY $CONVERT_INSTTYPE
+
+{******************************************************************************}
+
+CONSTANT data_dir = "smp$datafiles:"
+CONSTANT data_extn = ".csv"
+
+CONSTANT menu_toolbar_1123 = "smp$datafiles:menu_toolbar_1123_1210.mtb"
+CONSTANT menu_toolbar_1200 = "smp$datafiles:menu_toolbar_1200_1210.mtb"
+
+CONSTANT current_workflow  = "default_1210_"
+
+{******************************************************************************}
+
+DECLARE upgrade_version, toolbar_name
+
+IF GLOBAL ( "PARAM_ACTIVE" ) THEN
+
+	PROMPT FOR upgrade_version
+
+ELSE
+
+	upgrade_version = "11.2.3"
+
+ENDIF
+
+IF upgrade_version = "11.2.3" THEN
+
+	load_table_defaults ( "", "_1123_1210", ".td_csv" )
+	toolbar_name = menu_toolbar_1123
+
+ENDIF
+
+IF upgrade_version = "12.0" THEN
+
+	load_table_defaults ( "", "_1200_1210", ".td_csv" )
+	toolbar_name = menu_toolbar_1200
+
+ENDIF
+
+upgrade_explorer_folder_tweaks ( )
+upgrade_explorer_rmb_tweaks ( )
+upgrade_master_menu_tweaks ( )
+upgrade_master_menu_overwrites ( )
+
+import_new_menu_options ( toolbar_name )
+
+upgrade_default_workflows ( )
+load_missing_workflows ( )
+
+EXIT
+
+{******************************************************************************}
+
+ROUTINE upgrade_explorer_folder_tweaks
+
+{
+*     Specific updates to explorer folder definitions
+*
+*******************************************************************************}
+
+	DECLARE ef
+
+	START WRITE TRANSACTION "Upgrade updating explorer_folder"
+
+	{ explorer_folder }
+
+	ef = SELECT explorer_folder . data_icon FOR UPDATE
+	      WHERE cabinet    = "TABLE_DETAILS" AND
+	            table_name = "BATCH_HEADER"
+
+	IF ( ef <> EMPTY ) AND ( ef <> LOCKED ) THEN
+
+		ASSIGN explorer_folder . data_icon = "BATCH_HEADER"
+
+		UPDATE explorer_folder
+
+	ENDIF
+
+	ef = SELECT explorer_folder . data_icon FOR UPDATE
+	      WHERE cabinet    = "TABLE_DETAILS" AND
+	            table_name = "BATCH_TMPL_HEADER"
+
+	IF ( ef <> EMPTY ) AND ( ef <> LOCKED ) THEN
+
+		ASSIGN explorer_folder . default_action = 37140
+
+		UPDATE explorer_folder
+
+	ENDIF
+
+	COMMIT
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_explorer_rmb_tweaks
+
+{
+*     Specific updates to explorer rmb definitions
+*
+*******************************************************************************}
+
+	DECLARE er
+
+	START WRITE TRANSACTION "Upgrade updating explorer_rmb"
+
+	{ explorer_rmb }
+
+	er = SELECT explorer_rmb . menuproc FOR UPDATE
+	      WHERE menuproc = 35305 AND
+	            using    = "LOT_ID"
+
+	IF ( er <> EMPTY ) AND ( er <> LOCKED ) THEN
+
+		ASSIGN explorer_rmb . menuproc = 35306
+
+		UPDATE explorer_rmb
+
+	ENDIF
+
+	COMMIT
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_master_menu_tweaks
+
+{
+*     Specific updates to master menu definitions
+*
+*******************************************************************************}
+
+	DECLARE menu_values ,
+	        count ,
+	        menu_item
+
+	ARRAY menu_values ARRAYSIZE ( 0 )
+
+	count = 0
+
+	menu_item = SELECT master_menu . procedure_num
+	            WHERE  library = "$LTE_INSTRUMENT_CATE"
+
+	WHILE menu_item <> EMPTY DO
+
+		count = count + 1
+
+		menu_values [ count ] = menu_item
+
+		NEXT master_menu
+		menu_item = SELECT master_menu . procedure_num
+
+	ENDWHILE
+
+	count = 1
+
+	START WRITE TRANSACTION "Updating menu toolbars"
+
+	WHILE count <= size_of_array ( menu_values ) DO
+
+		menu_item = SELECT master_menu . procedure_num FOR UPDATE
+		            WHERE  procedure_num = menu_values [ count ]
+
+		ASSIGN master_menu . library = "$LTE_INSTRUMENT_CATEGORY"
+
+		UPDATE master_menu
+
+		count = count + 1
+
+	ENDWHILE
+
+	COMMIT
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE upgrade_master_menu_overwrites
+
+{
+*	Load CSV files containing overwrites for SM1210
+*
+******************************************************************************}
+
+	load_if_present ( data_dir:"master_menu_1210_overwrites":data_extn ,
+	                  OVERWRITE_TABLE                                  )
+
+	load_if_present ( data_dir:"master_menu_1210_web":data_extn        ,
+	                  OVERWRITE_TABLE                                  )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE import_new_menu_options ( VALUE menu_import_file )
+
+{
+*     Import the new menu options into the SYSTEM menu
+*
+*******************************************************************************}
+
+	menu_convert_load_menu_file ( "SYSTEM", menu_import_file )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE load_if_present ( VALUE file_nam  ,
+                          VALUE load_mode )
+
+{
+* Load CSV if present
+*
+******************************************************************************}
+
+	IF FILE EXISTS ( file_nam ) THEN
+
+		input_csv_file ( file_nam                  ,
+		                 load_mode                 ,
+		                 FALSE                     ,
+		                 SINGLE_TRANSACTION_NUMBER ,
+		                 TRUE                      )
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE upgrade_default_workflows
+
+{
+*     Upgrade the default workflow CSVs - $setup skips these in upgrade mode.
+*     Upgrade from the 11 series needs to selectively import workflows.
+*
+*******************************************************************************}
+
+	load_workflow_defaults ( current_workflow, ".wf_csv" )
+
+ENDROUTINE
+
+{*****************************************************************************}
+{*****************************************************************************}
+{*****************************************************************************}

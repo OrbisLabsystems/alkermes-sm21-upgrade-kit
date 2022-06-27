@@ -1,0 +1,48 @@
+{==============================================================================}
+{                                                                              }
+{  TENSOR TECHNOLOGIES                                                         }
+{                                                                              }
+{  Filename         : $STB_LIB_USER                                            }
+{  Version          : 1.0                                                      }
+{  Document Ref.    :                                                          }
+{  Author           : John o' Gorman                                           }
+{  Date Created     : 23-&-97                                                  }
+{  Responsible      : TTL                                                      }
+{  Description      : Holds routines that can be used to aquire extra          }
+{                     information for the pull info screen                     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{                                                                              }
+{  Ver.     Date        By          Description                                }
+{  ----     ----        --          -----------                                }
+{  1.0      20-5-97     JOG         get activation date routine added          }
+{                                                                              }
+{==============================================================================}
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE get_activation_date                                                 }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  23-JUL-97    JOG             returns the activation date of the study       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{  none                                                                        }
+{                                                                              }
+{==============================================================================}
+ROUTINE get_activation_date
+
+    RETURN ( STRIP ( SELECT pds_study . start_date ) )
+
+ENDROUTINE

@@ -1,0 +1,83 @@
+MESSAGE GROUP "CUST_MLP_"
+
+MESSAGE = "TYPE"
+TEXT    = "Product Type"
+
+MESSAGE = "SPEC_REF"
+TEXT    = "Specification Ref."
+
+MESSAGE = "METH_REF"
+TEXT    = "Method Ref."
+
+MESSAGE = "RETAIN"
+TEXT    = "Retain Sample"
+
+MESSAGE = "RETAIN_INTERVAL"
+TEXT    = "Retain Interval"
+
+MESSAGE = "SHIP_TO_STOCK"
+TEXT    = "Ship to Stock"
+
+MESSAGE GROUP "RESULTS_"
+
+MESSAGE        = "DISPLAY_SOP"
+TEXT           = "Display SOP"
+TEXT           = "Display SOP"
+
+MESSAGE        = "NO_SOP_DOCUMENT"
+TEXT           = "No SOP Document Available"
+
+MESSAGE        = "DOCUMENT"
+TEXT           = "Document"
+
+MESSAGE        = "NOT_FOUND"
+TEXT           = "Not Found"
+
+MESSAGE        = "DISPLAY_HAZARDS"
+TEXT           = "Display Hazards"
+TEXT           = "Display Hazards"
+
+MESSAGE        = "NO_HAZARDS_DOCUMENT"
+TEXT           = "No Hazards Document Available"
+
+MESSAGE        = "TRENDING"
+TEXT           = "Trending"
+TEXT           = "Trending"
+
+MESSAGE        = "ENTER_DATA"
+TEXT           = "Enter Worksheet Data"
+TEXT           = "Enter Worksheet Data"
+
+MESSAGE        = "BUTTON_OBSERVATIONS"
+TEXT           = "Observations"
+TEXT           = "Observations"
+
+MESSAGE        = "BUTTON_TEST_FLAG"
+TEXT           = "Test Flag (Include/Exclude)"
+TEXT           = "Test Flag (Include/Exclude)"
+
+MESSAGE        = "OBS_MAX_SIZE_1"
+TEXT           = "The maximum comment size is"
+TEXT           = "The maximum comment size is"
+
+MESSAGE        = "OBS_MAX_SIZE_2"
+TEXT           = "enter a shorter comment"
+TEXT           = "enter a shorter comment"
+
+MESSAGE GROUP "CUST_RECEIPT_"
+
+MESSAGE = "SAMPLED_BY"
+TEXT    = "Sampled By"
+
+MESSAGE = "SAMPLED_DATE"
+TEXT    = "Sampled Date"
+
+MESSAGE = "CONTAINER_NO"
+TEXT    = "Container(s)"
+
+MESSAGE = "RECEIPT_COMMENT"
+TEXT    = "Comment/Observation"
+
+
+
+

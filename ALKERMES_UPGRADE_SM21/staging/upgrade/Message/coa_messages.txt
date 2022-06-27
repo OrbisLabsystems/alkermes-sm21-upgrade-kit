@@ -1,0 +1,724 @@
+! Messages for lab table editors and associated screens.
+
+
+MESSAGE GROUP "COA_"
+
+MESSAGE        = "LTE_INSPECTION"
+TEXT           = "Inspection Plan"
+
+MESSAGE        = "LTE_DISP_FOOTER"
+TEXT           = "Press EXIT to Quit."
+
+MESSAGE        = "LTE_INFO_LIB"
+TEXT           = "Infomaker Library"
+
+MESSAGE        = "LTE_USER_LIB"
+TEXT           = "User Library"
+
+MESSAGE        = "LTE_PRINT_PREV"
+TEXT           = "Print Preview"
+
+MESSAGE        = "LTE_MODIFIABLE"
+TEXT           = "Modifiable"
+
+MESSAGE        = "LTE_ENTER_REP"
+TEXT           = "Enter Report Identity:"
+
+MESSAGE        = "LTE_INFO_FIELDS"
+TEXT           = "Fields"
+
+MESSAGE        = "LTE_INFO_OPTIONS"
+TEXT           = "Infomaker Options"
+
+MESSAGE        = "LTE_DISP_NAME"
+TEXT           = "Management Report"
+
+MESSAGE        = "LTE_COPIES"
+TEXT           = "Copies"
+
+MESSAGE        = "LTE_VALID_ROUTINE"
+TEXT           = "Validation Routine"
+
+MESSAGE        = "LTE_INFO_REPORT"
+TEXT           = "Infomaker Report"
+
+MESSAGE        = "LTE_DESC"
+TEXT           = "Description"
+
+MESSAGE        = "LTE_FOOTER"
+TEXT           = "Press Do to Save / Exit to Quit"
+
+MESSAGE        = "LTE_INFO_REPORTS"
+TEXT           = "Infomaker Reports"
+
+MESSAGE        = "LTE_PRIM_TABLE"
+TEXT           = "Primary Table"
+
+MESSAGE        = "LTE_2_DESCRIPTION"
+TEXT           = "Description"
+
+MESSAGE        = "LTE_2_TYPE"
+TEXT           = "Type"
+
+MESSAGE        = "LTE_2_PROMPT2"
+TEXT           = "Prompt 2"
+
+MESSAGE        = "LTE_2_MANDATORY"
+TEXT           = "Mandatory"
+
+MESSAGE        = "LTE_2_PROMPT1"
+TEXT           = "Prompt 1"
+
+MESSAGE        = "LTE_2_DEFAULT"
+TEXT           = "Default"
+
+MESSAGE        = "LTE_2_IDENTITY"
+TEXT           = "Identity"
+
+MESSAGE        = "LTE_2_HEADER"
+TEXT           = "Infomaker Report Parameters"
+
+MESSAGE        = "LTE_2_POPULATE_BUTTON"
+TEXT           = "Populate arguments"
+
+MESSAGE        = "LTE_2_ARG_PREFIX"
+TEXT           = "ARG_"
+
+MESSAGE        = "LTE_2_DESC_PREFIX"
+TEXT           = "Enter "
+
+MESSAGE        = "LTE_INFO_FATAL_ERROR"
+TEXT           = "This report cannot be run directly"
+
+MESSAGE        = "REQ_FIELDS"
+TEXT           = "You Must fill in all the required fields."
+
+MESSAGE        = "REP_TO_RUN"
+TEXT           = "Report To Run"
+
+MESSAGE        = "ERROR_INVALID_REPORT"
+TEXT           = "Invalid library or report"
+
+MESSAGE        = "ERROR_NO_PARAMETERS"
+TEXT           = "No parameters for selected report."
+
+MESSAGE        = "ERROR_NO_DATA"
+TEXT           = "No data selected."
+
+MESSAGE        = "ERROR_BROWSE_SMW"
+TEXT           = "Browse only available from SMW"
+
+MESSAGE        = "SELECT_PBL"
+TEXT           = "Select pbl:"
+
+MESSAGE        = "HEADER_PBL"
+TEXT           = "Create Infomaker records"
+
+MESSAGE        = "CREATE_MENU_HEADER"
+TEXT           = "Create master menu"
+
+MESSAGE        = "MENU_NUM_PROMPT"
+TEXT           = "Menu number"
+
+MESSAGE        = "MENU_RMB"
+TEXT           = "Reports"
+
+MESSAGE        = "REPORT_REMOVED"
+TEXT           = "Report does not exist in database or has been removed."
+
+MESSAGE        = "INFOMAKER_RECORDS"
+TEXT           = " Infomaker Link records have been created."
+
+MESSAGE        = "USER_LIB_NOT_DEFINED"
+TEXT           = "User Library not defined, on Infomaker Link."
+
+MESSAGE        = "LINKRECORD_FOUND"
+TEXT           = "Infomaker Link Record Found! Overwrite Report:"
+
+MESSAGE        = "TYPE_BROWSE"
+TEXT           = "Browse"
+
+MESSAGE        = "TYPE_PHRASE"
+TEXT           = "Phrase"
+
+MESSAGE        = "TYPE_FORMAT"
+TEXT           = "Format"
+
+MESSAGE        = "TYPE_ROUTINE"
+TEXT           = "Custom"
+
+MESSAGE        = "TYPE_DEFAULT"
+TEXT           = "Default Value"
+
+MESSAGE        = "TYPE_JOB_FIELD"
+TEXT           = "Job Header Field"
+
+MESSAGE        = "PROMPT_TABLE"
+TEXT           = "Table"
+
+MESSAGE        = "PROMPT_FIELD"
+TEXT           = "Field"
+
+MESSAGE        = "PROMPT_LENGTH"
+TEXT           = "Length"
+
+MESSAGE        = "PROMPT_VGL"
+TEXT           = "Vgl Library"
+
+MESSAGE        = "PROMPT_PHRASE"
+TEXT           = "Phrase Id"
+
+MESSAGE        = "PROMPT_ROUTINE"
+TEXT           = "Routine"
+
+MESSAGE        = "PROMPT_DESCRIPTION"
+TEXT           = "Prompt Description"
+
+MESSAGE        = "HEADER_BUILD_PROMPT"
+TEXT           = "Define Prompt"
+
+MESSAGE        = "FOOTER_BUILD_PROMPT"
+TEXT           = "Select the prompt type, then its behaviour."
+
+MESSAGE        = "PROMPT_TEXT"
+TEXT           = "Define prompt, press F2 or double click..."
+TEXT           = "Prompt using "
+TEXT           = "Prompt for "
+TEXT           = "Mapped from Job "
+
+MESSAGE        = "HEADER_1"
+TEXT           = "COA Generation"
+
+MESSAGE        = "ALREADY_GEN"
+TEXT           = "COA has already been generated for this Batch and Country"
+
+MESSAGE        = "NO_PROMPTS"
+TEXT           = "There are no prompt fields entered in the COA template"
+
+MESSAGE        = "NO_TEMPLATE"
+TEXT           = "No COA Template has been configured for this Batch and Country"
+
+MESSAGE        = "COA_RECORD"
+TEXT           = "COA Record"
+
+MESSAGE        = "SELECT_COA_RECORD"
+TEXT           = "Select COA Record to Re-generate"
+
+MESSAGE        = "REGEN_HEADER"
+TEXT           = "Re-generate COA Report"
+
+MESSAGE        = "REGEN_1"
+TEXT           = "This is the re-generation of CoA for "
+
+MESSAGE        = "REGEN_2"
+TEXT           = " which was not selected as syntax. Re-generation terminated"
+
+MESSAGE        = "SELECT_PRINT"
+TEXT           = "Select COA Record to Print"
+
+MESSAGE        = "PRINT_COA"
+TEXT           = "Print COA Report"
+
+MESSAGE        = "NO_TESTS"
+TEXT           = "No Tests found for this Batch!"
+
+MESSAGE        = "NO_SAMPLES"
+TEXT           = "No Samples found for this Batch!"
+
+MESSAGE        = "SELECTING"
+TEXT           = "Selecting COA Data, Please Wait....................."
+
+MESSAGE        = "COMPLIES"
+TEXT           = "Complies if tested"
+
+MESSAGE        = "ABSENT"
+TEXT           = "Absent if tested"
+
+MESSAGE        = "TO_BE_DET"
+TEXT           = "to be determined in %"
+
+MESSAGE        = "NO_LIMITS_1"
+TEXT           = "No Limits assigned to Original Level "
+
+MESSAGE        = "NO_LIMITS_2"
+TEXT           = " or to Default Level "
+
+MESSAGE        = "NO_LIMITS_3"
+TEXT           = " for Analysis "
+
+MESSAGE        = "NO_LIMITS_4"
+TEXT           = ", Component "
+
+MESSAGE        = "NO_LIMITS_5"
+TEXT           = ", COA Creation Aborted!!"
+
+MESSAGE        = "NO_LIMITS_6"
+TEXT           = "No Limits have been assigned to the results selected for the batch "
+
+MESSAGE        = "NO_LIMITS_7"
+TEXT           = " for the Product "
+
+MESSAGE        = "NO_LIMITS_8"
+TEXT           = ", Analysis "
+
+MESSAGE        = "NO_LIMITS_9"
+TEXT           = ", Comp "
+
+MESSAGE        = "NO_LIMITS_10"
+TEXT           = ",    COA Creation Aborted!!"
+
+MESSAGE        = "ABORTED"
+TEXT           = "COA Aborted!"
+
+MESSAGE        = "SELECTING_RESULTS"
+TEXT           = "Selecting COA Result Records........"
+
+MESSAGE        = "NO_RESULTS"
+TEXT           = "No Results Found for this Batch!"
+
+MESSAGE        = "NO_AUTH_RESULTS"
+TEXT           = "No Authorised Results for this Batch!!" 
+
+MESSAGE        = "ABOUT_TO_CREATE"
+TEXT           = "About to create COA Records, Please Wait....................."
+
+MESSAGE        = "CREATING"
+TEXT           = "Creating COA Entry Records........"
+
+MESSAGE        = "GEN_SUCCESS"
+TEXT           = "Certificate"
+TEXT           = "has been successfully generated"
+
+MESSAGE        = "REGEN_SUCCESS_1"
+TEXT           = "COA "
+
+MESSAGE        = "REGEN_SUCCESS_2"
+TEXT           = " has been successfully RE-GENERATED!"
+
+MESSAGE        = "DB_ERRORS"
+TEXT           = "No COA records have been created due to database errors!"
+
+MESSAGE        = "SELECT_MICRO"
+TEXT           = "Select Micro Samples for CoA"
+
+MESSAGE        = "ID_NUMERIC"
+TEXT           = "ID Numeric"
+
+MESSAGE        = "ID_TEXT"
+TEXT           = "ID Text"
+
+MESSAGE        = "DESCRIPTION"
+TEXT           = "Description"
+
+MESSAGE        = "NO_SAMPLES_FOUND"
+TEXT           = "No Samples Found"
+
+MESSAGE        = "NO_PRIVILEGE_REJECTED"
+TEXT           = "You do not have the privilege to generate a CoA with Rejected data"
+
+MESSAGE        = "NO_MICRO_SAMPS"
+TEXT           = "No Micro samples for this Batch"
+
+MESSAGE        = "SYNTAX_NOT_CHECKED"
+TEXT           = "Sample to be used for syntax does not have check box checked"
+
+MESSAGE        = "SIGNATORY"
+TEXT           = "Signatory Name"
+
+MESSAGE        = "SIGNATORY_TITLE"
+TEXT           = "Signatory Title"
+
+MESSAGE        = "BATCH"
+TEXT           = "Batch"
+
+MESSAGE        = "MARKET"
+TEXT           = "Market"
+
+MESSAGE        = "COUNTRY"
+TEXT           = "Country"
+
+MESSAGE        = "COA_GEN"
+TEXT           = "COA Generation"
+
+MESSAGE        = "SEL_BATCH_COUNTRY"
+TEXT           = "Select Batch and Country"
+
+MESSAGE        = "SEL_JOB_MARKET"
+TEXT           = "Select Batch and Market"
+
+MESSAGE        = "SELECTED_BATCH_COUNTRY"
+TEXT           = "Selected Batch and Country for COA"
+
+MESSAGE        = "ENTER_HEADER_DATA"
+TEXT           = "Enter COA Header Data"
+
+MESSAGE        = "JOB_NAME"
+TEXT           = "Job Name"
+
+MESSAGE        = "TEMPLATE_VER"
+TEXT           = "Template Version"
+
+MESSAGE        = "MISSING_MANDATORY"
+TEXT           = "Cannot Generate CoA - Missing Mandatory Results"
+
+MESSAGE GROUP "COA_LTE_"
+
+MESSAGE        = "TEMPLATE"
+TEXT           = "COA Template"
+
+MESSAGE        = "HEADER"
+TEXT           = "COA Template Configuration Screen"
+
+MESSAGE        = "PRODUCT"
+TEXT           = "Product"
+
+MESSAGE        = "LEVEL"
+TEXT           = "Level (Market)"
+
+MESSAGE        = "LANGUAGE"
+TEXT           = "Language(s)"
+
+MESSAGE        = "VERSION"
+TEXT           = "Version"
+
+MESSAGE        = "TEMPLATE_ID"
+TEXT           = "Templated ID"
+
+MESSAGE        = "ALIAS"
+TEXT           = "Product Alias"
+
+MESSAGE        = "LIBRARY"
+TEXT           = "User Library"
+
+MESSAGE        = "ROUTINE"
+TEXT           = "Validation Routine"
+
+MESSAGE        = "RESULTS"
+TEXT           = "Results"
+
+MESSAGE        = "PARAMETERS"
+TEXT           = "Parameters"
+
+MESSAGE        = "COA_PARAMETERS"
+TEXT           = "COA Parameters"
+
+MESSAGE        = "PARAMS_IDENTITY"
+TEXT           = "Identity"
+
+MESSAGE        = "PARAMS_DESCRIPTION"
+TEXT           = "Message"
+
+MESSAGE        = "FIELD_NAME"
+TEXT           = "Field Name"
+
+MESSAGE        = "PARAMS_PROMPT_DESCRIPTION"
+TEXT           = "Prompt Description"
+
+MESSAGE        = "PARAMS_MANDATORY"
+TEXT           = "Mandatory"
+
+MESSAGE        = "PARAMS_FROM_PARENT"
+TEXT           = "From Parent"
+
+MESSAGE        = "PARAMS_DATE_FORMAT"
+TEXT           = "Date Format"
+
+MESSAGE        = "PARAMS_INVALID_DATE_FORMAT"
+TEXT           = "The date format mask entered is invalid."
+
+MESSAGE        = "DESCRIPTION"	
+TEXT           = "Description"
+
+MESSAGE        = "VERSION_COMMENT"	
+TEXT           = "Version Comment"
+
+MESSAGE        = "CREATED_ON"	
+TEXT           = "Created On"
+
+MESSAGE        = "CREATED_BY"	
+TEXT           = "Created By"
+
+MESSAGE        = "INFOMAKER_LIBRARY"
+TEXT           = "Infomaker library"
+
+MESSAGE        = "INFOMAKER_REPORT"
+TEXT           = "Infomaker report"
+
+MESSAGE        = "DOCUMENT_TEMPLATE"
+TEXT           = "Document Template"
+
+MESSAGE        = "PRESENTATION"
+TEXT           = "Presentation"
+
+MESSAGE        = "METHOD"
+TEXT           = "Method"
+
+MESSAGE        = "SPECIFICATION"
+TEXT           = "Specification"
+
+MESSAGE        = "L_TITLE_1"
+TEXT           = "L title 1"
+
+MESSAGE        = "L_TITLE_2"
+TEXT           = "L title 2"
+
+MESSAGE        = "L_TITLE_3"
+TEXT           = "L title 3"
+
+MESSAGE        = "L_METHOD"
+TEXT           = "L method"
+
+MESSAGE        = "L_PRODUCT_DESCRIPTION"
+TEXT           = "L product description"
+
+MESSAGE        = "L_PRODUCT_BRAND_NAME"
+TEXT           = "L product brand name"
+
+MESSAGE        = "L_ANALYSIS"
+TEXT           = "L analysis"
+
+MESSAGE        = "L_BATCH_NO"	
+TEXT           = "L batch no"
+
+MESSAGE        = "L_PACKAGING_BATCH_NO"	
+TEXT           = "L packaging batch no"
+
+MESSAGE        = "L_TESTS"
+TEXT           = "L tests"
+
+MESSAGE        = "L_SPECIFICATION"
+TEXT           = "L specification"
+
+MESSAGE        = "L_SPECIFICATION_2"
+TEXT           = "L specification 2"
+
+MESSAGE        = "L_UNITS"	
+TEXT           = "L units"
+
+MESSAGE        = "L_RESULTS"
+TEXT           = "L results"
+
+MESSAGE        = "L_EXPIRY_DATE"	
+TEXT           = "L expiry date"
+
+MESSAGE        = "L_MANUFACTURE_DATE"
+TEXT           = "L manufacture date"
+
+MESSAGE        = "L_ACCEPTED_DATE"
+TEXT           = "L accepted date"
+
+MESSAGE        = "L_SIGNATORY"	
+TEXT           = "L signatory"
+
+MESSAGE        = "L_COMMENT_1"	
+TEXT           = "L comment 1"
+
+MESSAGE        = "L_STANDARDS"	
+TEXT           = "L standards"
+
+MESSAGE        = "L_PRESENTATION"
+TEXT           = "L presentation"
+
+MESSAGE        = "L_MARKET"	
+TEXT           = "L market"
+
+MESSAGE        = "L_MARKET_DESCRIPTION"
+TEXT           = "L market description"
+
+MESSAGE        = "COMMENT_GMP"
+TEXT           = "GMP Statement"
+
+
+MESSAGE        = "MATERIALS"
+TEXT           = "Materials"
+
+MESSAGE	   = "L_PRODUCT_TAG"
+TEXT		   = "L product tag"
+
+MESSAGE	   = "L_REGISTRATION_NO"
+TEXT		   = "L registration number"
+
+MESSAGE	   = "L_MATERIAL_TAG"
+TEXT		   = "L material tag"
+
+MESSAGE	   = "L_RELEASE_DATE"
+TEXT		   = "L release date"
+
+MESSAGE	   = "L_EXPIRY_2"
+TEXT		   = "L expiry 2"
+
+MESSAGE	   = "L_HEADER_FIELD_1"
+TEXT		   = "L header field 1"
+
+MESSAGE	   = "L_HEADER_FIELD_2"
+TEXT		   = "L header field 2"
+
+
+
+MESSAGE GROUP "COA_LTERES_"
+
+MESSAGE        = "ANAL_COMP_SEL"
+TEXT           = "Analysis Component Selection"
+
+MESSAGE        = "SELECT_ANALYSIS"
+TEXT           = "Select Analysis"
+
+MESSAGE        = "SELECT_COMPONENT"
+TEXT           = "Select Component"
+
+MESSAGE        = "ANALYSIS"
+TEXT           = "Analysis"
+
+MESSAGE        = "COMPONENT"
+TEXT           = "Component"
+
+MESSAGE        = "COMPONENT_ALIAS"
+TEXT           = "Component Alias"
+
+MESSAGE        = "ANALYSIS_ALIAS"
+TEXT           = "Analysis Alias"
+
+MESSAGE        = "RESULT_ALIAS"
+TEXT           = "Result Alias"
+
+MESSAGE        = "STANDARD"
+TEXT           = "Standard"
+
+MESSAGE        = "STANDARD_2"
+TEXT           = "Stability Standard"
+
+MESSAGE        = "FLAGS"
+TEXT           = "Flags"
+
+MESSAGE        = "DECIMAL_PLACES"
+TEXT           = "DP"
+
+MESSAGE        = "UNIT"
+TEXT           = "Unit"
+
+MESSAGE        = "BOOKMARK"
+TEXT           = "Bookmark"
+
+MESSAGE        = "MANDATORY"
+TEXT           = "Mandatory"
+
+MESSAGE        = "NO_SPACES"
+TEXT           = "Cannot Include Spaces"
+
+MESSAGE        = "BOOKMARK_INVALID"
+TEXT           = "Cannot Use COA Header Fields Names as Bookmarks"
+
+
+MESSAGE GROUP "COA_LTEMAT_"
+
+MESSAGE        = "ARTICLE_MARKET"
+TEXT           = "Article Code / Market Selection"
+
+MESSAGE        = "SELECT_ARTICLE"
+TEXT           = "Select Article Code"
+
+MESSAGE        = "SELECT_MARKET"
+TEXT           = "Select Market"
+
+MESSAGE        = "ARTICLE_CODE"
+TEXT           = "Article Code"
+        
+MESSAGE        = "MARKET"
+TEXT           = "Market"
+    
+MESSAGE        = "L_PROD_DESC"
+TEXT           = "L Product Description"
+        
+MESSAGE        = "L_METHOD"
+TEXT           = "L Method"
+    
+MESSAGE        = "L_SPEC"
+TEXT           = "L Specification"
+       
+MESSAGE        = "L_BATCH_NO"
+TEXT           = "L Batch No"
+       
+MESSAGE        = "L_ANALYSIS"
+TEXT           = "L Analysis"
+    
+MESSAGE        = "L_MARKET"
+TEXT           = "L Market"
+          
+MESSAGE        = "L_TESTS"
+TEXT           = "L Tests"
+           
+MESSAGE        = "L_STANDARDS"
+TEXT           = "L Standards"
+           
+MESSAGE        = "L_RESULTS"
+TEXT           = "L Results"
+           
+MESSAGE        = "L_EXP_DATE"
+TEXT           = "L Expiry Date"
+
+
+MESSAGE GROUP "COA_GEN_"
+
+MESSAGE        = "COA_PARAMETERS"
+TEXT           = "COA Parameters"
+
+MESSAGE        = "COA_REQ_FIELDS"
+TEXT           = "All mandatory fields must be filled in"
+
+MESSAGE        = "COA_NO_CERT"
+TEXT           = "No Certificate Generated"
+
+MESSAGE        = "NO_TEMPLATE"
+TEXT           = "No approved template"
+
+MESSAGE GROUP "COA_PRINT_"
+
+MESSAGE        = "FORM_HEADER"
+TEXT           = "COA Printing"
+
+MESSAGE        = "FORM_COA_ID"
+TEXT           = "COA ID"
+
+MESSAGE        = "FORM_VER"
+TEXT           = "Template Version"
+
+MESSAGE        = "NO_COPIES"
+TEXT           = "Number of Copies:"
+
+
+MESSAGE GROUP "COA_PREVIEW_"
+
+MESSAGE        = "FORM_HEADER"
+TEXT           = "COA Preview"
+
+MESSAGE        = "FORM_COA_ID"
+TEXT           = "COA ID"
+
+MESSAGE        = "FORM_VER"
+TEXT           = "Template Version"
+
+MESSAGE        = "ONLY_INFOMAKER"
+TEXT           = "Can Only Preview Infomaker Based Templates"
+
+
+MESSAGE GROUP "COA_PHRASE_LANG_"
+
+MESSAGE        = "FR_EN"
+TEXT           = "French/English"
+
+MESSAGE        = "EN_RU"
+TEXT           = "English/Russian"
+
+MESSAGE        = "FR_SP"
+TEXT           = "French/Spanish"
+
+MESSAGE        = "FR_EN_RU"
+TEXT           = "French/English/Russian"
+
+
+
+
+
+
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              

@@ -1,0 +1,107 @@
+{******************************************************************************
+*
+* Module Name   : $LIB_TMR_USER
+*
+* Purpose       : Result Matrix Spreadsheet screen user customisation report
+*
+* Document Ref. : SE/T/TVGL-WORK-RESENTO/1/5
+*
+* Specification :
+*
+* Portability   : All VGSM 3.0 compliant systems
+*
+* Re-entrant    : Yes
+*
+*******************************************************************************}
+
+SET COMPILE_OPTION DECLARE
+
+JOIN LIBRARY $LIB_RE_GLOBALS
+
+{******************************************************************************}
+
+GLOBAL
+
+ROUTINE lib_tmr_user_screen_setup ( tmr_grid ,
+				    tmr_form )
+
+{
+*
+*	Routine to modify the standard tmr Grid and Form objects
+*
+*******************************************************************************}
+
+{
+        tmr_form . row    = 5
+        tmr_form . column = 1
+        tmr_form . border = FALSE
+        tmr_form . height = GLOBAL ( "SCREEN_HEIGHT" ) - 4
+        tmr_form . width  = GLOBAL ( "SCREEN_WIDTH" )
+
+        tmr_grid . column     = tmr_grid . column
+        tmr_grid . row        = tmr_grid . row 
+        tmr_grid . width      = tmr_grid . width
+        tmr_grid . height     = tmr_grid . height 
+        tmr_grid . browse_row = tmr_grid . height 
+        tmr_grid . test_row   = 1
+}
+
+ENDROUTINE
+
+{******************************************************************************}
+
+GLOBAL
+
+ROUTINE lib_tmr_user_specified_auth_routine ( library_name, routine_name )
+
+{
+*
+* Specify alternative routine and library to use to overried
+* standard result authorise 
+*
+*******************************************************************************}
+
+    DECLARE user_specified
+
+    user_specified = FALSE
+
+{
+    library_name = "***"
+    routine_name = "***"
+
+    user_specified = TRUE
+}
+
+    RETURN ( user_specified )
+
+ENDROUTINE { user_specified_auth_routine }
+
+{******************************************************************************}
+
+GLOBAL
+
+ROUTINE lib_tmr_user_specified_reject_routine ( library_name, routine_name )
+
+{
+*
+* Specify alternative routine and library to use to overried
+* standard result reject
+*
+*******************************************************************************}
+
+    DECLARE user_specified
+
+    user_specified = FALSE
+
+{
+    library_name = "***"
+    routine_name = "***"
+
+    user_specified = TRUE
+}
+
+    RETURN ( user_specified )
+
+ENDROUTINE { user_specified_auth_routine }
+
+{******************************************************************************}

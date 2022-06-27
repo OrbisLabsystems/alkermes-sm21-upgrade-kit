@@ -1,0 +1,77 @@
+{******************************************************************************
+*
+* Module Name   : $JOBSTAT
+*
+* Purpose       : SMP report containing routines (to be user-defined) which
+*                 are called when a job changes status
+*
+* Document Ref. : SE/T/TVGL-WORK-REPORTS/1/3
+*
+* Specification : 
+*
+* Portability   : Not Checked
+*
+* Re-entrant    : No
+*
+*******************************************************************************}
+{
+The functionality is not held within this report.
+SM-IDI functionality is held within the $SMIDI_JOBSTAT report.
+The reason for this is to reduce the amount of code that is held within this
+core file. Although this is a user trigger there is a danger that all functionality
+could be put into this one file, hence we call through to the specific sm-idi report.
+(this is more visible when more user changes are made to this file - and not just
+for sm-idi)
+}
+
+
+ROUTINE set_status_a
+	
+	CALL_ROUTINE "set_status_a" IN LIBRARY "$SMIDI_JOBSTAT"
+
+ENDROUTINE
+
+
+ROUTINE set_status_c
+
+	CALL_ROUTINE "set_status_c" IN LIBRARY "$SMIDI_JOBSTAT"
+	
+ENDROUTINE
+
+
+ROUTINE set_status_v
+
+	CALL_ROUTINE "set_status_v" IN LIBRARY "$SMIDI_JOBSTAT"
+
+ENDROUTINE
+
+
+ROUTINE set_status_x
+
+ENDROUTINE
+
+
+ROUTINE set_status_r
+
+	CALL_ROUTINE "set_status_r" IN LIBRARY "$SMIDI_JOBSTAT"
+
+ENDROUTINE
+
+	CALL_ROUTINE "set_status_s" IN LIBRARY "$SMIDI_JOBSTAT"
+
+ENDROUTINE
+
+{ ============================================================================== }
+ROUTINE send_to_SAP
+
+	CALL_ROUTINE "send_to_SAP" IN LIBRARY "$SMIDI_JOBSTAT"
+		
+ENDROUTINE
+
+{ ============================================================================== }
+ROUTINE status_queue_trigger ( VALUE stat_letter)
+	
+	CALL_ROUTINE "status_queue_trigger" IN LIBRARY "$SMIDI_JOBSTAT"
+			USING stat_letter
+
+ENDROUTINE

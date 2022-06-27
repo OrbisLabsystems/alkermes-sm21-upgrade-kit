@@ -1,0 +1,298 @@
+{******************************************************************************
+*
+* Module Name          : LIB_PRINT_EVENT
+*
+* Purpose              : Routines for Print Events
+*
+* Portability          : Not Checked
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By             Description
+* -------   -----------  ----------     ---------------------------------------
+* 1.0       28-Jul-2018  L. Dawson      Initial Version 
+*
+*******************************************************************************}
+SET NOTPROTECTED
+SET NAME "DEFER/"
+SET COMPILEOPTION DECLARE
+ENABLE WINDOWS
+
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_MESSAGE
+
+JOIN LIBRARY $PROMPT_LIST
+JOIN LIBRARY $LIB_UTILS
+    
+{*****************************************************************************}
+{**           C O N S T A N T S                                             **}
+{*****************************************************************************}
+
+GLOBAL CONSTANT PRINT_EVENT = "PRINT_EVENT"
+
+{******************************************************************************}
+
+GLOBAL
+ROUTINE create_print_event ( VALUE table       ,
+                             VALUE record_key0 ,
+                             VALUE source      )
+{
+*    Create a print event         
+*
+*******************************************************************************}
+
+    DECLARE print_obj
+
+    IF ( table = "SAMPLE" ) THEN
+
+        record_key0 = PACKED_DECIMAL( record_key0 )
+
+    ENDIF
+
+    define_print_event_class()
+
+    CREATE OBJECT PRINT_EVENT, print_obj
+
+    print_obj . table = table
+    print_obj . record_key0 = record_key0 
+    print_obj . source = source
+
+    print_obj . get_reason()
+
+    IF ( print_obj . status = EMPTY ) THEN
+
+        print_obj . create ()
+
+    ENDIF
+
+    RETURN ( print_obj . status )
+
+ENDROUTINE { create_print_event }
+
+
+{******************************************************************************}
+{**           C L A S S E S                                                  **}
+{******************************************************************************}
+
+GLOBAL
+ROUTINE define_print_event_class
+
+{
+*    Defines the Incubation Class           
+*
+*******************************************************************************}
+
+    IF NOT class_defined ( PRINT_EVENT ) THEN
+
+        DEFINE CLASS PRINT_EVENT
+
+                INITIALISATION
+
+                PROPERTIES
+                "table"       ,
+                "record_key0" ,
+                "printed_on"  ,
+                "printed_by"  ,       
+                "reason"      ,
+                "source"      ,
+                "status"
+
+                ACTIONS
+                "get_reason"  ,
+                "is_first"    ,
+                "create"
+                    
+        END CLASS
+
+    ENDIF
+
+ENDROUTINE { define_print_event_class }
+
+
+{******************************************************************************}
+{**           C L A S S   A C T I O N S                                      **}
+{******************************************************************************}
+
+ROUTINE print_event_class_initialisation ( self ) 
+
+{
+*    Initialisation routine.                     
+*
+*******************************************************************************}
+
+    self . table        = ""
+    self . record_key0  = ""
+    self . printed_on   = NOW
+    self . printed_by   = OPERATOR
+    self . reason       = ""   
+    self . source       = ""   
+    self . status       = EMPTY  
+
+ENDROUTINE {print_event_class_initialisation }
+
+{******************************************************************************}
+
+ROUTINE print_event_action_get_reason ( self ) 
+
+{
+*    Get print reason                  
+*
+*******************************************************************************}
+
+    DECLARE reason_form, reason_prompt
+
+    IF ( self . is_first() = TRUE ) THEN
+
+        self . reason = GET_USER_MESSAGE("PRINT_EVENT_INITIAL_REASON",1)
+
+    ELSE
+
+        CREATE OBJECT PROMPT_CLASS_FORM, reason_form
+      
+        reason_form . width = 60
+        reason_form . row = 2
+        reason_form . column = 2
+        reason_form . border = TRUE
+        reason_form . header = GET_USER_MESSAGE("PRINT_EVENT_HEADER",1)
+        reason_form . active_prompt = 1
+        reason_form . height = 1
+        reason_form . button_style = FORM_BUTTON_OK
+        reason_form . validation_routine = "form_validation_routine"
+
+        PROMPT OBJECT reason_prompt
+        ON LINE 1 FROM 20 TO 55
+        FORMAT print_event . reason
+        reason_form . add_prompt(reason_prompt)  
+        reason_form . add_display( GET_USER_MESSAGE("PRINT_EVENT_REASON",1), 1 , 1, PROMPT_RENDITION_BOLD)
+
+        reason_form . start_prompt()
+
+        REPEAT
+
+            reason_form . wait_prompt()
+
+        UNTIL ( reason_form . get_lastkey() = "DO" )
+
+        self . reason = reason_form . prompt_objects[1] . value 
+
+        reason_form . end_prompt()
+
+    ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE print_event_action_is_first ( self ) 
+
+{
+*    Check if this is the first print               
+*
+*******************************************************************************}
+
+    DECLARE event
+
+    event = SELECT print_event . event_id 
+            WHERE table_name = self . table
+            AND record_key0 = self . record_key0
+
+    IF ( event = EMPTY ) THEN
+
+        RETURN ( TRUE )
+
+    ELSE
+
+        RETURN ( FALSE )
+
+    ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE print_event_action_create ( self ) 
+
+{
+*    Create the print event            
+*
+*******************************************************************************}
+
+    DECLARE do_commit, event_inc, event_id, success
+
+    do_commit = FALSE
+    success   = TRUE
+
+    IF NOT transaction_is_write() THEN
+		
+        START WRITE TRANSACTION "Create Print Event"
+        do_commit = TRUE
+			
+    ENDIF
+
+    event_inc = INCREMENT( "PRINT_EVENT", "PRINT_EVENT" )
+
+    event_id = PACKED_DECIMAL( event_inc )
+
+    RESERVE ENTRY print_event, event_id, self . status
+
+    IF ( self . status <> EMPTY ) THEN
+
+        success = FALSE
+
+    ELSE
+
+        ASSIGN print_event . table_name  = self . table
+        ASSIGN print_event . record_key0 = self . record_key0 
+        ASSIGN print_event . printed_on  = self . printed_on
+        ASSIGN print_event . printed_by  = self . printed_by
+        ASSIGN print_event . reason      = self . reason
+        ASSIGN print_event . source      = self . source
+
+        UPDATE print_event
+
+    ENDIF 
+
+    IF do_commit THEN
+
+        IF success THEN
+
+            COMMIT
+
+        ELSE
+
+            ROLLBACK
+ 
+        ENDIF
+
+    ENDIF
+
+ENDROUTINE { print_event_action_create }
+
+{******************************************************************************}
+ROUTINE form_validation_routine (self)
+
+{
+*  Validates form entries
+*
+******************************************************************************}
+    DECLARE valid
+    
+    valid = TRUE
+
+    IF ((self . prompt_objects[1] . value = "" )) THEN
+        
+        flash_message( GET_USER_MESSAGE("PRINT_EVENT_REASON_REQUIRED",1), true )
+        valid = FALSE
+
+    ENDIF
+
+    RETURN (valid)
+    
+
+ENDROUTINE {form_validation_routine}
+{******************************************************************************}

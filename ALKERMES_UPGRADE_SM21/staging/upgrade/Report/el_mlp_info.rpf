@@ -1,0 +1,883 @@
+
+{ =============================== EL_MLP.RPF =================================}
+{                                                                             }
+{ Created by : JMWHYTE                          Date: 24/06/96                }
+{                                                                             }
+{ Purpose    : MLP Audit Report                 (c) TENSOR Technologies       }
+{                                                                             }
+{ Description: MLP Audit Report to Report on Audit Information for the MLP    }
+{  	The Current Specification Details for the MLP. The specification      }
+{       details the following in tabular format :-                            }
+{                                                                             }
+{		The MLP Identity :-                                           }
+{		The Description of the MLP :-                                 }
+{		Current Version :-                                            }
+{		The Version Selected :-                                       }
+{		Level ID :-                                                   }
+{       List of the Analysis / Components and specifications                  }
+{       for each Level.                                                       }
+{       The Modify Audits Details of the MLP Values for each Specification    }
+{       Level detailing the following in tabular format:-                     }
+{                                                                             }
+{		Modified By :-                                                }
+{		Reason :-                                                     }
+{		Action :-                                                     }
+{		Date :-                                                       }
+{		Analysis / Component :-                                       }
+{		Field :-                                                      }
+{		Value Before :-                                               }
+{		Value After :-                                                }
+{                                                                             }
+{       The Removed Records  or Components detailing the following information}
+{        in tabular format:-                                                  }
+{                                                                             }
+{		Action :-                                                     }
+{		Date :-                                                       }
+{		Record :-                                                     }
+{		Removed By :-                                                 }
+{		Reason  :-                                                    }
+{                                                                             }
+{=============================================================================}
+{                                                                             }
+{  Modification History                                                       }
+{                                                                             }
+{  Ver.     Date        By          Description                               }
+{  ----     ----        --          -----------                               }
+{  1.0      24/06/96    JMW         Created                                   }
+{  1.01     18/11/97    JMW         Default to Portrait Mode                  }
+{  1.02	    26/04/02    MC          report modified so as to allow for the    }
+{                                   output of similar information using       }
+{				    Infomaker				      }
+{  1.03	    30/05/08    AF          SM92 update                               }
+{  1.04	    04/11/08    AF          Change PBL to address problems with LTE   }
+{                                   print                                     }
+{ ============================================================================}
+
+ENABLE WINDOWS
+SET NAME "DISPLAY/"
+
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_MESSAGE
+JOIN STANDARD_LIBRARY STD_TRANSFER
+JOIN LIBRARY $prompt_imprint
+
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $LIB_CSMLP
+JOIN LIBRARY $LIB_MLPS
+
+JOIN LIBRARY DDE_LIB
+
+			{------------------------------}
+			{MC, 26/04/02, word replaced   }
+			{by infomaker as reporting tool}
+			{------------------------------}
+
+
+CONSTANT INFOMAKER_PIBBLE = "smrpt.pbl"                              { 1.04 }
+CONSTANT INFOMAKER_REPORT = "el_mlp_nt_info"
+
+{
+CONSTANT WORD_FOR_WINDOWS = "C:\Program Files\Microsoft Office\Office\Winword.exe"
+CONSTANT TEMPLATE_DIR     = "D:\Marys Files\Projects\Elan\" 
+CONSTANT TEMPLATE_ID      = "Mlp.dot"
+
+
+
+IF GLOBAL ( "TERMTYPE" ) <> "GUI" THEN
+   flash_message ( " Report Can Only be Run from Windows ", FALSE )
+   EXIT
+ENDIF
+}
+
+main ()
+
+{==============================================================================}
+{                                                                              }
+{ ROUTINE main                                  Controls main flow of the      }
+{                                               program .                      }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  24/4/96      JMWHYTE         Created                                        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE main
+
+DECLARE prompt_form, mlp_id_title, mlp_ver_title, mlp_identity,
+        mlp_version, button, status
+
+CREATE OBJECT PROMPT_CLASS_FORM , prompt_form
+
+prompt_form . height = 4
+prompt_form . width  = 60
+prompt_form . row    = 11
+prompt_form . column = 10
+prompt_form . border = TRUE
+prompt_form . header = " MLP AUDIT REPORT "
+prompt_form . footer = "Press FIND to Browse"
+prompt_form . proportional = TRUE
+prompt_form . return_behaviour = FORM_RETURN_LEAVE
+
+PROMPT OBJECT mlp_id_title
+        FORMAT TEXT
+        ON LINE 1 FROM 1
+        WITH ( bold   = TRUE                ,
+               width  = 40                  ,
+               value  = "MLP Identity " )
+
+prompt_form . add_display ( mlp_id_title )
+
+PROMPT OBJECT mlp_ver_title
+        FORMAT TEXT
+        ON LINE 2 FROM 1
+        WITH ( bold   = TRUE             ,
+               width  = 40               ,
+               value  = "MLP Version " )
+
+prompt_form . add_display ( mlp_ver_title )
+
+
+
+
+PROMPT OBJECT mlp_identity
+        BROWSE ON MLP_HEADER . identity
+        THEN SELECT
+        ON LINE 1 FROM 16
+
+
+prompt_form . add_prompt ( mlp_identity )
+
+
+PROMPT OBJECT mlp_version
+        ON LINE 2 FROM 16
+        FORMAT TEXT10
+        WITH ( browse_routine = "mlp_ver_browse",
+               validation_routine = "mlp_ver_validate",
+               always_validate = TRUE )
+
+prompt_form . add_prompt ( mlp_version )
+prompt_form . button_style = FORM_BUTTON_NONE
+prompt_form . height = 5
+prompt_form . width  = 40
+
+mlp_id_title . column = 2
+mlp_id_title . row = 1
+
+mlp_ver_title . column = 2
+mlp_ver_title . row = 3
+
+mlp_identity . column = 2
+mlp_identity . row = 2
+
+mlp_version . column = 2
+mlp_version . row = 4
+
+prompt_form . add_frame ( "" , 1 , 1 , 4 ,
+                prompt_form . width - 13 )
+
+PROMPT OBJECT button
+       CLASS "STD_PROMPT_BUTTON"
+       ON LINE 1
+       FROM    prompt_form . width - 10
+       WITH ( caption      =
+              get_user_message ( "SMP_PROMPT_BUTTON_OK" , 1 ) ,
+              enabled      = TRUE    ,
+              width        = 10 ,
+              send_lastkey = "DO"  )
+
+
+prompt_form . add_prompt ( button )
+
+PROMPT OBJECT button
+       CLASS "STD_PROMPT_BUTTON"
+       ON LINE 3
+       FROM    prompt_form . width - 10
+       WITH ( caption      =
+              get_user_message ( "SMP_PROMPT_BUTTON_CANCEL" , 1 ) ,
+              enabled      = TRUE      ,
+              width        = 10  ,
+              send_lastkey = "EXIT"  )
+
+prompt_form . add_prompt ( button )
+
+prompt_form . start_prompt ()
+prompt_form . wait_prompt ()
+prompt_form . end_prompt ()
+
+
+mlp_identity . value = STRIP ( mlp_identity . value )
+pad_len             = 10 - LENGTH ( mlp_identity . value )
+mlp_identity . value =  mlp_identity. value:PAD ( "", " ", pad_len ) 
+
+
+mlp_version . value = STRIP ( mlp_version . value )
+pad_len             = 10 - LENGTH ( mlp_version . value )
+mlp_version . value = PAD ( "", " ", pad_len ) : mlp_version . value
+
+
+			{-----------------------------------------------}
+			{MC MOD, 26/04/02, word replaced by infomaker as}
+			{reporting tool                                 }
+			{-----------------------------------------------}
+
+IF ( prompt_form . get_lastkey () <> "EXIT" ) THEN  
+
+	imprint_print(mlp_identity . value, mlp_version . value)
+
+ENDIF
+
+			{--------------}
+			{MC, END MOD   }
+			{--------------}
+
+
+
+			{-------------------------------------------------------------}
+			{MC, NOTE:Blocks of code commented out throughout this report.}
+			{Not needed when using Infomaker as reporting Tool            }                             
+			{-------------------------------------------------------------}
+
+{
+CONSTANT WORD_DDE_CLASS   = "STD_WORD_DDE"
+CONSTANT WORD_FONT_CLASS  = "STD_WORD_FONT"
+word_initialise ()
+
+DECLARE word, font
+CREATE OBJECT WORD_DDE_CLASS, word
+CREATE OBJECT WORD_FONT_CLASS, font
+
+word . connect ()
+
+status = word . file_open ( TEMPLATE_DIR : TEMPLATE_ID )
+
+IF  status <> EMPTY THEN
+    flash_message ( TEMPLATE_DIR : ":" : TEMPLATE_ID :
+                    " Template cannot be found, " :
+                    "status = ":status, TRUE )
+    EXIT
+ENDIF
+}
+
+{IF ( word . End_of_document () <> EMPTY ) THEN  
+  
+ELSE
+    word . send ( "StartOfDocument")
+    word . send ( "EndOfDocument 1")
+    word . send ( "EditClear") }
+    { *** page_landscape ( word ) , ***** Removed for MF, V1.01, JMW ***** } 
+    {word . center_paragraph ()
+    word . insert_text ( "MLP Audit Report" )
+    word . insert_paragraph ()
+    word . insert_paragraph ()
+    word . center_paragraph ()
+    word . insert_text ( "Generated by : " : OPERATOR () : " on " : NOW )
+    word . insert_paragraph ()
+    word . insert_paragraph ()
+    word . left_paragraph ()
+
+ENDIF
+}
+
+{
+print_whole_spec ()
+
+print_audit ()
+
+
+word . send ( "UpdateFields" )
+word . disconnect ()
+}
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+{ ROUTINE mlp_ver_browse                                                       }
+{------------------------------------------------------------------------------}
+{ This routine gets list of appropriate products                               }
+{                                                                              }
+{ Parameter:            Passed By:      Description:                           }
+{ -----------           ----------      -------------                          }
+{ self                  Reference       Prompt Object                          }
+{------------------------------------------------------------------------------}
+
+ROUTINE mlp_ver_browse ( self )
+
+DECLARE id, counter, browse_list
+
+ARRAY browse_list ARRAYSIZE ( 0 , 2 )
+
+counter = 1
+
+{id = SELECT MLP_VERSIONS . product_version}
+
+id = SELECT MLP_HEADER . product_version
+       WHERE  ( identity = mlp_identity . value  )
+       ORDER ON product_version
+
+WHILE ( id <> EMPTY ) DO
+
+        browse_list [ counter , 1 ] = id
+        browse_list [ counter , 2 ] = ""
+        counter = counter + 1
+
+        NEXT MLP_HEADER
+        id = SELECT MLP_HEADER . product_version
+ENDWHILE
+
+browse_on_array ( 20, self . text , browse_list )
+
+self . repaste ()
+
+ENDROUTINE
+
+
+
+{------------------------------------------------------------------------------}
+{ ROUTINE print_whole_spec                                                     }
+{------------------------------------------------------------------------------}
+{                                                                              }
+{ Parameter:            Passed By:      Description:                           }
+{ -----------           ----------      -------------                          }
+{------------------------------------------------------------------------------}
+ROUTINE print_whole_spec
+
+DECLARE arr, hdr, i, last_level, mlp_view_id, desc, level_id, result_type,
+        min, max, outspc, found_spec
+
+ARRAY arr
+ARRAY hdr
+i = 1
+last_level = "Dummy"
+
+
+mlp_view_id = SELECT MLP_VIEW . product_id
+                WHERE ( product_id =  mlp_identity . value )
+                  AND ( product_version = mlp_version . value )
+                  ORDER ON level_id, level_order
+
+hdr [ 1, 1 ] = "MLP Identity : " : mlp_identity . value
+
+desc         = SELECT MLP_HEADER . description
+                WHERE ( identity = mlp_identity . value )
+
+IF desc = EMPTY THEN desc = "" ENDIF
+
+hdr [ 1, 2 ] = "Description : " : STRIP ( desc )
+hdr [ 2, 1 ] = "Current Version : " : SELECT MAX MLP_VERSIONS . product_version
+                 WHERE ( identity = mlp_identity . value )
+
+hdr [ 2, 2 ] = ""
+hdr [ 3, 2 ] = "Level ID : " : SELECT MLP_VIEW . level_id
+hdr [ 3, 1 ] = "This Version : " : mlp_version . value
+
+word . set_underline ( TRUE )
+word . insert_text ( " Specification Details  " )
+word . set_underline ( FALSE )
+
+WHILE ( mlp_view_id <> EMPTY ) DO
+
+    level_id       =  SELECT MLP_VIEW . level_id
+
+    IF ( level_id <> last_level ) THEN
+        ARRAY arr
+        arr [ 1 , 1 ] = "Analysis ID"
+        arr [ 1 , 2 ] = "Component Name "
+        arr [ 1 , 3 ] = "Specification "
+        i = 1
+    ENDIF
+
+    i = i + 1
+
+    result_type = SELECT MLP_VIEW . component_type
+
+    IF ( result_type = "N" ) OR ( result_type = "K" ) THEN
+        min = SELECT mlp_view . min_limit
+        max = SELECT mlp_view . max_limit
+
+{MAC Modification 27/03/02}
+{
+	IF ( min = EMPTY ) AND ( max = EMPTY) THEN
+	    outspc = "Unassigned" 
+}
+{MAC End}
+
+        IF ( max = EMPTY ) OR ( STRIP ( max ) = "" ) THEN
+            outspc = min
+        ELSE
+            outspc = PAD ( "Min : " : STRIP ( min ), " " , 20 )  :
+                           "Max : " : STRIP ( max )
+        ENDIF
+    ELSEIF ( result_type = "B" ) THEN
+         outspc = STRIP ( SELECT mlp_view . boolean_pass )
+    ELSE
+         outspc = STRIP ( SELECT mlp_view . text_spec    )
+    ENDIF
+   { IF outspc = EMPTY THEN outspc = "Unassigned" ENDIF}
+
+    IF level_id <> last_level THEN
+
+        hdr [ 3, 2 ] = "Level ID : " : SELECT MLP_VIEW . level_id
+        word . insert_paragraph ()
+        word . insert_paragraph ()
+        insert_mlp_array ( word, hdr, 3, 2, 16, FALSE )
+
+    ENDIF
+
+    last_level  = level_id
+
+    arr [ i , 1 ]  = STRIP ( SELECT MLP_VIEW . analysis_id )
+    arr [ i , 2 ]  = STRIP ( SELECT MLP_VIEW . component_name )
+    arr [ i , 3 ]  = outspc
+
+    NEXT MLP_VIEW
+    mlp_view_id = SELECT MLP_VIEW . product_id
+
+    level_id       =  SELECT MLP_VIEW . level_id
+
+    IF ( last_level <> level_id ) THEN
+        insert_mlp_array ( word, arr, i, 3, 16, FALSE )
+    ENDIF
+
+ENDWHILE
+
+IF ( i = 1 ) THEN
+    word . insert_paragraph ()
+    word . insert_text ( "No Specifications found for " :
+                          STRIP ( mlp_identity . value ) : "/ver" :
+                          STRIP ( mlp_version . value )
+                       )
+ENDIF
+ENDROUTINE
+
+
+{------------------------------------------------------------------------------}
+{ ROUTINE print_whole_audit                                                    }
+{------------------------------------------------------------------------------}
+{                                                                              }
+{ Parameter:            Passed By:      Description:                           }
+{ -----------           ----------      -------------                          }
+{------------------------------------------------------------------------------}
+ROUTINE print_audit
+
+DECLARE complev, mlp_comp, analysis, res_type, ec, mlp_lev, min_limit,
+        max_limit, spec_line, event, ac, event_Reason, transact, trans_date,
+        person, data, field, title_array, people_array,
+        data_array, trans, rk0, found_event
+
+complev = "Dummy Value"
+spec_line = ""
+event = ""
+ac = ""
+event_reason = ""
+transact = ""
+trans_date = ""
+person = ""
+rk0 = ""
+found_event = FALSE
+
+
+word . insert_paragraph ()
+word . set_underline ( TRUE )
+word . insert_text ( " Audit History  " )
+word . set_underline ( FALSE )
+
+mlp_comp = SELECT MLP_COMPONENTS . component_name
+             WHERE ( product_id = mlp_identity . value )
+               AND ( product_version = mlp_version . value )
+             ORDER ON order_num
+
+IF ( mlp_comp = EMPTY ) THEN
+    word . insert_paragraph ()
+    word . insert_text ( "No Components found for this product" )
+ENDIF
+
+WHILE ( mlp_comp <> EMPTY )
+    analysis = SELECT MLP_COMPONENTS . analysis_id
+    res_type = SELECT MLP_COMPONENTS . component_type
+    ec       = SELECT MLP_COMPONENTS . entry_code
+
+    mlp_lev = SELECT MLP_VALUES . level_id
+                WHERE ( entry_code = ec )
+                ORDER ON level_id
+    IF ( mlp_lev = EMPTY ) THEN
+        word . insert_paragraph ()
+        word . insert_text ( "No Levels found for this product" )
+    ENDIF
+    WHILE ( mlp_lev <> EMPTY ) DO
+
+        IF ( res_type = "N" ) OR ( res_type = "K" ) THEN
+            min_limit = SELECT MLP_VALUES . min_limit
+            max_limit = SELECT MLP_VALUES . max_limit
+            IF  ( max_limit <> PAD ( " ", " ", 10 ) ) THEN
+                spec_line = "Min : " : min_limit : " Max : " : max_limit
+            ENDIF
+        ELSEIF ( res_type = "B" ) THEN
+            spec_line     = SELECT MLP_VALUES . boolean_pass
+        ELSE
+            spec_line     = SELECT MLP_VALUES . text_spec
+        ENDIF
+        spec_line = "Current Value : " : spec_line
+
+        event = SELECT audit_event . event
+                WHERE ( table_name = "MLP_VALUES" )
+                AND   ( record_key0 = ec:mlp_lev  )
+                ORDER ON transaction
+
+        WHILE ( event <> EMPTY ) DO
+             found_event = TRUE
+             ac = LEFTSTRING ( SELECT audit_event . event_action, 3)
+             event_reason = SELECT audit_event . event_reason
+             transact     = SELECT audit_event . transaction
+             trans_date = SELECT audit_transaction . transaction_date
+                                  WHERE ( transaction = transact )
+             person     = SELECT audit_transaction . user_id
+
+             trans_date = LEFTSTRING ( trans_date, 11 )
+
+             data = SELECT audit_data . data
+                     WHERE event = event
+                     ORDER ON data
+
+             IF ( event = EMPTY ) THEN
+                 flash_message ( "No Data found for this Event", TRUE )
+             ENDIF
+
+             WHILE ( data <> EMPTY ) DO
+                field        = SELECT audit_data . field
+                IF  (( field = "MIN_LIMIT" ) OR ( field = "MAX_LIMIT" ))
+                    AND (( res_type = "N" )  OR ( res_type = "K" ))
+                OR
+                    (( field = "TEXT_SPEC" ) AND ( res_type = "T" ))
+                OR
+                    (( field = "BOOLEAN_PASS" ) AND ( res_type = "B"))
+                THEN
+{rb - 18-feb-2002}
+                   IF ( mlp_comp : mlp_lev : analysis) <> complev THEN
+
+                       ARRAY title_array
+                       title_array [ 1 , 1 ] =
+                          "MLP ID : "  :  mlp_identity . value
+                       title_array [ 1 , 2 ] =
+                          "MLP Version : " : mlp_version . value
+                       title_array [ 1 , 3 ] =
+                          "MLP Level : " : mlp_lev
+                       word . insert_paragraph ()
+                       word . insert_paragraph ()
+                       insert_mlp_array ( word, title_array, 1, 3, 16, FALSE )
+
+                       ARRAY people_array
+                       people_array [ 1 , 1 ] = "Modified By : " : person
+                       people_array [ 1 , 2 ] =
+                          "Reason : " : STRIP  ( event_reason )
+                       insert_mlp_array ( word, people_array, 1, 2, 0, FALSE )
+
+                       ARRAY data_array
+                       data_array [ 1 , 1 ] = "Action"
+                       data_array [ 1 , 2 ] = "Date"
+                       data_array [ 1 , 3 ] = "Analysis / Component"
+                       data_array [ 1 , 4 ] = "Field"
+                       data_array [ 1 , 5 ] = "Value Before"
+                       data_array [ 1 , 6 ] = "Value After"
+                       insert_mlp_array ( word, data_array, 1, 6, 16, FALSE )
+                   ENDIF
+
+                   ARRAY trans
+                   trans [ 1, 1 ] = ac            : " "
+                   trans [ 1, 2 ] = trans_date    : " "
+                   trans [ 1, 3 ] = STRIP ( analysis ) : " / " : mlp_comp  : " "
+                   trans [ 1, 4 ] = field : " "
+                   trans [ 1, 5 ] = STRIP ( SELECT audit_data .value_before ) : " "
+                   trans [ 1, 6 ] = STRIP ( SELECT audit_data .value_after ) : " "
+                   insert_mlp_array ( word, trans, 1, 6, 16, FALSE )
+{rb 18-feb-2002}
+                   complev = mlp_comp : mlp_lev : analysis 
+
+                ENDIF
+                NEXT audit_data
+                data = SELECT audit_data . data
+            ENDWHILE
+            NEXT audit_event
+            event = SELECT audit_event . event
+        ENDWHILE
+        NEXT MLP_VALUES
+        mlp_lev = SELECT MLP_VALUES . level_id
+    ENDWHILE
+
+    NEXT MLP_COMPONENTS
+    mlp_comp = SELECT MLP_COMPONENTS . component_name
+ENDWHILE
+
+IF ( found_event = FALSE ) THEN
+   word . insert_text ( " No Audit Events found for product : " :
+                          STRIP ( mlp_identity . value ) : ", Version " :
+                          STRIP ( mlp_version . value ) )
+   word . insert_paragraph ()
+   word . insert_paragraph ()
+ENDIF
+
+{removed_records ()}
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+{ ROUTINE removed_records                                                      }
+{------------------------------------------------------------------------------}
+{ A record of the removed MLP components                                       }
+{ Parameter:            Passed By:      Description:                           }
+{ -----------           ----------      -------------                          }
+{------------------------------------------------------------------------------}
+ROUTINE removed_records
+
+event   = SELECT audit_event . event
+          WHERE ( table_name   = "MLP_COMPONENTS" )
+          AND   ( event_action = "DELETE"         )
+          AND   ( record_key0  LIKE
+                               mlp_identity . value :
+                               mlp_version  . value :
+                               "%"
+                )
+          ORDER ON transaction
+
+IF ( event <> EMPTY ) THEN
+    word . insert_paragraph ()
+    word . set_underline ( TRUE )
+    word . insert_text ( " Removed Records " )
+    word . insert_paragraph ()
+    word . set_underline ( FALSE )
+
+    ARRAY trans
+    trans [ 1, 1 ] = "Action "
+    trans [ 1, 2 ] = "Date "
+    trans [ 1, 3 ] = "Record "
+    trans [ 1, 4 ] = "Removed by "
+    trans [ 1, 5 ] = "Reason "
+    word . insert_paragraph ()
+    insert_mlp_array ( word, trans, 1, 5, 16, FALSE )
+
+ENDIF
+
+WHILE ( event <> EMPTY ) DO
+
+    ac = LEFTSTRING ( SELECT audit_event . event_action, 3 )
+    rk0 = SELECT audit_event . record_key0
+    event_reason = SELECT audit_event . event_reason
+    transact     = SELECT audit_event . transaction
+    trans_date   = SELECT audit_transaction . transaction_date
+                     WHERE ( transaction = transact )
+    person     = SELECT audit_transaction . user_id
+    trans_date = LEFTSTRING ( trans_date, 11 )
+
+    ARRAY trans
+    trans [ 1, 1 ] = ac            : " "
+    trans [ 1, 2 ] = trans_date    : " "
+    trans [ 1, 3 ] = SUBSTRING  ( rk0, 21, LENGTH ( rk0 ) ) : " "
+    trans [ 1, 4 ] = person        : " "
+    trans [ 1, 5 ] = STRIP ( event_reason ) : " "
+    insert_mlp_array ( word, trans, 1, 5, 16, FALSE )
+
+    NEXT audit_event
+    event = SELECT audit_event . event
+ENDWHILE
+
+ENDROUTINE
+
+
+{------------------------------------------------------------------------------}
+{ ROUTINE insert_mlp_array                                                     }
+{------------------------------------------------------------------------------}
+{                                                                              }
+{ Parameter:            Passed By:      Description:                           }
+{ -----------           ----------      -------------                          }
+{ self                  REFERENCE       Object Name                            }
+{ details               RERERENCE       Array Scope                            }
+{ rows                  VALUE           No. Of Rows                            }
+{ columns               VALUE           No of Columns                          }
+{ style                 VALUE           Style of Array                         }
+{ is_bold               VALUE           Bold array                             }
+{------------------------------------------------------------------------------}
+ROUTINE insert_mlp_array ( self,
+                           details,
+                           VALUE rows,
+                           VALUE columns,
+                           VALUE style,
+                           VALUE is_bold )
+
+DECLARE exec_line, row_count, col_count, move_next
+
+SET FORMAT "9999"
+
+exec_line = "TableInsertTable "
+
+exec_line = exec_line : " .NumColumns = " : columns : ","
+exec_line = exec_line : " .NumRows = "    : rows : ","
+exec_line = exec_line : " .Format = " : style : ","
+exec_line = exec_line : " .Apply = " : ( 1 + 2 + 4 + 32 + 128 )
+
+self . send ( exec_line )
+
+move_next = FALSE
+row_count = 1
+
+WHILE row_count <= rows DO
+    col_count = 1
+    WHILE col_count <= columns DO
+
+        IF move_next THEN
+           self . send ( "Nextcell" )
+        ELSE
+           move_next = TRUE
+        ENDIF
+
+        IF (( is_bold ) OR
+            (( row_count = 1 ) AND ( columns = 3 )) OR
+            (( row_count = 1 ) AND ( columns = 3 ))) THEN
+           self . send ( "Bold 1" )
+        ELSE
+           self . send ( "Bold 0" )
+        ENDIF
+
+        self . insert_text ( details [ row_count, col_count ] )
+        col_count = col_count + 1
+    ENDWHILE
+    row_count = row_count + 1
+ENDWHILE
+
+self . send ( "LineDown 1")
+
+ENDROUTINE
+
+
+{------------------------------------------------------------------------------}
+{ ROUTINE page_landscape                                                       }
+{------------------------------------------------------------------------------}
+{                                                                              }
+{ Parameter:            Passed By:      Description:                           }
+{ -----------           ----------      -------------                          }
+{ self                  REFERENCE       Data Object                            }
+{------------------------------------------------------------------------------}
+ROUTINE page_landscape ( self )
+
+DECLARE exec_line, z
+z = ASCII ( 34 )
+
+exec_line = "FilePageSetup .Tab = " : z : "1"       : z
+          : ", .PaperSize = "       : z : "9"       : z
+          : ", .PageWidth = "       : z : "29.7 cm" : z
+          : ", .PageHeight = "      : z : "21 cm"   : z
+          : ", .Orientation = 1"
+
+self . send ( exec_line )
+
+ENDROUTINE
+
+{------------------------------------------------------------------------------}
+{ ROUTINE mlp_ver_validate                                                     }
+{------------------------------------------------------------------------------}
+{ This routine validates a list of mlp versions                                }
+{                                                                              }
+{ Parameter:            Passed By:      Description:                           }
+{ -----------           ----------      -------------                          }
+{ self                  Reference       Prompt Object                          }
+{------------------------------------------------------------------------------}
+
+ROUTINE mlp_ver_validate ( self )
+
+IF NUM_TEXT ( SELECT MLP_VERSIONS . product_version
+                WHERE  ( identity = mlp_identity . value  )
+                  AND  ( product_version = mlp_version . value )
+            )
+
+    RETURN ( TRUE )
+ELSE
+	FLASHMESSAGE("The version you specified does not exist", TRUE)
+ENDIF
+
+RETURN ( FALSE )
+
+ENDROUTINE
+
+
+ROUTINE imprint_print (value PARAM1,value PARAM2)
+
+	DECLARE imprint_report, path
+
+	{ Define the class, then create an instance }
+
+	define_imprint_class ( )
+
+	CREATE OBJECT IMPRINT, imprint_report
+
+	{ Generate a report }
+
+	imprint_report . create_ole_object( )
+
+	imprint_report . reset_ole_object( )
+	
+
+
+	imprint_report . add_parameter (PARAM1)
+	imprint_report . add_parameter (PARAM2)
+	imprint_report . add_parameter (operator())
+
+	{ 1.03 }
+	path = get_imprint_dir ()
+        imprint_report . library  = path : "\" : INFOMAKER_PIBBLE
+	imprint_report . report  = INFOMAKER_REPORT
+
+	imprint_report . generate ( )
+
+	imprint_report . ole_object = EMPTY 
+
+ENDROUTINE
+
+
+{ 1.6 }
+{ Gets imprint directory on server }
+
+ROUTINE get_imprint_dir 
+
+   { "smp$imprint:":xxx.yyy   didnt work }
+
+    DECLARE dir , delim, i
+    
+    delim = ";"
+    dir = LOGICAL("SMP$imprint")
+
+    i = INDEX (dir, delim)
+
+    IF (i>0) THEN
+
+        dir = SUBSTRING (dir, 1, i-STRINGLENGTH (delim))
+
+    ENDIF
+
+    dir = STRIP (dir)
+
+    RETURN (dir)
+
+ENDROUTINE    {  get_imprint_dir   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+

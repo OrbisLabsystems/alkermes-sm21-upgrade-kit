@@ -1,0 +1,128 @@
+{******************************************************************************
+*
+* Module Name   : $SMIDI_RESLSTAT
+*
+* Purpose       : SMIDI SMP report for user defined code which is called when the
+*                 status of a sample is changed
+*
+* Document Ref. : 
+*
+* Specification : 
+*
+* Portability   : Not Checked
+*
+* Re-entrant    :
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By             	Description
+* -------   -----------  ----------    	--------------------------------------
+* 1.1        04-OCT -2015 Enon Gavin	Change message to display only CC_ATH_2015_2207 TS1600031988
+ 
+*
+*******************************************************************************}
+ENABLE WINDOWS
+
+SET NOTPROTECTED
+SET COMPILE_OPTION DECLARE
+SET NAME "DEFER/"
+
+JOIN STANDARD_LIBRARY STD_PROMPT         { prompt for sap documentation      }
+JOIN STANDARD_LIBRARY STD_UTILS          { variable is assigned              }
+JOIN STANDARD_LIBRARY STD_WINDOW         { window_set_status                 }
+JOIN STANDARD_LIBRARY STD_DATABASE       { push/pop to add a replicate       }
+
+JOIN LIBRARY $LIB_UTILS                  { flash_message                     }
+
+{ ========================================================================== }
+
+DECLARE  a_test, a_name, a_rec
+
+CONSTANT STATUS_LIB                = "$SMIDI_USER"
+CONSTANT STATUS_ROUTINE            = "update_status_table"
+
+CONSTANT UPLOAD_LIB                = "$SMIDI_LIB_UPLOAD"
+CONSTANT UPLOAD_ROUTINE            = "smidi_queue_result"
+
+CONSTANT VALUATE_MANUAL_BACKGROUND = TRUE
+CONSTANT GRADE_PASS                = TRUE
+CONSTANT GRADE_FAIL                = FALSE
+
+{ ========================================================================== }
+ROUTINE set_status_e
+ENDROUTINE
+{ ========================================================================== }
+ROUTINE set_status_m
+ENDROUTINE
+
+{ ========================================================================== }
+ROUTINE set_status_a
+	
+	status_queue_trigger ("A" )
+	send_to_SAP()
+
+ENDROUTINE
+
+{ ========================================================================== }
+ROUTINE set_status_r
+ENDROUTINE
+{ ========================================================================== }
+ROUTINE set_status_u
+ENDROUTINE
+
+{ ========================================================================== }
+ROUTINE set_status_x
+ENDROUTINE
+
+{ ========================================================================== }
+
+{ ========================================================================== }
+{                                                                            }
+{ OPTION 1 - SEND DATA IMMEDIATE TO SAP_UPLOAD_QUEUE                         }
+{                                                                            }
+{ ========================================================================== }
+
+ROUTINE send_to_SAP
+
+	DECLARE test, name, retval, resval
+
+	test       = SELECT RESULT.TEST_NUMBER
+	name       = SELECT RESULT.NAME
+	resval     = STRIP ( SELECT RESULT.TEXT )
+	retval     = FALSE
+	
+
+	IF ( NOT BLANK ( resval ) ) THEN
+		IF ( resval <> "~0.0" ) THEN     { default results from download }
+			CALL_ROUTINE UPLOAD_ROUTINE IN LIBRARY UPLOAD_LIB USING test, name RETURNING retval
+		ENDIF
+	ENDIF  { if no result then dont queue }
+
+	RETURN ( retval )
+
+ENDROUTINE  { end send_to_SAP }
+
+{ ========================================================================== }
+{                                                                            }
+{ OPTION 2 - SEND DATA DEFER TO STATUS_QUEUE                                 }
+{                                                                            }
+{ ========================================================================== }
+
+ROUTINE status_queue_trigger ( VALUE status )
+
+	DECLARE table_id
+	table_id = "R"
+	a_test   = SELECT RESULT.TEST_NUMBER
+	a_name   = SELECT RESULT.NAME
+	a_rec    = a_test:a_name
+
+	CALL_ROUTINE STATUS_ROUTINE IN LIBRARY STATUS_LIB USING a_rec, table_id, status RETURNING status
+
+	IF ! status THEN
+		{FLASH_MESSAGE ( "Error updating status queue for result ":a_rec, FALSE )} {1.1}
+	ENDIF
+
+ENDROUTINE  { status_queue_trigger }
+
+{ end $reslstat }

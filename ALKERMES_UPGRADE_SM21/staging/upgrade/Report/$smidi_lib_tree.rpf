@@ -1,0 +1,788 @@
+{******************************************************************************
+* Module Name   : $SMIDI_LIB_TREE.RPF
+* Purpose       : Displays sample test and result information for samples
+*                 called by special action from $smidi_aux_ajh
+* Document Ref. :
+* Specification :
+* Portability   : NT, VMS and Unix
+* Re-entrant    :
+*
+*******************************************************************************}
+
+ENABLE WINDOWS
+SET NAME "DEFER/"
+SET WIDTH 132
+SET COMPILE_OPTION DECLARE
+
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_TRANSFER
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_WINDOW
+
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $LIB_RE_INTERFACE
+
+
+{* GLOBAL CONSTANTS ***********************************************************}
+{* LOCAL CONSTANTS ************************************************************}
+CONSTANT MENPROC_SAMPLE        = "DFS"
+CONSTANT MENPROC_TEST          = "DSE"
+CONSTANT MENPROC_NAME          = "ETP"
+CONSTANT MENPROC_RESULT        = "DSR"
+CONSTANT TREE_GRID_CLASS       = "TREE_GRID"
+CONSTANT ACTIVE_DB             = FALSE
+CONSTANT COMMITTED_DB          = TRUE
+CONSTANT NUM_ID_POS            = 10
+CONSTANT COMMITTED_POS         = 11
+CONSTANT TEST_REPLICATE_POS    = 12
+CONSTANT COMP_REPLICATE_POS    = 13
+CONSTANT TEST_NUM_POS          = 14
+CONSTANT LAST_RES_POS          = 15
+CONSTANT ANAL_ONLY_POS         = 16
+CONSTANT IN_OUT_POS            = 17
+CONSTANT RESULT_TYPE_POS       = 18
+CONSTANT FORM_WIDTH            = 115
+CONSTANT FORM_HEIGHT           = 24
+CONSTANT ALLOWED_TEST_STATUSES = "VPCAIUX"
+CONSTANT SAMPLE_ONLY_CAPTION   = "Sample_______________________  | ###______ |  _Status_ |  Date_Login____________  |   Product______ "
+
+{* VARIABLES*******************************************************************}
+
+DECLARE tree_form 	, 
+	tree_grid 		, 
+	prompt_form 	, 
+	option          	,
+	exclude_X       	,
+	exclude_U 		,
+	samp_id 		, 
+	table_id 		, 
+	display_text	, 
+	id_text		, 
+	status		, 
+	date_login		, 
+	product		,
+	mode            ,
+	max_hits        ,
+	no_of_entries   ,
+	TEXT_ID_POS     ,
+	SAMP_STATUS_POS ,
+	ANAL_ID_POS     ,
+	ANAL_STATUS_POS ,
+	COMP_NAME_POS   ,
+	RES_STATUS_POS  ,
+	RESULT_POS      ,
+	ON_SPEC_POS     ,
+	grid_initialized
+
+{* Main Code ******************************************************************}
+
+	option           = 0
+	sample_tree ( option )
+	EXIT
+
+{* GLOBAL ROUTINES ************************************************************}
+
+{******************************************************************************}
+
+GLOBAL ROUTINE special_tree ( VALUE this_id, VALUE this_field )
+
+	define_grid_class ()
+	create_grid_form ( tree_form , tree_grid, "SPECIAL" )
+	tree_form.header       = "Tree for ":this_field:" ":this_id
+	tree_grid.cell_columns = 9
+
+	REPEAT
+		tree_grid.number_samples = 0
+		process_data ( this_field, this_id, no_of_entries, tree_grid, EMPTY )
+		display_tree ( no_of_entries , tree_grid )
+	UNTIL LASTKEY = "EXIT"
+
+	RETURN
+
+ENDROUTINE   { special tree - called from as_aux_ajh_msm during UD upload decisions }
+
+{******************************************************************************}
+
+ROUTINE define_grid_class
+
+	IF NOT GLOBAL ( "LIBRARY_INITIALISED" ) THEN
+		lib_re_interface_initialise ()
+		DEFINE CLASS TREE_GRID_CLASS
+			INHERIT
+				PROMPT_CLASS_GRID
+			PROPERTIES
+				"sample_column"    ,
+				"test_column"      ,
+				"component_column" ,
+				"result_column"    ,
+				"tree_type"        ,
+				"number_samples"   ,
+				"mode"
+			INITIALISATION
+		END CLASS
+		SET GLOBAL "LIBRARY_INITIALISED" TO TRUE
+	ENDIF
+
+ENDROUTINE   { define_grid_class }
+
+{******************************************************************************}
+
+ROUTINE grid_display ( self, VALUE cell_column, VALUE cell_row, window, VALUE column, VALUE row, VALUE cell_width, VALUE cell_height )
+
+	DISPLAY self.user_info[cell_row,cell_column] ON LINE row FROM column TO column + cell_width - 1 IN WINDOW window
+			INVERSE  = ( self.user_info[cell_row,IN_OUT_POS] = TRUE )   { off spec causes inverse }
+			BLINKING = ( self.user_info[cell_row,IN_OUT_POS] = TRUE )   { off spec causes inverse }
+
+ENDROUTINE   { grid_display  }
+
+{******************************************************************************}
+
+ROUTINE grid_prompt ( self, VALUE cell_column, VALUE cell_row, window, VALUE column, VALUE row, VALUE cell_width, VALUE cell_height )
+
+	PROMPT FOR self.user_info[cell_row,cell_column] FORMAT TEXT IN WINDOW window ON LINE row FROM column TO column+cell_width-1 WITH (display_only=TRUE )
+
+ENDROUTINE   { grid_prompt }
+
+{******************************************************************************}
+
+ROUTINE grid_check_move ( self, VALUE old_column, VALUE old_row, new_column, new_row )
+
+	IF old_column <> new_column THEN
+
+		IF new_column >= self.result_column THEN
+
+			new_column = self.result_column
+
+		ELSEIF new_column >= self.component_column THEN
+
+			new_column = self.component_column
+
+		ELSEIF new_column >= self.test_column THEN
+
+			new_column = self.test_column
+
+		ELSEIF new_column >= self.sample_column THEN
+
+			new_column = self.sample_column
+
+		ENDIF
+
+	ENDIF
+
+ENDROUTINE   { grid_check_move }
+
+{******************************************************************************}
+
+ROUTINE grid_select ( self )
+
+	DECLARE cell_row , cell_column
+
+	cell_row    = self.current_row
+	cell_column = self.current_column
+
+	IF cell_column = self.sample_column THEN
+		MENUPROC MENUNUMBER ( MENPROC_SAMPLE )   USING self.user_info [cell_row,NUM_ID_POS], "$EXIT"
+	ELSEIF cell_column = self.test_column THEN
+		MENUPROC MENUNUMBER ( MENPROC_TEST )     USING self.user_info [cell_row,NUM_ID_POS], "$EXIT"
+	ELSEIF cell_column = self.component_column THEN
+		MENUPROC MENUNUMBER ( MENPROC_NAME )     USING self.user_info [cell_row,NUM_ID_POS], "$EXIT"
+	ELSEIF cell_column = self.result_column THEN
+		MENUPROC MENUNUMBER ( MENPROC_RESULT )   USING self.user_info [cell_row,NUM_ID_POS], "$EXIT"
+	ELSE
+		FLASH_MESSAGE ( "Sample, Analysis, Name, & Result columns allow <F3> ", TRUE )
+	ENDIF
+
+ENDROUTINE   { grid_select }
+
+{******************************************************************************}
+
+ROUTINE tree_grid_class_initialisation ( tree_grid )
+
+	tree_grid.mode = mode
+
+	IF ( NOT grid_initialized ) THEN
+
+		grid_initialized = TRUE
+
+		IF ( mode = "SAMPLE" ) THEN
+			tree_grid.sample_column    = 1
+			tree_grid.test_column      = 1
+			tree_grid.component_column = 3
+			tree_grid.result_column    = 5
+			tree_grid.row              = 3
+			ANAL_ID_POS                = 1
+			ANAL_STATUS_POS            = 2
+			COMP_NAME_POS              = 3
+			RES_STATUS_POS             = 4
+			RESULT_POS                 = 5
+			ON_SPEC_POS                = 6
+			tree_grid.cell_columns     = 6
+			tree_grid.title_text_top [ 1 , 1 ] = "Analysis"
+			tree_grid.title_text_top [ 2 , 1 ] = "S"
+			tree_grid.title_text_top [ 3 , 1 ] = "Name"
+			tree_grid.title_text_top [ 4 , 1 ] = "S"
+			tree_grid.title_text_top [ 5 , 1 ] = "Result"
+			tree_grid.title_text_top [ 6 , 1 ] = "SAP"
+			tree_grid.column_size [ 1 ] = 35
+			tree_grid.column_size [ 2 ] = 2
+			tree_grid.column_size [ 3 ] = 30
+			tree_grid.column_size [ 4 ] = 2
+			tree_grid.column_size [ 5 ] = 10
+			tree_grid.column_size [ 6 ] = 30
+		ELSE
+			tree_grid.sample_column    = 1
+			tree_grid.test_column      = 3
+			tree_grid.component_column = 5
+			tree_grid.result_column    = 7
+			tree_grid.row              = 1
+			TEXT_ID_POS                = 1
+			SAMP_STATUS_POS            = 2
+			ANAL_ID_POS                = 3
+			ANAL_STATUS_POS            = 4
+			COMP_NAME_POS              = 5
+			RES_STATUS_POS             = 6
+			RESULT_POS                 = 7
+			ON_SPEC_POS                = 8
+			tree_grid.cell_columns     = 8
+			tree_grid.title_text_top [ 1 , 1 ] = "Sample"
+			tree_grid.title_text_top [ 2 , 1 ] = "S"
+			tree_grid.title_text_top [ 3 , 1 ] = "Analysis"
+			tree_grid.title_text_top [ 4 , 1 ] = "S"
+			tree_grid.title_text_top [ 5 , 1 ] = "Name"
+			tree_grid.title_text_top [ 6 , 1 ] = "S"
+			tree_grid.title_text_top [ 7 , 1 ] = "Result"
+			tree_grid.title_text_top [ 8 , 1 ] = "SAP"
+			tree_grid.column_size [ 1 ] = 20
+			tree_grid.column_size [ 2 ] = 2
+			tree_grid.column_size [ 3 ] = 20
+			tree_grid.column_size [ 4 ] = 2
+			tree_grid.column_size [ 5 ] = 24
+			tree_grid.column_size [ 6 ] = 2
+			tree_grid.column_size [ 7 ] = 6
+			tree_grid.column_size [ 8 ] = 30
+			tree_grid.row_separator    [ 8 ]   = GRID_SEPARATOR_NONE
+			tree_grid.column_separator [ 8 ]   = GRID_SEPARATOR_BLANK
+		ENDIF
+
+		tree_grid.row_separator    [ 1 ]   = GRID_SEPARATOR_NONE
+		tree_grid.row_separator    [ 2 ]   = GRID_SEPARATOR_NONE
+		tree_grid.row_separator    [ 3 ]   = GRID_SEPARATOR_NONE
+		tree_grid.row_separator    [ 4 ]   = GRID_SEPARATOR_NONE
+		tree_grid.row_separator    [ 5 ]   = GRID_SEPARATOR_NONE
+		tree_grid.row_separator    [ 6 ]   = GRID_SEPARATOR_NONE
+		tree_grid.row_separator    [ 7 ]   = GRID_SEPARATOR_NONE
+
+		tree_grid.column_separator [ 1 ]   = GRID_SEPARATOR_BLANK
+		tree_grid.column_separator [ 2 ]   = GRID_SEPARATOR_BLANK
+		tree_grid.column_separator [ 3 ]   = GRID_SEPARATOR_BLANK
+		tree_grid.column_separator [ 4 ]   = GRID_SEPARATOR_BLANK
+		tree_grid.column_separator [ 5 ]   = GRID_SEPARATOR_BLANK
+		tree_grid.column_separator [ 6 ]   = GRID_SEPARATOR_BLANK
+		tree_grid.column_separator [ 7 ]   = GRID_SEPARATOR_BLANK
+
+		tree_grid.column                   = 1
+		tree_grid.cell_rows                = 1
+		tree_grid.title_size_top           = 1
+		tree_grid.border                   = TRUE
+		tree_grid.fixed_columns_left       = 1
+		tree_grid.number_samples           = 0
+		tree_grid.width                    = FORM_WIDTH
+		tree_grid.height                   = FORM_HEIGHT
+		tree_grid.title_separator_top      = GRID_SEPARATOR_BOTH
+		tree_grid.display_cell_routine     = "grid_display"
+		tree_grid.prompt_cell_routine      = "grid_prompt"
+		tree_grid.check_move_routine       = "grid_check_move"
+		tree_grid.select_routine           = "grid_select"
+
+	ENDIF  { only reinit array }
+
+
+ENDROUTINE   { tree_grid_class_initialisation }
+
+{******************************************************************************}
+
+ROUTINE create_grid_form ( tree_form,tree_grid, VALUE mode )
+
+	IF NOT variable_is_assigned (  tree_form ) THEN
+
+		CREATE OBJECT PROMPT_CLASS_FORM , tree_form
+		tree_form.row          = 1
+		tree_form.column       = 4
+		tree_form.border       = TRUE
+		tree_form.width        = FORM_WIDTH
+		tree_form.height       = FORM_HEIGHT
+    		tree_form.button_style = FORM_BUTTON_NONE
+
+		CREATE OBJECT TREE_GRID_CLASS, tree_grid
+		tree_form.user_info = tree_form.add_prompt(tree_grid)
+		ARRAY tree_grid.user_info      ARRAYSIZE ( 0 , 18 ) = ""
+
+	ELSE
+		tree_grid.current_row    = 1
+		tree_grid.current_column = 1
+		tree_grid.number_samples = 0
+		ARRAY tree_grid.user_info      ARRAYSIZE ( 0 , 18 ) = ""
+
+	ENDIF
+
+ENDROUTINE   { create_grid_form }
+
+{******************************************************************************}
+
+ROUTINE create_prompt_form ( VALUE display_text, VALUE table_id, prompt_form, VALUE sample_field   )
+
+	DECLARE prompt_obj, pad_width, display_col, prompt_col, key0_fields, field_size, prompt_X, prompt_U, prompt_MAX
+
+	CREATE OBJECT PROMPT_CLASS_FORM , prompt_form
+	prompt_form.height       = 5
+	prompt_form.row          = 12
+	prompt_form.border       = TRUE
+	prompt_form.header       = "Input your choices for the following      "
+	prompt_form.button_style = FORM_BUTTON_OK_CANCEL
+
+	pad_width    = LENGTH ( STRIP ( display_text ))
+	display_col  = 1
+	prompt_col   = display_col + pad_width + 1
+	PROMPT OBJECT prompt_obj FORMAT TEXT ON LINE 1 FROM display_col WITH (BOLD=TRUE,length=pad_width,foreground_colour=PROMPT_COLOUR_BLACK,value=STRIP(display_text))
+	prompt_form . add_display ( prompt_obj )
+
+	IF TOLOWER ( table_id ) = "samp_type" THEN
+		GET_FIELD_DETAILS phrase . phrase_id "FIELD_SIZE", field_size
+		PROMPT OBJECT prompt_obj BROWSE ON valid_phrase_id . samp_type ON LINE 1 FROM prompt_col
+	ELSE
+		GET_TABLE_DETAILS 'table_id' , "KEY0_FIELD" , key0_fields
+		GET_FIELD_DETAILS 'table_id' . 'key0_fields[1]' "FIELD_SIZE", field_size
+		PROMPT OBJECT prompt_obj BROWSE ON 'table_id' ON LINE 1 FROM prompt_col WITH (then_select=TRUE )
+	ENDIF
+
+	prompt_form.width  = LENGTH ( display_text ) + 15 + field_size
+	prompt_form.column = ( GLOBAL ( "SCREEN_WIDTH" ) - prompt_form . width ) / 2
+	prompt_form.add_prompt ( prompt_obj )
+
+
+	CREATE OBJECT "STD_PROMPT_TEXT_BOOLEAN" , prompt_X
+	display_text = "Exclude X"
+	PROMPT OBJECT prompt_obj FORMAT TEXT    ON LINE 2 FROM display_col WITH (length=pad_width,value=STRIP(display_text))
+	PROMPT OBJECT prompt_X   FORMAT BOOLEAN ON LINE 2 FROM prompt_col  WITH (length=pad_width,value=TRUE )
+	prompt_form.add_display ( prompt_obj )
+	prompt_form.add_display ( prompt_X )
+	prompt_form.add_prompt ( prompt_X )
+
+	CREATE OBJECT "STD_PROMPT_TEXT_BOOLEAN" , prompt_U
+	display_text = "Exclude U"
+	PROMPT OBJECT prompt_obj FORMAT TEXT    ON LINE 3 FROM display_col WITH (length=pad_width,value=STRIP(display_text))
+	PROMPT OBJECT prompt_U   FORMAT BOOLEAN ON LINE 3 FROM prompt_col  WITH (length=pad_width,value=TRUE )
+	prompt_form.add_display ( prompt_obj )
+	prompt_form.add_display ( prompt_U )
+	prompt_form.add_prompt ( prompt_U )
+
+	CREATE OBJECT "STD_PROMPT_TEXT_INTEGER" , prompt_MAX
+	display_text = "Maximum #"
+	PROMPT OBJECT prompt_obj FORMAT TEXT    ON LINE 4 FROM display_col WITH (length=pad_width,value=STRIP(display_text))
+	PROMPT OBJECT prompt_MAX FORMAT INTEGER ON LINE 4 FROM prompt_col  WITH (length=pad_width,value=9999 )
+	prompt_form.add_display ( prompt_obj )
+	prompt_form.add_display ( prompt_MAX )
+	prompt_form.add_prompt  ( prompt_MAX )
+
+
+	prompt_form.add_frame ( "Analysis Status (X/U) & Max # entries", 1, 1, 5, prompt_form.width )
+	prompt_form.start_prompt()
+	prompt_form.wait_prompt()
+	prompt_form.end_prompt()
+
+	IF prompt_form.get_lastkey() = "DO" THEN
+
+		IF TOLOWER ( table_id ) <> "samp_type" THEN
+			object_set_current_table ( prompt_form.prompt_objects[1], table_id )
+		ENDIF
+
+		exclude_X = prompt_form.prompt_objects[2].value
+		exclude_U = prompt_form.prompt_objects[3].value
+		max_hits  = prompt_form.prompt_objects[4].value
+
+		RETURN ( prompt_form.prompt_objects[1].value )
+
+	ELSE
+		RETURN ( EMPTY )
+	ENDIF
+
+ENDROUTINE   { create_prompt_form }
+
+{******************************************************************************}
+
+ROUTINE sample_tree ( option )
+
+	grid_initialized = FALSE
+	define_grid_class()
+	create_grid_form ( tree_form , tree_grid, "SAMPLE" )
+	display_text = "Select Sample ID "
+	table_id     = "sample"
+
+	REPEAT
+
+		SET GLOBAL "PARAM_ACTIVE" TO TRUE
+		samp_id = create_prompt_form ( display_text, table_id,  prompt_form, "id_numeric"  )
+		SET GLOBAL "PARAM_ACTIVE" TO FALSE
+
+		IF samp_id <> EMPTY THEN
+			id_text    = SELECT SAMPLE.ID_TEXT
+			status     = SELECT SAMPLE.STATUS
+			date_login = SELECT SAMPLE.LOGIN_DATE
+			product    = SELECT SAMPLE.PRODUCT
+			tree_form.header = "<F3> on Analysis, Name & Result Columns for cool stuff "
+			process_tree ( "id_numeric" , samp_id, EMPTY )
+		ENDIF
+
+	UNTIL samp_id = EMPTY
+
+ENDROUTINE   { sample_tree }
+
+{******************************************************************************}
+
+ROUTINE job_tree ( job_id )
+
+	grid_initialized = FALSE
+	define_grid_class ()
+	create_grid_form ( tree_form , tree_grid, "JOB" )
+
+	display_text = "Select Job ID "
+	table_id     = "job_header"
+	exclude_X    = TRUE
+	exclude_U    = FALSE
+	max_hits     = 50
+	job_id       = create_prompt_form ( display_text, table_id, prompt_form, "job_id"  )
+
+	IF job_id <> EMPTY THEN
+		tree_form . header = GET_USER_MESSAGE ( "DATATREE_NEW_2" , 1 ) : STRIP ( job_id ) : GET_USER_MESSAGE ( "DATATREE_NEW_3", 1 ) : SELECT job_header . status : " <F3> for Sample/Analysis/Result"
+		process_tree ( "job_name" , job_id, EMPTY )
+	ENDIF
+
+ENDROUTINE   { job_tree }
+
+{******************************************************************************}
+
+ROUTINE sample_point_tree ( option )
+
+	DECLARE samp_pt
+
+	grid_initialized = FALSE
+	define_grid_class ()
+	create_grid_form ( tree_form , tree_grid, "SAMPLE_POINT" )
+
+	display_text = "Select Sampling Point "
+	table_id     = "sample_point"
+	samp_pt      = create_prompt_form ( display_text , table_id, prompt_form, "sampling_point"  )
+
+	IF samp_pt <> EMPTY THEN
+		tree_form . header = GET_USER_MESSAGE ( "DATATREE_NEW_4" , 1 ) : samp_pt : " <F3> for Sample/Analysis/Name/Result more cool stuff"
+		process_tree ( "sampling_point" , samp_pt, EMPTY )
+	ENDIF
+
+ENDROUTINE   { sample_point_tree }
+
+{******************************************************************************}
+
+ROUTINE product_tree ( option )
+
+	DECLARE prod_id
+
+	grid_initialized = FALSE
+	define_grid_class ()
+	create_grid_form ( tree_form , tree_grid, "PRODUCT" )
+
+	display_text = "Select Product Specification "
+	table_id     = "mlp_header"
+	prod_id      = create_prompt_form ( display_text , table_id, prompt_form, "product" )
+
+	IF prod_id <> EMPTY THEN
+
+		tree_form . header = GET_USER_MESSAGE ( "DATATREE_NEW_6" , 1 ) : prod_id  : " <F3> for Sample/Analysis/Name/Result cool stuff"
+		process_tree ( "product" , prod_id, EMPTY )
+
+	ENDIF
+
+ENDROUTINE   { product_tree }
+
+{******************************************************************************}
+
+ROUTINE analysis_tree ( option )
+
+	DECLARE prod_id , anal_id, save_pos, len, tmpString, last_underscore
+
+	grid_initialized = FALSE
+	define_grid_class ()
+	create_grid_form ( tree_form , tree_grid, "ANALYSIS" )
+
+	display_text = "Select Analysis "
+	table_id     = "analysis_view"
+	anal_id      = create_prompt_form ( display_text , table_id, prompt_form, "analysis" )
+
+	IF ( VARIABLE_IS_ASSIGNED ( anal_id ) ) THEN
+
+		save_pos        = 0
+		len             = STRINGLENGTH ( anal_id )
+		tmpString       = anal_id
+		last_underscore = INDEX ( tmpString, "_" )
+		WHILE ( last_underscore <> 0 ) DO
+			save_pos        = last_underscore + save_pos
+			tmpString       = SUBSTRING ( anal_id, save_pos + 1, len )
+			last_underscore = INDEX ( tmpString, "_" )
+		ENDWHILE
+		prod_id = STRIP ( RIGHTSTRING ( anal_id, len-save_pos ) )
+		tree_form . header = "Analysis " : anal_id : " for Product " : prod_id : " <F3> for Sample/Analysis/Result does cool things"
+		process_tree ( "product" , prod_id, anal_id )
+
+	ENDIF
+
+ENDROUTINE   { analysis_tree }
+
+{******************************************************************************}
+
+ROUTINE analysis_like_tree ( option )
+
+	DECLARE prod_id , anal_id, save_pos, len, tmpString, last_underscore
+
+	grid_initialized = FALSE
+	define_grid_class ()
+	create_grid_form ( tree_form , tree_grid, "ANALYSIS" )
+
+	display_text = "Select Analysis "
+	table_id     = "analysis_view"
+	anal_id      = create_prompt_form ( display_text , table_id, prompt_form, "analysis_like"  )
+
+	IF ( VARIABLE_IS_ASSIGNED ( anal_id ) ) THEN
+
+		save_pos        = 0
+		len             = STRINGLENGTH ( anal_id )
+		tmpString       = anal_id
+		last_underscore = INDEX ( tmpString, "_" )
+
+		WHILE ( last_underscore <> 0 ) DO
+
+			save_pos        = last_underscore + save_pos
+			tmpString       = SUBSTRING ( anal_id, save_pos + 1, len )
+			last_underscore = INDEX ( tmpString, "_" )
+
+		ENDWHILE
+
+		prod_id = STRIP ( RIGHTSTRING ( anal_id, len-save_pos ) )
+		anal_id = STRIP ( LEFTSTRING  ( anal_id, save_pos-1 ) ) : "%"
+		tree_form . header = "Analysis Like " : anal_id : " and Product " : prod_id : " <F3> try it, you might like it"
+		process_tree ( "product" , prod_id, anal_id )
+
+	ENDIF
+
+ENDROUTINE   { product_tree }
+
+{******************************************************************************}
+
+ROUTINE display_tree ( VALUE no_of_entries, tree_grid )
+
+	DECLARE disp_obj, tmpString, len
+
+	IF no_of_entries <> 0 THEN
+
+		IF ( tree_grid.mode = "SAMPLE" ) THEN
+
+			tmpString = SAMPLE_ONLY_CAPTION
+			PROMPT OBJECT disp_obj FORMAT TEXT ON LINE 1 FROM 1 WITH (bold=TRUE,raised=TRUE,value=tmpString)
+			tree_form.add_display(disp_obj)
+
+			GET_FIELD_DETAILS sample.id_text, "FIELD_SIZE", len
+			tmpString = PAD ( STRIP(id_text), "_", len )
+			tmpString = tmpString : " | " : PAD ( STRIP(samp_id), "_", 10 ) : " |  __":STRIP(status):"___  |   ":date_login:"   |   ":product
+
+			PROMPT OBJECT disp_obj FORMAT TEXT ON LINE 2 FROM 1 WITH (bold=TRUE,raised=FALSE,value=tmpString)
+			tree_form.add_display(disp_obj)
+		ENDIF
+
+		tree_grid.cell_rows = size_of_array ( tree_grid.user_info )
+		tree_form.start_prompt()
+		tree_form.set_position( tree_form.user_info )
+		tree_form.wait_prompt()
+		tree_form.end_prompt()
+
+	ELSE
+		flash_gui ( "Message","No Samples Found","","")
+	ENDIF
+
+ENDROUTINE   { display_tree }
+
+{******************************************************************************}
+
+ROUTINE process_tree ( VALUE sample_field , VALUE field_value, VALUE analysis  )
+
+	IF LASTKEY <> "EXIT" THEN
+		no_of_entries              = 0
+		tree_grid . number_samples = 0
+		process_data ( sample_field, field_value, no_of_entries, tree_grid, analysis )
+		display_tree ( no_of_entries , tree_grid )
+	ENDIF
+
+ENDROUTINE   { process_tree }
+
+{******************************************************************************}
+
+ROUTINE process_data ( VALUE sample_field, VALUE field_value, no_of_entries, tree_grid, VALUE analysis )
+
+
+	IF NOT GLOBAL("COMMIT_VIEW_MODE") THEN
+		SET MODE ACTIVE
+		get_tree_data ( ACTIVE_DB, sample_field, field_value,tree_grid . number_samples, no_of_entries, tree_grid, analysis )
+	ENDIF
+
+	IF ( confirm_with_text ( "Search COMMIT database as well, already found (":STRIP(no_of_entries):") ? " ) ) THEN
+		SET MODE COMMITTED
+		get_tree_data ( COMMITTED_DB, sample_field, field_value, tree_grid . number_samples, no_of_entries , tree_grid, analysis )
+		SET MODE ACTIVE
+	ENDIF
+
+ENDROUTINE   { process_data }
+
+{******************************************************************************}
+
+ROUTINE get_tree_data ( VALUE sample_committed , VALUE sample_field, VALUE field_value, cell_count, no_of_entries, tree_grid, analysis )
+
+	DECLARE samp_id
+
+	samp_id = SELECT sample.id_text WHERE 'sample_field' = field_value ORDER ON login_date
+
+
+	WHILE samp_id <> EMPTY DO
+
+		no_of_entries = no_of_entries + 1
+		cell_count    = cell_count + 1
+		window_set_status ( "# ":no_of_entries:" ":samp_id )
+
+		IF ( TOUPPER(sample_field) <> "ID_NUMERIC" ) THEN
+			tree_grid.user_info[no_of_entries, TEXT_ID_POS     ] = samp_id
+			tree_grid.user_info[no_of_entries, SAMP_STATUS_POS ] = SELECT sample.status
+		ENDIF
+
+		tree_grid.user_info[no_of_entries, NUM_ID_POS    ] = SELECT sample.id_numeric
+		tree_grid.user_info[no_of_entries, COMMITTED_POS ] = sample_committed
+
+		get_tests_and_results ( SELECT sample.id_numeric, TRUE, no_of_entries, tree_grid, analysis )
+
+		NEXT sample
+		samp_id = SELECT sample . id_text
+
+		IF samp_id <> EMPTY THEN
+			no_of_entries = no_of_entries + 1
+		ENDIF
+
+		IF no_of_entries >= max_hits THEN
+			IF ( NOT confirm_with_text ( "Reached maximum hits (":STRIP(no_of_entries):") continue anyway ? " ) ) THEN
+				samp_id = EMPTY
+			ENDIF
+		ENDIF
+
+	ENDWHILE
+
+ENDROUTINE   { get_tree_data }
+
+{******************************************************************************}
+
+ROUTINE get_tests_and_results ( VALUE field_val, VALUE all_tests, no_of_entries,tree_grid, VALUE analysis )
+
+	DECLARE test_id , no_increment, test_status, include_me, save_format
+
+	save_format = GLOBAL ( "FORMAT_TEXT" )
+
+
+	IF ( all_tests ) AND ( analysis <> EMPTY ) THEN
+		test_id = SELECT test.analysis WHERE sample = field_val AND ANALYSIS LIKE (STRIP(analysis):"%")
+	ELSEIF all_tests THEN
+		test_id = SELECT test.analysis WHERE sample = field_val
+	ELSE
+		test_id = SELECT test.analysis WHERE test_number = field_val
+	ENDIF
+
+	no_increment = TRUE
+	WHILE test_id <> EMPTY DO
+
+		SET FORMAT "99999"
+		test_status = SELECT TEST.STATUS
+
+		IF  ( INDEX ( ALLOWED_TEST_STATUSES, test_status ) > 0 ) THEN
+
+			include_me = TRUE
+			IF ( ( exclude_X ) AND ( test_status = "X" ) ) THEN
+				include_me = FALSE
+			ENDIF
+			IF ( ( exclude_U ) AND ( test_status = "U" ) ) THEN
+				include_me = FALSE
+			ENDIF
+
+			IF ( include_me ) THEN
+
+				IF no_increment THEN
+					no_increment = FALSE
+				ELSE
+					no_of_entries = no_of_entries + 1
+				ENDIF
+
+				window_set_status ( "# ":no_of_entries:" ":samp_id:" analysis ":test_id )
+				tree_grid.user_info[no_of_entries, TEST_REPLICATE_POS ] = SELECT test.test_count
+				tree_grid.user_info[no_of_entries, COMP_REPLICATE_POS ] = SELECT test.component_replicates
+				tree_grid.user_info[no_of_entries, TEST_NUM_POS       ] = SELECT test.test_number
+				tree_grid.user_info[no_of_entries, ANAL_ID_POS        ] = STRIP(test_id):"/":STRIP(SELECT test.test_count)
+				tree_grid.user_info[no_of_entries, ANAL_STATUS_POS    ] = test_status	
+				tree_grid.user_info[no_of_entries, ANAL_ONLY_POS      ] = STRIP(test_id)
+				tree_grid.user_info[no_of_entries, NUM_ID_POS         ] = samp_id
+
+				get_results ( test_id, SELECT test.test_number, no_of_entries, tree_grid )	
+
+			ENDIF  { exclude X and U }
+
+		ENDIF  { only certain test statuses allowed }
+
+		NEXT test
+		test_id = SELECT test . analysis
+	
+	ENDWHILE
+
+	SET FORMAT save_format
+
+ENDROUTINE   { get_tests_and_results }
+
+{******************************************************************************}
+
+ROUTINE get_results ( VALUE anal_id, VALUE test_num, no_of_entries, tree_grid )
+
+	DECLARE result_count, interface, res, no_increment
+
+	CREATE OBJECT STD_RESULT_INTERFACE, interface
+	interface.select_results(test_num)
+	result_count = 1
+	no_increment = TRUE
+ 	WHILE ( result_count <= interface.size() ) DO
+
+		res = interface.get_by_number ( result_count )
+		IF no_increment THEN
+			no_increment  = FALSE
+		ELSE
+			no_of_entries = no_of_entries + 1
+		ENDIF
+
+		tree_grid.user_info [ no_of_entries, LAST_RES_POS   ] = FALSE
+		tree_grid.user_info [ no_of_entries, COMP_NAME_POS  ] = res.get_field ( "NAME" )
+		tree_grid.user_info [ no_of_entries, RES_STATUS_POS ] = res.get_field ( "STATUS" )
+		tree_grid.user_info [ no_of_entries, RESULT_POS     ] = res.get_field ( "TEXT" )
+		tree_grid.user_info [ no_of_entries, ON_SPEC_POS    ] = res.get_field ( "SAP_DOCUMENTATION" )
+		tree_grid.user_info [ no_of_entries, RESULT_TYPE_POS] = res.get_field ( "RESULT_TYPE" )
+		tree_grid.user_info [ no_of_entries, IN_OUT_POS     ] = res.get_field ( "OUT_OF_RANGE" )
+		tree_grid.user_info [ no_of_entries, NUM_ID_POS     ] = samp_id
+
+		result_count = result_count + 1
+
+
+	ENDWHILE
+
+	tree_grid.user_info [ no_of_entries, LAST_RES_POS ] = TRUE
+
+ENDROUTINE   { get_results }
+
+{ end $smidi_lib_tree }
+

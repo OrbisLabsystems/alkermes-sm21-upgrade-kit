@@ -1,0 +1,85 @@
+{******************************************************************************
+*
+* Module Name	: LOGIN_LIB_BALANCE
+*
+* Purpose	: Template login routines that use instrument integration
+*
+* Version	: 1.0
+*
+*******************************************************************************
+*
+* Modification History :
+* 
+* Version   Date         By             Description
+* -------   -----------  ----------     ---------------------------------------
+* 1.0       01-Jun-2013  Orbis          Release Version 
+* 1.1       20-Feb-2014  Orbis          Enhancements
+*******************************************************************************}
+
+SET NAME "DEFER/"
+ENABLE WINDOWS
+SET NOTPROTECTED
+SET COMPILE_OPTION DECLARE
+
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_WINDOW
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_CLIENT
+JOIN LIBRARY $LIB_STAN
+JOIN LIBRARY $lib_utils
+
+JOIN LIBRARY BALANCE_LIB
+
+
+
+{**********************************************************************************************************}
+ROUTINE samp_tmpl_tare_weight ( VALUE column_num ,  VALUE line_num,           
+                                     window, VALUE is_display )
+
+{* Description:  Routine for reading tare weight from instrument
+***********************************************************************************************************}
+
+	or_read_inst_from_template ( column_num ,  line_num,           
+                                     window, is_display ,
+                                     "SAMPLE", "TARE_WEIGHT", "tare_wt_instrument",
+						"999.99999", GLOBAL("ORBIS_BALANCE_CRITERIA"))
+
+
+ENDROUTINE
+
+
+{**********************************************************************************************************}
+ROUTINE samp_tmpl_gross_weight ( VALUE column_num ,  VALUE line_num,           
+                                     window, VALUE is_display )
+
+{* Description:  Routine for reading gross weight from instrument
+***********************************************************************************************************}
+
+
+	or_read_inst_from_template ( column_num ,  line_num,           
+                                     window, is_display ,
+                                     "SAMPLE", "SAMPLE_WEIGHT", "sample_wt_instrument",
+						"999.99999", GLOBAL("ORBIS_BALANCE_CRITERIA"))
+
+
+ENDROUTINE
+
+
+{**********************************************************************************************************}
+ROUTINE samp_tmpl_gr_weight ( VALUE column_num ,  VALUE line_num,           
+                                     window, VALUE is_display )
+
+{* Description:  Routine for reading gross weight from instrument
+***********************************************************************************************************}
+
+
+	or_read_inst_from_template ( column_num ,  line_num,           
+                                     window, is_display ,
+                                     "SAMPLE", "GROSS_WEIGHT", "gross_wt_instrument",
+						"999.99999", GLOBAL("ORBIS_BALANCE_CRITERIA"))
+
+
+ENDROUTINE

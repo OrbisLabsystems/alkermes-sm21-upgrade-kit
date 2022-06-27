@@ -1,0 +1,385 @@
+{*******************************************************************************
+*
+* Module Name   : OLS_LIMSML_ROUTINES
+*
+* Purpose       : Default LIMSML callback routines
+*
+* Document Ref  : N/a
+*
+* Version 1.0
+*******************************************************************************} 
+
+ 
+SET COMPILE_OPTION DECLARE
+SET NAME "DEFER/"
+ENABLE WINDOWS
+SET NOTPROTECTED
+
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_GENERAL
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN STANDARD_LIBRARY STD_MESSAGE
+JOIN STANDARD_LIBRARY STD_STRUCTURE
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN LIBRARY $LIB_UTILS
+
+ 
+{
+Sample user routine. Justs validates an id numeric
+}
+GLOBAL ROUTINE validate_sample_numeric (VALUE sample_field_value, actual_samp_id)
+
+	DECLARE status 
+
+	status = EMPTY
+	actual_samp_id = 0
+	
+     { actual value is sent from IM, just validate it }
+
+	actual_samp_id = SELECT sample . id_numeric 
+					WHERE id_numeric = sample_field_value
+					AND   status <> "A"
+					AND   status <> "R"
+					AND   status <> "I"
+					AND   status <> "X"
+					AND   status <> "S"
+
+	IF (actual_samp_id = EMPTY) THEN
+
+		status = get_msg ("INVAL_IDNUM"):sample_field_value
+
+	ENDIF
+
+	RETURN (status)
+
+ENDROUTINE
+
+{
+Test user routine. Justs gets the highest test replicate for a given analysis
+}
+GLOBAL ROUTINE get_highest_test_for_analysis 
+			(VALUE sample_id, VALUE test_field_value, actual_test_id)
+
+	DECLARE status, rec, p_arr, array_mapped_tests 
+
+     ARRAY array_mapped_tests   
+
+	status = EMPTY
+	actual_test_id = 0
+	
+
+     { test_field_value is analysis name }
+
+     make_param_array (test_field_value, p_arr, ",")
+
+     { get highest replicate }
+
+	rec = SELECT test.test_number
+			WHERE sample = sample_id
+				AND status <> "X"
+				AND status <> "R"
+				AND status <> "A"
+				AND status <> "I"
+				AND analysis=p_arr[1]
+			ORDER ON test_count
+
+	WHILE (rec <> EMPTY) DO
+
+        actual_test_id = SELECT test.test_number
+
+        NEXT test
+        rec = SELECT test.test_number
+
+     ENDWHILE
+     
+	IF (actual_test_id = 0) THEN
+		
+		status = get_msg ("NO_TEST"):p_arr[1]
+
+	ENDIF
+
+	RETURN (status)
+
+ENDROUTINE
+
+{
+Results user routine. Assumes the correct component name is passed.
+is_first_call is used to flag if its a 2nd call for recalculate
+ptr_array is the put_test_result array, outputted
+}
+GLOBAL ROUTINE write_results (VALUE test_number, array_results, VALUE user_id, 
+						VALUE is_first_call, error_array, ptr_array)
+
+	DECLARE status, i, j,  ptr_cnt, 
+            array_ptr_field_names, status_array ,  res_type ,
+		    component_name_mapped, err_msg
+	status = EMPTY
+
+	res_type = "RESULT"
+	ARRAY ptr_array
+	ARRAY array_ptr_field_names
+
+     ptr_cnt = 0
+
+	{  array_results :   [c, x]
+	    c,1:   1=field type  (must be "RESULT" in this case)   2=component name  3=result value  4,5,...see below
+	    Subsequent fields as follows: name, value.....This is meant for other fields in result table
+	    Above is when field type =RESULT
+	    Otherwise its specific to the field type value, but this routine only does results
+	}
+
+	i = 0
+
+	WHILE (status=EMPTY) AND
+		 ( i < size_of_array (array_results) ) DO
+
+		i = i + 1
+
+		IF (array_results[i,1]=res_type) THEN
+
+			j = 3
+			WHILE (array_results[i,j+1] <> EMPTY) DO
+
+				j = j + 1
+
+				ptr_cnt = size_of_array(array_ptr_field_names)+1
+				array_ptr_field_names [ptr_cnt] = array_results[i,j]
+
+				j = j +1   { skip value, onto next name }
+
+			ENDWHILE
+
+		ENDIF
+
+		i = 9999    { no need to check any more, all have same field names }
+
+	ENDWHILE
+
+	ptr_array [1,1]  = "component_name"
+	ptr_array [1,2]  = "text"
+	i = 0
+
+	WHILE (status=EMPTY) AND (i<size_of_array(array_ptr_field_names)) DO
+
+		i = i + 1
+		ptr_array [1,i+2] = array_ptr_field_names[i]
+
+	ENDWHILE
+
+
+	{ Now have the field name list, make the arrays }
+	i = 0
+
+	WHILE ( status = EMPTY ) AND
+		 ( i < size_of_array (array_results) ) DO
+
+		i = i + 1
+
+		IF (array_results[i,1]=res_type) THEN
+
+			component_name_mapped = array_results [i,2]
+
+			IF (component_name_mapped <> EMPTY) THEN
+
+				ptr_cnt = size_of_array(ptr_array)+1
+				ptr_array [ptr_cnt,1] = component_name_mapped
+				ptr_array [ptr_cnt,2] = array_results [i,3]
+			
+				j = 3
+
+				WHILE (array_results[i,j+1] <> EMPTY) DO
+	
+					j = j + 2
+					ptr_array [ptr_cnt,2] = array_results [i,j]
+
+				ENDWHILE
+
+			ENDIF
+
+		ELSE
+
+			status = get_msg ("UNSUP_TYPE"):array_results[i,1]
+
+		ENDIF
+
+	ENDWHILE
+
+	IF ( status = EMPTY ) AND (ptr_cnt > 1) THEN
+
+		PUT_TEST_RESULTS test_number,  ptr_array ,status_array
+
+		IF (status_array[1] <> EMPTY) THEN
+
+			err_msg = make_error_string_from_ptr_status ( status_array, ptr_array )
+
+			IF (STRIP(err_msg) <> "") THEN
+
+				status = make_error_string_from_ptr_status ( status_array, ptr_array ) 
+
+			ENDIF
+
+		ENDIF
+
+	ENDIF
+
+	RETURN (status)
+
+ENDROUTINE
+
+{
+Status user routine. Just checks the out_of_range flag..
+}
+GLOBAL ROUTINE flag_oos_results (test_id , message_array)
+
+	DECLARE error_status, rec , i
+
+	ARRAY message_array
+	error_status = EMPTY
+
+	rec = SELECT result . out_of_range 
+			WHERE test_number = test_id
+			AND out_of_range = TRUE
+
+	WHILE (error_status = EMPTY) AND
+		 (rec <> EMPTY) DO
+
+		i = size_of_array (message_array) + 1
+		message_array [i] =  "Out Of Spec/Control: ":STRIP(SELECT result.name):
+							"=":STRIP(SELECT result.text)
+
+		NEXT result  
+		rec = SELECT result . out_of_range 
+
+	ENDWHILE
+
+	RETURN (error_status)
+
+ENDROUTINE
+
+
+{
+internal
+}
+ROUTINE make_error_string_from_ptr_status ( 
+					ptr_err_array, ptr_array )
+
+    DECLARE i, the_msg, conv_msg, full_str, crlf,
+		warn_mess, warn_text
+
+    crlf=ASCII(13):ASCII(10)
+    full_str = ""
+    the_msg = ""
+
+	message_fetch( "RESULT_ENTRY_MLP_LEVEL_ID", warn_mess )
+	warn_text = message_get_text ( warn_mess, 1 )
+	warn_text = SUBSTRING (warn_text,1,20)
+
+    IF (size_of_array(ptr_err_array)>0) THEN
+
+        IF (ptr_err_array[1] <> EMPTY) THEN
+
+            conv_msg = get_user_message (ptr_err_array[1], 1)
+		  IF (conv_msg <> ERROR) THEN
+
+			the_msg = STRING(conv_msg)
+			IF (INDEX(the_msg,warn_text) < 1) THEN
+
+	               full_str = full_str:STRIP(the_msg):crlf            
+
+			ENDIF
+
+           ENDIF              
+
+        ENDIF
+
+    ENDIF
+
+    i = 1
+
+    WHILE (i < SIZE_OF_ARRAY (ptr_err_array)) DO
+
+        i = i + 1
+
+        IF (ptr_err_array [i] <> EMPTY) THEN
+
+              IF (ptr_err_array [i] <> ERROR) THEN
+
+                 the_msg  = ptr_err_array [i]
+                 conv_msg = get_user_message (ptr_err_array [i], 1)
+
+                 IF (conv_msg <> EMPTY) THEN
+
+                    IF (conv_msg <> ERROR) THEN
+
+                       the_msg = the_msg:".  ":STRING(conv_msg)
+
+                    ENDIF                  
+
+                 ENDIF
+
+				IF (INDEX(the_msg,warn_text) < 1) THEN
+
+   			  		full_str = full_str:STRIP(the_msg):crlf
+
+				ENDIF
+
+              ENDIF
+
+        ENDIF
+
+    ENDWHILE
+	
+    RETURN (full_str)
+
+ENDROUTINE    
+
+
+{
+internal
+}
+ROUTINE make_param_array (VALUE param_list, p_arr, VALUE delim)
+
+    DECLARE i, param
+
+    ARRAY p_arr
+
+    param_list = STRIP (param_list)
+
+    REPEAT
+
+        param_list = STRIP (param_list)
+        i = INDEX (param_list, delim)
+
+        IF (i>0) THEN
+
+            param      = SUBSTRING (param_list, 1, i-1)
+            param_list = SUBSTRING (param_list, i+1, STRINGLENGTH (param_list)-i)
+
+            p_arr [size_of_array(p_arr)+1] = STRIP(param)
+
+        ELSEIF (STRIP(param_list) <> "")
+
+            param = STRIP (param_list)
+            param_list = ""
+
+            p_arr [size_of_array(p_arr)+1] = STRIP(param)
+
+        ENDIF
+
+    UNTIL (i = 0)
+
+ENDROUTINE    {  make_param_array  }
+
+
+ROUTINE get_msg (VALUE msg)
+
+	DECLARE ret
+
+	ret = get_user_message ("OLS_LHSMC_":STRIP(msg), 1)
+
+	RETURN ( ret )
+
+ENDROUTINE
+

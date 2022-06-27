@@ -1,0 +1,230 @@
+{******************************************************************************
+*
+* Module Name : SPL_CALLBACK_USER
+*
+* Purpose     : Sample plan login user callback routines.
+*
+* Portability : Not Checked
+*
+* Re-entrant  :
+*
+********************************************************************************
+*
+*  Ref   Date        Name             Comment
+*  ===== ==========  ===============  =========================================
+*  1.1   05-Mar-07   V. Molloy        Added Reduced Lot Testing logic to 
+*                                     post_login routine
+*  1.2   28-FEB-2013 Ken Jacobs       Create worksheet records       
+*
+*******************************************************************************}
+
+SET NOTPROTECTED
+JOIN LIBRARY wsheet_info                                                {1.1}
+
+{*****************************************************************************}
+
+ROUTINE rule_handler( sp_login_object )
+
+{
+*       Called:
+*               To determine the outcome of each rule that is tested
+*
+*       Passed parameters:
+*               sp_login_object: The sample plan login object.
+*
+*       Returns:
+*               The rule's boolean outcome
+*
+*       Selected records:
+*               'sp_login_object . login_table'
+*
+******************************************************************************}
+
+        RETURN( sp_login_object . default_rule_handler( ) )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE post_parse( sp_login_object )
+
+{
+*       Called:
+*               Just Before the login collection is logged in and before the
+*               collection edit screen is displayed (if applicable)
+*
+*       Passed parameters:
+*               sp_login_object: The sample plan login object.
+*
+*       Returns:
+*               A boolean specifying if any further login actions should occur.
+*
+*       Selected records:
+*               'sp_login_object . login_table'
+*
+******************************************************************************}
+
+      RETURN( TRUE )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE post_login( sp_login_object )
+
+{
+*       Called:
+*               After the login collection is logged in.
+*
+*       Passed parameters:
+*               sp_login_object: The sample plan login object.
+*
+*       Returns:
+*               A boolean specifying if login should continue
+*
+*       Selected records:
+*               'sp_login_object . login_table'
+*
+******************************************************************************}
+
+      DECLARE do_login
+
+      do_login = TRUE
+
+{*****************************************************************************}
+{REDUCED LOT TESTING MODULE - ORBIS INFORMATION SYSTEMS - 19 MAY 2003         }
+{*****************************************************************************}
+{Modified for Reduced Lot Testing Module - routine called after Sample Plan   } 
+{functionality has executed and updates the database.                         }
+{*****************************************************************************}
+
+    IF sp_login_object.SamplePlan = TRUE THEN
+
+      CALL_ROUTINE "reduced_lot_test_update_db"
+      USING sp_login_object
+      IN LIBRARY "RLT_LIB"
+
+    ENDIF
+
+{End of Modification}
+
+      RETURN( do_login )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE post_add_object( sp_login_object     ,
+                                 login_sample_object ,
+                                 login_test_object   )
+
+{
+*       Called:
+*               After a test object (login_test_object) has been added to the
+                correct sample object (login_sample_object) in the login collection.
+*
+*       Passed parameters:
+*               sp_login_object    : The sample plan login object.
+*               login_sample_object: The login object with sample login information
+*               login_test object  : The login object with test assign information
+*
+*       Selected records:
+*               SAMPLE_PLAN_HEADER, SAMPLE_PLAN_ENTRY
+*
+******************************************************************************}
+
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE post_sample_login( sp_login_object, login_sample_object )
+
+{
+*       Called:
+*               After the sample is physically logged in
+*
+*       Passed parameters:
+*               sp_login_object    : The sample plan login object.
+*               login_sample_object: The login object with sample login information
+*
+*       Selected records:
+*               SAMPLE
+*
+******************************************************************************}
+
+        DECLARE continue_with_login
+
+        continue_with_login = TRUE
+
+        RETURN( continue_with_login )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE post_test_assign( sp_login_object, login_test_object )
+
+{
+*       Called:
+*               After the test is assigned to the sample
+*
+*       Passed parameters:
+*               sp_login_object  : The sample plan login object.
+*               login_test_object: The login object with test assign information
+*
+*       Selected records:
+*               SAMPLE, TEST
+*
+******************************************************************************}
+
+        DECLARE continue_with_login
+
+        create_wsheet_record( SELECT test.sample,                       {1.1}
+                              SELECT test.test_number,
+                              SELECT test.analysis,
+                              SELECT test.analysis_version
+                            )
+
+        continue_with_login = TRUE
+
+        RETURN( continue_with_login )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE rule_validation( sp_login_object, rule_valid )
+
+{
+*
+*       Called:
+*               Immediately after Rule's determination routine to determine if
+*               analysis should still be assigned.
+*
+*       Parameters:
+*               sp_login_object: The sample plan login object.
+*               rule_valid     : The outcome of the rule (modifiable)
+*
+*       Selected Records:
+*               SAMPLE_PLAN_HEADER, SAMPLE_PLAN_ENTRY, RULE
+*
+******************************************************************************}
+
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE post_create_dynamic_mlp
+
+{
+*       Called:
+*               After a new dynamic mlp has been created.
+*
+*       Selected Reords:
+*               MLP_HEADER
+*
+******************************************************************************}
+
+ENDROUTINE

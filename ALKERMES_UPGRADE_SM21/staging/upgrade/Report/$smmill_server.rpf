@@ -1,0 +1,2395 @@
+{==============================================================================}
+{                                                                              }
+{  ORBIS INFORMATION SYSTEMS                                                   }
+{                                                                              }
+{  Filename         : $SMMILL_SERVER.RPF                                       }
+{  Version          :                                                          }
+{  Document Ref.    :                                                          }
+{  Author           : D. Kelly                                                 }
+{  Date Created     : 14-Nov-2001                                              }
+{  Description      : Library of routines for the Interface background Process.}
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{                                                                              }
+{  Ver.     Date        By          Description                                }
+{  ----     ----        --          -----------                                }
+{  1.0      14-Nov-2001 DK          Release version                            }
+{  2.0      17-Sep-2002 DK          Version 2.0 of product                     }
+{  2.1      20-Dec-2002 DK          Modified to address Development Action     } 
+{                                   DF1202001 (Ad-hoc components).             }
+{                                                                              }
+{==============================================================================}
+
+SET NAME "DEFER/"
+ENABLE WINDOWS
+
+SET NOTPROTECTED
+
+SET COMPILE_OPTION DECLARE
+
+JOIN STANDARD_LIBRARY STD_CLASS
+JOIN STANDARD_LIBRARY STD_ARRAY_SELECT
+JOIN STANDARD_LIBRARY STD_PROMPT
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_WINDOW
+JOIN STANDARD_LIBRARY STD_UTILS
+JOIN STANDARD_LIBRARY STD_CLIENT
+JOIN STANDARD_LIBRARY STD_MESSAGE
+JOIN STANDARD_LIBRARY STD_GENERAL
+
+JOIN LIBRARY $CRITERIA_EDIT
+JOIN LIBRARY $CRITERIA_SAVED
+JOIN LIBRARY $CRITERIA_CACHE
+JOIN LIBRARY $CRITERIA_LIB
+JOIN LIBRARY $LIB_STAN
+JOIN LIBRARY $LIB_UTILS
+
+CONSTANT TRANS_DELETE_FLAG       = 2
+CONSTANT TRANS_COMPLETE_FLAG     = 1
+CONSTANT RESULT_PRESENT_FLAG     = 1
+CONSTANT BAD_TRANSACTION         = 10
+
+main()
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE main                                                                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  16-Nov-2001  DK              Main Routine controlling background process.   }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE main
+
+    DECLARE sleep_for, loop, error_array, error_count
+
+
+    loop = TRUE
+    sleep_for = GLOBAL("MILL_SERVER_INTERVAL")
+
+
+    WHILE loop DO
+
+        ARRAY error_array
+
+        error_count = 1
+
+        process_transactions(error_array, error_count)
+        write_errors(error_array, error_count)
+
+        SLEEP FOR INTERVAL (sleep_for)
+
+    ENDWHILE
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE process_transactions                                                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  19-Nov-2001  DK              Processs Millennium Completed transaction      }
+{                               records.                                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE process_transactions (error_array, error_count)
+
+    DECLARE std_result_array, raw_res_array
+
+    ARRAY std_result_array ARRAYSIZE(0,8)
+    ARRAY raw_res_array
+
+
+                                  {============================================}
+                                  { Process all records that require sample    }
+                                  { Login. i.e Where sample id is blank.       }    
+                                  {============================================}
+
+    process_sample_records(error_array, error_count)
+
+
+                                  {============================================}
+                                  { Process all "standard" transaction records }
+                                  { i.e. Where full LIMS Data set exists in    }
+                                  { the MILL_INT_RSET table                    }    
+                                  {============================================}
+
+    process_all_records ( std_result_array,
+                          raw_res_array,
+                          error_array, error_count)
+
+
+    IF SIZE_OF_ARRAY ( std_result_array ) > 0 THEN
+
+        enter_millennium_results ( std_result_array, error_array, error_count)
+        update_result_record ( raw_res_array, error_array, error_count )
+        complete_sset_transactions ( raw_res_array, error_array, error_count )
+
+        {================================================================}
+        {DK 10/09/02 Move custom field processing in here so as only for }
+        {            entered results in current loop.                    }
+        {================================================================}
+
+                                  {============================================}
+                                  { Process all custom field data sent to      }
+                                  { LIMS from Millennium.                      } 
+                                  {============================================}
+
+        process_custom_fields_from_millennium(raw_res_array, error_array, error_count)
+
+    ENDIF
+
+
+                                  {============================================}
+                                  { Delete any custom field mappings for       }
+                                  { mill_int_sset records with a status = 1.   }
+                                  { This means that the custom fields have     }
+                                  { been populated in Millennium for these     }
+                                  { samples.                                   }    
+                                  {============================================}
+
+    delete_custom_field_maps()
+
+                                  {============================================}
+                                  { Delete all transaction records that have   }
+                                  { had results entered.                       } 
+                                  {============================================}
+
+    delete_transactions ( error_array, error_count)
+
+
+                                  {============================================}
+                                  { Assign Default Result(0) to records that   }
+                                  { did not recieve Millennium Result but were }
+                                  { exepected.                                 } 
+                                  {============================================}
+
+    IF GLOBAL("MILL_ALLOW_DEFAULT_RESULTS") THEN
+
+        assign_default_result_to_blank_peaks(error_array, error_count)
+
+    ENDIF
+
+                                  {============================================}
+                                  { Delete all transaction records that have   }
+                                  { exceeded the interval.                     } 
+                                  {============================================}
+   
+    delete_old_records()
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE process_sample_records                                              }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  19-Nov-2001  DK              Process Millennium Transactions with Results.  }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE process_sample_records(error_array, error_count)
+
+    DECLARE the_rec, the_anal, the_template, the_samp, the_test, the_mess,
+            the_comp, sql_string, do_commit, anal_exists
+
+    do_commit = FALSE
+
+    the_template = GLOBAL("MILL_NEW_SAMPLE_TEMPLATE")
+
+    the_rec = SELECT MILL_INT_RSET . mill_result
+               WHERE status              = TRANS_COMPLETE_FLAG AND
+                     mill_result_present = RESULT_PRESENT_FLAG AND
+                     sample_id_key = "New"
+               ORDER ON test_number_key
+
+
+
+    WHILE the_rec <> EMPTY DO
+
+        the_anal = SELECT MILL_INT_RSET . analysis
+        the_comp = SELECT MILL_INT_RSET . name_key
+
+        {DK 9/9/02 Added Validation to check for existance of Assigned Analysis }
+
+        anal_exists = SELECT VERSIONED_ANALYSIS . identity
+                       WHERE identity = the_anal
+
+        IF anal_exists <> EMPTY THEN  
+
+            the_samp = NEW_SAMPLE("", the_template, "")
+
+            IF ( the_samp <> EMPTY ) AND 
+               ( the_samp <> ERROR ) AND 
+               (STRIP(the_samp) <> "") THEN
+
+
+                the_test = NEW_TEST(the_samp, the_anal)
+
+                IF ( the_test <> EMPTY ) AND 
+                   ( the_test <> ERROR ) AND
+                   (STRIP(the_test) <> "") THEN
+
+
+                    sql_string = "UPDATE MILL_INT_RSET SET sample_id_key = '":the_samp:"', test_number_key = '":the_test:
+                                 "' WHERE name_key = '":STRIP(the_comp):"' AND analysis = '":STRIP(the_anal):"' AND sample_id_key = 'New'"
+
+                    EXECUTE_SQL ( sql_string )
+
+                    do_commit = TRUE
+
+                ELSE
+
+                
+                    { Validation /Error Logging }
+         
+                    the_mess = "SAMPLE LOGGING ERROR.....Enable to Create Test for Sample ":STRIP(the_samp):" with analysis ":STRIP(the_anal)
+
+                    error_array[error_count] = the_mess
+                    error_count = error_count + 1
+
+                    log_server_error ( the_mess )
+
+                ENDIF
+
+
+            ELSE
+
+                { Validation /Error Logging }
+                the_mess = "SAMPLE LOGGING ERROR.....Unable to Log Sample for new sample request, Analysis = ":STRIP(the_anal):", component = ":STRIP(the_comp)
+
+                error_array[error_count] = the_mess
+                error_count = error_count + 1
+
+                log_server_error ( the_mess )
+
+            ENDIF
+
+        ELSE
+
+           {Analysis does not exist}
+
+           the_mess = "SAMPLE LOGGING ERROR.....Unable to Log Sample for new sample request, Analysis = ":STRIP(the_anal):", Analysis does not Exist!"
+
+           error_array[error_count] = the_mess
+           error_count = error_count + 1
+
+           log_server_error ( the_mess )
+
+        ENDIF
+
+
+        NEXT MILL_INT_RSET
+        the_rec = SELECT MILL_INT_RSET . mill_result
+
+    ENDWHILE
+    
+    IF do_commit THEN 
+        EXECUTE_SQL ( "COMMIT" )
+    ENDIF
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE process_all_records                                                 }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  19-Nov-2001  DK              Process Millennium Transactions with Results.  }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE process_all_records ( std_result_array,
+                              the_array       ,
+                              error_array, error_count)
+
+    DECLARE the_res, the_samp, the_test, rec_count, res_count, the_comp,
+            ad_hoc_count, old_test, curr_test, result_type, comp_exists,
+            is_ad_hoc, allow_res, ad_hoc_allowed, the_mess, test_exists,
+            do_commit, the_bad_rec, the_trans_id, orig_comp, bad_data_array,
+            bad_count, mill_user, lims_user, res_status, comp_check,
+            interface_assigned_adhoc
+
+   
+    ARRAY bad_data_array
+
+    rec_count = 1
+    res_count = 1
+    bad_count = 1
+    ad_hoc_count = 0
+    is_ad_hoc = FALSE
+    do_commit = FALSE
+
+    interface_assigned_adhoc = FALSE
+
+
+    the_res = SELECT MILL_INT_RSET . mill_result
+               WHERE status              = TRANS_COMPLETE_FLAG AND
+                     mill_result_present = RESULT_PRESENT_FLAG 
+               ORDER ON test_number_key
+
+    the_test = SELECT MILL_INT_RSET . test_number_key
+
+    old_test = the_test
+
+    WHILE the_res <> EMPTY DO
+
+        the_samp = SELECT MILL_INT_RSET . sample_id_key
+        the_test = SELECT MILL_INT_RSET . test_number_key
+        the_test = JUSTIFY(PAD(the_test," ",10),"RIGHT")
+
+        curr_test = the_test
+        
+
+                                  {============================================}
+                                  { We are only interested in those results    }
+                                  { that do have samples or tests assigned.    }
+                                  {============================================}
+
+        IF ( LENGTH ( the_samp ) <> 0 ) AND
+           ( NUMTEXT( the_samp )      ) AND
+           ( LENGTH ( the_test ) <> 0 ) AND
+           ( NUMTEXT( the_test )      ) THEN
+
+            the_comp = SELECT MILL_INT_RSET . name_key
+            orig_comp = the_comp
+
+                                  { Check if component is an ad-hoc result }
+
+            test_exists = SELECT TEST . analysis
+                           WHERE test_number = the_test AND
+                                 sample = the_samp
+
+            IF test_exists <> EMPTY THEN
+
+                comp_exists = SELECT VERSIONED_COMPONENT . name
+                               WHERE analysis = test_exists AND
+                                     name = the_comp
+
+
+                IF comp_exists = EMPTY THEN
+
+                    is_ad_hoc = TRUE
+
+                ENDIF
+
+                ad_hoc_allowed = GLOBAL("MILL_ALLOW_AD_HOC_RESULT")
+
+                IF old_test = curr_test THEN
+
+                    ad_hoc_count = ad_hoc_count + 1
+
+                ELSE
+
+                    old_test = curr_test
+                    ad_hoc_count = 1
+
+                ENDIF
+
+                IF STRIP(the_comp) = "" THEN
+                
+                    the_comp = STRIP(GLOBAL("MILL_ADHOC_COMPONENT_NAME"))
+
+{ DK 20 December 2002 Patch Fix DF1202001 
+
+                    the_comp = STRIP(the_comp):" ":ad_hoc_count
+}
+                    the_comp = STRIP(the_comp):" ":STRIP(NUMBER_TO_TEXT ( ad_hoc_count , "999" ))
+
+                    interface_assigned_adhoc = TRUE
+
+                ENDIF
+
+                IF (is_ad_hoc) AND ( ad_hoc_allowed = FALSE) Then
+
+                    allow_res = FALSE
+
+                ELSEIF (is_ad_hoc) AND ( ad_hoc_allowed  = TRUE) Then
+
+                    allow_res = TRUE
+
+                ELSEIF (is_ad_hoc = FALSE) Then
+
+                    allow_res = TRUE
+
+                ENDIF
+
+                IF allow_res THEN
+
+                    res_status = SELECT RESULT . status
+                                  WHERE test_number = the_test AND
+                                        name = the_comp
+
+                    {============================================================}
+                    {                                                            }
+                    { DK 20 December 2002 Patch Fix DF1202001                    }
+                    {                                                            }
+                    {============================================================}
+                    {                                                            }
+                    { Fix implemented to address problem with multiple ad-hoc    }
+                    { components for the same sample. If more the one ad-hoc     }
+                    { component is added to the same sample, and the component   }
+                    { name has been left blank, then the interface will assign   }
+                    { the default component name suffixed by an integer. If      }
+                    { more then one ad-hoc component is added to a sample in     }
+                    { way then the interface will modify the value of the        }
+                    { original ad-hoc component instead of created a new ad-hoc  }
+                    { component.                                                 }
+                    {                                                            }
+                    {============================================================}
+
+                    IF (interface_assigned_adhoc  = TRUE) Then
+
+                        comp_check = SELECT MAX RESULT . entered_on
+                                      WHERE test_number = the_test AND
+                                            name LIKE GLOBAL("MILL_ADHOC_COMPONENT_NAME"): "%"
+
+                        IF comp_check <> EMPTY THEN
+
+                            comp_check = SELECT RESULT . name
+                                          WHERE entered_on = comp_check
+ 
+                            ad_hoc_count = RIGHTSTRING(STRIP(comp_check), 2)
+                            ad_hoc_count = STRIP(ad_hoc_count) + 1
+                            ad_hoc_count = STRIP(NUMBER_TO_TEXT ( ad_hoc_count , "999" ))
+
+                            the_comp = STRIP(GLOBAL("MILL_ADHOC_COMPONENT_NAME")):" ":ad_hoc_count
+
+                        ENDIF
+
+                    ENDIF
+
+                    interface_assigned_adhoc  = FALSE
+
+                    { End of DF1202001 }
+
+
+                    IF ((res_status = EMPTY) OR
+                        (res_status <> "A" ) AND
+                        (res_status <> "R" ) AND
+                        (res_status <> "X" )) THEN
+
+                        the_array[rec_count, 1 ] = the_res 
+                        the_array[rec_count, 2 ] = SELECT MILL_INT_RSET . analysis  
+                        the_array[rec_count, 3 ] = the_comp
+                        the_array[rec_count, 4 ] = SELECT MILL_INT_RSET . transaction_id
+                        the_array[rec_count, 5 ] = the_samp
+                        the_array[rec_count, 6 ] = the_test
+                        the_array[rec_count, 7 ] = SELECT MILL_INT_RSET . mill_user_id
+                        the_array[rec_count, 8 ] = SELECT MILL_INT_RSET . mill_timestamp
+                        the_array[rec_count, 9 ] = SELECT MILL_INT_RSET . mill_instrument_no
+                        the_array[rec_count, 10] = SELECT MILL_INT_RSET . name_key
+
+                        mill_user = SELECT MILL_INT_RSET . mill_user_id
+
+                        mill_user = TOUPPER(mill_user)
+
+                        lims_user = SELECT MILL_SECURITY . lims_user
+                                     WHERE uppercase_mill_user = mill_user  
+
+                        IF lims_user <> EMPTY THEN              
+
+                            the_array[rec_count, 11] = lims_user
+
+                        ELSE
+
+                            the_array[rec_count, 11] = GLOBAL("OPERATOR")
+
+                        ENDIF
+
+                        the_array[rec_count, 12 ] = SELECT MILL_INT_RSET . mill_acquired_by
+
+                        rec_count = rec_count + 1
+
+                    ELSE
+
+                        the_mess = "RESULT ENTRY FILTER....An attempt to modify the result for sample ":
+                                    STRIP(the_samp):", test ": STRIP(the_test):" and component ":STRIP(the_comp):" has been":
+                                    " prevented as the status of this result is ":STRIP(res_status)
+
+                        error_array[error_count] = the_mess
+                        error_count = error_count + 1
+
+                        log_server_error ( the_mess )
+
+                        { Assign bad status flag to bad results }
+
+                        the_trans_id = SELECT MILL_INT_RSET . transaction_id
+
+                        bad_data_array[bad_count, 1] = the_trans_id
+                        bad_data_array[bad_count, 2] = the_samp
+                        bad_data_array[bad_count, 3] = the_test
+                        bad_data_array[bad_count, 4] = orig_comp
+
+                        bad_count = bad_count + 1
+
+                    ENDIF
+
+                ELSE
+
+                    the_mess = "AD-HOC RESULT ENTRY ERROR.....Creation of ad-hoc result ":STRIP(the_res):" for sample ":
+                                STRIP(the_samp):", test ": STRIP(the_test):" and component ":STRIP(the_comp):" is not allowed!"
+
+                    error_array[error_count] = the_mess
+                    error_count = error_count + 1
+
+                    log_server_error ( the_mess )
+
+                    { Assign bad status flag to bad results }
+
+                    the_trans_id = SELECT MILL_INT_RSET . transaction_id
+
+                    bad_data_array[bad_count, 1] = the_trans_id
+                    bad_data_array[bad_count, 2] = the_samp
+                    bad_data_array[bad_count, 3] = the_test
+                    bad_data_array[bad_count, 4] = orig_comp
+
+                    bad_count = bad_count + 1
+
+                ENDIF
+
+            ELSE
+
+                the_mess = "RESULT ENTRY ERROR.....An attempt was made to enter a result ":STRIP(the_res):" for a non-existant test ": STRIP(the_test):" in sample ":
+                            STRIP(the_samp):" against component ":STRIP(the_comp)
+
+                error_array[error_count] = the_mess
+                error_count = error_count + 1
+
+                log_server_error ( the_mess )
+
+                { Assign bad status flag to bad results }
+
+                the_trans_id = SELECT MILL_INT_RSET . transaction_id
+
+                bad_data_array[bad_count, 1] = the_trans_id
+                bad_data_array[bad_count, 2] = the_samp
+                bad_data_array[bad_count, 3] = the_test
+                bad_data_array[bad_count, 4] = orig_comp
+
+                bad_count = bad_count + 1
+
+            ENDIF
+
+        {DK 9/9/02 Mark invalid data records for deletion}
+
+        ELSE
+
+            IF STRIP(the_samp) <> "New" THEN
+
+                the_mess = "RESULT ENTRY ERROR.....An attempt was made to enter a result ":STRIP(the_res):" for an invalid sample and/or test combination: SAMPLE, ": STRIP(the_samp):" , TEST, ":
+                            STRIP(the_test)
+
+                error_array[error_count] = the_mess
+                error_count = error_count + 1
+
+                log_server_error ( the_mess )
+
+            ENDIF
+
+            { Assign bad status flag to bad results }
+
+            the_trans_id = SELECT MILL_INT_RSET . transaction_id
+            orig_comp    = SELECT MILL_INT_RSET . name_key
+
+            bad_data_array[bad_count, 1] = the_trans_id
+            bad_data_array[bad_count, 2] = the_samp
+            bad_data_array[bad_count, 3] = "Invalid Data"
+            bad_data_array[bad_count, 4] = orig_comp
+
+            bad_count = bad_count + 1
+
+        {End of DK 9/9/02 Mark invalid data records for deletion}
+
+        ENDIF
+
+        NEXT MILL_INT_RSET
+        the_res = SELECT MILL_INT_RSET . mill_result
+
+        is_ad_hoc = FALSE
+
+    ENDWHILE
+
+    rec_count = 1
+
+    WHILE rec_count <= SIZE_OF_ARRAY( the_array) DO
+
+                                  {============================================}
+                                  { Build up result array for PUT_TEST_RESULTS }
+                                  { later.                                     } 
+                                  {============================================}
+
+        the_test = the_array[rec_count,6] { The Test Number } 
+
+        IF LENGTH(the_test) <> 0 THEN
+
+            std_result_array[res_count,1] = the_test
+            std_result_array[res_count,2] = the_array[rec_count,4] { Transaction ID } 
+
+            res_count = res_count + 1
+
+            std_result_array[res_count,1] = "component_name"
+            std_result_array[res_count,2] = "text"
+            std_result_array[res_count,3] = "result_type"
+            std_result_array[res_count,4] = "mill_timestamp"
+            std_result_array[res_count,5] = "mill_acquired_by"
+            std_result_array[res_count,6] = "mill_instrument_no"
+
+
+            res_count = res_count + 1
+
+	    IF NUMTEXT ( the_array[rec_count,1]  ) THEN
+		result_type = "N"
+	    ELSE
+		result_type = "T"
+	    ENDIF
+
+            std_result_array[res_count,1] = the_array[rec_count,3]  { Component } 
+            std_result_array[res_count,2] = the_array[rec_count,1]  { Result } 
+            std_result_array[res_count,3] = result_type             { Result Type } 
+            std_result_array[res_count,4] = the_array[rec_count, 8 ]{ Millennium Timestamp } 
+            std_result_array[res_count,5] = the_array[rec_count, 12]{ Millennium Result Acquirer ID } 
+            std_result_array[res_count,6] = the_array[rec_count, 9 ]{ Millennium Instrument ID } 
+
+            std_result_array[res_count,7] = the_array[rec_count,10] { Original Result } 
+            std_result_array[res_count,8] = the_array[rec_count,11] { Lims User } 
+
+            res_count = res_count + 1
+
+        ELSE
+
+            { Validation /Error Logging }
+            the_mess = "RESULT PROCESSING ERROR.....Invalid test! Cannot add result to PUT_TEST_RESULTS Array"
+
+            error_array[error_count] = the_mess
+            error_count = error_count + 1
+
+            log_server_error ( the_mess )
+
+        ENDIF
+
+        rec_count = rec_count + 1
+
+    ENDWHILE
+ 
+                       { Assign bad status flag to bad results }
+
+    bad_count = 1
+
+    IF bad_count <= SIZE_OF_ARRAY(bad_data_array) THEN
+
+        WHILE bad_count <= SIZE_OF_ARRAY(bad_data_array) DO
+
+            REPEAT
+
+                {DK 9/9/02 Check if invalid data, if yes then no test number in criteria}
+
+                IF bad_data_array[bad_count,3] = "Invalid Data" Then
+
+                    the_bad_rec = SELECT MILL_INT_RSET . status FOR UPDATE 
+                                   WHERE transaction_id  = bad_data_array[bad_count,1] AND
+                                         sample_id_key   = bad_data_array[bad_count,2] AND
+                                         name_key        = bad_data_array[bad_count,4]
+
+                ELSE
+
+                    the_bad_rec = SELECT MILL_INT_RSET . status FOR UPDATE 
+                                   WHERE transaction_id  = bad_data_array[bad_count,1] AND
+                                         sample_id_key   = bad_data_array[bad_count,2] AND
+                                         test_number_key = bad_data_array[bad_count,3] AND
+                                         name_key        = bad_data_array[bad_count,4]
+
+                ENDIF
+
+                IF the_bad_rec = locked THEN
+
+                    SLEEP FOR "0 00:00:02"	
+
+                ENDIF
+
+            UNTIL the_bad_rec <> LOCKED
+
+            IF the_bad_rec <> EMPTY THEN
+
+                check_write_transaction()
+
+                ASSIGN MILL_INT_RSET . status = BAD_TRANSACTION
+                UPDATE MILL_INT_RSET
+
+                do_commit = TRUE
+
+            ENDIF
+
+            bad_count = bad_count + 1
+
+        ENDWHILE
+
+        IF do_commit THEN
+
+            COMMIT
+
+        ENDIF
+
+
+    ENDIF
+   
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE enter_millennium_results                                            }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  19-Nov-2001  DK              Enter results from Millennium into the         }
+{                               SampleManager database.                        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE enter_millennium_results ( the_array, error_array, error_count )
+
+    DECLARE count, the_test, res_array, check_ok, the_trans_id, the_mess,
+            the_status
+
+    count = 1
+    ARRAY res_array
+
+    WHILE count <= SIZE_OF_ARRAY( the_array) DO
+
+        the_test = the_array [ count, 1 ]
+
+        res_array [1, 1] = the_array [ count + 1, 1] 
+        res_array [1, 2] = the_array [ count + 1, 2]
+        res_array [1, 3] = the_array [ count + 1, 3] 
+        res_array [1, 4] = the_array [ count + 1, 4] 
+        res_array [1, 5] = the_array [ count + 1, 5]
+        res_array [1, 6] = the_array [ count + 1, 6] 
+
+        res_array [2, 1] = the_array [ count + 2, 1] 
+        res_array [2, 2] = the_array [ count + 2, 2]
+        res_array [2, 3] = the_array [ count + 2, 3] 
+        res_array [2, 4] = the_array [ count + 2, 4] 
+        res_array [2, 5] = the_array [ count + 2, 5]
+        res_array [2, 6] = the_array [ count + 2, 6] 
+
+
+        PUT_TEST_RESULTS the_test, res_array, check_ok   
+
+        IF check_ok[1] = EMPTY THEN   
+
+            { Check for Audits }
+
+            IF GLOBAL("MILL_ENABLE_AUDITS") THEN
+ 
+                the_status = SELECT RESULT . status
+                              WHERE test_number = the_test AND
+                                    name        = the_array [ count+2, 7 ]
+
+                IF the_status = "M" THEN
+
+                    update_audits(the_array [ count+2, 8 ],
+                                  the_test,
+                                  the_array [ count+2, 7 ],
+                                  error_array,
+                                  error_count)
+
+    
+                ENDIF 
+
+            ENDIF
+
+            REPEAT
+
+                the_trans_id = SELECT MILL_INT_RSET . transaction_id FOR UPDATE
+                                WHERE transaction_id   = the_array [ count  , 2 ] AND
+                                      test_number_key  = the_test                 AND
+                                      name_key         = the_array [ count+2, 7 ] 
+
+                IF the_trans_id = locked THEN
+
+                    SLEEP FOR "0 00:00:02"	
+
+                ENDIF
+
+            UNTIL the_trans_id <> LOCKED 
+
+            IF the_trans_id <> EMPTY THEN
+
+                check_write_transaction()
+
+                ASSIGN MILL_INT_RSET . status = TRANS_DELETE_FLAG 
+
+                UPDATE MILL_INT_RSET
+
+            ENDIF
+
+        ELSE
+
+            { Validation /Error Logging }
+
+            the_mess = "RESULT ENTRY ERROR.....Unable to Enter Result for Test ":STRIP(the_test):
+                       ", component ":STRIP(the_array [ count+2, 7 ] ):". ERROR:- ":STRIP(check_ok[1]):"."
+
+            error_array[error_count] = the_mess
+            error_count = error_count + 1
+
+            log_server_error(the_mess)
+
+ 
+            {DK 9/9/02 Updated to set transaction record status as bad }
+
+            REPEAT
+
+                the_trans_id = SELECT MILL_INT_RSET . transaction_id FOR UPDATE
+                                WHERE transaction_id   = the_array [ count  , 2 ] AND
+                                      test_number_key  = the_test                 AND
+                                      name_key         = the_array [ count+2, 7 ] 
+
+                IF the_trans_id = locked THEN
+
+                    SLEEP FOR "0 00:00:02"	
+
+                ENDIF
+
+            UNTIL the_trans_id <> LOCKED 
+
+            IF the_trans_id <> EMPTY THEN
+
+                check_write_transaction()
+
+                ASSIGN MILL_INT_RSET . status = BAD_TRANSACTION 
+
+                UPDATE MILL_INT_RSET
+
+            ENDIF
+
+ 
+            {End of DK 9/9/02 Updated to set transaction record status as bad }
+
+
+        ENDIF
+
+        count = count + 3
+
+    ENDWHILE
+    
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE update_result_record                                                }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  19-Nov-2001  DK              Update result record for any results that are  }
+{                               created by the interface.                      }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE update_result_record ( the_array, error_array, error_count )
+
+    DECLARE do_update, the_test, the_name, rec_count, the_res, the_mess, 
+            lims_user
+
+    do_update = FALSE
+    rec_count = 1
+
+    WHILE rec_count <= SIZE_OF_ARRAY (the_array) DO
+
+
+        the_test      = the_array[rec_count, 6]
+        the_name      = the_array[rec_count, 3]
+        lims_user     = the_array[rec_count, 11]
+
+        REPEAT 
+
+            the_res = SELECT RESULT . text FOR UPDATE
+                       WHERE test_number = the_test AND
+                             name        = the_name
+
+
+            IF the_res = locked THEN
+
+                SLEEP FOR "0 00:00:02"	
+
+            ENDIF
+
+        UNTIL the_res <> LOCKED
+
+        IF the_res <> EMPTY THEN
+
+
+            check_write_transaction ()
+
+            ASSIGN RESULT . entered_by = lims_user
+
+            do_update = TRUE
+            UPDATE RESULT
+
+        ELSE
+  
+            { Validation /Error Logging }
+             the_mess = "RESULT UPDATE ERROR.....Unable to Assign Millennium Data to result component ":STRIP(the_name):", Test ":STRIP(the_test):
+                        ", result does not exist!"
+
+             error_array[error_count] = the_mess
+             error_count = error_count + 1
+
+             log_server_error(the_mess)
+
+        ENDIF
+
+        rec_count = rec_count + 1
+
+    ENDWHILE 
+
+    IF do_update THEN
+        COMMIT
+    ENDIF
+
+ENDROUTINE 
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE process_custom_fields_from_millennium                               }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  20-Mar-2002  DK              Update SMP records with Millennium Custom      }
+{                               Field Data.                                    }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE process_custom_fields_from_millennium(the_array, error_array, error_count)
+
+    DECLARE the_table, cus_array, count, the_samp, the_res, do_commit, the_rec,
+            check_ok, the_mess, rec_count, result_entered, map_test, map_comp
+
+    ARRAY cus_array
+    count = 1
+
+    do_commit = FALSE
+
+    rec_count = 1
+    result_entered = FALSE
+                                  {============================================}
+                                  { Select all data from the custom in table   }
+                                  { for processing.                            } 
+                                  {============================================}
+  
+    the_table = SELECT MILL_INT_CUST_IN . sm_table 
+                 WHERE status = 0
+
+    WHILE the_table <> EMPTY DO
+
+        map_test = SELECT MILL_INT_CUST_IN . test_number_key
+        map_comp = STRIP(SELECT MILL_INT_CUST_IN . name_key)  
+
+        REPEAT
+
+            { Check if the result has been entered yet }
+
+            IF ((STRIP(the_array[rec_count, 6]) = STRIP(map_test))  AND  { Test Number }
+                (STRIP(the_array[rec_count, 3]) = STRIP(map_comp))) THEN { Component }
+
+                result_entered = TRUE
+
+            ENDIF
+
+            rec_count = rec_count + 1
+
+        UNTIL (the_array[rec_count,6] = EMPTY) OR
+              (the_array[rec_count,6] = "") OR
+              (result_entered = TRUE)
+
+        IF result_entered THEN
+
+            cus_array[count, 1] = STRIP(SELECT MILL_INT_CUST_IN . transaction_id)
+            cus_array[count, 2] = STRIP(SELECT MILL_INT_CUST_IN . sample_id_key)
+            cus_array[count, 3] = SELECT MILL_INT_CUST_IN . test_number_key
+            cus_array[count, 4] = STRIP(SELECT MILL_INT_CUST_IN . name_key)        
+            cus_array[count, 5] = STRIP(the_table)
+            cus_array[count, 6] = STRIP(SELECT MILL_INT_CUST_IN . sm_field)       
+            cus_array[count, 7] = STRIP(SELECT MILL_INT_CUST_IN . sm_data)
+            cus_array[count, 8] = 0
+
+            count = count + 1
+
+        ENDIF
+
+
+        NEXT MILL_INT_CUST_IN
+        the_table = SELECT MILL_INT_CUST_IN . sm_table 
+
+        rec_count = 1
+        result_entered = FALSE
+
+    ENDWHILE
+
+    count = 1
+
+                                  {============================================}
+                                  { If custom data found then process          }
+                                  {============================================}
+
+    WHILE count <= SIZE_OF_ARRAY(cus_array) DO
+
+        IF cus_array[count,5] = "SAMPLE" THEN
+
+ 
+            { DK 09/09/2002 Extra check for valid data }
+            IF NUMTEXT(cus_array[count, 2]) THEN
+
+                REPEAT
+
+                    the_samp = SELECT SAMPLE . id_numeric FOR UPDATE
+                                WHERE id_numeric = cus_array[count, 2]
+
+                    IF the_samp = locked THEN
+
+                        SLEEP FOR "0 00:00:02"	
+
+                    ENDIF
+
+                UNTIL the_samp <> LOCKED
+
+            ELSE
+
+               the_samp = EMPTY
+
+            ENDIF
+
+            IF the_samp <> EMPTY THEN
+
+                check_write_transaction()
+
+                ASSIGN SAMPLE . 'cus_array[count, 6]' = cus_array[count, 7]
+                UPDATE SAMPLE
+
+                do_commit = TRUE
+
+                cus_array[count, 8] = 1
+
+            ELSE
+
+                {Error Logging }
+                { DK 09/09/2002 Display sample id entered in LIMS }
+                
+
+                the_mess = "SAMPLE CUSTOM DATA ASSIGNMENT.....Unable to Assign Custom Data to Sample ":STRIP(cus_array[count, 2]):
+                           ", The sample does not exist!"
+
+                error_array[error_count] = the_mess
+                error_count = error_count + 1
+
+                log_server_error(the_mess)
+
+                { DK 09/09/2002 Want to delete bad custom field maps }
+
+                cus_array[count, 8] = 1
+
+                { End of DK }
+
+            ENDIF
+
+        ELSEIF cus_array[count,5] = "RESULT" THEN
+
+           { DK 09/09/2002 Extra check for valid data }
+            IF NUMTEXT(cus_array[count, 3]) THEN
+
+                REPEAT 
+
+                    the_res = SELECT RESULT . text FOR UPDATE
+                                WHERE name = cus_array[count, 4] AND
+                                      test_number = cus_array[count, 3]
+
+                    IF the_res = locked THEN
+
+                        SLEEP FOR "0 00:00:02"	
+
+                    ENDIF
+
+                UNTIL the_res <> LOCKED
+
+            ELSE
+
+                the_res = EMPTY
+
+            ENDIF
+      
+            IF the_res <> EMPTY THEN
+
+                check_write_transaction()
+
+                ASSIGN RESULT . 'cus_array[count, 6]' = cus_array[count, 7]
+                UPDATE RESULT
+
+                do_commit = TRUE
+
+                cus_array[count, 8] = 1
+
+            ELSE
+
+                {Error Logging }
+                the_mess = "RESULT CUSTOM DATA ASSIGNMENT.....Unable to Assign Custom Data for Test ":STRIP(cus_array[count, 3]):
+                           ", component ":STRIP(cus_array[count, 4] ):". The result does not exist or has been disallowed!"
+
+                error_array[error_count] = the_mess
+                error_count = error_count + 1
+
+                log_server_error(the_mess)
+
+                { DK 09/09/2002 Want to delete bad custom field maps }
+
+                cus_array[count, 8] = 1
+
+            ENDIF
+
+        ELSE
+
+            {Error Logging}
+
+            the_mess = "CUSTOM DATA ASSIGNMENT.....Unknown Error!"
+
+            error_array[error_count] = the_mess
+            error_count = error_count + 1
+
+            log_server_error(the_mess)
+
+            { DK 09/09/2002 Want to delete bad custom field maps }
+
+            cus_array[count, 8] = 1
+
+        ENDIF
+
+        count = count + 1
+
+    ENDWHILE
+
+    count = 1
+
+                                  {============================================}
+                                  { Delete processed custom records            }
+                                  {============================================}
+
+    WHILE count <= SIZE_OF_ARRAY ( cus_array) DO
+
+        IF cus_array[count,8] = 1 THEN
+
+            REPEAT
+
+                the_rec = SELECT MILL_INT_CUST_IN . sm_table FOR UPDATE
+                           WHERE transaction_id  = cus_array[count,1] AND
+                                 sample_id_key   = cus_array[count,2] AND
+                                 test_number_key = cus_array[count,3] AND
+                                 name_key        = cus_array[count,4] AND
+                                 sm_table        = cus_array[count,5] AND
+                                 sm_field        = cus_array[count,6]
+
+
+               IF the_rec = locked THEN
+
+                   SLEEP FOR "0 00:00:02"	
+
+               ENDIF
+
+            UNTIL the_rec <> LOCKED
+
+            IF the_rec <> EMPTY THEN
+
+                check_write_transaction()
+
+                DELETE MILL_INT_CUST_IN, check_ok
+
+                IF check_ok = EMPTY THEN
+
+                    do_commit = TRUE
+
+                ELSE
+
+                    {error logging}
+
+                    the_mess = "CUSTOM TRANSACTION RECORD DELETETION.....Error deleting record where ":
+                               "transaction id = ":STRIP(cus_array[count,1]):", Sample = ":STRIP(cus_array[count,2]):
+                               ", Test = ":STRIP(cus_array[count,3]):", Component = ":STRIP(cus_array[count,4]):
+                               ", Table = ":STRIP(cus_array[count,5]):" and Field = ":STRIP(cus_array[count,6]):". ":
+                               STRIP(check_ok)
+
+                    error_array[error_count] = the_mess
+                    error_count = error_count + 1
+
+                    log_server_error(the_mess)
+
+
+                ENDIF
+
+            ELSE
+
+                {error logging}
+
+                the_mess = "CUSTOM TRANSACTION RECORD DELETETION.....The following record does not exist for deletion: ":
+                           "transaction id = ":STRIP(cus_array[count,1]):", Sample = ":STRIP(cus_array[count,2]):
+                           ", Test = ":STRIP(cus_array[count,3]):", Component = ":STRIP(cus_array[count,4]):
+                           ", Table = ":STRIP(cus_array[count,5]):" and Field = ":STRIP(cus_array[count,6])
+
+                error_array[error_count] = the_mess
+                error_count = error_count + 1
+
+                log_server_error(the_mess)
+
+            ENDIF
+
+         ENDIF
+
+         count = count + 1
+
+    ENDWHILE
+
+    IF do_commit THEN
+
+        COMMIT
+
+    ENDIF
+            
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE complete_sset_transactions                                          }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  17-DEC-1997  ER              This checks if the process is already in a     }
+{                               write_transaction, and if not, starts one.     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE complete_sset_transactions ( the_array, error_array, error_count )
+
+    DECLARE no_of_actual_res, no_of_comp_res, rec_count, the_sset, do_commit,
+            the_mess
+
+    rec_count = 1
+    do_commit= FALSE
+
+    WHILE rec_count <= SIZE_OF_ARRAY ( the_array ) DO
+
+        no_of_actual_res = SELECT COUNT MILL_INT_RSET
+                            WHERE transaction_id = the_array[rec_count, 4]
+
+        no_of_comp_res = SELECT COUNT MILL_INT_RSET
+                          WHERE transaction_id = the_array[rec_count, 4]
+                            AND status = TRANS_DELETE_FLAG
+
+        IF no_of_actual_res = no_of_comp_res THEN
+
+            IF the_array[rec_count, 4] <> 0 Then { Millennium Generated Record, Therefore no SSET }
+
+                REPEAT
+
+                    the_sset = SELECT MILL_INT_SSET . transaction_id FOR UPDATE
+                                WHERE transaction_id = the_array[rec_count, 4]
+
+                    IF the_sset = locked THEN
+
+                        SLEEP FOR "0 00:00:02"	
+
+                    ENDIF
+
+                UNTIL the_sset <> LOCKED
+
+                IF the_sset <> EMPTY THEN
+
+                    check_write_transaction()
+
+                    ASSIGN MILL_INT_SSET . status = TRANS_DELETE_FLAG 
+
+                    UPDATE MILL_INT_SSET
+                    do_commit= TRUE
+
+                ELSE
+
+                    {Error logging}
+
+                    the_mess = "SAMPLESET RECORD UPDATE.....The following record does not exist for update: ":
+                               "transaction id = ":STRIP(the_array[rec_count, 4])
+
+                    error_array[error_count] = the_mess
+                    error_count = error_count + 1
+
+                    log_server_error(the_mess)
+                    
+
+                ENDIF
+
+            ENDIF
+
+        ENDIF
+             
+        rec_count = rec_count + 1
+
+    ENDWHILE 
+
+    IF do_commit THEN
+
+        COMMIT
+
+    ENDIF
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE check_write_transaction                                             }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  17-DEC-1997  ER              This checks if the process is already in a     }
+{                               write_transaction, and if not, starts one.     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE check_write_transaction
+
+    IF NOT transaction_is_write() THEN
+
+       START WRITE TRANSACTION "SM-Millennium Interface"
+
+    ENDIF
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE delete_transactions                                                 }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  17-DEC-1997  ER              This checks if the process is already in a     }
+{                               write_transaction, and if not, starts one.     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE delete_transactions (error_array, error_count)
+
+    DECLARE the_status, the_table
+
+    the_table = "MILL_INT_RSET"
+    the_status = TRANS_DELETE_FLAG
+ 
+    delete_rset_records ( the_table,
+                          the_status,
+                          error_array, error_count ) 
+
+    the_table = "MILL_INT_SSET"
+    the_status = TRANS_DELETE_FLAG
+
+    delete_sset_records ( the_table
+                          the_status,
+                          error_array, error_count ) 
+    
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE delete_records                                                      }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  17-DEC-1997  ER              This checks if the process is already in a     }
+{                               write_transaction, and if not, starts one.     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE delete_rset_records ( the_table,
+                              the_status,
+                              error_array, 
+                              error_count )    
+
+    DECLARE the_rset,  do_commit, check_ok, the_mess, del_array, count
+
+    ARRAY del_array
+
+    count = 1
+    do_commit = FALSE
+
+
+    the_rset = SELECT 'the_table' . status
+                WHERE status = the_status
+
+    WHILE the_rset <> EMPTY DO
+
+
+        del_array[count,1] = SELECT 'the_table' . transaction_id   
+        del_array[count,2] = SELECT 'the_table' . sample_id_key   
+        del_array[count,3] = SELECT 'the_table' . test_number_key   
+        del_array[count,4] = SELECT 'the_table' . name_key    
+    
+        count = count + 1
+
+        NEXT 'the_table'
+        the_rset = SELECT 'the_table' . status
+
+    ENDWHILE
+
+    count = 1
+
+    WHILE count <= SIZE_OF_ARRAY(del_array) DO
+
+        REPEAT
+
+            the_rset = SELECT 'the_table' . status FOR UPDATE
+                        WHERE transaction_id   = del_array[count,1] AND
+                              sample_id_key    = del_array[count,2] AND
+                              test_number_key  = del_array[count,3] AND
+                              name_key         = del_array[count,4]
+
+
+            IF the_rset = locked THEN
+
+                SLEEP FOR "0 00:00:02"	
+
+            ENDIF
+
+
+        UNTIL the_rset <> LOCKED
+
+        IF the_rset <> EMPTY THEN
+
+            check_write_transaction()
+
+            DELETE 'the_table', check_ok
+
+            IF check_ok = EMPTY THEN
+ 
+                do_commit = TRUE
+
+            ELSE
+
+                do_commit = FALSE
+                {Error Logging}
+
+                the_mess = STRIP(the_table):"MILL_INT_RSET TRANSACTION RECORD DELETION.....Could not delete record!. ":STRIP(check_ok)
+                       
+
+                error_array[error_count] = the_mess
+                error_count = error_count + 1
+
+                log_server_error(the_mess)
+        
+            ENDIF
+
+        ELSE
+
+            {Error Logging}
+
+            the_mess = STRIP(the_table):"MILL_INT_RSET TRANSACTION RECORD DELETION.....Record Does Not Exits For Deletion!. "
+                       
+
+            error_array[error_count] = the_mess
+            error_count = error_count + 1
+
+            log_server_error(the_mess)
+
+        ENDIF
+
+        count = count + 1
+
+
+    ENDWHILE
+
+    IF do_commit THEN
+
+        COMMIT
+
+    ENDIF
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE delete_records                                                      }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  17-DEC-1997  ER              This checks if the process is already in a     }
+{                               write_transaction, and if not, starts one.     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE delete_sset_records ( the_table,
+                              the_status,
+                              error_array, 
+                              error_count )    
+
+    DECLARE the_sset,  do_commit, check_ok, the_mess, del_array, count
+
+    ARRAY del_array
+
+    count = 1
+    do_commit = FALSE
+
+    the_sset = SELECT 'the_table' . status
+                WHERE status = the_status
+
+    WHILE the_sset <> EMPTY DO
+
+
+        del_array[count,1] = SELECT 'the_table' . transaction_id   
+
+        count = count + 1
+
+        NEXT 'the_table'
+        the_sset = SELECT 'the_table' . status
+
+    ENDWHILE
+
+    count = 1
+
+    WHILE count <= SIZE_OF_ARRAY(del_array) DO
+
+        REPEAT
+
+            the_sset = SELECT 'the_table' . status FOR UPDATE
+                        WHERE transaction_id   = del_array[count,1] 
+
+            IF the_sset = locked THEN
+
+                SLEEP FOR "0 00:00:02"	
+
+            ENDIF
+
+        UNTIL the_sset <> LOCKED
+
+        IF the_sset <> EMPTY THEN
+
+            check_write_transaction()
+
+            DELETE 'the_table', check_ok
+
+            IF check_ok = EMPTY THEN
+ 
+                do_commit = TRUE
+
+            ELSE
+
+                do_commit = FALSE
+                {Error Logging}
+
+                the_mess = STRIP(the_table):"MILL_INT_SSET TRANSACTION RECORD DELETION.....Could not delete record!. ":STRIP(check_ok)
+                       
+
+                error_array[error_count] = the_mess
+                error_count = error_count + 1
+
+                log_server_error(the_mess)
+        
+            ENDIF
+
+        ELSE
+
+            {Error Logging}
+
+            the_mess = STRIP(the_table):"MILL_INT_SSET TRANSACTION RECORD DELETION.....Record Does Not Exits For Deletion!. "
+                       
+
+            error_array[error_count] = the_mess
+            error_count = error_count + 1
+
+            log_server_error(the_mess)
+
+        ENDIF
+
+        count = count + 1
+
+
+    ENDWHILE
+
+    IF do_commit THEN
+
+        COMMIT
+
+    ENDIF
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE delete_records                                                      }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  17-DEC-1997  ER              This checks if the process is already in a     }
+{                               write_transaction, and if not, starts one.     }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE delete_custom_field_maps
+
+    DECLARE the_sample, do_commit, sql_string, the_sset
+
+    do_commit = FALSE
+
+    the_sset = SELECT MILL_INT_TRANS_C . sampleset
+                WHERE sampleset <> EMPTY
+
+                   { Loop for each sampleset in MILL_INT_TRANS_C }
+
+    WHILE the_sset <> EMPTY DO
+
+                   { Check if processing complete per sample in  }
+                   { the sampleset.                              }
+
+        the_sample = SELECT MILL_INT_SSET . sm_sample_id
+                      WHERE status = 1 AND
+                            mill_sampleset_id = the_sset
+
+        WHILE (the_sample <> EMPTY) DO
+
+            IF STRIP(the_sample) <> "" THEN
+
+                sql_string = "DELETE FROM MILL_INT_TRANS_C WHERE SM_SAMPLE_ID = ":STRIP(the_sample):
+                             " AND SAMPLESET = '":STRIP(the_sset):"'"
+ 
+                EXECUTE_SQL ( sql_string )
+
+                do_commit = TRUE
+
+            ENDIF
+
+            NEXT MILL_INT_SSET
+            the_sample = SELECT MILL_INT_SSET . sm_sample_id
+
+        ENDWHILE
+
+        NEXT MILL_INT_TRANS_C
+        the_sset = SELECT MILL_INT_TRANS_C . sampleset
+
+    ENDWHILE
+
+    IF do_commit THEN
+
+        EXECUTE_SQL ( "COMMIT" )
+
+    ENDIF
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE assign_zero_to_blank_peaks                                          }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  04-Apr-2002  ER              Delete old records.                            }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE assign_default_result_to_blank_peaks(error_array, error_count)
+
+    DECLARE the_int, the_rec, curr_time, crit_date, no_res_array, count, do_commit,
+            the_mess, is_res_entered, the_comp, the_test
+
+    ARRAY no_res_array
+    count = 1
+    do_commit = FALSE
+
+
+    the_int = GLOBAL("MILL_ASSIGN_DEFAULT_RESULT_INT")
+    curr_time = NOW
+
+    crit_date = curr_time - the_int
+
+    IF IS_DATE(crit_date) THEN
+
+        REPEAT
+
+            the_rec = SELECT MILL_INT_RSET . transaction_id FOR UPDATE
+                       WHERE date_created <= crit_date AND
+                             status = 0
+
+            IF the_rec = locked THEN
+
+                SLEEP FOR "0 00:00:02"	
+
+            ENDIF
+
+        UNTIL the_rec <> LOCKED
+
+        WHILE the_rec <> EMPTY DO
+
+            {DK 16-SEP-02 Check if result is entered before marking for update }
+
+            the_test = SELECT MILL_INT_RSET . test_number_key
+            the_comp = SELECT MILL_INT_RSET . name_key
+
+            is_res_entered = SELECT RESULT . text 
+                              WHERE name        = the_comp AND
+                                    test_number = the_test
+
+            no_res_array[count, 1] = the_rec
+            no_res_array[count, 2] = SELECT MILL_INT_RSET . sample_id_key
+            no_res_array[count, 3] = the_test
+            no_res_array[count, 4] = the_comp
+
+            IF is_res_entered = EMPTY THEN
+
+                no_res_array[count, 5] = TRANS_COMPLETE_FLAG {Status }
+
+            ELSE
+
+                no_res_array[count, 5] = TRANS_DELETE_FLAG {Status }
+
+            ENDIF
+
+            count = count + 1
+
+            NEXT MILL_INT_RSET
+            the_rec = SELECT MILL_INT_RSET . transaction_id
+
+        ENDWHILE
+
+        count = 1
+
+        WHILE count <= SIZE_OF_ARRAY( no_res_array) DO 
+
+            REPEAT
+
+                the_rec = SELECT MILL_INT_RSET . status FOR UPDATE
+                           WHERE transaction_id   = no_res_array[count, 1] AND
+                                 sample_id_key    = no_res_array[count, 2] AND
+                                 test_number_key  = no_res_array[count, 3] AND
+                                 name_key         = no_res_array[count, 4] 
+
+
+                IF the_rec = locked THEN
+
+                    SLEEP FOR "0 00:00:02"	
+
+                ENDIF
+
+            UNTIL the_rec <> LOCKED
+
+            IF the_rec <> EMPTY THEN
+
+                check_write_transaction()
+
+                ASSIGN MILL_INT_RSET . mill_result = GLOBAL("MILL_NO_RESULT_DEFAULT")
+                ASSIGN MILL_INT_RSET . status = no_res_array[count, 5]
+                ASSIGN MILL_INT_RSET . mill_result_present = 1
+
+                UPDATE MILL_INT_RSET
+
+                do_commit = TRUE
+
+
+            ENDIF
+
+            count = count + 1
+
+        ENDWHILE       
+
+        IF do_commit THEN
+
+            COMMIT
+
+        ENDIF
+
+    ELSE
+
+        the_mess = "MILL_INT_RSET DEFAULT RESULT ASSIGNMENT.....Date could not be determined for Default result entry!. "
+                       
+        error_array[error_count] = the_mess
+        error_count = error_count + 1
+
+        log_server_error(the_mess)
+
+    ENDIF
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE delete_old_records                                                  }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  04-Apr-2002  ER              Delete old records.                            }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE delete_old_records
+
+    DECLARE the_int, the_rec, curr_time, crit_date, old_rec_array, count,
+            sql_string, do_commit, old_trans_id, new_trans_id
+
+    ARRAY old_rec_array
+    count = 1
+    do_commit = FALSE
+
+    the_int = GLOBAL("MILL_DELETE_QUEUE_INTERVAL")
+    curr_time = NOW
+
+    crit_date = curr_time - the_int
+
+    IF IS_DATE(crit_date) THEN
+
+        REPEAT
+    
+            the_rec = SELECT MILL_INT_RSET . transaction_id FOR UPDATE
+                       WHERE date_created <= crit_date {AND
+                             status = 0}
+
+            IF the_rec = locked THEN
+
+                SLEEP FOR "0 00:00:02"	
+
+            ENDIF
+
+        UNTIL the_rec <> LOCKED
+
+        WHILE the_rec <> EMPTY DO
+
+            old_rec_array[count, 1] = the_rec
+            old_rec_array[count, 2] = SELECT MILL_INT_RSET . sample_id_key
+            old_rec_array[count, 3] = SELECT MILL_INT_RSET . test_number_key
+            old_rec_array[count, 4] = SELECT MILL_INT_RSET . name_key
+
+            count = count + 1
+
+            NEXT MILL_INT_RSET
+            the_rec = SELECT MILL_INT_RSET . transaction_id
+
+        ENDWHILE
+
+        { DELETE ALL RECORDS FROM MILL_INT_TRANS WITH THE SELECTED }
+        { TRANSACTION ID'S.                                        }
+
+        IF SIZE_OF_ARRAY( old_rec_array) > 0 THEN
+
+            crit_date = LEFTSTRING(crit_date, (LENGTH(crit_date) - 3))
+
+            sql_string = "DELETE FROM MILL_INT_RSET WHERE date_created <= TO_DATE(":"'":crit_date:"','DD-MON-YYYY HH24:MI:SS')"
+
+            EXECUTE_SQL ( sql_string )
+
+        ENDIF
+
+        count = 1
+
+        old_trans_id = ""
+
+        WHILE count <= SIZE_OF_ARRAY( old_rec_array) DO 
+
+            new_trans_id = old_rec_array[count, 1]
+
+            { DELETE CORRESPONDING MILL_INT_SSET RECORD FOR THE SAME   }
+            { TRANSACTION ID'S.                                        }
+
+            IF old_trans_id <> new_trans_id THEN
+
+                sql_string = "DELETE FROM MILL_INT_SSET WHERE transaction_id = ":old_rec_array[count, 1]
+
+                EXECUTE_SQL ( sql_string )
+
+                old_trans_id = new_trans_id
+ 
+            ENDIF
+
+            do_commit = TRUE
+
+            count = count + 1
+
+        ENDWHILE
+
+    ENDIF
+
+    IF do_commit THEN
+
+        EXECUTE_SQL ( "COMMIT" )
+
+    ENDIF
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE log_server_error                                                    }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  10/04/02     DK              Log Any Server Errors                          }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE log_server_error ( file_error_status )
+
+    DECLARE mapped_drive, the_date, file_name, check_ok, check_exist
+
+    IF GLOBAL("PLATFORM") = "NT" THEN
+
+        mapped_drive = "SMP$LOGFILES:"
+
+    ELSE
+
+        mapped_drive = "SMP$LOGFILES:"
+
+    ENDIF
+
+    the_date = TODAY
+    the_date = LEFTSTRING(the_date, 11)
+    the_date = STRIP(the_date)
+    file_name = mapped_drive:the_date:"_SMMILL_ERROR_LOG.TXT"
+
+    the_date = NOW
+    file_error_status = the_date:"...":STRIP(file_error_status)
+
+    check_exist = FILE EXISTS(file_name)
+
+    IF check_exist = TRUE THEN
+
+        FILE EXTEND file_name, check_ok
+        FILE WRITE file_name, file_error_status, check_ok
+        FILE CLOSE file_name, check_ok
+
+    ELSE
+
+        FILE CREATE file_name, check_ok
+
+        IF (check_ok = EMPTY) THEN
+
+        FILE OPEN file_name, check_ok
+        FILE WRITE file_name, file_error_status, check_ok
+        FILE CLOSE file_name, check_ok
+
+        ENDIF
+
+    ENDIF
+
+
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE write_errors                                                        }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  10/04/02     DK              Log Any Server Errors                          }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE write_errors (error_array, error_count )
+
+    DECLARE the_key, rec_count, the_mess, check_ok, do_commit, the_error
+
+    rec_count = 1
+    do_commit = FALSE
+
+    WHILE rec_count <= ( error_count - 1 ) DO
+
+        get_error_key(the_key)
+ 
+        check_write_transaction()
+
+        RESERVE ENTRY MILL_ERROR, the_key, check_ok
+
+        IF check_ok = EMPTY THEN
+
+            the_error = STRIP(LEFTSTRING(error_array[rec_count], 234))
+            ASSIGN MILL_ERROR . error_string = the_error
+            ASSIGN MILL_ERROR . date_created = NOW
+            ASSIGN MILL_ERROR . status = 0
+        
+            UPDATE MILL_ERROR
+
+            do_commit = TRUE
+
+        ELSE
+
+            the_mess = "ERROR RECORD CREATION.....Could not create record!. ":STRIP(check_ok)
+                       
+            log_server_error(the_mess)
+
+        ENDIF
+  
+        rec_count = rec_count + 1
+
+    ENDWHILE
+
+    IF do_commit THEN
+
+        COMMIT
+
+    ENDIF
+    
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE get_error_key                                                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  10/04/02     DK              Log Any Server Errors                          }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE get_error_key(the_key)
+
+    DECLARE new_id, new_ident, inc_id, id_exists
+
+    SET DATE FORMAT "YYYZMZ"  { Reset Increment on Mothly Basis }
+
+    new_ident = STRIP (TODAY)
+
+    RESTORE DATE FORMAT
+
+    SET FORMAT "999999999" 
+
+    new_id= INCREMENT("MILL_ERROR", new_ident)
+    inc_id = GLOBAL ("PROCESS_ID")
+    new_id = STRIP(new_id):STRIP(inc_id)
+
+    id_exists = SELECT MILL_ERROR . error_identity
+                 WHERE error_identity = new_id
+
+    WHILE ( id_exists <> EMPTY ) DO
+
+         new_id = INCREMENT("MILL_ERROR", new_ident)
+         new_id = STRIP(new_id):STRIP(inc_id)
+
+         id_exists = SELECT MILL_ERROR. error_identity 
+                      WHERE error_identity = new_id
+
+    ENDWHILE
+
+    FORMAT new_id FROM new_id 
+       USING MILL_ERROR. error_identity 
+
+    the_key = new_id
+
+    RETURN ( the_key )
+
+    
+ENDROUTINE
+
+{==============================================================================}
+{                                                                              }
+{  ROUTINE update_audits                                                       }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Modification History                                                        }
+{  --------------------                                                        }
+{                                                                              }
+{  Date         By              Description                                    }
+{  ----         --              -----------                                    }
+{  10/04/02     DK              Log Any Server Errors                          }
+{                                                                              }
+{==============================================================================}
+{                                                                              }
+{  Parameters             Passed By            Description                     }
+{  ----------             ---------            -----------                     }
+{                                                                              }
+{==============================================================================}
+
+ROUTINE update_audits( the_operator,
+                       the_test,
+                       the_comp,
+                       error_array,
+                       error_count )
+
+    DECLARE the_trans_id, the_name, the_new_reason,  new_event, the_data, the_mess
+
+    { Ensure Audit Record is written to the database prior to updates }
+
+    COMMIT
+
+    the_trans_id = SELECT MAX AUDIT_TRANSACTION . transaction 
+
+    IF the_trans_id <> EMPTY THEN
+
+        REPEAT
+
+            the_trans_id = SELECT AUDIT_TRANSACTION . transaction FOR UPDATE
+                            WHERE transaction = the_trans_id 
+                            AND (( transaction_name = "put_test_results"   ) OR
+                                 ( transaction_name = "SM-Millennium Interface" ))
+
+            IF the_trans_id = locked THEN
+
+                SLEEP FOR "0 00:00:02"	
+
+            ENDIF
+
+        UNTIL the_trans_id <> LOCKED
+
+        IF the_trans_id <> EMPTY THEN
+
+            ASSIGN AUDIT_TRANSACTION . user_id = TOUPPER( the_operator )
+
+            check_write_transaction()
+
+            UPDATE AUDIT_TRANSACTION
+    
+            the_name = SELECT AUDIT_TRANSACTION . transaction_name
+
+            IF (( the_name = "put_test_results") OR 
+                ( the_name = "SM-Millennium Interface" )) THEN
+
+                new_event = SELECT AUDIT_EVENT . event
+                             WHERE transaction = the_trans_id
+
+                WHILE new_event <> EMPTY DO
+
+                    REPEAT
+
+                        the_data = SELECT AUDIT_DATA . data FOR UPDATE
+                                    WHERE event = new_event
+                                    AND ((data_reason = "Auditable transaction completed by non-interactive process") OR
+                                         (data_reason = GLOBAL("MILL_DEFAULT_AUDIT_REASON")))
+
+                        IF the_data = locked THEN
+
+                            SLEEP FOR "0 00:00:02"	
+
+                        ENDIF
+
+                    UNTIL the_data <> LOCKED
+
+                    the_new_reason = GLOBAL("MILL_DEFAULT_AUDIT_REASON")
+
+                    WHILE the_data <> EMPTY DO
+
+                        IF STRIP(the_new_reason) <> ""
+ 
+                            ASSIGN AUDIT_DATA . data_reason = the_new_reason
+                            UPDATE AUDIT_DATA
+
+
+                        ENDIF
+
+                       NEXT AUDIT_DATA
+                       the_data = SELECT AUDIT_DATA . data FOR UPDATE
+       
+
+                    ENDWHILE
+
+                    NEXT AUDIT_EVENT
+                    new_event = SELECT AUDIT_EVENT . event
+
+                ENDWHILE
+
+             ENDIF
+
+        ELSE
+
+            { Validation /Error Logging }
+
+            the_mess = "AUDIT UPDATE ERROR.....Unable to Assign Interface specific audits to Result component : ":
+                        STRIP(the_comp):" , Test Number : ":STRIP(the_test)
+
+            error_array[error_count] = the_mess
+            error_count = error_count + 1
+
+            log_server_error(the_mess)
+
+        ENDIF
+
+    ENDIF
+
+ENDROUTINE 
+
+
+

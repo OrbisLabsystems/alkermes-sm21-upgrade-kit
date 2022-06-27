@@ -1,0 +1,564 @@
+{******************************************************************************
+*
+* Module Name   : $LIMSML_COLUMN_DT
+*
+* Purpose       : LIMSML Column DataTable
+*
+*******************************************************************************}
+
+SET NOTPROTECTED
+SET NAME "DEFER/"
+SET COMPILE_OPTION DECLARE
+
+ENABLE WINDOWS
+
+JOIN STANDARD_LIBRARY STD_GENERAL
+JOIN STANDARD_LIBRARY STD_CLASS
+
+JOIN LIBRARY $BL
+JOIN LIBRARY $BL_DATATABLE
+JOIN LIBRARY $BL_DATACOLUMN
+JOIN LIBRARY $LIB_TEXT
+
+{******************************************************************************}
+
+GLOBAL
+
+ROUTINE new_limsml_column_datatable
+
+{
+*
+*
+* Parameters :
+*
+*******************************************************************************}
+
+	DECLARE datatable, column
+
+	datatable = new_bl_datatable( )
+
+	column = new_bl_datacolumn_action( "IDENTITY", "GET_IDENTITY" )
+	column . set_datatype_id( "TEXT" )
+	datatable . get_columns( ) . add( column )
+
+	column = new_bl_datacolumn_action( "DESCRIPTION", "GET_NAME" )
+	column . set_datatype_id( "TEXT" )
+	datatable . get_columns( ) . add( column )
+
+	column = new_bl_datacolumn_routine( "TYPE", GLOBAL( "CURRENT_LIBRARY" ), "COLUMN_ROUTINE_GET_TYPE" )
+	column . set_datatype_id( "TEXT" )
+	datatable . get_columns( ) . add( column )
+
+	column = new_bl_datacolumn_prompt_info_action( "ALLOWED_CHARACTERS", "GET_ALLOWED_CHARACTERS" )
+	column . set_datatype_id( "TEXT" )
+	datatable . get_columns( ) . add( column )
+
+	column = new_bl_datacolumn_prompt_info_action( "FORMAT_STRING", "GET_FORMAT_STRING" )
+	column . set_datatype_id( "TEXT" )
+	datatable . get_columns( ) . add( column )
+
+	column = new_bl_datacolumn_prompt_info_action( "TRUE_WORD", "GET_TRUE_WORD" )
+	column . set_datatype_id( "TEXT" )
+	datatable . get_columns( ) . add( column )
+
+	column = new_bl_datacolumn_prompt_info_action( "FALSE_WORD", "GET_FALSE_WORD" )
+	column . set_datatype_id( "TEXT" )
+	datatable . get_columns( ) . add( column )
+
+	column = new_bl_datacolumn_prompt_info_action( "READ_ONLY", "IS_READ_ONLY" )
+	column . set_datatype_id( "BOOLEAN" )
+	datatable . get_columns( ) . add( column )
+
+	column = new_bl_datacolumn_prompt_info_action( "MANDATORY", "IS_MANDATORY" )
+	column . set_datatype_id( "BOOLEAN" )
+	datatable . get_columns( ) . add( column )
+
+	column = new_bl_datacolumn_prompt_info_action( "LENGTH", "GET_LENGTH" )
+	column . set_datatype_id( "INTEGER" )
+	datatable . get_columns( ) . add( column )
+
+	column = new_bl_datacolumn_routine( "DEFAULT_VALUE", GLOBAL( "CURRENT_LIBRARY" ), "COLUMN_ROUTINE_GET_DEFAULT_VALUE" )
+	column . set_datatype_id( "TEXT" )
+	datatable . get_columns( ) . add( column )
+
+	column = new_bl_datacolumn_routine( "LOWER_LIMIT", GLOBAL( "CURRENT_LIBRARY" ), "COLUMN_ROUTINE_GET_LOWER_LIMIT_VALUE" )
+	column . set_datatype_id( "TEXT" )
+	datatable . get_columns( ) . add( column )
+
+	column = new_bl_datacolumn_routine( "UPPER_LIMIT", GLOBAL( "CURRENT_LIBRARY" ), "COLUMN_ROUTINE_GET_UPPER_LIMIT_VALUE" )
+	column . set_datatype_id( "TEXT" )
+	datatable . get_columns( ) . add( column )
+
+	column = new_bl_datacolumn_routine( "BROWSE_TYPE", GLOBAL( "CURRENT_LIBRARY" ), "COLUMN_ROUTINE_GET_BROWSE_TYPE" )
+	column . set_datatype_id( "TEXT" )
+	datatable . get_columns( ) . add( column )
+
+	column = new_bl_datacolumn_routine( "BROWSE_PROPERTY", GLOBAL( "CURRENT_LIBRARY" ), "COLUMN_ROUTINE_GET_BROWSE_PROPERTY" )
+	column . set_datatype_id( "TEXT" )
+	datatable . get_columns( ) . add( column )
+
+	column = new_bl_datacolumn_routine( "SELECT_LIST", GLOBAL( "CURRENT_LIBRARY" ), "COLUMN_ROUTINE_GET_SELECTION_ITEMS" )
+	column . set_datatype_id( "TEXT" )
+	datatable . get_columns( ) . add( column )
+
+	column = new_bl_datacolumn_routine( "HIDDEN", GLOBAL( "CURRENT_LIBRARY" ), "COLUMN_ROUTINE_GET_HIDDEN" )
+	column . set_datatype_id( "BOOLEAN" )
+	datatable . get_columns( ) . add( column )
+
+	RETURN( datatable )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE column_routine_get_type( column )
+
+{
+* Returns the prompt info's type. If type is date then need to make distinction
+* between dates that allow time and those that don't. This is done in LIMSML by
+* creating a new type (DATETIME) for DATEs that accept time
+*
+* Parameters : column , [BL_COLUMN] column
+*
+* Return Value : [Text] type of prompt
+*
+*******************************************************************************}
+
+	DECLARE type, prompt_info
+
+	prompt_info = column . get_prompt_info( )
+
+	type = prompt_info . get_identity( )
+
+	IF type = "DATE" THEN
+
+		IF prompt_info . get_include_time( ) THEN
+
+			type = "DATETIME"
+
+		ENDIF
+
+	ENDIF
+
+	RETURN( type )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE column_routine_get_default_value( column )
+
+{
+* Because each default value may be a different datatype the default value
+* column is defined as text (because we can represent any datatype as text).
+* This routine ensures the the value is represented in the standard xml format
+* for its vgl datatype
+*
+* Parameters : prompt_info , [BL_PROMPT_INFO] prompt_info
+*
+* Return Value : [Text] default value represented in text
+*
+*******************************************************************************}
+
+	DECLARE val, text_val, convertor, new_error, assembly_name, class_name,
+	        errors, datatype, prompt_info
+
+	prompt_info = column . get_prompt_info( )
+
+	text_val = EMPTY
+
+	assembly_name = "Thermo.SM.BL.Data"
+	class_name    = "Thermo.SM.BL.Data.TypeConvert"
+
+	CREATE OBJECT "STD_NET_SERVER" , convertor
+	errors = convertor . create( assembly_name, class_name )
+
+	IF errors = EMPTY THEN
+
+		val = prompt_info . get_default_value( )
+
+		IF ( val = NULL ) OR ( val = EMPTY ) THEN
+
+			text_val = ""
+
+		ELSE
+
+			datatype = bl_system( ) . get_datatype( TOUPPER( variable_get_type( val ) ) )
+
+			text_val = convertor . GetString( val, datatype . get_dotnet_equivalent( ) )
+
+		ENDIF
+
+	ELSE
+
+		new_error = bl_system( ) . error_flag( "BL_ERROR_DOT_NET_CLASS_INSTANTIATION" )
+		new_error . add_parameter( class_name )
+		new_error . add_parameter( assembly_name )
+		new_error . add_parameter( errors )
+
+	ENDIF
+
+	RETURN( text_val )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE column_routine_get_lower_limit_value( column )
+
+{
+* Returns the prompt info's range's lower limit value
+*
+* Parameters : prompt_info , [BL_PROMPT_INFO] prompt_info
+*
+* Return Value : [Text] lower limit represented as text
+*
+*******************************************************************************}
+
+	DECLARE val, prompt_info
+
+	prompt_info = column . get_prompt_info( )
+
+	IF OBJECT_CHECK_ACTION( prompt_info , "GET_RANGE" ) THEN
+
+		val = prompt_info . get_range( ) . get_lower_limit( )
+
+	ELSE
+
+		val = EMPTY
+
+	ENDIF
+
+	RETURN( val )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE column_routine_get_upper_limit_value( column )
+
+{
+* Returns the prompt info's range's upper limit value
+*
+* Parameters : prompt_info , [BL_PROMPT_INFO] prompt_info
+*
+* Return Value : [Text] upper limit represented as text
+*
+*******************************************************************************}
+
+	DECLARE val, prompt_info
+
+	prompt_info = column . get_prompt_info( )
+
+	IF OBJECT_CHECK_ACTION( prompt_info , "GET_RANGE" ) THEN
+
+		val = prompt_info . get_range( ) . get_upper_limit( )
+
+	ELSE
+
+		val = EMPTY
+
+	ENDIF
+
+	RETURN( val )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE column_routine_get_browse_type( column )
+
+{
+* Returns the type that will be browsed upon as defined by the prompt info
+*
+* Parameters : prompt_info , [BL_PROMPT_INFO] prompt_info
+*
+* Return Value : [Text] browse type id
+*
+*******************************************************************************}
+
+	DECLARE val, browse_property, prompt_info
+
+	prompt_info = column . get_prompt_info( )
+
+	browse_property = prompt_info . get_browse_property( )
+
+	IF browse_property <> EMPTY THEN
+
+		val = browse_property . get_type( ) . get_identity( )
+
+	ELSE
+
+		val = EMPTY
+
+	ENDIF
+
+
+	RETURN( val )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE column_routine_get_browse_property( column )
+
+{
+* Returns the type's property that will be browsed upon as defined by the prompt info
+*
+* Parameters : prompt_info , [BL_PROMPT_INFO] prompt_info
+*
+* Return Value : [Text] browse property id
+*
+*******************************************************************************}
+
+	DECLARE val, browse_property, prompt_info
+
+	prompt_info = column . get_prompt_info( )
+
+	browse_property = prompt_info . get_browse_property( )
+
+	IF browse_property <> EMPTY THEN
+
+		val = browse_property . get_identity( )
+
+	ELSE
+
+		val = EMPTY
+
+	ENDIF
+
+
+	RETURN( val )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE column_routine_get_selection_items( column )
+
+{
+* Returns a semi-colon separated list of value-text pairs to be used as values
+* in a selection prompt
+*
+* Parameters : prompt_info , [BL_PROMPT_INFO]
+*
+* Return Value : [Text] A semi-colon separated list of value-text pairs
+*
+*******************************************************************************}
+
+	DECLARE  val, selection_items, selection_item, enum, prompt_info
+
+	prompt_info = column . get_prompt_info( )
+
+	IF OBJECT_CHECK_ACTION( prompt_info , "GET_ITEMS" ) THEN
+
+		selection_items = prompt_info . get_items( )
+
+		val = ""
+
+		enum = selection_items . get_enumerator( )
+		WHILE enum . move_next( ) DO
+
+			selection_item = enum . get_current( )
+
+			val = val :
+			      selection_item . get_value( ) :
+			      ";" :
+			      selection_item . get_text( ) :
+			      ";"
+
+		ENDWHILE
+
+
+	ELSE
+
+		val = EMPTY
+
+	ENDIF
+
+	RETURN( val )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE column_routine_get_hidden( column )
+
+{
+* Returns the hidden status of the prompt. This will always be NOT hidden
+*
+* Parameters : prompt_info , [BL_PROMPT_INFO]
+*
+* Return Value : [Boolean] hidden status
+*
+*******************************************************************************}
+
+	RETURN( NOT column . get_visible( ) )
+
+ENDROUTINE
+
+
+{******************************************************************************}
+{******************************************************************************}
+
+{******************************************************************************}
+
+ROUTINE new_bl_datacolumn_prompt_info_action( VALUE identity, VALUE action_name )
+
+{
+* Returns a new Bl datacolumn_prompt_info action object. An action column will
+* call the passed action on each object's prompt info to produce a value
+*
+* NOTE: this routine should be considered to be the only of way of instantiating
+* objects of type BL_DATACOLUMN_PROMPT_INFO_ACTION.
+* For the purposes of class member visibility it should be considered to be
+* part of the class. i.e. the class constructor
+*
+* Parameters : identity    , [Text] column's identity
+*              action_name , [Text] name of the vgl action on the object's class
+*
+* Return Value : [BL_DATACOLUMN_PROMPT_INFO_ACTION]
+*
+*******************************************************************************}
+
+	DECLARE self
+
+	bl_datacolumn_prompt_info_action_initialisation( )
+
+	CREATE OBJECT "BL_DATACOLUMN_PROMPT_INFO_ACTION", self
+	self . identity = identity
+	self . action   = action_name
+	self . name     = lib_text_identity_to_text( action_name )
+
+	RETURN( self )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE bl_datacolumn_prompt_info_action_initialisation
+
+{
+* Bl datacolumn prompt info action class definition
+*
+* Parameters : None
+*
+* Return Value : None
+*
+*******************************************************************************}
+
+	DEFINE CLASS "BL_DATACOLUMN_PROMPT_INFO_ACTION"
+
+		{**********************************************************************}
+		{*                                                                    *}
+		{**********************************************************************}
+
+		INHERIT "BL_DATACOLUMN"
+
+		INITIALISATION
+
+		PROPERTIES
+			{ private   } "action"         ,
+			{ private   } "datatype_id"
+
+		ACTIONS
+			{ protected } "load_datatype"    ,
+			{ PUBLIC    } "SET_DATATYPE_ID" ,
+			{ PUBLIC    } "GET_OBJECT_VALUE"
+
+	END CLASS
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE bl_datacolumn_prompt_info_action_class_initialisation( self )
+
+{
+* Bl datacolumn_prompt_info action class initialisation
+*
+* Parameters : self , Bl datacolumn_prompt_info action object
+*
+* Return Value : None
+*
+*******************************************************************************}
+
+	self . action      = EMPTY
+	self . datatype_id = "TEXT"
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE bl_datacolumn_prompt_info_action_action_set_datatype_id(       self        ,
+                                                          VALUE datatype_id )
+
+{
+* Sets the datatype for the column. Due to VGL's weak-typing it is not possible
+* to infer the action's return type so this must be specified manually
+*
+* Parameters : self        , [BL_DATACOLUMN_PROMPT_INFO_ACTION]
+*              datatype_id , [Text] the datatype identity
+*
+* Return Value : None
+*
+*******************************************************************************}
+
+	self . datatype_id = datatype_id
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE bl_datacolumn_prompt_info_action_action_load_datatype( self )
+
+{
+* Returns the datatype object for this column. Called once at the beginning
+* of the dataset build operation to fix the column's datatype
+*
+* Parameters : self , [BL_DATACOLUMN_PROMPT_INFO_ACTION]
+*
+* Return Value : [BL_DATATYPE] the column's datatype
+*
+*******************************************************************************}
+
+	RETURN( bl_system( ) . get_datatype( self . datatype_id ) )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE bl_datacolumn_prompt_info_action_action_get_object_value( self, obj )
+
+{
+* Returns the passed object's value for this column. This is called by the
+* Dataset for each value in this column to obtain the value. EMPTY is returned
+* if the action doesn't exist on the object
+*
+* Parameters : self   , [BL_DATACOLUMN_PROMPT_INFO_ACTION]
+*              obj    , [Object]
+*
+* Return Value : [Variant] the passed object's value for this column. The value's
+*                datatype will be in the correct format for the column.
+*                i.e. the same datatype as initialised by the call to the
+*                load_datatype action
+*
+*******************************************************************************}
+
+	DECLARE val, prompt_info
+
+	prompt_info = obj . get_prompt_info( )
+
+	IF OBJECT_CHECK_ACTION( prompt_info, self . action ) THEN
+
+		val = self . coerce_value( prompt_info . ?self . action?( ) )
+
+	ELSE
+
+		val = EMPTY
+
+	ENDIF
+
+	RETURN( val )
+
+ENDROUTINE
