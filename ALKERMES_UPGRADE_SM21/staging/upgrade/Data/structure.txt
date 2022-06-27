@@ -141,8 +141,7 @@ No.     Changed By      Date            Description
  138.0  Enon Gavin      15-Jun-2018     Added audit views for use in Audit Report ORL17061
  139.0  Enon Gavin      15-Jun-2018     Added "Labels Printed" field to sample table to allow reconciliation of labels
  140.0  Enon Gavin      19-Oct-2018     Add PRINT_EVENT
- 141.0  Raphael Castro  27-Jun-2022     Structure merge SampleManager 21.0
-
+ 141.0  Raphael Castro	27-Jun-2022     Structure merge SampleManager 21.0
 }
 
 table_defaults
@@ -1101,8 +1100,9 @@ field analytical_prot_no
            datatype date
            default '0' ; 
 
+{/ 139.0}
 
-  
+    {6.0 SAMPLE TABLE INDEXES}
 
          index sample_i unique on id_numeric
                oracle_location 'ACTIVE_I'
@@ -1679,6 +1679,7 @@ field comments datatype text(234)
 field out_of_range_level links_to mlp_level . level_id ; {failure level}
 field entity_full_id
       datatype boolean ;
+      
 {12.0 SMIDI FIELDS}
 
 	field SAP_serial_required datatype text(1)  	;                 {93.0}
@@ -2151,6 +2152,8 @@ field version_comment alias comment datatype Text ( 234 );
 field version_status datatype text ( 1 );
 field created_date datatype date;
 
+
+
 TABLE MLP_SCHEDULE;
 
 FIELD   identity links_to   parent MLP_HEADER.Identity as parent_mlp    {93.0}
@@ -2423,8 +2426,8 @@ field status datatype text (1)
       used_for display_browse (3);
 field link_number alias worksheet_number datatype packed_decimal
       alias worksheet_link;
-field date_generated datatype date; 
- 
+field date_generated datatype date;
+
 {19.0 WORKSHEET TABLE INDEXES}
 
 index worksheet_i unique on worksheet_type, identity
@@ -2434,6 +2437,7 @@ index worksheet_i unique on worksheet_type, identity
 index worksheet_identity on identity
       oracle_location 'ACTIVE_I'
       ;
+
 
 {/19.0}
 
@@ -2738,7 +2742,7 @@ field description
 	datatype text ( 255 )
 	used_for display_browse ( 2 );
 
-field modifiable datatype boolean
+field modifiable datatype boolean                                       
 	used_for modifiable;
 
 field modified_on datatype date
@@ -3105,7 +3109,7 @@ field task datatype text                                                {93.0}
       prompt_type phrase
       noidentities
       phrase_type tasknames ;
-field task_params datatype text ;										 {93.0}
+field task_params datatype text ;                                       {93.0}
 
 {24.0 STABILITY FIELDS}
 
@@ -3747,8 +3751,8 @@ table job_header
 
 {27.0 SMIDI FIELDS}
 
-field smidi_lot                datatype text(20)                                              ; {93.0}
-	field smidi_requester          links_to smidi_system.identity                                 ; {93.0}
+field smidi_lot                datatype text(20)                                 ; {93.0}
+	field smidi_requester          links_to smidi_system.identity                ; {93.0}
 
 {/27.0}
 
@@ -3983,6 +3987,7 @@ field replicate_count datatype integer
 field is_analysis datatype boolean ;
 field component_list
       links_to versioned_c_l_header . comp_list ;
+
 
 table log_sched_header;
 
@@ -4601,9 +4606,10 @@ field event_action
 
 field event_reason
         datatype  text ( 234 )
-        prompt_type     phrase 			{34.0}
+        prompt_type     phrase 			
         phrase_type     audit_text ;
 
+{34.0}
 index audit_table_no_index on table_name , record_key0
       oracle_location 'ACTIVE_I'
       ;
@@ -4658,6 +4664,8 @@ field real_before
 field real_after
         datatype real
         default NULL ;
+
+{36.0}
 
 index audit_field_index on event, field ;
 
@@ -4993,8 +5001,9 @@ table c_sample
       noindex
       parent_table sample
       tableset default_table_set
-      oracle_location 'COMMITTED'		{38.0}  {39.0}
-      ;  
+      oracle_location 'COMMITTED'		{38.0}  
+        ;  
+{39.0}
 
 index c_sample_id_text_index unique on id_text ;
 
@@ -7605,6 +7614,7 @@ select_clause
         WHERE
                 I . RECORD_KEY0 = J . JOB_NAME AND
                 I . TABLE_NAME  = 'JOB_HEADER' ;
+                
 
 { Ad-Hoc reporter templates tables }
 
@@ -10013,21 +10023,21 @@ table working_schedule ;
 	      links_to working_schedule_header . identity
 	      used_for unique_key ;
 
-		field entry_number
-			  datatype packed_decimal
-			  used_for unique_key ;
+        field entry_number
+              datatype packed_decimal
+              used_for unique_key ;
 
-		field start_date
-			  datatype date ;
+        field start_date
+              datatype date ;
 
-		field end_date
-			  datatype date ;
+        field end_date
+              datatype date ;
 
-		field description
-			  datatype    identity
-			  prompt_type phrase
-			  noidentities
-			  phrase_type NON_WORK ;
+        field description
+              datatype    identity
+              prompt_type phrase
+              noidentities
+              phrase_type NON_WORK ;
 
 table working_schedule_header ;
 
@@ -13067,11 +13077,11 @@ oracle_specific_select
 		  'XXXXXXXXXX',
 		  'XXXXXXXXXX',
 		  'XXXXXXXXXX',
-		  'X',
+		  'X',                                                      /*93.0*/
 		  'X',
 		  'XXXXXXXXXX',
 		  SAMPLE.ID_TEXT,
-		  'X',
+		  'X',                                                      /*93.0*/
 		  COMPONENT_VIEW.ORDER_NUMBER
 	     FROM BATCH_ENTRY,
 		  BATCH_HEADER,
@@ -13093,7 +13103,7 @@ oracle_specific_select
 		 'XXXXXXXXXX',
 		 'XXXXXXXXXX',
 		 RESULT.TEXT,
-		  'X',
+		  'X',                                                      /*93.0*/
 		 RESULT.RESULT_TYPE,
 		 RESULT.TRUE_WORD,
 		 SAMPLE.ID_TEXT,
@@ -13126,7 +13136,7 @@ oracle_specific_select
 		  'X',
 		  'XXXXXXXXXX',
 		  SAMPLE.ID_TEXT,
-		  'X',
+		  'X',                                                      /*93.0*/
 		  COMPONENT_VIEW.ORDER_NUMBER
 	     FROM BATCH_ENTRY,
 		  BATCH_HEADER,
@@ -13195,11 +13205,11 @@ oracle_specific_select
 		  'XXXXXXXXXX',
 		  'XXXXXXXXXX',
 		  'XXXXXXXXXX',
-		  'X',
+		  'X',                                                      /*93.0*/
 		  'X',
 		  'XXXXXXXXXX',
 		  SAMPLE.ID_TEXT,
-		  'X',
+		  'X',                                                      /*93.0*/
 		  COMPONENT_VIEW.ORDER_NUMBER
 	     FROM BATCH_ENTRY,
 		  BATCH_HEADER,
@@ -13226,11 +13236,11 @@ oracle_specific_select
 		  'XXXXXXXXXX',
 		  'XXXXXXXXXX',
 		  'XXXXXXXXXX',
-		  'X',
+		  'X',                                                      /*93.0*/
 		  'X',
 		  'XXXXXXXXXX',
 		  SAMPLE.ID_TEXT,
-		  'X',
+		  'X',                                                      /*93.0*/
 	     COMPONENT_VIEW.ORDER_NUMBER
 	     FROM BATCH_ENTRY,
 		  BATCH_HEADER,
@@ -13262,7 +13272,7 @@ oracle_specific_select
 		  'XXXXXXXXXX',
 		  'XXXXXXXXXX',
 		  RESULT.TEXT,
-		  'X',
+		  'X',                                                      /*93.0*/
 		  RESULT.RESULT_TYPE,
 		  RESULT.TRUE_WORD,
 		  SAMPLE.ID_TEXT,
@@ -13305,7 +13315,7 @@ oracle_specific_select
 		  'X',
 		  'XXXXXXXXXX',
 		  SAMPLE.ID_TEXT,
-		  'X',
+		  'X',                                                      /*93.0*/
 		  COMPONENT_VIEW.ORDER_NUMBER
 	     FROM BATCH_ENTRY,
 		  BATCH_HEADER,
@@ -13341,11 +13351,11 @@ sqlserver_specific_select
 		  'XXXXXXXXXX',
 		  'XXXXXXXXXX',
 		  'XXXXXXXXXX',
-		  'X',
+		  'X',                                                      /*93.0*/
 		  'X',
 		  'XXXXXXXXXX',
 		  SAMPLE.ID_TEXT,
-		  'X',
+		  'X',                                                      /*93.0*/
 		  COMPONENT_VIEW.ORDER_NUMBER
 	     FROM BATCH_ENTRY,
 		  BATCH_HEADER,
@@ -13367,7 +13377,7 @@ sqlserver_specific_select
 		 'XXXXXXXXXX',
 		 'XXXXXXXXXX',
 		 RESULT.TEXT,
-		  'X',
+		  'X',                                                      /*93.0*/
 		 RESULT.RESULT_TYPE,
 		 RESULT.TRUE_WORD,
 		 SAMPLE.ID_TEXT,
@@ -13400,7 +13410,7 @@ sqlserver_specific_select
 		  'X',
 		  'XXXXXXXXXX',
 		  SAMPLE.ID_TEXT,
-		  'X',
+		  'X',                                                      /*93.0*/
 		  COMPONENT_VIEW.ORDER_NUMBER
 	     FROM BATCH_ENTRY,
 		  BATCH_HEADER,
@@ -13469,11 +13479,11 @@ sqlserver_specific_select
 		  'XXXXXXXXXX',
 		  'XXXXXXXXXX',
 		  'XXXXXXXXXX',
-		  'X',
+		  'X',                                                      /*93.0*/
 		  'X',
 		  'XXXXXXXXXX',
 		  SAMPLE.ID_TEXT,
-		  'X',
+		  'X',                                                      /*93.0*/
 		  COMPONENT_VIEW.ORDER_NUMBER
 	     FROM BATCH_ENTRY,
 		  BATCH_HEADER,
@@ -13500,11 +13510,11 @@ sqlserver_specific_select
 		  'XXXXXXXXXX',
 		  'XXXXXXXXXX',
 		  'XXXXXXXXXX',
-		  'X',
+		  'X',                                                      /*93.0*/
 		  'X',
 		  'XXXXXXXXXX',
 		  SAMPLE.ID_TEXT,
-		  'X',
+		  'X',                                                      /*93.0*/
 	     COMPONENT_VIEW.ORDER_NUMBER
 	     FROM BATCH_ENTRY,
 		  BATCH_HEADER,
@@ -13536,7 +13546,7 @@ sqlserver_specific_select
 		  'XXXXXXXXXX',
 		  'XXXXXXXXXX',
 		  RESULT.TEXT,
-		  'X',
+		  'X',                                                      /*93.0*/
 		  RESULT.RESULT_TYPE,
 		  RESULT.TRUE_WORD,
 		  SAMPLE.ID_TEXT,
@@ -13579,7 +13589,7 @@ sqlserver_specific_select
 		  'X',
 		  'XXXXXXXXXX',
 		  SAMPLE.ID_TEXT,
-		  'X',
+		  'X',                                                      /*93.0*/
 		  COMPONENT_VIEW.ORDER_NUMBER
 	     FROM BATCH_ENTRY,
 		  BATCH_HEADER,
@@ -13922,7 +13932,7 @@ oracle_specific_select
 		MLP_VALUES.LEVEL_ID ,
 		'XXXXX',
 		'XXXXX',
-		'X',
+		'X',                                                        /*93.0*/
 		COMPONENT_VIEW.NAME,
 		COMPONENT_VIEW.RESULT_TYPE,
 		COMPONENT_VIEW.PLACES,
@@ -13980,7 +13990,7 @@ oracle_specific_select
 		MLP_VALUES.LEVEL_ID ,
 		'XXXXX',
 		'XXXXX',
-		'X',
+		'X',                                                        /*93.0*/
 		MLP_COMPONENTS.COMPONENT_NAME,
 		MLP_COMPONENTS.COMPONENT_TYPE,
 		MLP_COMPONENTS.PLACES,
@@ -14006,13 +14016,14 @@ oracle_specific_select
 		VERSIONED_C_L_ENTRY.COMP_LIST = MLP_COMPONENTS.PRODUCT_ID AND
 		BATCH_TMPL_HEADER.IDENTITY = MLP_COMPONENTS.PRODUCT_ID ;
 
+
 sqlserver_specific_select
 
 	SELECT 		MLP_HEADER.[IDENTITY],
 		MLP_VALUES.LEVEL_ID ,
 		'XXXXX',
 		'XXXXX',
-		'X',
+		'X',                                                        /*93.0*/
 		COMPONENT_VIEW.NAME,
 		COMPONENT_VIEW.RESULT_TYPE,
 		COMPONENT_VIEW.PLACES,
@@ -14070,7 +14081,7 @@ sqlserver_specific_select
 		MLP_VALUES.LEVEL_ID ,
 		'XXXXX',
 		'XXXXX',
-		'X',
+		'X',                                                        /*93.0*/
 		MLP_COMPONENTS.COMPONENT_NAME,
 		MLP_COMPONENTS.COMPONENT_TYPE,
 		MLP_COMPONENTS.PLACES,
@@ -14326,12 +14337,12 @@ oracle_specific_select
 	       'XXXXX',
 	       'XXXXX',
 	       'XXXXX',
-	       999,
-	       'X',
+	       999,                                                       /*93.0*/
+	       'X',                                                       /*93.0*/                  
 	       'XXXXX',
 	       'XXXXX',
 	       'XXXXX',
-	       'X',
+	       'X',                                                       /*93.0*/
 	       TEST_SCHED_ENTRY.INSTRUMENT_ID
 	FROM  VERSIONED_C_L_HEADER , TEST_SCHED_ENTRY
 	WHERE VERSIONED_C_L_HEADER.COMP_LIST = TEST_SCHED_ENTRY.COMPONENT_LIST
@@ -14391,12 +14402,12 @@ oracle_specific_select
 	       'XXXXX',
 	       'XXXXX',
 	       'XXXXX',
-	       999,
-	       'X',
+	       999,                                                       /*93.0*/
+	       'X',                                                       /*93.0*/
 	       'XXXXX',
 	       'XXXXX',
 	       'XXXXX',
-	       'X',
+	       'X',                                                       /*93.0*/
 	       TEST_SCHED_ENTRY.INSTRUMENT_ID
 	FROM  VERSIONED_C_L_ENTRY,VERSIONED_C_L_HEADER, MLP_COMPONENTS , MLP_VALUES,VERSIONED_COMPONENT,
 	      TEST_SCHED_ENTRY
@@ -14418,12 +14429,12 @@ oracle_specific_select
 	       'XXXXX',
 	       'XXXXX',
 	       'XXXXX',
-	       999,
-	       'X',
+	       999,                                                       /*93.0*/
+	       'X',                                                       /*93.0*/
 	       'XXXXX',
 	       'XXXXX',
 	       'XXXXX',
-	       'X',
+	       'X',                                                       /*93.0*/
 	       TEST_SCHED_ENTRY.INSTRUMENT_ID
 	FROM  VERSIONED_C_L_ENTRY,VERSIONED_C_L_HEADER,VERSIONED_COMPONENT , TEST_SCHED_ENTRY
 	WHERE VERSIONED_C_L_ENTRY.ANALYSIS = VERSIONED_C_L_HEADER.ANALYSIS AND
@@ -14442,7 +14453,7 @@ oracle_specific_select
 	       'XXXXX',
 	       'XXXXX',
 	       'XXXXX',
-	       'X',
+	       'X',                                                       /*93.0*/
 	       TEST_SCHED_ENTRY.INSTRUMENT_ID
 	FROM  VERSIONED_C_L_ENTRY,VERSIONED_C_L_HEADER, MLP_COMPONENTS , MLP_VALUES,VERSIONED_COMPONENT,
 	      TEST_SCHED_ENTRY
@@ -14467,12 +14478,12 @@ sqlserver_specific_select
 	       'XXXXX',
 	       'XXXXX',
 	       'XXXXX',
-	       999,
-	       'X',
+	       999,                                                       /*93.0*/
+	       'X',                                                       /*93.0*/
 	       'XXXXX',
 	       'XXXXX',
 	       'XXXXX',
-	       'X',
+	       'X',                                                       /*93.0*/
 	       TEST_SCHED_ENTRY.INSTRUMENT_ID
 	FROM  VERSIONED_C_L_HEADER , TEST_SCHED_ENTRY
 	WHERE VERSIONED_C_L_HEADER.COMP_LIST = TEST_SCHED_ENTRY.COMPONENT_LIST
@@ -14488,7 +14499,7 @@ sqlserver_specific_select
 	       'XXXXX',
 	       'XXXXX',
 	       'XXXXX',
-	       'X',
+	       'X',                                                       /*93.0*/
 	       TEST_SCHED_ENTRY.INSTRUMENT_ID
 	FROM  VERSIONED_C_L_ENTRY,VERSIONED_C_L_HEADER,VERSIONED_COMPONENT ,TEST_SCHED_ENTRY
 	WHERE VERSIONED_C_L_ENTRY.ANALYSIS = VERSIONED_C_L_HEADER.ANALYSIS AND
@@ -14532,12 +14543,12 @@ sqlserver_specific_select
 	       'XXXXX',
 	       'XXXXX',
 	       'XXXXX',
-	       999,
-	       'X',
+	       999,                                                       /*93.0*/
+	       'X',                                                       /*93.0*/
 	       'XXXXX',
 	       'XXXXX',
 	       'XXXXX',
-	       'X',
+	       'X',                                                       /*93.0*/
 	       TEST_SCHED_ENTRY.INSTRUMENT_ID
 	FROM  VERSIONED_C_L_ENTRY,VERSIONED_C_L_HEADER, MLP_COMPONENTS , MLP_VALUES,VERSIONED_COMPONENT,
 	      TEST_SCHED_ENTRY
@@ -14559,12 +14570,12 @@ sqlserver_specific_select
 	       'XXXXX',
 	       'XXXXX',
 	       'XXXXX',
-	       999,
-	       'X',
+	       999,                                                       /*93.0*/
+	       'X',                                                       /*93.0*/
 	       'XXXXX',
 	       'XXXXX',
 	       'XXXXX',
-	       'X',
+	       'X',                                                       /*93.0*/
 	       TEST_SCHED_ENTRY.INSTRUMENT_ID
 	FROM  VERSIONED_C_L_ENTRY,VERSIONED_C_L_HEADER,VERSIONED_COMPONENT , TEST_SCHED_ENTRY
 	WHERE VERSIONED_C_L_ENTRY.ANALYSIS = VERSIONED_C_L_HEADER.ANALYSIS AND
@@ -14583,7 +14594,7 @@ sqlserver_specific_select
 	       'XXXXX',
 	       'XXXXX',
 	       'XXXXX',
-	       'X',
+	       'X',                                                       /*93.0*/
 	       TEST_SCHED_ENTRY.INSTRUMENT_ID
 	FROM  VERSIONED_C_L_ENTRY,VERSIONED_C_L_HEADER, MLP_COMPONENTS , MLP_VALUES,VERSIONED_COMPONENT,
 	      TEST_SCHED_ENTRY
@@ -14802,13 +14813,13 @@ oracle_specific_select
 		'XXXXXXXXXX',
 		VERSIONED_ANALYSIS.CALCULATION,
 		VERSIONED_ANALYSIS.IDENTITY,
-		'X',
+		'X',                                                        /*93.0*/
 		'XXXXXXXXXX',
 		'XXXXXXXXXX',
 		WORKSHEET.ASSIGNED_OPERATOR,
 		WORKSHEET.DATE_GENERATED,
 		PERSONNEL.DESCRIPTION,
-		'XXXXXXXXXX'
+		'XXXXXXXXXX'                                                /*93.0*/
 	   FROM VERSIONED_ANALYSIS,
 		WORKSHEET
 	   LEFT OUTER JOIN PERSONNEL ON PERSONNEL.IDENTITY = WORKSHEET.ASSIGNED_OPERATOR 
@@ -14830,7 +14841,7 @@ oracle_specific_select
 		WORKSHEET.ASSIGNED_OPERATOR,
 		WORKSHEET.DATE_GENERATED,
 		PERSONNEL.DESCRIPTION,
-		VERSIONED_COMPONENT.ORDER_NUMBER
+		VERSIONED_COMPONENT.ORDER_NUMBER                            /*93.0*/
 	   FROM VERSIONED_ANALYSIS,
 		VERSIONED_COMPONENT,
 		WORKSHEET
@@ -14849,13 +14860,13 @@ oracle_specific_select
 		'XXXXXXXXXX',
 		VERSIONED_ANALYSIS.CALCULATION,
 		VERSIONED_ANALYSIS.IDENTITY,
-		'X',
+		'X',                                                        /*93.0*/
 		'XXXXXXXXXX',
 		'XXXXXXXXXX',
 		WORKSHEET.ASSIGNED_OPERATOR,
 		WORKSHEET.DATE_GENERATED,
 		PERSONNEL.DESCRIPTION,
-		'XXXXXXXXXX'
+		'XXXXXXXXXX'                                                /*93.0*/
 	   FROM VERSIONED_ANALYSIS,
 		VERSIONED_COMPONENT,
 		WORKSHEET
@@ -14874,13 +14885,13 @@ sqlserver_specific_select
 		'XXXXXXXXXX',
 		VERSIONED_ANALYSIS.CALCULATION,
 		VERSIONED_ANALYSIS.[IDENTITY],
-		'X',
+		'X',                                                        /*93.0*/
 		'XXXXXXXXXX',
 		'XXXXXXXXXX',
 		WORKSHEET.ASSIGNED_OPERATOR,
 		WORKSHEET.DATE_GENERATED,
 		PERSONNEL.DESCRIPTION,
-		'XXXXXXXXXX'
+		'XXXXXXXXXX'                                                /*93.0*/
 	   FROM VERSIONED_ANALYSIS,
 		WORKSHEET
 	   LEFT OUTER JOIN PERSONNEL ON PERSONNEL.[IDENTITY] = WORKSHEET.ASSIGNED_OPERATOR 
@@ -14921,13 +14932,13 @@ sqlserver_specific_select
 		'XXXXXXXXXX',
 		VERSIONED_ANALYSIS.CALCULATION,
 		VERSIONED_ANALYSIS.[IDENTITY],
-		'X',
+		'X',                                                        /*93.0*/
 		'XXXXXXXXXX',
 		'XXXXXXXXXX',
 		WORKSHEET.ASSIGNED_OPERATOR,
 		WORKSHEET.DATE_GENERATED,
 		PERSONNEL.DESCRIPTION,
-		'XXXXXXXXXX'
+		'XXXXXXXXXX'                                                /*93.0*/
 	   FROM VERSIONED_ANALYSIS,
 		VERSIONED_COMPONENT,
 		WORKSHEET
@@ -15664,6 +15675,10 @@ table instrument_event;
 
 	field entered_by
 		links_to personnel.identity;
+{101.0}
+	field next_calib_date
+		datatype date;
+{/101.0}
 
 
 table instrument_part_event;
@@ -15689,6 +15704,10 @@ table instrument_part_event;
 
 	field entered_by
 		links_to personnel.identity;
+{101.0}
+	field next_calib_date
+		datatype date;
+{/101.0}
 
 
 table instrument_property;
@@ -16623,6 +16642,7 @@ table versioned_analysis_stock_use;
 
 
 table stock_batch;
+
 
 	field stock
 		links_to parent stock.identity
