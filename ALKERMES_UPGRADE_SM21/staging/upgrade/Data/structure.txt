@@ -1,4 +1,4 @@
-{
+﻿{
 Change History
 ==============
 
@@ -41139,7 +41139,7 @@ sqlserver_specific_select
 	inner join AUDIT_EVENT AE on AT.[TRANSACTION] = AE.[TRANSACTION]
 	inner join AUDIT_DATA AD on AE.[EVENT] = AD.[EVENT]
 	inner join TEST T on AE.RECORD_KEY0 = T.TEST_NUMBER
-	inner join SAMPLE S on T.SAMPLE = S.ID_NUMERIC
+	inner join SAMPLE S on T.SAMPLE = S.ID_NUMERIC COLLATE Latin1_General_CI_AS_WS
 
 	where AE.TABLE_NAME='TEST'
 	and AE.EVENT_ACTION in ('MODIFY','DELETE');
@@ -41204,7 +41204,7 @@ sqlserver_specific_select
 	from AUDIT_TRANSACTION AT 
 	inner join AUDIT_EVENT AE on AT.[TRANSACTION] = AE.[TRANSACTION]
 	inner join AUDIT_DATA AD on AE.[EVENT] = AD.[EVENT]
-	inner join SAMPLE S on AE.RECORD_KEY0 = S.ID_NUMERIC
+	inner join SAMPLE S on AE.RECORD_KEY0 = S.ID_NUMERIC COLLATE Latin1_General_CI_AS_WS
 	
 	where AE.TABLE_NAME='SAMPLE'
 	and AE.EVENT_ACTION in ('MODIFY','DELETE');
@@ -41237,5 +41237,4 @@ table print_event;
           datatype text (50) ;
 
 {/140.0}
-
 
