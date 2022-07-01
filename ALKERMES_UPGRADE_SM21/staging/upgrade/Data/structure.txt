@@ -40450,7 +40450,7 @@ view wsheet_info_sb_view on_table sample,
           
 select_clause
 
-   SELECT   [sample].id_numeric,
+    SELECT   [sample].id_numeric,
            [sample].id_text,
            [sample].[status],
            [sample].login_date,
@@ -40479,28 +40479,28 @@ select_clause
            wsheet_info.record_value,
            wsheet_info.record_version,
            wsheet_info.[description],
-	     [sample].location_id,
-	     [sample].sampling_point,
-	     [sample].sampled_date,
-	     [sample].em_sampled_by,
+             [sample].location_id,
+             [sample].sampling_point,
+             [sample].sampled_date,
+             [sample].em_sampled_by,
            [sample].batch_no,
-	     worksheet . [identity],
-	   [sample].compared
-	 FROM   [sample],
+             worksheet . [identity],
+           [sample].compared
+         FROM   [sample],
    wsheet_info,
            WORKSHEET RIGHT OUTER JOIN TEST on worksheet . link_number = test . worksheet
     WHERE  [sample].id_numeric = test.[sample] AND
-	 [sample].em_sampled_by = '' and
+         [sample].em_sampled_by = '' and
            test.test_number = wsheet_info.test_number and
            (wsheet_info.PROMPT1 <> 'STOCK_BATCH' or
            (wsheet_info.PROMPT1 = 'STOCK_BATCH' and
            wsheet_info.RECORD_VALUE = '' ) )
-           
-   GROUP BY id_numeric, id_text, [sample].[status], login_date, test.test_number, analysis, 
-            test_count, test.[status], test.INSTRUMENT, product, product_version, [standard], standard_id, 
-            preparation_batch, instrument_batch, parent_test, job_name, [sample].[priority], test_priority, 
-            component_list, worksheet, wsheet_info.[identity], field_type, type_analyst, type_checker, wsheet_info.order_num, 
-            record_version, [sample].location_id, sampling_point, sampled_date, em_sampled_by, [sample].batch_no, 
+
+   GROUP BY id_numeric, id_text, [sample].[status], login_date, test.test_number, analysis,
+            test_count, test.[status], test.INSTRUMENT, product, product_version, [standard], standard_id,
+            preparation_batch, instrument_batch, parent_test, job_name, [sample].[priority], test_priority,
+            component_list, worksheet, wsheet_info.[identity], field_type, type_analyst, type_checker, wsheet_info.order_num,
+            record_version, [sample].location_id, sampling_point, sampled_date, em_sampled_by, [sample].batch_no,
             wsheet_info.[description], wsheet_info.record_value, worksheet . [identity], [sample].compared
 UNION ALL
         SELECT s.id_numeric,
@@ -40532,28 +40532,28 @@ UNION ALL
            wi.record_value,
            wi.record_version,
            wi.[description],
-	     s.location_id,
-	     s.sampling_point,
-	     s.sampled_date,
-	     s.em_sampled_by,
+             s.location_id,
+             s.sampling_point,
+             s.sampled_date,
+             s.em_sampled_by,
            s.batch_no,
-	     w . [identity],
-	   sb.reviewed 
+             w . [identity],
+           sb.reviewed
     FROM   [sample] s,
    wsheet_info wi,
    stock_batch sb,
            WORKSHEET w RIGHT OUTER JOIN TEST t on w . link_number = t . worksheet
     WHERE  s.id_numeric = t.[sample] AND
-	 s.em_sampled_by = '' and
+         s.em_sampled_by = '' and
            t.test_number = wi.test_number AND
            (wi.RECORD_VALUE = sb.STOCK_BATCH_ID or
-	   			(wi.RECORD_VALUE = sb.BATCH and
-			sb.BATCH <> '')) 
-   GROUP BY id_numeric, id_text, s.[status], login_date, t.test_number, analysis, 
-            test_count, t.[status], t.INSTRUMENT, product, product_version, [standard], standard_id, 
-            preparation_batch, instrument_batch, parent_test, job_name, s.[priority], test_priority, 
-            component_list, worksheet, wi.[identity], field_type, type_analyst, type_checker, wi.order_num, 
-            record_version, s.location_id, sampling_point, sampled_date, em_sampled_by, s.batch_no, 
+                                (wi.RECORD_VALUE = sb.BATCH and
+                        sb.BATCH <> ''))
+   GROUP BY id_numeric, id_text, s.[status], login_date, t.test_number, analysis,
+            test_count, t.[status], t.INSTRUMENT, product, product_version, [standard], s.standard_id,
+            preparation_batch, instrument_batch, parent_test, job_name, s.[priority], test_priority,
+            component_list, worksheet, wi.[identity], field_type, type_analyst, type_checker, wi.order_num,
+            record_version, s.location_id, sampling_point, sampled_date, em_sampled_by, s.batch_no,
             wi.[description], wi.record_value, w . [identity], sb.reviewed;
 
 {/101.0}
@@ -41113,36 +41113,35 @@ field test_count
       links_to test . test_count;
 
 sqlserver_specific_select
-
-	select 
-	AT.[USER_ID],
-	AT.TRANSACTION_NAME,
-	AT.TRANSACTION_DATE,
-	AE.EVENT_ACTION,
-	AE.EVENT_REASON,
-	AE.RECORD_KEY0,
-	AE.TABLE_NAME,
+        select
+        AT.[USER_ID],
+        AT.TRANSACTION_NAME,
+        AT.TRANSACTION_DATE,
+        AE.EVENT_ACTION,
+        AE.EVENT_REASON,
+        AE.RECORD_KEY0,
+        AE.TABLE_NAME,
       AD.DATA,
-	AD.DATA_REASON,
-	AD.FIELD,
-	AD.VALUE_BEFORE,
-	AD.VALUE_AFTER,
-	S.ID_NUMERIC,
-	S.ID_TEXT,
-	S.AUDITS_REVIEWED,
-	T.ANALYSIS,
-	T.ANALYSIS_VERSION,
-	T.AUDITS_REVIEWED,
+        AD.DATA_REASON,
+        AD.FIELD,
+        AD.VALUE_BEFORE,
+        AD.VALUE_AFTER,
+        S.ID_NUMERIC,
+        S.ID_TEXT,
+        S.AUDITS_REVIEWED,
+        T.ANALYSIS,
+        T.ANALYSIS_VERSION,
+        T.AUDITS_REVIEWED,
       T.TEST_COUNT
 
-	from AUDIT_TRANSACTION AT 
-	inner join AUDIT_EVENT AE on AT.[TRANSACTION] = AE.[TRANSACTION]
-	inner join AUDIT_DATA AD on AE.[EVENT] = AD.[EVENT]
-	inner join TEST T on AE.RECORD_KEY0 = T.TEST_NUMBER
-	inner join SAMPLE S on T.SAMPLE = S.ID_NUMERIC COLLATE Latin1_General_CI_AS_WS
+        from AUDIT_TRANSACTION AT
+        inner join AUDIT_EVENT AE on AT.[TRANSACTION] = AE.[TRANSACTION]
+        inner join AUDIT_DATA AD on AE.[EVENT] = AD.[EVENT]
+        inner join TEST T on AE.RECORD_KEY0 = T.TEST_NUMBER COLLATE Latin1_General_CI_AS_WS
+        inner join SAMPLE S on T.SAMPLE = S.ID_NUMERIC 
 
-	where AE.TABLE_NAME='TEST'
-	and AE.EVENT_ACTION in ('MODIFY','DELETE');
+        where AE.TABLE_NAME='TEST'
+        and AE.EVENT_ACTION in ('MODIFY','DELETE');
 
 view sample_modify_audit_view on_table audit_transaction,
                                      audit_event,
@@ -41184,30 +41183,30 @@ field sample_audits_reviewed
 
 sqlserver_specific_select
 
-	select 
-	AT.[USER_ID],
-	AT.TRANSACTION_NAME,
-	AT.TRANSACTION_DATE,
-	AE.EVENT_ACTION,
-	AE.EVENT_REASON,
-	AE.RECORD_KEY0,
-	AE.TABLE_NAME,
+	select
+        AT.[USER_ID],
+        AT.TRANSACTION_NAME,
+        AT.TRANSACTION_DATE,
+        AE.EVENT_ACTION,
+        AE.EVENT_REASON,
+        AE.RECORD_KEY0,
+        AE.TABLE_NAME,
       AD.DATA,
-	AD.DATA_REASON,
-	AD.FIELD,
-	AD.VALUE_BEFORE,
-	AD.VALUE_AFTER,
-	S.ID_NUMERIC,
-	S.ID_TEXT,
-	S.AUDITS_REVIEWED
-	
-	from AUDIT_TRANSACTION AT 
-	inner join AUDIT_EVENT AE on AT.[TRANSACTION] = AE.[TRANSACTION]
-	inner join AUDIT_DATA AD on AE.[EVENT] = AD.[EVENT]
-	inner join SAMPLE S on AE.RECORD_KEY0 = S.ID_NUMERIC COLLATE Latin1_General_CI_AS_WS
-	
-	where AE.TABLE_NAME='SAMPLE'
-	and AE.EVENT_ACTION in ('MODIFY','DELETE');
+        AD.DATA_REASON,
+        AD.FIELD,
+        AD.VALUE_BEFORE,
+        AD.VALUE_AFTER,
+        S.ID_NUMERIC,
+        S.ID_TEXT,
+        S.AUDITS_REVIEWED
+
+        from AUDIT_TRANSACTION AT
+        inner join AUDIT_EVENT AE on AT.[TRANSACTION] = AE.[TRANSACTION]
+        inner join AUDIT_DATA AD on AE.[EVENT] = AD.[EVENT]
+        inner join SAMPLE S on AE.RECORD_KEY0 = S.ID_NUMERIC COLLATE Latin1_General_CI_AS_WS
+
+        where AE.TABLE_NAME='SAMPLE'
+        and AE.EVENT_ACTION in ('MODIFY','DELETE');
 
 {/138.0 }
 
