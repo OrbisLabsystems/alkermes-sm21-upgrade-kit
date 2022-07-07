@@ -4,6 +4,12 @@ IDENTITY,GROUP_ID,TITLE,MODIFIABLE,REMOVEFLAG,NAME
                     11
 "COMPILE",,"VGL Report Compilation Library","TRUE","FALSE","Compile"
 "$UPGRADE",,"Upgrade report","TRUE","FALSE","$upgrade"
+"$UPGRADE11",,"Upgrade report","TRUE","FALSE","$upgrade11"
+"$UPGRADE112",,"Upgrade report","TRUE","FALSE","$upgrade112"
+"$UPGRADE1123",,"Upgrade report","TRUE","FALSE","$upgrade1123"
+"$UPGRADE121",,"Upgrade report","TRUE","FALSE","$upgrade121"
+"$UPGRADE122",,"Upgrade report","TRUE","FALSE","$upgrade122"
+"$UPGRADE_DATA",,"Upgrade report","TRUE","FALSE","$upgrade_data"
 "$LOAD_WORKFLOW_OLD",,,"TRUE","FALSE","$LOAD_WORKFLOW_OLD"
 "ORL_DB_UPDATES_SM12",,,"TRUE","FALSE","ORL_DB_UPDATES_SM12"
 "UPDATE_DATE",,,"TRUE","FALSE","UPDATE_DATE"
