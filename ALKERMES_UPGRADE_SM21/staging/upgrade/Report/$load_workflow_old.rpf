@@ -1,0 +1,423 @@
+{******************************************************************************
+*
+* Module Name : $LOAD_WORKFLOW
+*
+* Purpose     : Routines to load modified workflows
+*
+* Portability : Not Checked
+*
+* Re-entrant  :
+*
+******************************************************************************}
+
+SET NAME "DEFER/"
+ENABLE WINDOWS
+
+SET COMPILE_OPTION DECLARE
+
+SET NOTPROTECTED
+
+{*****************************************************************************}
+
+JOIN STANDARD_LIBRARY STD_ARRAY
+
+JOIN LIBRARY $LIB_DB
+JOIN LIBRARY $LIB_UTILS
+JOIN LIBRARY $TABLE_LOAD_SAVE_LIB
+
+{*****************************************************************************}
+
+load_workflow_defaults ( "default_1122_", ".wf_csv" )
+
+{*****************************************************************************}
+
+GLOBAL
+
+ROUTINE load_workflow_defaults ( VALUE prefix, VALUE ext )
+
+{
+*
+*	Load workflows from CSV files
+*
+******************************************************************************}
+
+	DECLARE error_message
+
+	{***********************************************************************}
+	{* Delete existing workflows                                           *}
+	{***********************************************************************}
+
+	output_message ( "Deletion of existing default workflows" )
+
+	error_message = remove_existing_workflows ( prefix ,
+	                                            ext    )
+
+	{***********************************************************************}
+	{* Load the new workflow definitions in their place                    *}
+	{***********************************************************************}
+
+	IF error_message = EMPTY THEN
+
+		output_message ( "Loading new default workflows" )
+
+		error_message = load_new_workflows ( prefix ,
+		                                     ext    )
+
+	ENDIF
+
+	RETURN ( error_message )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE remove_existing_workflows ( VALUE prefix ,
+                                    VALUE ext    )
+
+{
+*
+*	Process the contents of the new table details file
+*
+******************************************************************************}
+
+	DECLARE expected_table,
+	        file_name,
+	        line_of_file,
+	        num_of_fields,
+	        value_array,
+	        field_no_check,
+	        end_of_file,
+	        error_occurred,
+	        error_message,
+	        status
+
+	expected_table = "WORKFLOW"
+	file_name = "SMP$DATAFILES:" : prefix : expected_table : ext
+
+	ARRAY value_array ARRAYSIZE ( 0 )
+
+	end_of_file   = FALSE
+	error_occurred = FALSE
+	error_message = ""
+	line_of_file  = 0
+
+	{***********************************************************************}
+	{* Check File Exists                                                   *}
+	{***********************************************************************}
+
+	IF ( NOT ( FILE EXISTS ( file_name ) ) ) THEN
+
+		error_occurred = TRUE
+		error_message = EMPTY
+
+	ENDIF
+
+	{***********************************************************************}
+	{* Open File                                                           *}
+	{***********************************************************************}
+
+	IF ( NOT error_occurred ) THEN
+
+		FILE OPEN file_name, status
+
+		IF ( status <> EMPTY ) THEN
+
+			error_occurred = TRUE
+			error_message = status
+
+		ENDIF
+
+	ENDIF
+
+	{***********************************************************************}
+	{* Check Data                                                          *}
+	{***********************************************************************}
+
+	IF NOT error_occurred THEN
+
+		error_occurred = table_load_save_lib_array_from_csv
+			                                         ( file_name      ,
+			                                           TRUE           ,
+			                                           line_of_file   ,
+			                                           value_array    ,
+			                                           field_no_check ,
+			                                           end_of_file    ,
+			                                           error_message  )
+
+	ENDIF
+
+	IF NOT error_occurred THEN
+
+		IF ( value_array [1] <> expected_table ) THEN
+
+			error_occurred = TRUE
+			error_message = "Incorrect table name, should be " : 
+			                expected_table : ", found " : value_array [1]
+
+		ENDIF
+
+	ENDIF
+
+	{***********************************************************************}
+	{* Read Values                                                         *}
+	{***********************************************************************}
+
+	IF NOT error_occurred THEN
+
+		error_occurred = table_load_save_lib_array_from_csv
+			                                         ( file_name      ,
+			                                           TRUE           ,
+			                                           line_of_file   ,
+			                                           value_array    ,
+			                                           field_no_check ,
+			                                           end_of_file    ,
+			                                           error_message  )
+	ENDIF
+
+	IF NOT error_occurred THEN
+
+		IF ( value_array [1] <> "WORKFLOW_GUID" ) THEN
+
+			error_occurred = TRUE
+			error_message = "Incorrect field order, WORKFLOW_GUID should be first field"
+
+		ENDIF
+
+		num_of_fields = size_of_array ( value_array ) 
+
+	ENDIF
+
+	{***********************************************************************}
+	{* Skip the Field Sizes                                                *}
+	{***********************************************************************}
+
+	IF NOT error_occurred THEN
+
+		table_load_save_lib_array_from_csv ( file_name      ,
+		                                     TRUE           ,
+		                                     line_of_file   ,
+		                                     value_array    ,
+		                                     field_no_check ,
+		                                     end_of_file    ,
+		                                     error_message  )
+
+	ENDIF
+
+	{***********************************************************************}
+	{* Skip the Record Count                                               *}
+	{***********************************************************************}
+
+	IF NOT error_occurred THEN
+
+		table_load_save_lib_array_from_csv ( file_name      ,
+		                                     TRUE           ,
+		                                     line_of_file   ,
+		                                     value_array    ,
+		                                     field_no_check ,
+		                                     end_of_file    ,
+		                                     error_message  )
+
+	ENDIF
+
+	{***********************************************************************}
+	{* Process the data                                                    *}
+	{***********************************************************************}
+
+	IF NOT error_occurred THEN
+
+		error_occurred = table_load_save_lib_array_from_csv ( file_name      ,
+		                                                     TRUE           ,
+		                                                     line_of_file   ,
+		                                                     value_array    ,
+		                                                     field_no_check ,
+		                                                     end_of_file    ,
+		                                                     error_message  )
+
+	ENDIF
+
+	{***********************************************************************}
+	{* Start a write transaction                                           *}
+	{***********************************************************************}
+
+	IF NOT error_occurred THEN
+
+		START WRITE TRANSACTION "Deleting existing default workflows"
+
+	ENDIF
+
+	WHILE ( NOT error_occurred ) AND 
+	      ( NOT end_of_file   ) DO
+
+		IF ( field_no_check <> num_of_fields ) THEN
+
+			error_message = "Incorrect number of fields on line " : line_of_file
+			error_occurred = TRUE
+
+		ELSE
+
+			error_occurred = NOT delete_specific_workflow ( value_array [1] ,
+			                                               error_message   )
+
+			IF NOT error_occurred THEN
+
+				error_occurred = table_load_save_lib_array_from_csv
+				                                 ( file_name      ,
+				                                   TRUE           ,
+				                                   line_of_file   ,
+				                                   value_array    ,
+				                                   field_no_check ,
+				                                   end_of_file    ,
+				                                   error_message  )
+
+			ENDIF
+
+		ENDIF
+
+	ENDWHILE
+
+	{***********************************************************************}
+	{* Commit Changes                                                      *}
+	{***********************************************************************}
+
+	IF ( NOT error_occurred ) THEN
+
+		COMMIT
+
+	ELSE
+
+		ROLLBACK
+
+	ENDIF
+
+	{***********************************************************************}
+	{* Return an appropriate status                                        *}
+	{***********************************************************************}
+
+	IF ( NOT error_occurred ) THEN
+
+		error_message = EMPTY
+
+	ENDIF
+
+	RETURN ( error_message )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE delete_specific_workflow ( VALUE workflow_guid ,
+                                         error_message )
+
+{
+*
+*	Delete the workflow header and workflow_nodes for the specified guid.
+*
+******************************************************************************}
+
+	DECLARE error_occurred ,
+	        wf_header ,
+	        wf_node ,
+	        db_error
+
+	error_occurred = FALSE
+
+	wf_header = SELECT workflow . workflow_guid FOR UPDATE
+	             WHERE workflow_guid = workflow_guid
+
+	IF wf_header = workflow_guid THEN
+
+		db_error = EMPTY
+
+		wf_node = SELECT workflow_node . workflow_id FOR UPDATE
+		           WHERE workflow_id = workflow_guid
+
+		WHILE ( wf_node = wf_header ) AND ( db_error = EMPTY ) DO
+
+			DELETE workflow_node, db_error
+
+			NEXT workflow_node
+
+			wf_node = SELECT workflow_node . workflow_id
+
+		ENDWHILE
+
+		error_occurred = ( db_error <> EMPTY )
+
+		IF ( error_occurred ) THEN
+
+			error_message = "Error deleteing workflow_nodes for " :
+			                workflow_guid : " : " : db_error
+
+		ELSE
+
+			DELETE workflow, db_error
+
+			error_occurred = ( db_error <> EMPTY )
+
+			IF ( error_occurred ) THEN
+
+				error_message = "Error deleteing workflow " :
+				                workflow_guid : " : " : db_error
+
+			ENDIF
+
+		ENDIF
+
+	ELSEIF wf_header = LOCKED THEN
+
+		error_occurred = TRUE
+		error_message = "Error deleteing workflow " :
+		                workflow_guid : " : locked by another user"
+
+	ENDIF
+
+	RETURN ( NOT error_occurred )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE load_new_workflows ( VALUE prefix ,
+                             VALUE ext    )
+
+{
+*
+*	Table load the workflow and workflow_node CSVs
+*
+******************************************************************************}
+
+	load_if_present ( "SMP$DATAFILES:" : prefix : "workflow" : ext ,
+	                  UNCHECKED_WITHOUT_WIPE                       )
+
+	load_if_present ( "SMP$DATAFILES:" : prefix : "workflow_node" : ext ,
+	                  UNCHECKED_WITHOUT_WIPE                            )
+
+	RETURN ( EMPTY )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE load_if_present ( VALUE file_nam  ,
+                          VALUE load_mode )
+
+{
+*	Load CSV if present
+*
+******************************************************************************}
+
+	IF FILE EXISTS ( file_nam ) THEN
+
+		input_csv_file ( file_nam                  ,
+		                 load_mode                 ,
+		                 FALSE                     ,
+		                 SINGLE_TRANSACTION_NUMBER ,
+		                 TRUE                      )
+
+	ENDIF
+
+ENDROUTINE
+
+{*****************************************************************************}
+{*****************************************************************************}
+{*****************************************************************************}

@@ -1,0 +1,446 @@
+{******************************************************************************
+*
+* Module Name   : $UPGRADE
+*
+* Purpose       : Upgrade SampleManager to 10
+*
+* Document Ref. : 
+*
+* Specification :
+*
+* Portability   : Not Checked
+*
+* Re-entrant    : No
+*
+*******************************************************************************}
+
+SET COMPILE_OPTION DECLARE
+SET NOTPROTECTED
+SET NAME "DEFER/"                      
+ENABLE WINDOWS
+
+JOIN STANDARD_LIBRARY STD_ARRAY
+JOIN STANDARD_LIBRARY STD_DATABASE
+JOIN STANDARD_LIBRARY STD_STRUCTURE
+JOIN STANDARD_LIBRARY STD_UTILS
+
+JOIN LIBRARY $LIB_MENU
+JOIN LIBRARY $TABLE_LOAD_SAVE_LIB
+JOIN LIBRARY $MENU_CONVERT
+JOIN LIBRARY $LOAD_TABLE_DEFAULTS
+JOIN LIBRARY $ENTITY_NAMES
+JOIN LIBRARY $CONVERT_CRITERIA
+JOIN LIBRARY $CONVERT_INSTTYPE
+
+{******************************************************************************}
+
+CONSTANT data_dir = "smp$datafiles:"
+CONSTANT data_extn = ".csv"
+
+CONSTANT menu_mytasks_csv    = "smp$datafiles:menu_mytasks.csv"
+CONSTANT menu_toolbar_mtb    = "smp$datafiles:menu_toolbar_90.mtb"
+CONSTANT menu_toolbar_921_10 = "smp$datafiles:menu_toolbar_921_10.mtb"
+CONSTANT menu_toolbar_10_11  = "smp$datafiles:menu_toolbar_10_11.mtb"
+
+{******************************************************************************}
+
+DECLARE upgrade_version
+
+IF GLOBAL ( "PARAM_ACTIVE" ) THEN
+
+	PROMPT FOR upgrade_version
+	
+ELSE
+
+	upgrade_version = ""
+
+ENDIF
+
+IF ( upgrade_version = "9.2.1" ) THEN
+
+	update_master_menu ( "921_10_1" ) { Modifies the settings for a couple of options }
+	update_master_menu ( "921_10_2" ) { Modifies the settings for a couple of options }
+	update_master_menu ( "921_10_3" ) { Modifies the settings for a couple of options }
+
+	correct_master_menu ( )
+
+	import_new_menu_options ( menu_toolbar_921_10 )
+
+	load_table_defaults_main ( "921_10" )
+
+	correct_intervals ( )
+
+	correct_instrument_type_field ( )
+
+	correct_explorer_cabinet_roles ( )
+
+	entity_names_default_blanks_all_tables ( )
+
+	convert_criteria_files ( )
+
+	convert_insttype_to_templates ( )
+
+ENDIF
+
+IF ( upgrade_version = "9.2.1" ) OR 
+   ( upgrade_version = "10.2"  ) OR 
+   ( upgrade_version = "10.3"  ) THEN
+
+	add_new_explorer_items_for_sm11 ( )
+
+	import_new_menu_options ( menu_toolbar_10_11 )
+
+	upgrade_overwrites_for_sm11 ( )
+
+ENDIF
+
+EXIT
+
+{*****************************************************************************}
+
+ROUTINE load_menu_mytasks
+
+{
+* Load CSV files containing mytask entries
+*
+******************************************************************************}
+
+	input_csv_file ( menu_mytasks_csv          ,
+	                 OVERWRITE_TABLE           ,
+	                 FALSE                     ,
+	                 SINGLE_TRANSACTION_NUMBER ,
+	                 TRUE                      )
+	                 
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE update_master_menu ( VALUE upgrade_path )
+
+{
+* Load CSV file containing master menu options
+*
+******************************************************************************}
+
+	input_csv_file ( data_dir : "master_menu_" : upgrade_path  : data_extn ,
+	                 OVERWRITE_TABLE                                       ,
+	                 FALSE                                                 ,
+	                 SINGLE_TRANSACTION_NUMBER                             ,
+	                 TRUE                                                  )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE add_new_explorer_items ( VALUE upgrade_path ,
+                                 VALUE load_mode    )
+
+{
+* Load CSV files containing new cabinets
+*
+******************************************************************************}
+
+	load_if_present ( data_dir:"explorer_cabinet_":upgrade_path:data_extn ,
+	                  load_mode                                           )
+
+	load_if_present ( data_dir:"explorer_folder_":upgrade_path:data_extn  ,
+	                  load_mode                                           )
+
+	load_if_present ( data_dir:"explorer_group_":upgrade_path:data_extn   ,
+	                  load_mode                                           )
+
+	load_if_present ( data_dir:"explorer_rmb_":upgrade_path:data_extn     ,
+	                  load_mode                                           )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE add_new_explorer_items_for_sm11
+
+{
+* Load MCSV files containing new cabinets
+*
+******************************************************************************}
+
+	input_mcsv_file ( "smp$datafiles:explorerupgrade1100.mcsv" ,
+	                  IGNORE_FILE                              , { overwrite mode }
+	                  FALSE                                    , { allowed to prompt }
+	                  0                                        , { transaction size }
+	                  TRUE                                     ) { flash messages }
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE upgrade_overwrites_for_sm11
+
+{
+* Load MCSV files containing new cabinets
+*
+******************************************************************************}
+
+	load_if_present ( data_dir:"phrase_10_11":data_extn                   ,
+	                  OVERWRITE_TABLE                                     )
+
+	load_if_present ( data_dir:"master_menu_10_11":data_extn              ,
+	                  OVERWRITE_TABLE                                     )
+
+	load_if_present ( data_dir:"explorer_aux_10_11":data_extn             ,
+	                  OVERWRITE_TABLE                                     )
+
+	load_if_present ( data_dir:"criteria_condition_10_11":data_extn       ,
+	                  OVERWRITE_TABLE                                     )
+
+ENDROUTINE
+
+{*****************************************************************************}
+
+ROUTINE load_if_present ( VALUE file_nam  ,
+                          VALUE load_mode )
+
+{
+* Load CSV if present
+*
+******************************************************************************}
+
+	IF FILE EXISTS ( file_nam ) THEN
+
+		input_csv_file ( file_nam                  ,
+		                 load_mode                 ,
+		                 FALSE                     ,
+		                 SINGLE_TRANSACTION_NUMBER ,
+		                 TRUE                      )
+
+	ENDIF
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE import_new_menu_options ( VALUE menu_import_file )
+
+{
+*     Import the new menu options into the SYSTEM menu
+*
+*******************************************************************************}
+
+	menu_convert_load_menu_file ( "SYSTEM", menu_import_file )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE correct_intervals
+
+{
+*     Update intervals that are wrong
+*
+*******************************************************************************}
+
+	DECLARE tables ,
+	        max_table ,
+	        table_no ,
+	        table_nam ,
+	        field_no ,
+	        max_field ,
+	        field_nam ,
+	        fields ,
+	        field_type ,
+	        is_view
+
+	get_table_names ( tables )
+	
+	max_table = size_of_array ( tables )
+
+	table_no = 1
+
+	WHILE table_no <= max_table DO
+
+		table_nam = STRIP ( tables [ table_no, 1 ])
+
+		get_table_details 'table_nam' ,
+		                  "IS_VIEW"   ,
+		                  is_view
+
+		IF NOT is_view THEN
+
+			get_field_names ( table_nam , fields )
+
+			field_no = 1
+			max_field = size_of_array ( fields )
+
+			WHILE field_no <= max_field DO
+
+				IF NOT fields [ field_no , 2 ] THEN
+
+					field_nam = STRIP ( fields [ field_no , 1 ])
+
+					GET_FIELD_DETAILS 'table_nam' . 'field_nam' ,
+					                  "DATA_TYPE"               ,
+					                  field_type
+
+					IF field_type = "Interval" THEN
+
+						correct_interval_field ( table_nam ,
+						                         field_nam )
+
+					ENDIF
+
+				ENDIF
+
+				field_no = field_no + 1
+
+			ENDWHILE
+
+		ENDIF
+
+		table_no = table_no + 1
+
+	ENDWHILE
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE correct_interval_field ( table_nam ,
+                                 field_nam )
+
+{
+*     Call dynamic SQL to update the intervals
+*
+*******************************************************************************}
+
+	DECLARE sql_statement
+
+	IF ( database_system ( ) = DATABASE_ORACLE ) THEN
+		sql_statement = "UPDATE " : STRIP ( table_nam ) : 
+		                " SET " : STRIP ( field_nam ) :
+		                " = '   0 00:00:00.00' WHERE " : STRIP ( field_nam ) :
+		                " = '0000 00:00:00.00'"
+	ELSE
+		sql_statement = "UPDATE [" : STRIP ( table_nam ) : 
+		                "] SET [" : STRIP ( field_nam ) :
+		                "] = '   0 00:00:00.00' WHERE [" : STRIP ( field_nam ) :
+		                "] = '0000 00:00:00.00'"
+	ENDIF
+
+	execute_sql ( sql_statement )
+	execute_sql ( "COMMIT" )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE correct_master_menu
+
+{
+*     Call dynamic SQL to update various master menu options
+*
+*******************************************************************************}
+
+	DECLARE sql_statement
+
+	sql_statement = "UPDATE master_menu SET table_name = 'VERSIONED_ANALYSIS' WHERE table_name = 'ANALYSIS_VIEW'"
+	execute_sql ( sql_statement )
+
+	sql_statement = "UPDATE master_menu SET table_name = 'INCIDENT_CHECKLIST' WHERE table_name = 'CHECKLIST'"
+	execute_sql ( sql_statement )
+
+	sql_statement = "UPDATE master_menu SET icon = '' WHERE table_name = 'MLP_FAMILY_HEADER'"
+	execute_sql ( sql_statement )
+
+	execute_sql ( "COMMIT" )
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE correct_instrument_type_field
+
+{
+*     Update explorer use of INSTTYPE_ID field name
+*
+*******************************************************************************}
+
+	DECLARE folder_num ,
+	        group
+
+	START WRITE TRANSACTION "Upgrade update of instrument type field name"
+
+	folder_num = SELECT explorer_folder . folder_number
+	             WHERE table_name = "INSTRUMENT"
+
+
+	WHILE folder_num <> EMPTY DO
+
+		REPEAT
+
+			group = SELECT explorer_group . field_name FOR UPDATE
+			        WHERE cabinet       = ( SELECT explorer_folder . cabinet ) AND
+			              folder_number = folder_num AND
+			              field_name    = "INSTTYPE_ID"
+
+			IF ( group <> EMPTY ) THEN
+
+				ASSIGN explorer_group . field_name = "INSTRUMENT_TEMPLATE"
+				UPDATE explorer_group
+
+			ENDIF
+
+		UNTIL ( group = EMPTY )
+
+		NEXT explorer_folder
+
+		folder_num = SELECT explorer_folder . folder_number
+
+	ENDWHILE
+	
+	COMMIT
+
+ENDROUTINE
+
+{******************************************************************************}
+
+ROUTINE correct_explorer_cabinet_roles
+
+{
+*	Update explorer roles - move from explorer_role table to 
+*	                        explorer_cabinet_role
+*
+*******************************************************************************}
+
+	DECLARE cabinet ,
+	        status
+
+	status = EMPTY
+
+	cabinet = SELECT explorer_role . cabinet FOR UPDATE
+	             WHERE folder_number = 0
+
+	WHILE ( cabinet <> EMPTY ) DO
+
+		START WRITE TRANSACTION "Upgrade update of explorer cabinet roles"
+
+		RESERVE ENTRY explorer_cabinet_role, cabinet : SELECT explorer_role . role_id, status
+
+		IF status = EMPTY THEN
+
+			UPDATE explorer_cabinet_role
+			
+		ENDIF
+
+		DELETE explorer_role
+			
+		COMMIT
+		
+		cabinet = SELECT explorer_role . cabinet FOR UPDATE
+		             WHERE folder_number = 0
+
+	ENDWHILE
+
+ENDROUTINE
+
+{*****************************************************************************}
+{*****************************************************************************}
+{*****************************************************************************}
