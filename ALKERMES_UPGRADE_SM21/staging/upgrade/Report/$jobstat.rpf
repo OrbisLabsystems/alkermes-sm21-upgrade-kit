@@ -1,4 +1,4 @@
-{******************************************************************************
+﻿{******************************************************************************
 *
 * Module Name   : $JOBSTAT
 *
@@ -55,7 +55,7 @@ ROUTINE set_status_r
 
 	CALL_ROUTINE "set_status_r" IN LIBRARY "$SMIDI_JOBSTAT"
 
-ENDROUTINE
+
 
 	CALL_ROUTINE "set_status_s" IN LIBRARY "$SMIDI_JOBSTAT"
 

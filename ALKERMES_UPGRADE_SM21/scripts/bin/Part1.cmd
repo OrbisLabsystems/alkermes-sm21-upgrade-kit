@@ -54,17 +54,17 @@ ECHO ***************************************************************************
 ECHO Copy files from Staging folder
 ECHO ************************************************************************************
 
-xcopy /e "%STAGE:"=%\12.3\Calculation"            "%INSTANCE_ROOT:"=%\Calculation" /Y
-xcopy /e "%STAGE:"=%\12.3\Limit_Calculation"      "%INSTANCE_ROOT:"=%\Limit_Calculation" /Y
-xcopy /e "%STAGE:"=%\12.3\Resultfiles"            "%INSTANCE_ROOT:"=%\ResultFiles" /Y
-xcopy /e "%STAGE:"=%\12.3\Sig_Figs"               "%INSTANCE_ROOT:"=%\Sig_Figs" /Y
-xcopy /e "%STAGE:"=%\12.3\Syntax"                 "%INSTANCE_ROOT:"=%\Syntax" /Y
-xcopy /e "%STAGE:"=%\12.3\Text"                   "%INSTANCE_ROOT:"=%\Text" /Y
-xcopy /e "%STAGE:"=%\12.3\Textreport"             "%INSTANCE_ROOT:"=%\Textreport" /Y
-xcopy /e "%STAGE:"=%\12.3\Userfiles"              "%INSTANCE_ROOT:"=%\Userfiles" /Y
-xcopy /e "%STAGE:"=%\12.3\Resource\LabelTemplate" "%INSTANCE_ROOT:"=%\Resource\LabelTemplate" /Y
-xcopy /e "%STAGE:"=%\12.3\Worksheet"              "%INSTANCE_ROOT:"=%\Worksheet" /Y
-xcopy "%STAGE:"=%\12.3\Data\audits.sec"           "%INSTANCE_ROOT:"=%\Data" /Y
+xcopy /e "%STAGE:"=%\10.2\Calculation"            "%INSTANCE_ROOT:"=%\Calculation" /Y
+xcopy /e "%STAGE:"=%\10.2\Limit_Calculation"      "%INSTANCE_ROOT:"=%\Limit_Calculation" /Y
+xcopy /e "%STAGE:"=%\10.2\Resultfiles"            "%INSTANCE_ROOT:"=%\ResultFiles" /Y
+xcopy /e "%STAGE:"=%\10.2\Sig_Figs"               "%INSTANCE_ROOT:"=%\Sig_Figs" /Y
+xcopy /e "%STAGE:"=%\10.2\Syntax"                 "%INSTANCE_ROOT:"=%\Syntax" /Y
+xcopy /e "%STAGE:"=%\10.2\Text"                   "%INSTANCE_ROOT:"=%\Text" /Y
+xcopy /e "%STAGE:"=%\10.2\Textreport"             "%INSTANCE_ROOT:"=%\Textreport" /Y
+xcopy /e "%STAGE:"=%\10.2\Userfiles"              "%INSTANCE_ROOT:"=%\Userfiles" /Y
+xcopy /e "%STAGE:"=%\10.2\Resource\LabelTemplate" "%INSTANCE_ROOT:"=%\Resource\LabelTemplate" /Y
+xcopy /e "%STAGE:"=%\10.2\Worksheet"              "%INSTANCE_ROOT:"=%\Worksheet" /Y
+xcopy "%STAGE:"=%\10.2\Data\audits.sec"           "%INSTANCE_ROOT:"=%\Data" /Y
 
 ECHO ************************************************************************************
 ECHO Copy Upgrade folder from Staging folder to %INSTANCE_ROOT%\Upgrade21 folder
@@ -96,13 +96,13 @@ ECHO ***************************************************************************
 ECHO Create Entity Definitions
 ECHO ************************************************************************************
 
-%EXE%CreateEntityDefinition -noschemabuild -instance %SM_INSTANCE%
+%EXE%CreateEntityDefinition -noschemabuild -instance SM21X_SB
 
 ECHO ************************************************************************************
 ECHO Rebuild Tables and Indexes
 ECHO ************************************************************************************
 
-%EXE%convert_table -instance %SM_INSTANCE% -mode convert -tables * -noconfirm
+%EXE%convert_table -instance SM21X_SB -mode convert -tables * -noconfirm
 
 ECHO ************************************************************************************
 ECHO Create Messages

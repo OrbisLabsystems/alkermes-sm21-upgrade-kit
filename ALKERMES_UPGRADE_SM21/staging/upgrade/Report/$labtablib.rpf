@@ -1,4 +1,4 @@
-{******************************************************************************
+﻿{******************************************************************************
 *
 * Module Name   : $LABTABLIB
 *
@@ -60,16 +60,13 @@ JOIN STANDARD_LIBRARY STD_PROMPT
 JOIN STANDARD_LIBRARY STD_UTILS
 JOIN STANDARD_LIBRARY STD_VGL
 JOIN STANDARD_LIBRARY STD_WINDOW
-JOIN STANDARD_LIBRARY STD_WORKFLOW
 
+JOIN LIBRARY $LIB_INSPECT
 JOIN LIBRARY $GEN_APPR
 JOIN LIBRARY $INSTALL_WINDOW
 JOIN LIBRARY $LABTAB_IMPRINT
-JOIN LIBRARY $LIB_DB
 JOIN LIBRARY $LIB_DYNAMIC_SQL
 JOIN LIBRARY $LIB_GRID
-JOIN LIBRARY $LIB_INSPECT
-JOIN LIBRARY $LIB_TRANSLATE
 JOIN LIBRARY $LIB_UTILS
 JOIN LIBRARY $LINE_EDITOR
 JOIN LIBRARY $PRINT_LTE
@@ -488,9 +485,6 @@ ENDROUTINE
 	                  "INSPECTION_FIELD"                ,
 	                  labtable . inspection_field
 
-	lib_translate_prompt_details ( labtable . name_of_table ,
-	                               prompt_details           )
-
         labtablib_create_prompt_details ( labtable                  ,
                                           prompt_details            ,
                                           labtable . prompt_details ,
@@ -589,10 +583,10 @@ ENDROUTINE
 
 	ELSEIF operation = "MIGRATE_DATA" THEN
 
-		labtable_migrate ( labtable, header_mess,
+		labtable_migrate ( labtable, header_mess, 
 		                   fields_to_output     )
 		need_screen = FALSE
-
+	
         ENDIF
 
         IF need_screen THEN
@@ -873,8 +867,7 @@ ENDROUTINE
 
 	DECLARE identity_count  ,
 	        prompt_object   ,
-	        count           ,
-	        old_param_active
+	        count
 
 	identity_count = 1
 
@@ -1019,12 +1012,7 @@ ENDROUTINE
 
 				IF role_lib_has_privilege ( ROLE_LIB_PRIV_APPROVE_ON_BEHALF ) THEN
 
-					old_param_active = GLOBAL ( "PARAM_ACTIVE" )
-					SET GLOBAL "PARAM_ACTIVE" TO FALSE
-
 					labtable . approve_as = prompt_for_approver ( )
-
-					SET GLOBAL "PARAM_ACTIVE" TO old_param_active
 
 					IF labtable . approve_as = EMPTY THEN
 						EXIT
@@ -2298,15 +2286,13 @@ ENDROUTINE
 	        temp            ,
 	        new_id          ,
 	        count           ,
-	        select_array    ,
-	        needs_select    ,
-	        inspection_level
-
+	        select_array	,
+	        needs_select
+	 
 
 	reset_data = TRUE
 	form       = self . parent_prompt
 	labtable   = form . user_info
-	inspection_level = lib_inspect_get_approval_setting ( labtable . name_of_table , "APPROVAL_INSPECT_SECURITY" )
 
 	ARRAY select_array ARRAY_SIZE ( 0, 3 )
 
@@ -2515,7 +2501,7 @@ ENDROUTINE
 
 		ENDIF
 
-	ENDIF
+	ENDIF		
 
 	IF needs_select THEN
 
@@ -2582,7 +2568,7 @@ ENDROUTINE
 		id_is_ok = FALSE
 
 	ELSE
-
+	
 		IF ( form . active_prompt < labtable . number_key0_fields ) AND
 		       ( labtable . key0_fields [ form . active_prompt + 1 ] = labtable . version_field ) THEN
 
@@ -2723,15 +2709,10 @@ ENDROUTINE
 			                   "KEY0_FIELD"                   ,
 			                   is_key
 
-			IF( field_names [ count, 1 ] = labtable . name_field ) AND
-			  ( labtable . operation <> OPERATION_NEW_VERSION ) THEN
-
-				{ Do nothing }
-				{ Don't copy the name field if we're not creating a new version }
-
-			ELSEIF ( NOT is_key ) AND
-			       ( NOT field_names [ count , 2 ] ) AND
-			       ( interface_copy_flag ( labtable, field_names [ count, 1 ] ) ) THEN
+           		IF ( NOT is_key ) AND 
+           		   ( NOT field_names [ count , 2 ] ) AND
+           		   ( field_names [ count, 1 ] <> labtable . name_field ) AND
+               		   ( interface_copy_flag ( labtable, field_names [ count, 1 ] ) ) THEN
 
 				ASSIGN 'labtable . name_of_table' . 'field_names [ count , 1 ]'
 				  IN OBJECT labtable = SELECT 'labtable . name_of_table' .
@@ -2796,7 +2777,7 @@ ENDROUTINE
 ROUTINE interface_copy_flag ( labtable, VALUE field )
 
 {
-* Checks the value of the copy flag the interface. If set to No, then the
+* Checks the value of the copy flag the interface. If set to No, then the 
 * value of the field is not copied to the new record.
 *
 ******************************************************************************}
@@ -2832,22 +2813,22 @@ ENDROUTINE
 *
 *
 ******************************************************************************}
-
+	
 	DECLARE labtable ,
-		form
-
+		form 
+		
 	form          = self . parent_prompt
 	labtable      = form . user_info
 
-	IF ( self . get_lastkey ( ) <> "DO" )   AND
+	IF ( self . get_lastkey ( ) <> "DO" )   AND 
 	   ( self . get_lastkey ( ) <> "EXIT" ) THEN
 
 		IF NOT approval_check_security ( labtable ) THEN
 			self . set_lastkey ( "RETURN" )
 		ENDIF
 	ENDIF
-
-
+		
+		
 ENDROUTINE
 
 
@@ -2862,8 +2843,7 @@ ENDROUTINE
 
 	DECLARE labtable      ,
 	        form          ,
-	        count         ,
-	        current_value
+	        count
 
 	form          = self . parent_prompt
 	labtable      = form . user_info
@@ -2881,21 +2861,6 @@ ENDROUTINE
 	WHILE count <= labtable . number_key0_fields DO
 
 		IF labtable . key0_fields [ count ] = labtable . version_field THEN
-
-			{ If the version number was passed in via RMB,    }
-			{ the original_text holds the new version number, }
-			{ Swap them back                                  }
-
-			IF variable_is_assigned ( form . prompt_objects [ count ] . original_text ) THEN
-
-				current_value = form . prompt_objects [ count ] . text
-
-				form . prompt_objects [ count ] . set_text (
-				                form . prompt_objects [ count ] . original_text )
-
-				form . prompt_objects [ count ] . original_text = current_value
-
-			ENDIF
 
 			labtable . identity = labtable . identity :
 			                      PACKED_DECIMAL ( form . prompt_objects [ count ] . value )
@@ -2929,8 +2894,7 @@ ENDROUTINE
                 editor_object  ,
                 count          ,
                 continue       ,
-                status         ,
-                old_version
+                status
 
         status = EMPTY
 
@@ -2946,17 +2910,11 @@ ENDROUTINE
 
 			IF labtable . key0_fields [ count ] = labtable . version_field THEN
 
-				IF variable_is_assigned ( form . prompt_objects [ count ] . original_text ) AND
-				   ( form . prompt_objects [ count ] . original_text <>
-				     form . prompt_objects [ count ] . text             ) THEN
-					old_version = numeric ( form . prompt_objects [ count ] . original_text )
-				ELSE
-					old_version = numeric ( form . prompt_objects [ count ] . value ) - 1
-				ENDIF
-
 				labtable . copy_value = labtable . copy_value :
-				                          NUMBER_TO_TEXT ( old_version  ,
-				                                           "9999999999" )
+				                        NUMBER_TO_TEXT ( form                     .
+				                                         prompt_objects [ count ] .
+				                                         value - 1                  ,
+				                                         "9999999999"               )
 
 			ELSE
 
@@ -3335,7 +3293,7 @@ ENDROUTINE
 
 	ENDIF
 
-	IF valid THEN
+	IF valid THEN	
 
 		IF NOT transaction_is_write ( ) THEN
 
@@ -3367,7 +3325,7 @@ ENDROUTINE
 
 			ENDIF
 
-			IF lib_inspect_get_approval_setting ( labtable . name_of_table , "APPROVAL_SUBMIT_ON_ADD" ) THEN
+			IF GLOBAL ( "APPROVAL_SUBMIT_ON_ADD" ) THEN
 
 				IF labtable . ask_for_submit THEN
 					submit_record = confirm_with_text ( get_user_message ( "LABTABLIB_SUBMIT_NOW" , 1 ) )
@@ -3382,7 +3340,7 @@ ENDROUTINE
 
 					IF ( SELECT 'labtable . name_of_table' .
 					          'labtable . approval_field' = APPR_APPROVED ) AND
-					   ( lib_inspect_get_approval_setting ( labtable . name_of_table , "APPROVAL_INSPECT_SECURITY" ) <> "LOW"  ) THEN
+					   ( GLOBAL ( "APPROVAL_INSPECT_SECURITY" ) <> "LOW"  ) THEN
 						flash_message ( get_user_message ( "LABTABLIB_AUTO_APPR" , 1 ) , TRUE )
 					ENDIF
 
@@ -3708,7 +3666,7 @@ ENDROUTINE
 {*****************************************************************************}
 
 	ROUTINE labtablib_list ( labtable         ,
-	                         fields_to_output )
+				 fields_to_output )
 
 {
 *
@@ -3722,26 +3680,11 @@ ENDROUTINE
 	        count            ,
 	        bar_counter      ,
 	        select_array     ,
-	        imprint          ,
-	        id_array
+	        imprint
 
 	imprint = client_get_imprint_path ( )
 
-	IF GLOBAL ( "TASK_REDIRECT_ACTION_LIST" ) THEN
-
-		ARRAY id_array ARRAYSIZE ( 0 )
-
-		success = run_task ( "LabtableListTask"       ,
-		                     labtable . name_of_table ,
-		                     "LIST"                   ,
-		                     labtable . name_of_table ,
-		                     id_array                 )
-
-		IF success <> EMPTY THEN
-			flash_message ( success, TRUE )
-		ENDIF
-
-	ELSEIF imprint <> EMPTY THEN
+ 	IF imprint <> EMPTY THEN
 
 		labtab_imprint_report ( labtable . name_of_table      ,
 		                        labtable . user_name_of_table ,
@@ -3750,122 +3693,124 @@ ENDROUTINE
 
 	ELSE
 
-		SET FORMAT "999999"
-		ARRAY data_input ARRAY_SIZE ( 0 )
+        	set format "999999"
+	        ARRAY data_input ARRAY_SIZE ( 0 )
 
-		count = SELECT COUNT 'labtable . name_of_table'
+        	count = select count 'labtable . name_of_table'
 
-		set_up_install_window_class ( )
+	        set_up_install_window_class ( )
 
-		CREATE OBJECT INSTALL_WINDOW_CLASS , bar_counter
+	        CREATE OBJECT INSTALL_WINDOW_CLASS , bar_counter
 
-		bar_counter . header      = get message ( 2544 , 1 )
-		bar_counter . row         = 15
-		bar_counter . start_value = 0
-		bar_counter . end_value   = count
+        	bar_counter . header      = get message ( 2544 , 1 )
+	        bar_counter . row         = 15
+        	bar_counter . start_value = 0
+	        bar_counter . end_value   = count
+	        bar_counter . start_install ( )
 
-		bar_counter . start_install ( )
+        	SET NAME "defer/"
+	        output_list_header ( labtable )
 
-		SET NAME "defer/"
-		output_list_header ( labtable )
+        	get_field_details 'labtable . name_of_table'     .
+                	          'labtable . key0_fields [ 1 ]'   ,
+                        	   "DATA_TYPE"                     ,
+	                            data_type
 
-		GET_FIELD_DETAILS 'labtable . name_of_table' . 'labtable . key0_fields [ 1 ]' ,
-		                  "DATA_TYPE"                                                 ,
-		                  data_type
+        	ARRAY select_array ARRAY_SIZE ( 0, 3 )
 
-		ARRAY select_array ARRAY_SIZE ( 0, 3 )
 
-		IF INDEX ( "TEXTIDENTITY" , TOUPPER ( data_type ) ) <> 0 THEN
 
-			array_select_add ( select_array                 ,
-			                   ARRAY_SELECT_NE              ,
-			                   labtable . key0_fields [ 1 ] ,
-			                   EMPTY                        )
+	        IF INDEX ( "TEXTIDENTITY" , TOUPPER ( data_type ) ) <> 0 THEN
 
-		ELSEIF INDEX ( "INTEGEREAL" , TOUPPER ( data_type ) ) <> 0 THEN
+        	        array_select_add ( select_array                 ,
+                	                   ARRAY_SELECT_NE              ,
+                        	           labtable . key0_fields [ 1 ] ,
+                                	   EMPTY                        )
 
-			array_select_add ( select_array                 ,
-			                   ARRAY_SELECT_NE              ,
-			                   labtable . key0_fields [ 1 ] ,
-			                   0                            )
+	        ELSEIF INDEX ( "INTEGEREAL" , TOUPPER ( data_type ) ) <> 0 THEN
 
-			array_select_add ( select_array                 ,
-			                   ARRAY_SELECT_OR              ,
-			                   EMPTY                        ,
-			                   EMPTY                        )
+        	        array_select_add ( select_array                 ,
+                	                   ARRAY_SELECT_NE              ,
+                        	           labtable . key0_fields [ 1 ] ,
+                                	   0                            )
 
-			array_select_add ( select_array                 ,
-			                   ARRAY_SELECT_EQ              ,
-			                   labtable . key0_fields [ 1 ] ,
-			                   0                            )
+	                array_select_add ( select_array                 ,
+        	                           ARRAY_SELECT_OR              ,
+                	                   EMPTY                        ,
+                        	           EMPTY                        )
 
-		ENDIF
+	                array_select_add ( select_array                 ,
+        	                           ARRAY_SELECT_EQ              ,
+                	                   labtable . key0_fields [ 1 ] ,
+                        	           0                            )
 
-		count = 1
+	        ENDIF
 
-		WHILE count <= labtable . number_key0_fields DO
+        	count = 1
 
-			array_select_add ( select_array                     ,
-			                   ARRAY_SELECT_ORDER               ,
-			                   labtable . key0_fields [ count ] ,
-			                   ARRAY_SELECT_ASCENDING           )
+	        WHILE count <= labtable . number_key0_fields DO
 
-			count = count + 1
+        	        array_select_add ( select_array                     ,
+                	                   ARRAY_SELECT_ORDER               ,
+                        	           labtable . key0_fields [ count ] ,
+                                	   ARRAY_SELECT_ASCENDING           )
 
-		ENDWHILE
+	                count = count + 1
 
-		array_select ( labtable . name_of_table ,
-		               FALSE                    ,
-		               select_array             )
+	        ENDWHILE
 
-		output_correct_prompt_sizes ( labtable, fields_to_output )
+        	array_select ( labtable . name_of_table ,
+                	       FALSE                    ,
+	                       select_array             )
 
-		ident = SELECT 'labtable . name_of_table' . 'labtable . key0_fields [ 1 ]'
+        	output_correct_prompt_sizes ( labtable, fields_to_output )
 
-		WHILE ( ident <> empty ) DO
+	        ident = select 'labtable . name_of_table' .
+        	               'labtable . key0_fields [ 1 ]'
 
-			bar_counter . increase_one ( )
+	        WHILE ( ident <> empty ) DO
 
-			read_info ( ident      ,
-			            data_input ,
-			            success    ,
-			            FALSE      ,
-			            FALSE      ,
-			            labtable   )
+        	        bar_counter . increase_one ( )
 
-			IF success THEN
+                	read_info ( ident      ,
+                        	    data_input ,
+	                            success    ,
+        	                    FALSE      ,
+                	            FALSE      ,
+                        	    labtable   )
 
-				IF labtable . remove_field <> EMPTY THEN
+	                IF success THEN
 
-					IF NOT SELECT 'labtable . name_of_table' .
-					              'labtable . remove_field'  THEN
+        	                IF labtable . remove_field <> EMPTY THEN
 
-						output_list_entry ( labtable         ,
-						                    data_input       ,
-						                    fields_to_output )
+                	                IF NOT select 'labtable . name_of_table' .
+                        	                      'labtable . remove_field'  THEN
 
-					ENDIF
+                                	        output_list_entry ( labtable   ,
+                                        	                    data_input ,
+                                                	            fields_to_output )
 
-				ELSE
+	                                ENDIF
+        	                ELSE
 
-					output_list_entry ( labtable         ,
-					                    data_input       ,
-					                    fields_to_output )
+                	                output_list_entry ( labtable   ,
+                        	                            data_input ,
+                                	                    fields_to_output )
 
-				ENDIF
+	                        ENDIF
 
-			ENDIF
+        	        ENDIF
 
-			NEXT 'labtable . name_of_table'
+	                NEXT 'labtable . name_of_table'
 
-			ident = SELECT 'labtable . name_of_table' .
-			               'labtable . key0_fields [ 1 ]'
+        	        ident = select 'labtable . name_of_table' .
+                	               'labtable . key0_fields [ 1 ]'
 
-		ENDWHILE
+	        ENDWHILE
 
-		bar_counter . end_install ( )
+        	bar_counter . end_install ( )
 
-		flush_literal
+	        flush_LITERAL
 
 	ENDIF
 
@@ -3886,34 +3831,17 @@ ENDROUTINE
 	        ident      ,
 	        data_input ,
 	        success    ,
-	        imprint    ,
-	        id_array
+	        imprint
 
 	IF get_ident ( ident                    ,
 	               get message ( 2553 , 1 ) ,
 	               labtable                 ,
 	               APPROVAL_ANY             ) THEN
 
-		labtable . identity = ident
+	        labtable . identity = ident
 		imprint = client_get_imprint_path ( )
 
-		IF GLOBAL ( "TASK_REDIRECT_ACTION_PRINT" ) THEN
-
-			id_array = lib_db_padded_to_array (
-			                     labtable . name_of_table ,
-			                     ident                    )
-
-			success = run_task ( "LabtablePrintTask"      ,
-			                     labtable . name_of_table ,
-			                     "PRINT"                  ,
-			                     labtable . name_of_table ,
-			                     id_array                 )
-
-			IF success <> EMPTY THEN
-				flash_message ( success, TRUE )
-			ENDIF
-
-		ELSEIF imprint <> EMPTY THEN
+		IF imprint <> EMPTY THEN
 
 			print_lte ( labtable )
 
@@ -3943,14 +3871,14 @@ ENDROUTINE
 			IF success THEN
 
 				output_print_details ( ident      ,
-				                       data_input ,
-				                       labtable   )
+		                                       data_input ,
+		                                       labtable   )
 
 				perform_special_operations ( labtable , "PRINT" )
 
 			ENDIF
 
-			flush_literal
+			flush_LITERAL
 
 		ENDIF
 
@@ -4021,7 +3949,7 @@ ENDROUTINE
 
 	DECLARE new_help
 
-	ident = " "
+        ident = " "
 
 	IF variable_is_assigned ( labtable . help_context ) THEN
 
@@ -4033,7 +3961,7 @@ ENDROUTINE
 
 	ENDIF
 
-	RETURN ( vgl_prompt_for_new_in_window ( labtable . name_of_table      ,
+        RETURN ( vgl_prompt_for_new_in_window ( labtable . name_of_table      ,
 	                                        labtable . input_message      ,
 	                                        capitalise ( top_line ) : " " :
 	                                        labtable . user_name_of_table ,
@@ -4530,12 +4458,12 @@ ENDROUTINE
 
 	ELSEIF operation = "SAVE" THEN
 
-		IF labtable . text_file_copied THEN
+	IF labtable . text_file_copied THEN
 
-			file_name = form_file_name ( labtable , identity )
-			temp_file_name = form_temp_file_name ( labtable , identity )
+		file_name = form_file_name ( labtable , identity )
+		temp_file_name = form_temp_file_name ( labtable , identity )
 
-			IF FILE EXISTS ( temp_file_name ) THEN
+		IF FILE EXISTS ( temp_file_name ) THEN
 
 				GET_TABLE_DETAILS 'labtable . name_of_table' ,
 				                  "FULL_DESCRIPTION"         ,
@@ -4583,8 +4511,8 @@ ENDROUTINE
 {*****************************************************************************}
 
 	ROUTINE edit_file (       labtable ,
-	                    VALUE do_edit  ,
-	                          identity )
+			    VALUE do_edit  ,
+				  identity )
 
 {
 * Edit or read description text files
@@ -4623,11 +4551,11 @@ ENDROUTINE
 			IF FILE EXISTS ( file_name ) THEN
 
 				get_file_attributes ( file_name       ,
-				                      file_attributes ,
-				                      file_created    ,
-				                      file_modified   ,
-				                      file_high_size  ,
-				                      file_low_size   )
+			                              file_attributes ,
+			                              file_created    ,
+			                              file_modified   ,
+			                              file_high_size  ,
+			                              file_low_size   )
 
 				file_read_only = ( file_attributes MOD 2 = 1 )
 
@@ -4656,17 +4584,12 @@ ENDROUTINE
 
 		ELSE
 
-			IF NOT labtable . text_file_copied THEN
-
-				BLOB_TO_FILE ( labtable . name_of_table ,
-				               full_description_field   ,
-				               temp_file_name           )
-
-				labtable . text_file_copied = TRUE
-
-			ENDIF
+			BLOB_TO_FILE ( labtable . name_of_table ,
+			               full_description_field   ,
+			               temp_file_name           )
 
 			edit_allowed = TRUE
+			labtable . text_file_copied = TRUE
 
 		ENDIF
 
@@ -4679,16 +4602,11 @@ ENDROUTINE
 
 		ELSE
 
-			IF NOT labtable . text_file_copied THEN
+			BLOB_TO_FILE ( labtable . name_of_table ,
+			               full_description_field   ,
+			               temp_file_name           )
 
-				BLOB_TO_FILE ( labtable . name_of_table ,
-				               full_description_field   ,
-				               temp_file_name           )
-
-				labtable . text_file_copied = TRUE
-
-			ENDIf
-
+			labtable . text_file_copied = TRUE
 			disp_allowed = TRUE
 
 		ENDIF
@@ -4696,7 +4614,7 @@ ENDROUTINE
 	ENDIF
 
 	IF edit_allowed THEN
-
+	
 		FILE SEND temp_file_name , "EDIT/"
 
 		IF lastkey = "DO"  THEN
@@ -4706,7 +4624,7 @@ ENDROUTINE
 		ENDIF
 
 	ELSEIF disp_allowed THEN
-
+	
 		FILE SEND temp_file_name , "DISPLAY/"
 
 	ENDIF
@@ -5790,7 +5708,7 @@ ROUTINE labtable_migrate ( labtable, VALUE header_mess, fields_to_output )
 
 	lib  = "$LABTABLE_DB"
 	rout = "LABTABLE_DB_MIGRATE"
-
+	
 	IF VGL_VALIDATE_ROUTINE ( lib, rout ) THEN
 
 		CALLROUTINE     rout
@@ -5806,36 +5724,28 @@ ENDROUTINE
 
 ROUTINE labtablib_do_name_field ( labtable )
 
-{
-* Set the Name field - which is the Primary Browse if not part of the key.
+{ 
+* Set the Name field - which is the Primary Browse if not part of the key. 
 *
 *****************************************************************************}
 
 	DECLARE name_is_key
 
 	GET_TABLE_DETAILS 'labtable . name_of_table',
-	                  "NAME_FIELD", labtable . name_field
+	                  "BROWSE_FIELD", labtable . name_field
 
 	IF ( labtable . name_field <> EMPTY )
 
 		GET_FIELD_DETAILS 'labtable . name_of_table' . 'labtable . name_field',
 		                  "KEY0_FIELD", name_is_key
-
+            
 		IF ( name_is_key )
 
 			labtable . name_field = EMPTY
 
 		ENDIF
 
-	ENDIF
-
-	IF labtable . name_field <> EMPTY THEN
-
-		labtable . name_field =
-		       lib_translate_language_field ( labtable . name_of_table ,
-		                                      labtable . name_field    )
-
-	ENDIF
+	ENDIF        
 
 	IF labtable . name_field <> EMPTY THEN
 		labtablib_add_name_field ( labtable )
@@ -5847,13 +5757,13 @@ ENDROUTINE
 
 ROUTINE labtablib_add_name_field ( labtable )
 
-{
+{ 
 * Add the name field if necessary
 *
 *****************************************************************************}
 
 	DECLARE name_found, count, field_name, prompts, size, name_text
-
+	
 	prompts = labtable . prompt_details
 	name_found = FALSE
 	size = SIZE_OF_ARRAY ( prompts )
@@ -5865,8 +5775,8 @@ ROUTINE labtablib_add_name_field ( labtable )
 
 		IF ( field_name = labtable . name_field )
 
-			name_found = TRUE
-
+			name_found = TRUE 
+			
 		ENDIF
 
 		count = count + 1
@@ -5888,55 +5798,16 @@ ROUTINE labtablib_add_name_field ( labtable )
 
 ENDROUTINE
 
-{******************************************************************************}
-
-ROUTINE escape_single_quote ( VALUE st_val )
-
-{
-*       Given a text string, double up all occurrences of the ' character
-*	e.g. the string  : a'bc'd
-*	         becomes : a''bc''d
-*
-*******************************************************************************}
-
-	DECLARE copy , part , result , delim_idx
-
-	copy = st_val
-
-	result = ""
-
-	delim_idx = INDEX ( copy , ascii(39) )
-
-	WHILE ( delim_idx > 0 ) DO
-
-		part = LEFTSTRING ( copy , delim_idx )
-
-		result = result : part : ascii(39)
-
-		copy = copy # part
-
-		delim_idx = INDEX ( copy , ascii(39) )
-
-	ENDWHILE
-
-	result = result : copy
-
-	RETURN ( result )
-
-ENDROUTINE
-
 {****************************************************************************}
 
 ROUTINE labtablib_do_name_validation ( labtable )
 
-{
+{ 
 * Validate the name field
 *
 *****************************************************************************}
 
-	DECLARE valid, name, id, context, dynamic_sql
-
-	valid = TRUE
+	DECLARE name
 
 	IF ( labtable . name_field <> EMPTY )
 
@@ -5945,56 +5816,17 @@ ROUTINE labtablib_do_name_validation ( labtable )
 		IF ( ( name = EMPTY ) OR ( name = "" ) )
 
 			flash_message ( "LABTABLIB_BLANK_NAME", TRUE )
-			valid = FALSE
-
-		ENDIF
-
-		IF valid THEN
-
-			name = escape_single_quote ( name )
-
-			id = SELECT 'labtable . name_of_table' . 'labtable . key0_fields [1]'
-
-			push_file_descriptor ( labtable . name_of_table, context )
-
-			CREATE OBJECT "STD_DYNAMIC_SQL" , dynamic_sql
-
-			dynamic_sql . add_to_sql_statement ( "select 1 from [")
-			dynamic_sql . add_to_sql_statement ( STRIP ( labtable . name_of_table ))
-			dynamic_sql . add_to_sql_statement ( "] where [")
-			dynamic_sql . add_to_sql_statement ( STRIP ( labtable . key0_fields [1] ))
-			dynamic_sql . add_to_sql_statement ( "] <> '" )
-			dynamic_sql . add_to_sql_statement ( STRIP ( id ))
-			dynamic_sql . add_to_sql_statement ( "' and  (upper([" )
-			dynamic_sql . add_to_sql_statement ( STRIP ( labtable . name_field ))
-			dynamic_sql . add_to_sql_statement ( "]) = '" )
-			dynamic_sql . add_to_sql_statement ( STRIP ( TOUPPER ( name )))
-			dynamic_sql . add_to_sql_statement ( "' or [" )
-			dynamic_sql . add_to_sql_statement ( STRIP ( labtable . key0_fields [1] ))
-			dynamic_sql . add_to_sql_statement ( "] = '" )
-			dynamic_sql . add_to_sql_statement ( STRIP ( TOUPPER ( name )))
-			dynamic_sql . add_to_sql_statement ( "')" )
-
-			dynamic_sql . add_select_integer ()
-
-			dynamic_sql . execute ()
-
-			IF dynamic_sql . select ( 1 ) = 1 THEN
-
-				flash_message ( "LABTABLIB_DUPLICATE_NAME", TRUE )
-				valid = FALSE
-
-			ENDIF
-
-			pop_file_descriptor ( context )
-
+			RETURN ( FALSE )
+		
 		ENDIF
 
 	ENDIF
 
-	RETURN ( valid )
+	RETURN ( TRUE )
 
+ENDROUTINE
 
+{****************************************************************************}
 {****************************************************************************}
 {****************************************************************************}
 {****************************************************************************}
@@ -6125,9 +5957,10 @@ ROUTINE BROWSE_C_FACTOR_LTE_RESTR (c_factor_prompt_object )
 
    RETURN ( selected_c_factor )
 
-
 ENDROUTINE
 
 {****************************************************************************}
+{****************************************************************************}
+
 {****************************************************************************}
 {****************************************************************************}

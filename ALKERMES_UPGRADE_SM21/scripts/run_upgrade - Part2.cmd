@@ -13,10 +13,10 @@ echo off
 ::call upgrade >> upgrade.log 2>&1
 
 
-set SM_INSTANCE=SM21_SB
-set SM_ROOT="C:\Program Files (x86)\Thermo\SampleManager\21.0"
-set SERVER_ROOT="C:\Thermo\SampleManager\Server"
-set STAGE="C:\Users\Administrator\Desktop\ALKERMES_UPGRADE_SM21\staging"
+set SM_INSTANCE=SM21X_SB
+set SM_ROOT="E:\Program Files (x86)\Thermo\21.0"
+set SERVER_ROOT="E:\Thermo\SampleManager\Server"
+set STAGE="E:\ALKERMES_UPGRADE_SM21\staging"
 
 ECHO Instance Name     : %SM_INSTANCE%
 ECHO SM Root           : %SM_ROOT%

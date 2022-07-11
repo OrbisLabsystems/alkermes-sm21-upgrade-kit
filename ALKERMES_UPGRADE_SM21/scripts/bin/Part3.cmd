@@ -1,7 +1,7 @@
 REM
-REM  Alkermes 21 Upgrade Script
+REM  Merck Millipore 21.0 Upgrade Script
 REM
-REM  Inputs 1. A clean SM21 install with merged structure 
+REM  Inputs 1. A clean SM21.0 install with merged structure 
 REM
 REM         2. Database import complete from previous SM version
 REM 
@@ -13,10 +13,11 @@ REM
 REM  Version Date            Name                    Description
 REM  ------- --------------- ----------------------- -----------------------------------
 REM  1.0     17-FEB-2021     Raphael Castro           Original
-REM
+REM  2.0     22-MAR-2022     Raphael Castro	      Upgrade 21
 REM ************************************************************************************
 REM Starting SampleManager Upgrade Script
 REM ************************************************************************************
+
 
 echo on
 
@@ -49,7 +50,7 @@ ECHO ***************************************************************************
 
 time /t
 
-%SMP% -batch -instance %SM_INSTANCE% -report $setup upgrade
+%SMP% -batch -instance SM21X_SB -report $setup upgrade
 
 
 ECHO ************************************************************************************
@@ -58,9 +59,23 @@ ECHO ***************************************************************************
 
 time /t
 
-ECHO **** 12.2 to 12.3 ****
-%SMP% -batch -instance %SM_INSTANCE% -report $upgrade 12.2
+ECHO **** 10.2 to 11   ****
+%SMP% -batch -instance %SM_INSTANCE% -report $upgrade11 10.2
+
+ECHO **** 11.0 to 11.2   ****
+%SMP% -batch -instance %SM_INSTANCE% -report $upgrade112 11.0
+
+ECHO **** 11.2 to 11.3 ****
+%SMP% -batch -instance %SM_INSTANCE% -report $upgrade1123 11.2
+
+ECHO **** 11.3 to 12.1 ****
+%SMP% -batch -instance %SM_INSTANCE% -report $upgrade121 11.2.3
+
+ECHO **** 12.1 to 12.2 ****
+%SMP% -batch -instance %SM_INSTANCE% -report $upgrade122 12.1
 
 ECHO **** 12.3 to 21.0 ****
 %SMP% -batch -instance %SM_INSTANCE% -report $upgrade 12.3
 
+
+time /t
