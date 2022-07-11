@@ -1,0 +1,65 @@
+REGEDIT4
+;;;;;;;;;;;;;;;;
+;
+; Registry entries for Thermo.Imprint
+;
+; CLSID = {BB210682-E368-439B-A22F-5E6C32CCAD0D}
+;
+; PowerBuilder Generated Registry File
+;;;;;;;;;;;;;;;;
+
+; Version independent entries:
+[HKEY_CLASSES_ROOT\Thermo.Imprint]
+@="SampleManager OLE imprint"
+[HKEY_CLASSES_ROOT\Thermo.Imprint\CLSID]
+@="{BB210682-E368-439B-A22F-5E6C32CCAD0D}"
+[HKEY_CLASSES_ROOT\Thermo.Imprint\CurVer]
+@="Thermo.Imprint.125"
+[HKEY_CLASSES_ROOT\Thermo.Imprint\NotInsertable]
+@=""
+
+; Version specific entries:
+[HKEY_CLASSES_ROOT\AppID\{BB210682-E368-439B-A22F-5E6C32CCAD0D}]
+@="SampleManager OLE imprint"
+[HKEY_CLASSES_ROOT\Thermo.Imprint.125]
+@="SampleManager OLE imprint"
+[HKEY_CLASSES_ROOT\Thermo.Imprint.125\CLSID]
+@="{BB210682-E368-439B-A22F-5E6C32CCAD0D}"
+[HKEY_CLASSES_ROOT\Thermo.Imprint.125\NotInsertable]
+@=""
+
+; CLSID entries:
+[HKEY_CLASSES_ROOT\CLSID\{BB210682-E368-439B-A22F-5E6C32CCAD0D}]
+@="SampleManager OLE imprint"
+"AppID"="{BB210682-E368-439B-A22F-5E6C32CCAD0D}"
+[HKEY_CLASSES_ROOT\CLSID\{BB210682-E368-439B-A22F-5E6C32CCAD0D}\ProgID]
+@="Thermo.Imprint.125"
+[HKEY_CLASSES_ROOT\CLSID\{BB210682-E368-439B-A22F-5E6C32CCAD0D}\VersionIndependentProgID]
+@="Thermo.Imprint"
+[HKEY_CLASSES_ROOT\CLSID\{BB210682-E368-439B-A22F-5E6C32CCAD0D}\InProcServer32]
+@="pbvm125.dll"
+"ThreadingModel"="Apartment"
+[HKEY_CLASSES_ROOT\CLSID\{BB210682-E368-439B-A22F-5E6C32CCAD0D}\NotInsertable]
+@=""
+[HKEY_CLASSES_ROOT\CLSID\{BB210682-E368-439B-A22F-5E6C32CCAD0D}\Programmable]
+@=""
+[HKEY_CLASSES_ROOT\CLSID\{BB210682-E368-439B-A22F-5E6C32CCAD0D}\PowerBuilder\ClassName]
+@="u_imprint"
+[HKEY_CLASSES_ROOT\CLSID\{BB210682-E368-439B-A22F-5E6C32CCAD0D}\PowerBuilder\LibraryList]
+@="<IMPRINT_PATH>\\oleimprint.pbd"
+[HKEY_CLASSES_ROOT\CLSID\{BB210682-E368-439B-A22F-5E6C32CCAD0D}\PowerBuilder\BinaryType]
+@="PCODE"
+
+; Type Library Registration entries:
+[HKEY_CLASSES_ROOT\CLSID\{BB210682-E368-439B-A22F-5E6C32CCAD0D}\TypeLib]
+@="{BB21DEE4-6A28-4ED5-AEC1-BB66E4D66540}"
+[HKEY_CLASSES_ROOT\TypeLib\{BB21DEE4-6A28-4ED5-AEC1-BB66E4D66540}\125.0]
+@="Type Library for SampleManager OLE imprint"
+[HKEY_CLASSES_ROOT\TypeLib\{BB21DEE4-6A28-4ED5-AEC1-BB66E4D66540}\125.0\400\Win32]
+@="<IMPRINT_PATH>\\oleimprint.tlb"
+
+; Register .PSR file type to use PSR_VIEWER
+[HKEY_CLASSES_ROOT\.psr]
+@="PSR File"
+[HKEY_CLASSES_ROOT\PSR File\Shell\Open\command]
+@="<IMPRINT_PATH>\\psr_viewer.exe %1"
