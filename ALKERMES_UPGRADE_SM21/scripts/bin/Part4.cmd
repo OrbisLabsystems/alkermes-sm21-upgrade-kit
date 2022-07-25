@@ -65,7 +65,7 @@ ECHO ***************************************************************************
 
 %SMP% -batch -instance %SM_INSTANCE% - report $table_loader "%INSTANCE_ROOT%\Upgrade21\Data\overwrite\master_menu.csv" overwrite_table
 %SMP% -batch -instance %SM_INSTANCE% - report $table_loader "%INSTANCE_ROOT%\Upgrade21\Data\overwrite\menu_toolbar.csv" overwrite_table
-
+%SMP% -batch -instance %SM_INSTANCE% - report $table_loader "%INSTANCE_ROOT%\Upgrade21\Data\overwrite\infomaker_link.csv" overwrite_table
 
 ECHO ************************************************************************************
 ECHO Delete all files from smp$code prior to recompile
